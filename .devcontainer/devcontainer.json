@@ -1,7 +1,7 @@
 {
 	"name": "dolfinx_eqlb",
 	"build": {
-	  "dockerfile": "Dockerfile"
+		"dockerfile": "Dockerfile"
 	},
 	"settings": {
 		"terminal.integrated.profiles.linux": {
@@ -9,17 +9,13 @@
 				"path": "/bin/bash"
 			}
 		},
-
 		"python.defaultInterpreterPath": "/usr/bin/python3"
 	},
-
-	"mounts": [
-		"source=${localWorkspaceFolder},target=/root/development,type=bind"
-	  ],
-
 	"extensions": [
 		"ms-python.python",
 		"ms-python.vscode-pylance",
-		"ms-vscode.cpptools"
+		"ms-vscode.cpptools",
+		"twxs.cmake",
+		"vscode.cmake-tools"
 	]
-  }
+}

@@ -1,0 +1,15 @@
+# - Build details for DOLFINX_EQLB - An extension for H(div) conforming equilibration with dolfinx
+#
+
+@PACKAGE_INIT@
+
+# Compilers
+set_and_check(DOLFINX_MPC_CXX_COMPILER "@CMAKE_CXX_COMPILER@")
+
+include(CMakeFindDependencyMacro)
+find_dependency(DOLFINX REQUIRED)
+find_dependency(MPI REQUIRED)
+find_dependency(Basix REQUIRED)
+
+
+check_required_components(DOLFINX_EQLB)
