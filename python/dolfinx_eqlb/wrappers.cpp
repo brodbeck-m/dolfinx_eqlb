@@ -24,5 +24,5 @@ PYBIND11_MODULE(cpp, m)
   m.def("local_solver", [](dolfinx::fem::Function<PetscScalar>& sol_elmt,
                            const dolfinx::fem::Form<PetscScalar>& a,
                            const dolfinx::fem::Form<PetscScalar>& l)
-        { dolfinx_eqlb::local_projector<PetscScalar>(sol_elmt, a, l); });
+        { dolfinx_eqlb::local_solver<PetscScalar>(sol_elmt, a, l); });
 }

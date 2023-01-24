@@ -66,8 +66,8 @@ void test_eigen()
 }
 
 template <typename T>
-void local_projector(fem::Function<T>& sol_elmt, const fem::Form<T>& a,
-                     const fem::Form<T>& l)
+void local_solver(fem::Function<T>& sol_elmt, const fem::Form<T>& a,
+                  const fem::Form<T>& l)
 {
   // Prepare cell geometry
   const mesh::Geometry& geometry = a.mesh()->geometry();
