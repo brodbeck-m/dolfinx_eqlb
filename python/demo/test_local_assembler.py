@@ -18,9 +18,9 @@ dolfinx_eqlb.cpp.test_pybind()
 
 
 # --- Test local solver ---
-inp_nelmt = 100
-inp_degree = 2
-inp_nrets = 3
+inp_nelmt = 10
+inp_degree = 1
+inp_nrets = 1
 
 
 def create_problem(n_elmt, degree):
@@ -43,7 +43,8 @@ def create_problem(n_elmt, degree):
     v = ufl.TestFunction(V)
 
     a = ufl.inner(ufl.grad(u), ufl.grad(v)) * ufl.dx
-    l = ufl.inner(dfem.Constant(mesh, PETSc.ScalarType(1.5)), v) * ufl.dx
+    # l = ufl.inner(dfem.Constant(mesh, PETSc.ScalarType(1.5)), v) * ufl.dx
+    l = v * ufl.dx
 
     return V, a, l
 
@@ -122,6 +123,12 @@ for n in range(0, inp_nrets):
 
     # Test against built-in assembler
     timing_python = stiffness_elmt_calc(V, a)
+
+outfile = dolfinx.io.XDMFFile(
+    MPI.COMM_WORLD, "Test_cpp.xdmf", "w")
+outfile.write_mesh(V.mesh)
+outfile.write_function(func)
+outfile.close()
 
 PETSc.Sys.Print("Local:  Form: {}, Local stiffness: {}".format(
     timing_python[0]/inp_nrets, timing_python[1]/inp_nrets))

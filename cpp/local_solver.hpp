@@ -124,11 +124,10 @@ void local_projector(fem::Function<T>& sol_elmt, const fem::Form<T>& a,
   u_e.resize(ndim0);
 
   // Pointer onto global solution sol_elmt
-  std::shared_ptr<la::Vector<T>> vec_sol_elmt
-      = sol_elmt.x()
+  std::span<T> vec_sol_elmt = sol_elmt.x()->mutable_array();
 
-        // Solve equation system on all cells
-        for (int i : a.integral_ids(fem::IntegralType::cell))
+  // Solve equation system on all cells
+  for (int i : a.integral_ids(fem::IntegralType::cell))
   {
     // Extract kernels
     const auto& kernel_a = a.kernel(fem::IntegralType::cell, i);
@@ -156,7 +155,7 @@ void local_projector(fem::Function<T>& sol_elmt, const fem::Form<T>& a,
         // Initialize element array with zeros
         std::fill(A_e.reshaped().begin(), A_e.reshaped().end(), 0);
         std::fill(L_e.begin(), L_e.end(), 0);
-        std::fill(u_e.begin(), u_e.end(), 0);
+        std::fill(u_e.begin(), u_e.end(), 5);
 
         // Tabluate system
         kernel_a(A_e.data(), nullptr, nullptr, coordinate_dofs.data(), nullptr,
@@ -171,7 +170,7 @@ void local_projector(fem::Function<T>& sol_elmt, const fem::Form<T>& a,
         u_e = solver.solve(L_e);
 
         // Global dofs of currect element
-        auto sol_dof = dofmap0.links(c);
+        std::span<const int32_t> sol_dof = dofs0.links(c);
 
         // Map solution into global function space
         for (std::size_t k = 0; k < ndim0; ++k)
