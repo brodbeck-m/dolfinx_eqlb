@@ -14,7 +14,7 @@ RUN echo "alias ..='cd ..'" >> "/root/.bash_aliases"
 
 # Install additional python packages (only for development)
 RUN pip3 install sympy matplotlib numexpr 
-RUN pip3 install RUN pip3 install pandas
+RUN pip3 install autopep8 pandas
 
 
 
