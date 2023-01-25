@@ -55,26 +55,26 @@ def setup_problem_projection(cell, n_elmt):
 '''Test existance of required discontinous function-spaces (Lagrange, RT, BDM)'''
 
 
-# @pytest.mark.parametrize("cell", [ufl.triangle])
-# @pytest.mark.parametrize("family_basix",
-#                          [basix.ElementFamily.P,
-#                           basix.ElementFamily.RT,
-#                           basix.ElementFamily.BDM])
-# @pytest.mark.parametrize("degree", [1, 2, 3, 4])
-# def test_elmtbasix_discontinous(cell, family_basix, degree):
-#     # Create problem
-#     msh, cell_basix = setup_problem_projection(cell, 5)
+@pytest.mark.parametrize("cell", [ufl.triangle])
+@pytest.mark.parametrize("family_basix",
+                         [basix.ElementFamily.P,
+                          basix.ElementFamily.RT,
+                          basix.ElementFamily.BDM])
+@pytest.mark.parametrize("degree", [1, 2, 3, 4])
+def test_elmtbasix_discontinous(cell, family_basix, degree):
+    # Create problem
+    msh, cell_basix = setup_problem_projection(cell, 5)
 
-#     # Create Finite element (discontinous!), FunctionSpace and Function
-#     V = dfem.FunctionSpace(msh, create_fespace_discontinous(
-#         family_basix, cell_basix, degree))
-#     func = dfem.Function(V)
+    # Create Finite element (discontinous!), FunctionSpace and Function
+    V = dfem.FunctionSpace(msh, create_fespace_discontinous(
+        family_basix, cell_basix, degree))
+    func = dfem.Function(V)
 
-#     # Check if overall number of DOFs is correct
-#     n_elmt = msh.topology.index_map(cell.geometric_dimension()).size_local
-#     n_dof_dg = V.element.space_dimension * n_elmt * V.dofmap.bs
+    # Check if overall number of DOFs is correct
+    n_elmt = msh.topology.index_map(cell.geometric_dimension()).size_local
+    n_dof_dg = V.element.space_dimension * n_elmt * V.dofmap.bs
 
-#     assert (V.dofmap.index_map.size_global * V.dofmap.index_map_bs) == n_dof_dg
+    assert (V.dofmap.index_map.size_global * V.dofmap.index_map_bs) == n_dof_dg
 
 
 '''Only ufl-arguments: Test projection into discontinous Lagrange elements'''
@@ -163,56 +163,56 @@ def test_localprojection_ufl_vector(cell, Element, n_elmt, degree, test_func):
 '''Only ufl-arguments: Test projection into discontinous RT and BDM elements'''
 
 
-# @pytest.mark.parametrize("cell", [ufl.triangle, ufl.tetrahedron])
-# @pytest.mark.parametrize("family_basix", [basix.ElementFamily.P])
-# # @pytest.mark.parametrize("family_basix",
-# #                          [basix.ElementFamily.P,
-# #                           basix.ElementFamily.RT,
-# #                           basix.ElementFamily.BDM])
-# @pytest.mark.parametrize("n_elmt", [1, 2, 4, 8, 16])
-# @pytest.mark.parametrize("degree", [1, 2, 3])
-# @pytest.mark.parametrize("test_func", ["const", "sin"])
-# def test_localprojection_ufl_Hdiv(cell, family_basix, n_elmt, degree, test_func):
-#     # Create problem
-#     msh, cell_basix = setup_problem_projection(cell, n_elmt)
+@pytest.mark.parametrize("cell", [ufl.triangle, ufl.tetrahedron])
+@pytest.mark.parametrize("family_basix", [basix.ElementFamily.P])
+# @pytest.mark.parametrize("family_basix",
+#                          [basix.ElementFamily.P,
+#                           basix.ElementFamily.RT,
+#                           basix.ElementFamily.BDM])
+@pytest.mark.parametrize("n_elmt", [1, 2, 4, 8, 16])
+@pytest.mark.parametrize("degree", [1, 2, 3])
+@pytest.mark.parametrize("test_func", ["const", "sin"])
+def test_localprojection_ufl_Hdiv(cell, family_basix, n_elmt, degree, test_func):
+    # Create problem
+    msh, cell_basix = setup_problem_projection(cell, n_elmt)
 
-#     # Create Function space
-#     elmt = create_fespace_discontinous(family_basix, cell_basix, degree)
-#     V = dfem.FunctionSpace(msh, elmt)
-#     proj_local = dfem.Function(V)
+    # Create Function space
+    elmt = create_fespace_discontinous(family_basix, cell_basix, degree)
+    V = dfem.FunctionSpace(msh, elmt)
+    proj_local = dfem.Function(V)
 
-#     # Linear- and bilineaform
-#     dvol = ufl.Measure("dx", domain=msh,
-#                        metadata={"quadrature_degree": 3*degree})
+    # Linear- and bilineaform
+    dvol = ufl.Measure("dx", domain=msh,
+                       metadata={"quadrature_degree": 3*degree})
 
-#     u = ufl.TrialFunction(V)
-#     v = ufl.TestFunction(V)
+    u = ufl.TrialFunction(V)
+    v = ufl.TestFunction(V)
 
-#     a = ufl.inner(u, v)*ufl.dx
+    a = ufl.inner(u, v)*ufl.dx
 
-#     if test_func == "const":
-#         l = 2*v*ufl.dx
-#     else:
-#         x = ufl.SpatialCoordinate(msh)
+    if test_func == "const":
+        l = 2*v*ufl.dx
+    else:
+        x = ufl.SpatialCoordinate(msh)
 
-#         if (cell.geometric_dimension() == 1):
-#             l = ufl.sin(x[0]) * v * dvol
-#         elif (cell.geometric_dimension() == 2):
-#             l = ufl.sin(x[0]) * ufl.sin(x[1]) * v * dvol
-#         else:
-#             l = ufl.sin(x[0]) * ufl.sin(x[1]) * ufl.sin(x[2]) * v * dvol
+        if (cell.geometric_dimension() == 1):
+            l = ufl.sin(x[0]) * v * dvol
+        elif (cell.geometric_dimension() == 2):
+            l = ufl.sin(x[0]) * ufl.sin(x[1]) * v * dvol
+        else:
+            l = ufl.sin(x[0]) * ufl.sin(x[1]) * ufl.sin(x[2]) * v * dvol
 
-#     # Calculate global projection
-#     problem = dfem.petsc.LinearProblem(a, l, bcs=[], petsc_options={
-#                                        "ksp_type": "preonly", "pc_type": "lu"})
-#     proj_global = problem.solve()
+    # Calculate global projection
+    problem = dfem.petsc.LinearProblem(a, l, bcs=[], petsc_options={
+                                       "ksp_type": "preonly", "pc_type": "lu"})
+    proj_global = problem.solve()
 
-#     # Calculate local projection
-#     dolfinx_eqlb.cpp.local_solver(
-#         proj_local._cpp_object, dfem.form(a), dfem.form(l))
+    # Calculate local projection
+    dolfinx_eqlb.cpp.local_solver(
+        proj_local._cpp_object, dfem.form(a), dfem.form(l))
 
-#     # Compare solutions
-#     assert np.allclose(proj_global.vector.array, proj_local.vector.array)
+    # Compare solutions
+    assert np.allclose(proj_global.vector.array, proj_local.vector.array)
 
 
 if __name__ == '__main__':
