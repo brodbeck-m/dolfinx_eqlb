@@ -44,7 +44,8 @@ def create_problem(n_elmt, degree):
 
     a = ufl.inner(ufl.grad(u), ufl.grad(v)) * ufl.dx
     # l = ufl.inner(dfem.Constant(mesh, PETSc.ScalarType(1.5)), v) * ufl.dx
-    l = v * ufl.dx
+    x = ufl.SpatialCoordinate(mesh)
+    l = v*ufl.sin(x[0])*ufl.dx
 
     return V, a, l
 
