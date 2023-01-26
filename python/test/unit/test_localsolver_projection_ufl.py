@@ -80,72 +80,78 @@ def test_elmtbasix_discontinous(cell, family_basix, degree):
 '''Only ufl-arguments: Test projection into discontinous Lagrange elements'''
 
 
-@pytest.mark.parametrize("cell", [ufl.triangle,
-                                  ufl.tetrahedron,
-                                  ufl.quadrilateral,
-                                  ufl.hexahedron])
-@pytest.mark.parametrize("Element", [ufl.FiniteElement])
-@pytest.mark.parametrize("n_elmt", [1, 2, 4, 8, 16])
+@pytest.mark.parametrize("cell", [ufl.triangle, ufl.tetrahedron, ufl.quadrilateral, ufl.hexahedron])
+@pytest.mark.parametrize("is_vectorvalued", [False])
+@pytest.mark.parametrize("n_elmt", [1, 2, 4, 8])
 @pytest.mark.parametrize("degree", [1, 2, 3])
 @pytest.mark.parametrize("test_func", ["const", "sin"])
-def test_localprojection_ufl_vector(cell, Element, n_elmt, degree, test_func):
+def test_localprojection_ufl_vector(cell, is_vectorvalued, n_elmt, degree, test_func):
     # Create problem
     msh, cell_basix = setup_problem_projection(cell, n_elmt)
 
     # Create Function space
     if (cell == ufl.triangle or cell == ufl.tetrahedron):
-        elmt = Element('DG', msh.ufl_cell(), degree)
+        if is_vectorvalued:
+            elmt = ufl.VectorElement('DG', msh.ufl_cell(), degree)
+        else:
+            elmt = ufl.FiniteElement('DG', msh.ufl_cell(), degree)
     else:
-        elmt = Element('DQ', msh.ufl_cell(), degree)
+        if is_vectorvalued:
+            elmt = ufl.VectorElement('DQ', msh.ufl_cell(), degree)
+        else:
+            elmt = ufl.FiniteElement('DQ', msh.ufl_cell(), degree)
     V = dfem.FunctionSpace(msh, elmt)
     proj_local = dfem.Function(V)
 
     # Linear- and bilineaform
-    dvol = ufl.Measure("dx", domain=msh,
-                       metadata={"quadrature_degree": 3*degree})
-
     u = ufl.TrialFunction(V)
     v = ufl.TestFunction(V)
 
     a = ufl.inner(u, v)*ufl.dx
 
-    if (Element == ufl.FiniteElement):
+    if is_vectorvalued:
         if test_func == "const":
-            l = 2*v*ufl.dx
-        else:
-            x = ufl.SpatialCoordinate(msh)
-
-            if (cell.geometric_dimension() == 1):
-                l = ufl.sin(x[0]) * v * dvol
-            elif (cell.geometric_dimension() == 2):
-                l = ufl.sin(x[0]) * ufl.sin(x[1]) * v * dvol
-            else:
-                l = ufl.sin(x[0]) * ufl.sin(x[1]) * ufl.sin(x[2]) * v * dvol
-    elif (Element == ufl.VectorElement):
-        if test_func == "const":
+            dvol = ufl.dx
             if (cell.geometric_dimension() == 2):
                 f_ufl = ufl.as_vector([2, 5])
             elif (cell.geometric_dimension() == 3):
                 f_ufl = ufl.as_vector([2, 5, 1])
             else:
                 assert False
-            l = ufl.inner(f_ufl, v)*ufl.dx
         else:
+            dvol = ufl.Measure("dx", domain=msh,
+                               metadata={"quadrature_degree": 3*degree})
+            x = ufl.SpatialCoordinate(msh)
+
+            if (cell.geometric_dimension() == 1):
+                assert False
+            elif (cell.geometric_dimension() == 2):
+                f_ufl = ufl.as_vector([ufl.sin(x[0]) * ufl.sin(x[1]),
+                                      ufl.cos(x[0]) * ufl.cos(x[1])])
+
+            else:
+                f_ufl = ufl.as_vector([ufl.sin(x[0])*ufl.sin(x[1]) *
+                                      ufl.sin(x[2]),
+                                      ufl.cos(x[0])*ufl.cos(x[1]) *
+                                      ufl.cos(x[2]),
+                                      ufl.sin(x[0])*ufl.cos(x[1]) *
+                                      ufl.sin(x[2])])
+    else:
+        if test_func == "const":
+            dvol = ufl.dx
+            f_ufl = 2
+        else:
+            dvol = ufl.Measure("dx", domain=msh,
+                               metadata={"quadrature_degree": 3*degree})
             x = ufl.SpatialCoordinate(msh)
 
             if (cell.geometric_dimension() == 2):
-                f_ufl = ufl.as_vector([ufl.sin(x[0])*ufl.sin(x[1]),
-                                       ufl.cos(x[1])*ufl.cos(x[1])])
+                f_ufl = ufl.sin(x[0])*ufl.sin(x[1])
             elif (cell.geometric_dimension() == 3):
-                f_ufl = ufl.as_vector([ufl.sin(x[0])*ufl.sin(x[1])*ufl.sin(x[2]),
-                                       ufl.cos(x[1])*ufl.cos(x[1]) *
-                                       ufl.cos(x[2]),
-                                       ufl.sin(x[1])*ufl.cos(x[1])*ufl.sin(x[2])])
+                f_ufl = ufl.sin(x[0])*ufl.sin(x[1])*ufl.sin(x[2])
             else:
                 assert False
-            l = ufl.inner(f_ufl, v)*dvol
-    else:
-        assert False
+    l = ufl.inner(f_ufl, v) * dvol
 
     # Calculate global projection
     problem = dfem.petsc.LinearProblem(a, l, bcs=[], petsc_options={
@@ -163,13 +169,11 @@ def test_localprojection_ufl_vector(cell, Element, n_elmt, degree, test_func):
 '''Only ufl-arguments: Test projection into discontinous RT and BDM elements'''
 
 
-@pytest.mark.parametrize("cell", [ufl.triangle, ufl.tetrahedron])
-@pytest.mark.parametrize("family_basix", [basix.ElementFamily.P])
-# @pytest.mark.parametrize("family_basix",
-#                          [basix.ElementFamily.P,
-#                           basix.ElementFamily.RT,
-#                           basix.ElementFamily.BDM])
-@pytest.mark.parametrize("n_elmt", [1, 2, 4, 8, 16])
+@pytest.mark.parametrize("cell", [ufl.triangle,
+                                  ufl.tetrahedron])
+@pytest.mark.parametrize("family_basix", [basix.ElementFamily.RT,
+                                          basix.ElementFamily.BDM])
+@pytest.mark.parametrize("n_elmt", [1, 2, 4, 8])
 @pytest.mark.parametrize("degree", [1, 2, 3])
 @pytest.mark.parametrize("test_func", ["const", "sin"])
 def test_localprojection_ufl_Hdiv(cell, family_basix, n_elmt, degree, test_func):
@@ -182,25 +186,38 @@ def test_localprojection_ufl_Hdiv(cell, family_basix, n_elmt, degree, test_func)
     proj_local = dfem.Function(V)
 
     # Linear- and bilineaform
-    dvol = ufl.Measure("dx", domain=msh,
-                       metadata={"quadrature_degree": 3*degree})
-
     u = ufl.TrialFunction(V)
     v = ufl.TestFunction(V)
 
     a = ufl.inner(u, v)*ufl.dx
 
     if test_func == "const":
-        l = 2*v*ufl.dx
+        dvol = ufl.dx
+        if (cell.geometric_dimension() == 1):
+            assert False
+        elif (cell.geometric_dimension() == 2):
+            func = ufl.as_vector([2, 5])
+
+        else:
+            func = ufl.as_vector([2, 5, 9])
     else:
+        dvol = ufl.Measure("dx", domain=msh,
+                           metadata={"quadrature_degree": 3*degree})
+
         x = ufl.SpatialCoordinate(msh)
 
         if (cell.geometric_dimension() == 1):
-            l = ufl.sin(x[0]) * v * dvol
+            assert False
         elif (cell.geometric_dimension() == 2):
-            l = ufl.sin(x[0]) * ufl.sin(x[1]) * v * dvol
+            func = ufl.as_vector([ufl.sin(x[0]) * ufl.sin(x[1]),
+                                  ufl.cos(x[0]) * ufl.cos(x[1])])
+
         else:
-            l = ufl.sin(x[0]) * ufl.sin(x[1]) * ufl.sin(x[2]) * v * dvol
+            func = ufl.as_vector([ufl.sin(x[0])*ufl.sin(x[1])*ufl.sin(x[2]),
+                                  ufl.cos(x[0])*ufl.cos(x[1])*ufl.cos(x[2]),
+                                  ufl.sin(x[0])*ufl.cos(x[1])*ufl.sin(x[2])])
+
+    l = ufl.inner(func, v) * dvol
 
     # Calculate global projection
     problem = dfem.petsc.LinearProblem(a, l, bcs=[], petsc_options={
@@ -208,8 +225,8 @@ def test_localprojection_ufl_Hdiv(cell, family_basix, n_elmt, degree, test_func)
     proj_global = problem.solve()
 
     # Calculate local projection
-    dolfinx_eqlb.cpp.local_solver(
-        proj_local._cpp_object, dfem.form(a), dfem.form(l))
+    dolfinx_eqlb.cpp.local_solver(proj_local._cpp_object,
+                                  dfem.form(a), dfem.form(l))
 
     # Compare solutions
     assert np.allclose(proj_global.vector.array, proj_local.vector.array)
