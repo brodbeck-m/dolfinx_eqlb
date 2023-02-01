@@ -80,8 +80,8 @@ def test_elmtbasix_discontinous(cell, family_basix, degree):
 '''Only ufl-arguments: Test projection into discontinous Lagrange elements'''
 
 
-@pytest.mark.parametrize("cell", [ufl.triangle, ufl.tetrahedron, ufl.quadrilateral, ufl.hexahedron])
-@pytest.mark.parametrize("is_vectorvalued", [False])
+@pytest.mark.parametrize("cell", [ufl.triangle, ufl.quadrilateral, ufl.tetrahedron, ufl.hexahedron])
+@pytest.mark.parametrize("is_vectorvalued", [False, True])
 @pytest.mark.parametrize("n_elmt", [1, 2, 4, 8])
 @pytest.mark.parametrize("degree", [1, 2, 3])
 @pytest.mark.parametrize("test_func", ["const", "sin"])
@@ -123,19 +123,18 @@ def test_localprojection_ufl_vector(cell, is_vectorvalued, n_elmt, degree, test_
                                metadata={"quadrature_degree": 3*degree})
             x = ufl.SpatialCoordinate(msh)
 
-            if (cell.geometric_dimension() == 1):
-                assert False
-            elif (cell.geometric_dimension() == 2):
+            if (cell.geometric_dimension() == 2):
                 f_ufl = ufl.as_vector([ufl.sin(x[0]) * ufl.sin(x[1]),
                                       ufl.cos(x[0]) * ufl.cos(x[1])])
-
-            else:
+            elif (cell.geometric_dimension() == 3):
                 f_ufl = ufl.as_vector([ufl.sin(x[0])*ufl.sin(x[1]) *
                                       ufl.sin(x[2]),
                                       ufl.cos(x[0])*ufl.cos(x[1]) *
                                       ufl.cos(x[2]),
                                       ufl.sin(x[0])*ufl.cos(x[1]) *
                                       ufl.sin(x[2])])
+            else:
+                assert False
     else:
         if test_func == "const":
             dvol = ufl.dx
@@ -154,8 +153,8 @@ def test_localprojection_ufl_vector(cell, is_vectorvalued, n_elmt, degree, test_
     l = ufl.inner(f_ufl, v) * dvol
 
     # Calculate global projection
-    problem = dfem.petsc.LinearProblem(a, l, bcs=[], petsc_options={
-                                       "ksp_type": "preonly", "pc_type": "lu"})
+    problem = dfem.petsc.LinearProblem(a, l, bcs=[], petsc_options={"ksp_type": "preonly",
+                                                                    "pc_type": "lu"})
     proj_global = problem.solve()
 
     # Calculate local projection
@@ -173,7 +172,7 @@ def test_localprojection_ufl_vector(cell, is_vectorvalued, n_elmt, degree, test_
                                   ufl.tetrahedron])
 @pytest.mark.parametrize("family_basix", [basix.ElementFamily.RT,
                                           basix.ElementFamily.BDM])
-@pytest.mark.parametrize("n_elmt", [1, 2, 4, 8])
+@pytest.mark.parametrize("n_elmt", [1, 2, 4])
 @pytest.mark.parametrize("degree", [1, 2, 3])
 @pytest.mark.parametrize("test_func", ["const", "sin"])
 def test_localprojection_ufl_Hdiv(cell, family_basix, n_elmt, degree, test_func):

@@ -179,9 +179,23 @@ void local_solver(fem::Function<T>& sol_elmt, const fem::Form<T>& a,
         std::span<const int32_t> sol_dof = dofs0.links(c);
 
         // Map solution into global function space
-        for (std::size_t k = 0; k < ndim0; ++k)
+        if (bs0 == 1)
         {
-          vec_sol_elmt[sol_dof[k]] = u_e[k];
+          std::cout << "Test_scal" << std::endl;
+          for (std::size_t k = 0; k < num_dofs0; ++k)
+          {
+            vec_sol_elmt[sol_dof[k]] = u_e[k];
+          }
+        }
+        else
+        {
+          for (std::size_t k = 0; k < num_dofs0; ++k)
+          {
+            for (std::size_t cb = 0; cb < bs0; ++cb)
+            {
+              vec_sol_elmt[bs0 * sol_dof[k] + cb] = u_e[bs0 * k + cb];
+            }
+          }
         }
       }
     }
