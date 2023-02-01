@@ -1,6 +1,7 @@
 #pragma once
 
 #include "eigen3/Eigen/Dense"
+#include "eigen3/Eigen/Sparse"
 #include <algorithm>
 #include <dolfinx/fem/DofMap.h>
 #include <dolfinx/fem/Form.h>
@@ -115,9 +116,14 @@ void local_solver(fem::Function<T>& sol_elmt, const fem::Form<T>& a,
 
   Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> A_e;
   Eigen::Matrix<double, Eigen::Dynamic, 1> L_e, u_e;
-  Eigen::FullPivLU<
-      Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>
+
+  Eigen::ConjugateGradient<
+      Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>,
+      Eigen::Lower | Eigen::Upper>
       solver;
+  // Eigen::FullPivLU<
+  //     Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>
+  //     solver;
 
   A_e.resize(ndim0, ndim0);
   L_e.resize(ndim0);

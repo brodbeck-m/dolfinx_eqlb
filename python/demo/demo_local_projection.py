@@ -17,18 +17,18 @@ import ufl
 
 # --- Input parameters
 # Mesh type
-sdisc_ctype = ufl.triangle
+sdisc_ctype = ufl.tetrahedron
 
 # Mesh resolution
-sdisc_nelmt = 350
+sdisc_nelmt = 50
 
-# Element type
+# Element type ('Lagrange', 'VectorLagrange', 'RT', 'BDM')
 elmt_type = 'Lagrange'
-elmt_order = 2
+elmt_order = 3
 
 # Input projection (ufl, func_cg, func_dg, ufl_func_cg)
 rhs_type = 'ufl'
-rhs_retry = 3
+rhs_retry = 1
 
 # Timing
 timing_nretry = 3
@@ -221,7 +221,8 @@ def local_projection(V, a, l, rhs_retry=1):
     # Solve projection repeatedly
     for ii in range(0, rhs_retry):
         # Solve equation system
-        dolfinx_eqlb.cpp.local_solver(u_proj._cpp_object, form_a, form_l)
+        dolfinx_eqlb.cpp.local_solver(
+            u_proj._cpp_object, form_a, form_l)
 
     return u_proj
 
