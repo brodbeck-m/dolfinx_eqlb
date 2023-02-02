@@ -181,7 +181,6 @@ void local_solver(fem::Function<T>& sol_elmt, const fem::Form<T>& a,
         // Map solution into global function space
         if (bs0 == 1)
         {
-          std::cout << "Test_scal" << std::endl;
           for (std::size_t k = 0; k < num_dofs0; ++k)
           {
             vec_sol_elmt[sol_dof[k]] = u_e[k];
