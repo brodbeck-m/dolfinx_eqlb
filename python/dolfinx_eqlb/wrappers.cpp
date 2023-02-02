@@ -4,6 +4,7 @@
 #include <iostream>
 #include <pybind11/eigen.h>
 #include <pybind11/pybind11.h>
+#include <pybind11/pytypes.h>
 
 #include <dolfinx_eqlb/local_solver.hpp>
 

@@ -6,6 +6,8 @@
 #include <dolfinx/fem/DofMap.h>
 #include <dolfinx/fem/Form.h>
 #include <dolfinx/fem/Function.h>
+#include <dolfinx/fem/assembler.h>
+#include <dolfinx/fem/utils.h>
 #include <dolfinx/graph/AdjacencyList.h>
 #include <functional>
 #include <iostream>
@@ -78,6 +80,22 @@ void local_solver(fem::Function<T>& sol_elmt, const fem::Form<T>& a,
   std::span<const double> x = geometry.x();
   std::vector<double> coordinate_dofs(3 * num_dofs_g);
 
+  // Prepare constants and coefficients
+  const std::vector<T> constants_a = fem::pack_constants(a);
+  const std::vector<T> constants_l = fem::pack_constants(l);
+
+  auto coefficients_a_stdvec = fem::allocate_coefficient_storage(a);
+  fem::pack_coefficients(a, coefficients_a_stdvec);
+  auto coefficients_l_stdvec = fem::allocate_coefficient_storage(l);
+  fem::pack_coefficients(l, coefficients_l_stdvec);
+
+  std::map<std::pair<fem::IntegralType, int>,
+           std::pair<std::span<const T>, int>>
+      coefficients_a = fem::make_coefficients_span(coefficients_a_stdvec);
+  std::map<std::pair<fem::IntegralType, int>,
+           std::pair<std::span<const T>, int>>
+      coefficients_l = fem::make_coefficients_span(coefficients_l_stdvec);
+
   // Extract dofmap from functionspace
   std::shared_ptr<const fem::DofMap> dofmap0
       = a.function_spaces().at(0)->dofmap();
@@ -85,30 +103,6 @@ void local_solver(fem::Function<T>& sol_elmt, const fem::Form<T>& a,
 
   const graph::AdjacencyList<std::int32_t>& dofs0 = dofmap0->list();
   const int bs0 = dofmap0->bs();
-
-  // Extract DOF transformations
-  // const fem::FiniteElement& element0 = a.function_spaces().at(0)->element();
-  // const std::function<void(const std::span<T>&,
-  //                          const std::span<const std::uint32_t>&,
-  //                          std::int32_t, int)>& dof_transform
-  //     = element0.get_dof_transformation_function<T>();
-  // const std::function<void(const std::span<T>&,
-  //                          const std::span<const std::uint32_t>&,
-  //                          std::int32_t, int)>& dof_transform_to_transpose
-  //     = element0.get_dof_transformation_to_transpose_function<T>();
-
-  // const bool needs_transformation_data
-  //     = element0.needs_dof_transformations() or a.needs_facet_permutations();
-  // std::span<const std::uint32_t> cell_info;
-
-  // if (needs_transformation_data)
-  // {
-  //   // Get cell_date
-  //   a.mesh().topology_mutable().create_entity_permutations();
-
-  //   // Extract transformation functions
-  //   cell_info = std::span(a.mesh().topology().get_cell_permutation_info());
-  // }
 
   // Initialize element arrays
   const int num_dofs0 = dofs0.links(0).size();
@@ -142,6 +136,12 @@ void local_solver(fem::Function<T>& sol_elmt, const fem::Form<T>& a,
     // Extract cells
     const std::vector<std::int32_t>& cells = a.cell_domains(i);
 
+    // Extract coefficients
+    const auto& [coeffs_a, cstride_a]
+        = coefficients_a.at({fem::IntegralType::cell, i});
+    const auto& [coeffs_l, cstride_l]
+        = coefficients_l.at({fem::IntegralType::cell, i});
+
     // Loop over all cells
     if (!cells.empty())
     {
@@ -164,12 +164,10 @@ void local_solver(fem::Function<T>& sol_elmt, const fem::Form<T>& a,
         std::fill(u_e.begin(), u_e.end(), 5);
 
         // Tabluate system
-        kernel_a(A_e.data(), nullptr, nullptr, coordinate_dofs.data(), nullptr,
-                 nullptr);
-        kernel_l(L_e.data(), nullptr, nullptr, coordinate_dofs.data(), nullptr,
-                 nullptr);
-
-        // Apply dof permutations
+        kernel_a(A_e.data(), coeffs_a.data() + index * cstride_a,
+                 constants_a.data(), coordinate_dofs.data(), nullptr, nullptr);
+        kernel_l(L_e.data(), coeffs_l.data() + index * cstride_l,
+                 constants_l.data(), coordinate_dofs.data(), nullptr, nullptr);
 
         // Solve equation system
         solver.compute(A_e);
