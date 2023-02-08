@@ -25,11 +25,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 #------------------------------------------------------------------------------
-# General configuration
-# Make sure CMake uses the correct DOLFINConfig.cmake for tests and demos
-set(CMAKE_PREFIX_PATH ${CMAKE_PREFIX_PATH} ${CMAKE_CURRENT_BINARY_DIR}/dolfinx_eqlb)
-
-#------------------------------------------------------------------------------
 # configurable options for how we want to build
 
 include(FeatureSummary)
@@ -40,39 +35,66 @@ add_feature_info(BUILD_SHARED_LIBS BUILD_SHARED_LIBS "Build DOLFINX_EQLB with sh
 option(CMAKE_INSTALL_RPATH_USE_LINK_PATH "Add paths to linker search and installed rpath." ON)
 add_feature_info(CMAKE_INSTALL_RPATH_USE_LINK_PATH CMAKE_INSTALL_RPATH_USE_LINK_PATH "Add paths to linker search and installed rpath.")
 
+set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR})
+
 # Find packages
 find_package(DOLFINX REQUIRED)
 find_package(Basix REQUIRED)
 find_package(Eigen3 REQUIRED NO_MODULE)
-#INCLUDE_DIRECTORIES('/usr/include/eigen3')
 
 feature_summary(WHAT ALL)
 
-add_library(dolfinx_eqlb INTERFACE)
+add_library(dolfinx_eqlb "")
 
-target_link_libraries(dolfinx_eqlb INTERFACE Basix::basix)
-target_include_directories(dolfinx_eqlb INTERFACE ${DOLFINX_EQLB_SOURCE_DIR})
+target_link_libraries(dolfinx_eqlb PUBLIC Basix::basix)
+target_link_libraries(dolfinx_eqlb PUBLIC dolfinx)
 
-# Installation of header-only DOLFINX_EQLB Library
+# Installation of DOLFINX_EQLB Library
 include(GNUInstallDirs)
-install(FILES local_solver.hpp DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/dolfinx_eqlb COMPONENT Development)
 
-# Create package config for CMAKE
+set(HEADERS_EQLB
+    local_solver.hpp
+    reconstruction.hpp
+)
+
+target_sources(
+  dolfinx_eqlb
+  PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/reconstruction.cpp
+)
+
+install(FILES ${HEADERS_EQLB} DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/dolfinx_eqlb COMPONENT Development)
+
+# Set target include location (for build and installed)
+target_include_directories(dolfinx_eqlb PUBLIC
+                           $<INSTALL_INTERFACE:include>
+                           "$<BUILD_INTERFACE:${DOLFINX_EQLB_SOURCE_DIR};${DOLFINX_EQLB_SOURCE_DIR}/dolfinx_eqlb>")
+
+# Set target properties
+set_target_properties(dolfinx_eqlb PROPERTIES
+  VERSION ${DOLFINX_EQLB_VERSION}
+  SOVERSION ${DOLFINX_EQLB_VERSION_MAJOR}.${DOLFINX_EQLB_VERSION_MINOR})
+
+#------------------------------------------------------------------------------
+# Install dolfinx library and header files
+install(TARGETS dolfinx_eqlb
+  EXPORT DOLFINX_EQLBTargets
+  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT RuntimeExecutables
+  LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT RuntimeLibraries
+  ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT Development
+  )
+
+# Generate DOLFINTargets.cmake
+install(EXPORT DOLFINX_EQLBTargets DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/dolfinx_eqlb)
+
 include(CMakePackageConfigHelpers)
 
 configure_package_config_file(${DOLFINX_EQLB_SOURCE_DIR}/DOLFINX_EQLBConfig.cmake.in
 ${CMAKE_BINARY_DIR}/dolfinx_eqlb/DOLFINX_EQLBConfig.cmake
 INSTALL_DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/dolfinx_eqlb)
 
-write_basic_package_version_file(${CMAKE_BINARY_DIR}/dolfinx_eqlb/DOLFINX_EQLBConfigVersion.cmake
-VERSION 0.5.1.0 COMPATIBILITY SameMajorVersion)
-
 # Install CMake helper files
 install(
   FILES
   ${CMAKE_BINARY_DIR}/dolfinx_eqlb/DOLFINX_EQLBConfig.cmake
-  ${CMAKE_BINARY_DIR}/dolfinx_eqlb/DOLFINX_EQLBConfigVersion.cmake
   DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/dolfinx_eqlb
   COMPONENT Development)
-
-#------------------------------------------------------------------------------

@@ -16,6 +16,7 @@ find_package(pybind11 REQUIRED CONFIG HINTS ${PYBIND11_DIR} ${PYBIND11_ROOT}
 
 
 find_package(DOLFINX REQUIRED)
+find_package(DOLFINX_EQLB REQUIRED)
 
 
 # Create the binding library
@@ -26,6 +27,7 @@ pybind11_add_module(cpp SHARED
 target_link_libraries(cpp PUBLIC pybind11::module)
 target_link_libraries(cpp PUBLIC dolfinx)
 target_link_libraries(cpp PUBLIC basix)
+target_link_libraries(cpp PRIVATE dolfinx_eqlb)
 
 
 # Get python include-dirs

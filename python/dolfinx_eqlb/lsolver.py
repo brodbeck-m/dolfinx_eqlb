@@ -1,7 +1,4 @@
 # --- Imports ---
-import numpy as np
-from mpi4py import MPI
-
 import dolfinx.fem as dfem
 
 import dolfinx_eqlb.cpp

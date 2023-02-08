@@ -1,7 +1,12 @@
 {
 	"name": "dolfinx_eqlb",
 	"build": {
-		"dockerfile": "Dockerfile"
+		"dockerfile": "Dockerfile",
+		"cacheFrom": "brewblox/firmware-devcontainer:bullseye",
+		"args": {
+			"USERNAME": "vscode",
+			"BUILDKIT_INLINE_CACHE": "0"
+		}
 	},
 	"settings": {
 		"terminal.integrated.profiles.linux": {
@@ -16,6 +21,7 @@
 		"ms-python.vscode-pylance",
 		"ms-vscode.cpptools",
 		"twxs.cmake",
-		"vscode.cmake-tools"
+		"vscode.cmake-tools",
+		"gruntfuggly.todo-tree"
 	]
 }
