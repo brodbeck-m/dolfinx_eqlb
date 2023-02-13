@@ -23,11 +23,6 @@ PYBIND11_MODULE(cpp, m)
   // Test function
   m.def("test_pybind", &dolfinx_eqlb::test_pybind, "Hello-World from c++");
 
-  // Test function
-  m.def("test_out_eigen", &dolfinx_eqlb::test_return_eigen,
-        pybind11::return_value_policy::reference_internal,
-        "Output of dynamic eigen array");
-
   // Local solver
   m.def("local_solver", [](dolfinx::fem::Function<PetscScalar>& sol_elmt,
                            const dolfinx::fem::Form<PetscScalar>& a,
