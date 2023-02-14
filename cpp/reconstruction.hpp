@@ -1,7 +1,5 @@
 #pragma once
 
-#include "eigen3/Eigen/Dense"
-#include "eigen3/Eigen/Sparse"
 #include <algorithm>
 #include <dolfinx/fem/DofMap.h>
 #include <dolfinx/fem/Form.h>
@@ -53,49 +51,36 @@ submap_equilibration_patch(
     const std::vector<std::vector<std::vector<int>>>& entity_dofs1,
     const std::vector<std::int8_t>& fct_type);
 
+/// Execute calculation of patch constributions to flux
+///
+/// @param a              The bilinear form to assemble
+/// @param l              The linar form to assemble
+/// @param constants_a    Constants that appear in 'a'
+/// @param constants_l    Constants that appear in 'l'
+/// @param coefficients_a Coefficients that appear in 'a'
+/// @param coefficients_l Coefficients that appear in 'l'
+/// @param fct_type       Vector (len: number of fcts on partition)
+///                       determine the facet type
+/// @param flux           Function that holds the reconstructed flux
 template <typename T>
-void reconstruct_flux_patch(std::vector<std::int32_t>& fct_esntbound_prime,
-                            std::vector<std::int32_t>& fct_esntbound_flux,
-                            fem::Function<T>& sol_elmt, const fem::Form<T>& a,
-                            const fem::Form<T>& l)
+void reconstruct_fluxes_patch(
+    const fem::Form<T>& a, const fem::Form<T>& l,
+    std::span<const T> constants_a, std::span<const T> constants_l,
+    const std::map<std::pair<fem::IntegralType, int>,
+                   std::pair<std::span<const T>, int>>& coefficients_a,
+    const std::map<std::pair<fem::IntegralType, int>,
+                   std::pair<std::span<const T>, int>>& coefficients_l,
+    std::vector<std::int8_t>& fct_type, fem::Function<T>& flux)
 {
-  /* Extract geometry data */
-  // Get geometry and topology
-  const mesh::Geometry& geometry = a.mesh()->geometry();
-  const mesh::Topology& topology = a.mesh()->topology();
+  /* Geometry */
+  int n_nodes = a.mesh()->topology().index_map(0)->size_local();
 
-  // Get spacial dimension
-  int dim = geometry.dim();
-  int dim_fct = dim - 1;
-
-  // Nodes: DOFmap and positions
-  const graph::AdjacencyList<std::int32_t>& x_dofmap = geometry.dofmap();
-  const std::size_t num_nodes_g = geometry.cmap().dim();
-  std::span<const double> x = geometry.x();
-  std::vector<double> coordinate_dofs(3 * num_nodes_g);
-
-  /* Constants and coefficients */
-  const std::vector<T> constants_a = fem::pack_constants(a);
-  const std::vector<T> constants_l = fem::pack_constants(l);
-
-  auto coefficients_a_stdvec = fem::allocate_coefficient_storage(a);
-  fem::pack_coefficients(a, coefficients_a_stdvec);
-  auto coefficients_l_stdvec = fem::allocate_coefficient_storage(l);
-  fem::pack_coefficients(l, coefficients_l_stdvec);
-
-  std::map<std::pair<fem::IntegralType, int>,
-           std::pair<std::span<const T>, int>>
-      coefficients_a = fem::make_coefficients_span(coefficients_a_stdvec);
-  std::map<std::pair<fem::IntegralType, int>,
-           std::pair<std::span<const T>, int>>
-      coefficients_l = fem::make_coefficients_span(coefficients_l_stdvec);
-
-  /* DOFmap and function spaces */
-  // Function space
-  std::shared_ptr<const fem::FunctionSpace> function_space
+  /* Function space */
+  // Get function space
+  const std::shared_ptr<const fem::FunctionSpace>& function_space
       = a.function_spaces().at(0);
 
-  // DOFmap
+  // Get DOFmap
   std::shared_ptr<const fem::DofMap> dofmap0 = function_space->dofmap();
   assert(dofmap0);
   const int bs0 = dofmap0->bs();
@@ -108,28 +93,70 @@ void reconstruct_flux_patch(std::vector<std::int32_t>& fct_esntbound_prime,
   const basix::FiniteElement& basix_element1
       = function_space->sub(sub1)->element()->basix_element();
 
-  /* DOF transformation */
-  std::shared_ptr<const fem::FiniteElement> element0
-      = function_space->element();
-  const std::function<void(const std::span<T>&,
-                           const std::span<const std::uint32_t>&, std::int32_t,
-                           int)>& dof_transform
-      = element0->get_dof_transformation_function<T>();
-  const std::function<void(const std::span<T>&,
-                           const std::span<const std::uint32_t>&, std::int32_t,
-                           int)>& dof_transform_to_transpose
-      = element0->get_dof_transformation_to_transpose_function<T>();
+  //   /* DOF transformation */
+  //   std::shared_ptr<const fem::FiniteElement> element0
+  //       = function_space->element();
+  //   const std::function<void(const std::span<T>&,
+  //                            const std::span<const std::uint32_t>&,
+  //                            std::int32_t, int)>& dof_transform
+  //       = element0->get_dof_transformation_function<T>();
+  //   const std::function<void(const std::span<T>&,
+  //                            const std::span<const std::uint32_t>&,
+  //                            std::int32_t, int)>& dof_transform_to_transpose
+  //       = element0->get_dof_transformation_to_transpose_function<T>();
 
-  const bool needs_transformation_data
-      = element0->needs_dof_transformations() or a.needs_facet_permutations();
-  std::span<const std::uint32_t> cell_info;
-  if (needs_transformation_data)
+  //   const bool needs_transformation_data
+  //       = element0->needs_dof_transformations() or
+  //       a.needs_facet_permutations();
+  //   std::span<const std::uint32_t> cell_info;
+  //   if (needs_transformation_data)
+  //   {
+  //     std::shared_ptr<const mesh::Mesh> mesh = a.mesh();
+  //     assert(mesh);
+  //     mesh->topology_mutable().create_entity_permutations();
+  //     cell_info = std::span(mesh->topology().get_cell_permutation_info());
+  //   }
+
+  /* Solve flux reconstruction on each patch */
+  // Loop over all nodes and solve patch problem
+  for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
   {
-    std::shared_ptr<const mesh::Mesh> mesh = a.mesh();
-    assert(mesh);
-    mesh->topology_mutable().create_entity_permutations();
-    cell_info = std::span(mesh->topology().get_cell_permutation_info());
+    // Create Sub-DOFmap
+    auto [type_patch, cells_patch, dofs_local, dofs_patch]
+        = submap_equilibration_patch(i_node, function_space,
+                                     basix_element0.entity_dofs(),
+                                     basix_element1.entity_dofs(), fct_type);
   }
+}
+
+/// Execute flux calculation based on H(div) conforming equilibration
+///
+/// @param a                   The bilinear form to assemble
+/// @param l                   The linar form to assemble
+/// @param fct_esntbound_prime Facets of essential BCs of primal problem
+/// @param fct_esntbound_flux  Facets of essential BCs on flux field
+/// @param flux                Function that holds the reconstructed flux
+template <typename T>
+void reconstruct_fluxes(const fem::Form<T>& a, const fem::Form<T>& l,
+                        std::vector<std::int32_t>& fct_esntbound_prime,
+                        std::vector<std::int32_t>& fct_esntbound_flux,
+                        fem::Function<T>& flux)
+{
+  /* Geometry data */
+  // Get topology
+  const mesh::Topology& topology = a.mesh()->topology();
+
+  // Facet dimansion
+  const int dim_fct = topology.dim() - 1;
+
+  /* Constants and coefficients */
+  const std::vector<T> constants_a = pack_constants(a);
+  const std::vector<T> constants_l = pack_constants(l);
+
+  auto coefficients_a = fem::allocate_coefficient_storage(a);
+  fem::pack_coefficients(a, coefficients_a);
+  auto coefficients_l = fem::allocate_coefficient_storage(l);
+  fem::pack_coefficients(l, coefficients_l);
 
   /* Mark facest (0->internal, 1->esnt_prim, 2->esnt_flux) */
   // Create look-up table for facets
@@ -163,17 +190,10 @@ void reconstruct_flux_patch(std::vector<std::int32_t>& fct_esntbound_prime,
   /* Initialize essential boundary conditions for reconstructed flux */
   // TODO - Implement preparation of boundary conditions
 
-  /* Solve flux reconstruction on each patch */
-  // Loop over all nodes and solve patch problem
-  for (std::size_t i_node = 0; i_node < topology.index_map(0)->size_local();
-       ++i_node)
-  {
-    // Create Sub-DOFmap
-    auto [type_patch, cells_patch, dofs_local, dofs_patch]
-        = submap_equilibration_patch(i_node, function_space,
-                                     basix_element0.entity_dofs(),
-                                     basix_element1.entity_dofs(), fct_type);
-  }
+  reconstruct_fluxes_patch(a, l, std::span(constants_a), std::span(constants_l),
+                           fem::make_coefficients_span(coefficients_a),
+                           fem::make_coefficients_span(coefficients_l),
+                           fct_type, flux);
 }
 
 } // namespace dolfinx_eqlb

@@ -18,9 +18,9 @@ namespace dolfinx_eqlb
 /// facets of the patch. If not, conduct full search in the list of patch
 /// facets.
 ///
-/// @param id_fct_i (loacl facet id on current cell)
-/// @param fct_elmt (list of factes (global ID) of current cell)
-/// @param fct_patch (list of factes (global ID) forming the patch, sorted!)
+/// @param id_fct_i  Loacl facet id on current cell
+/// @param fct_elmt  List of factes (global ID) of current cell
+/// @param fct_patch List of factes (global ID) forming the patch, sorted!
 /// @return next facet
 std::int32_t next_facet_triangle(std::int8_t id_fct_i,
                                  std::span<const std::int32_t>& fct_elmt,
@@ -214,6 +214,10 @@ submap_equilibration_patch(
 
   for (std::size_t ii = 0; ii < c_fct_loop; ++ii)
   {
+    // if (i_node == 106)
+    // {
+    //   std::cout << fct_i << std::endl;
+    // }
     // Get cell
     std::span<const std::int32_t> cell_fct_i = fct_to_cell->links(fct_i);
     cell_i = (cell_fct_i[0] == cell_i) ? cell_fct_i[1] : cell_fct_i[0];
@@ -364,6 +368,31 @@ submap_equilibration_patch(
   graph::AdjacencyList<std::int32_t> dofs_patch
       = graph::AdjacencyList<std::int32_t>(std::move(data_adjacency_patch),
                                            std::move(adjacency_offset));
+
+  // if (i_node == 106)
+  // {
+  //   std::cout << "Type-Patch: " << type_patch << std::endl;
+  //   std::cout << "Facets patch: ";
+  //   for (auto fct : fct_patch)
+  //   {
+  //     std::cout << fct << " ";
+  //   }
+  //   std::cout << "\n";
+  //   std::cout << "Cells patch: ";
+  //   for (auto cell : cells_patch)
+  //   {
+  //     std::cout << cell << " ";
+  //   }
+  //   std::cout << "\n";
+  //   for (std::size_t ii = 0; ii < cells_patch.size(); ++ii)
+  //   {
+  //     for (std::size_t jj = 0; jj < ndof_elmt; ++jj)
+  //     {
+  //       std::cout << dofs_patch.links(ii)[jj] << " ";
+  //     }
+  //     std::cout << "\n";
+  //   }
+  // }
 
   // return {type_patch, std::move(cells_patch)};
   return {type_patch, std::move(cells_patch), std::move(dofs_local),

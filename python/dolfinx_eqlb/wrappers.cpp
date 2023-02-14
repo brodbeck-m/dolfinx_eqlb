@@ -38,5 +38,5 @@ PYBIND11_MODULE(cpp, m)
   //       { dolfinx_eqlb::reconstruct_flux_patch<PetscScalar>(sol_elmt, a, l);
   //       }, py::return_value_policy::take_ownership);
   m.def("reconstruct_flux_patch",
-        &dolfinx_eqlb::reconstruct_flux_patch<PetscScalar>);
+        &dolfinx_eqlb::reconstruct_fluxes<PetscScalar>);
 }
