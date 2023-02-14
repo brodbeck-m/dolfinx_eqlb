@@ -11,7 +11,6 @@
 
 namespace dolfinx_eqlb
 {
-
 /// Determine the next facet on a patch formed by triangular elements
 ///
 /// Triangle has three facets. Determine the two facets not already used.
@@ -101,7 +100,9 @@ std::int32_t next_facet_triangle(std::int8_t id_fct_i,
   return fct_next;
 }
 
-std::tuple<int, std::vector<std::int32_t>> submap_equilibration_patch(
+std::tuple<int, std::vector<std::int32_t>, graph::AdjacencyList<std::int32_t>,
+           graph::AdjacencyList<std::int32_t>>
+submap_equilibration_patch(
     int i_node, std::shared_ptr<const fem::FunctionSpace> function_space,
     const std::vector<std::vector<std::vector<int>>>& entity_dofs0,
     const std::vector<std::vector<std::vector<int>>>& entity_dofs1,
@@ -137,21 +138,6 @@ std::tuple<int, std::vector<std::int32_t>> submap_equilibration_patch(
   std::sort(fct_patch.begin(), fct_patch.end());
   std::span<const std::int32_t> cell_patch = node_to_cell->links(i_node);
   const int n_cell_patch = cell_patch.size();
-
-  /* Informations about FunctionSpace */
-  // // BasiX elements of subspaces
-  // std::vector<int> sub0(1, 0);
-  // std::vector<int> sub1(1, 1);
-  // const basix::FiniteElement& basix_element0
-  //     = function_space->sub(sub0)->element()->basix_element();
-  // const basix::FiniteElement& basix_element1
-  //     = function_space->sub(sub1)->element()->basix_element();
-
-  // Local DOFmap facets (sorted by entity)
-  // const std::vector<std::vector<std::vector<int>>>& entity_dofs0
-  //     = basix_element0.entity_dofs();
-  // const std::vector<std::vector<std::vector<int>>>& entity_dofs1
-  //     = basix_element1.entity_dofs();
 
   // DOF counters
   const int ndof_flux_fct = entity_dofs0[dim_fct][0].size();
@@ -372,14 +358,16 @@ std::tuple<int, std::vector<std::int32_t>> submap_equilibration_patch(
   std::vector<std::int32_t> copy_adjacency_offset(adjacency_offset);
 
   // Create adjacency lists
-  graph::AdjacencyList<std::int32_t> lpatch_local
+  graph::AdjacencyList<std::int32_t> dofs_local
       = graph::AdjacencyList<std::int32_t>(std::move(data_adjacency_elmt),
                                            std::move(copy_adjacency_offset));
-  graph::AdjacencyList<std::int32_t> lpatch_dofmap
+  graph::AdjacencyList<std::int32_t> dofs_patch
       = graph::AdjacencyList<std::int32_t>(std::move(data_adjacency_patch),
                                            std::move(adjacency_offset));
 
   // return {type_patch, std::move(cells_patch)};
-  return {0, std::move(cells_patch)};
+  return {type_patch, std::move(cells_patch), std::move(dofs_local),
+          std::move(dofs_patch)};
 }
+
 } // namespace dolfinx_eqlb

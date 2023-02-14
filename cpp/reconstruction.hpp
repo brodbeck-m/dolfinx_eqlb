@@ -21,8 +21,33 @@
 
 namespace dolfinx_eqlb
 {
+/// Construction of a sub-DOFmap on each patch
+///
+/// Determines type of patch (0-> internal, 1->bc_neumann, 2->bc_dirichlet
+/// 3->bc_mixed) and creats sorted DOFmap. Sorting of facets/elements/DOFs
+/// follows [1,2].
+///
+/// [1] Moldenhauer, M.: Stress reconstructionand a-posteriori error
+///     estimationfor elasticity (PhdThesis)
+/// [2] Bertrand, F.; Carstensen, C.; Gräßle, B. & Tran, N. T.:
+///     Stabilization-free HHO a posteriori error control, 2022
+///
+/// @param i_node         ID (local on partition!) of current node
+/// @param function_space FunctionSpace of mixed problem
+/// @param entity_dofs0   BasiX/FiniteElement.entity_dofs flux subspace
+/// @param entity_dofs1   BasiX/FiniteElement.entity_dofs constraint
+///                       subspace
+/// @param fct_type       Vector (len: number of fcts on partition)
+///                       determine the facet type
+/// @return type_facet    Type of facet (0, 1, 2 or 3)
+/// @return cells_patch   List of cells (consisnten to local DOFmap)
+///                       on patch
+/// @return dofs_local    Non-Zero DOFs on patch (element-local ID)
+/// @return dofs_patch    Non-Zero DOFs on patch (patch-local ID)
 
-std::tuple<int, std::vector<std::int32_t>> submap_equilibration_patch(
+std::tuple<int, std::vector<std::int32_t>, graph::AdjacencyList<std::int32_t>,
+           graph::AdjacencyList<std::int32_t>>
+submap_equilibration_patch(
     int i_node, std::shared_ptr<const fem::FunctionSpace> function_space,
     const std::vector<std::vector<std::vector<int>>>& entity_dofs0,
     const std::vector<std::vector<std::vector<int>>>& entity_dofs1,
@@ -83,12 +108,6 @@ void reconstruct_flux_patch(std::vector<std::int32_t>& fct_esntbound_prime,
   const basix::FiniteElement& basix_element1
       = function_space->sub(sub1)->element()->basix_element();
 
-  // // Local DOFmap facets (sorted by entity)
-  // const std::vector<std::vector<std::vector<int>>>& entity_dofs0
-  //     = basix_element0.entity_dofs();
-  // const std::vector<std::vector<std::vector<int>>>& entity_dofs1
-  //     = basix_element1.entity_dofs();
-
   /* DOF transformation */
   std::shared_ptr<const fem::FiniteElement> element0
       = function_space->element();
@@ -111,26 +130,6 @@ void reconstruct_flux_patch(std::vector<std::int32_t>& fct_esntbound_prime,
     mesh->topology_mutable().create_entity_permutations();
     cell_info = std::span(mesh->topology().get_cell_permutation_info());
   }
-
-  /* Initialize tangent arrays*/
-  // DOFs per element
-  const int num_dof_elmt = dofmap0->list().links(0).size();
-  const int ndim0 = bs0 * num_dof_elmt;
-
-  // Element
-  std::vector<T> Ae(ndim0 * ndim0);
-  std::span<T> _Ae(Ae);
-  std::vector<T> Le(ndim0);
-  std::span<T> _Le(Le);
-
-  // Patch (dynamic, resized for every patch)
-  Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> A_patch;
-  Eigen::Matrix<T, Eigen::Dynamic, 1> L_patch, u_patch;
-
-  Eigen::ConjugateGradient<
-      Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>,
-      Eigen::Lower | Eigen::Upper>
-      solver;
 
   /* Mark facest (0->internal, 1->esnt_prim, 2->esnt_flux) */
   // Create look-up table for facets
@@ -170,9 +169,10 @@ void reconstruct_flux_patch(std::vector<std::int32_t>& fct_esntbound_prime,
        ++i_node)
   {
     // Create Sub-DOFmap
-    auto [type_patch, cells_patch] = submap_equilibration_patch(
-        i_node, function_space, basix_element0.entity_dofs(),
-        basix_element1.entity_dofs(), fct_type);
+    auto [type_patch, cells_patch, dofs_local, dofs_patch]
+        = submap_equilibration_patch(i_node, function_space,
+                                     basix_element0.entity_dofs(),
+                                     basix_element1.entity_dofs(), fct_type);
   }
 }
 
