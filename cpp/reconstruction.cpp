@@ -1,3 +1,4 @@
+#include "reconstruction.hpp"
 #include <basix/finite-element.h>
 #include <dolfinx/fem/DofMap.h>
 #include <dolfinx/fem/FunctionSpace.h>
@@ -5,11 +6,10 @@
 #include <dolfinx/mesh/Mesh.h>
 #include <dolfinx/mesh/Topology.h>
 #include <iostream>
-#include <reconstruction.hpp>
 #include <span>
 #include <stdexcept>
 
-namespace dolfinx_eqlb
+namespace
 {
 /// Determine the next facet on a patch formed by triangular elements
 ///
@@ -99,8 +99,12 @@ std::int32_t next_facet_triangle(std::int8_t id_fct_i,
 
   return fct_next;
 }
+} // namespace
 
-std::tuple<int, std::vector<std::int32_t>, graph::AdjacencyList<std::int32_t>,
+namespace dolfinx_adaptivity::equilibration
+{
+std::tuple<int, const int, std::vector<std::int32_t>,
+           graph::AdjacencyList<std::int32_t>,
            graph::AdjacencyList<std::int32_t>>
 submap_equilibration_patch(
     int i_node, std::shared_ptr<const fem::FunctionSpace> function_space,
@@ -146,6 +150,7 @@ submap_equilibration_patch(
   const int ndof_cell = ndof_flux_cell + ndof_cons_cell;
   const int ndof_flux_elmt = 2 * ndof_flux_fct + ndof_flux_cell;
   const int ndof_elmt = 2 * ndof_flux_fct + ndof_cell;
+  const int ndof_patch = n_fct_patch * ndof_flux_fct + n_cell_patch * ndof_cell;
 
   /* Determine type of patch */
   // Initialize patch marker
@@ -214,10 +219,6 @@ submap_equilibration_patch(
 
   for (std::size_t ii = 0; ii < c_fct_loop; ++ii)
   {
-    // if (i_node == 106)
-    // {
-    //   std::cout << fct_i << std::endl;
-    // }
     // Get cell
     std::span<const std::int32_t> cell_fct_i = fct_to_cell->links(fct_i);
     cell_i = (cell_fct_i[0] == cell_i) ? cell_fct_i[1] : cell_fct_i[0];
@@ -369,9 +370,10 @@ submap_equilibration_patch(
       = graph::AdjacencyList<std::int32_t>(std::move(data_adjacency_patch),
                                            std::move(adjacency_offset));
 
-  // if (i_node == 106)
+  // if (i_node == 176)
   // {
   //   std::cout << "Type-Patch: " << type_patch << std::endl;
+  //   std::cout << "nDOFs patch: " << ndof_patch << std::endl;
   //   std::cout << "Facets patch: ";
   //   for (auto fct : fct_patch)
   //   {
@@ -394,9 +396,8 @@ submap_equilibration_patch(
   //   }
   // }
 
-  // return {type_patch, std::move(cells_patch)};
-  return {type_patch, std::move(cells_patch), std::move(dofs_local),
+  return {type_patch, ndof_patch, std::move(cells_patch), std::move(dofs_local),
           std::move(dofs_patch)};
 }
 
-} // namespace dolfinx_eqlb
+} // namespace dolfinx_adaptivity::equilibration

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "solve_patch_constrmin.hpp"
 #include <algorithm>
 #include <dolfinx/fem/DofMap.h>
 #include <dolfinx/fem/Form.h>
@@ -17,7 +18,7 @@
 #include <span>
 #include <vector>
 
-namespace dolfinx_eqlb
+namespace dolfinx_adaptivity::equilibration
 {
 /// Construction of a sub-DOFmap on each patch
 ///
@@ -37,13 +38,15 @@ namespace dolfinx_eqlb
 ///                       subspace
 /// @param fct_type       Vector (len: number of fcts on partition)
 ///                       determine the facet type
-/// @return type_facet    Type of facet (0, 1, 2 or 3)
+/// @return type_patch    Type of patch (0, 1, 2 or 3)
+/// @return ndof_patch    Number of DOFs on patch
 /// @return cells_patch   List of cells (consisnten to local DOFmap)
 ///                       on patch
 /// @return dofs_local    Non-Zero DOFs on patch (element-local ID)
 /// @return dofs_patch    Non-Zero DOFs on patch (patch-local ID)
 
-std::tuple<int, std::vector<std::int32_t>, graph::AdjacencyList<std::int32_t>,
+std::tuple<int, const int, std::vector<std::int32_t>,
+           graph::AdjacencyList<std::int32_t>,
            graph::AdjacencyList<std::int32_t>>
 submap_equilibration_patch(
     int i_node, std::shared_ptr<const fem::FunctionSpace> function_space,
@@ -73,7 +76,17 @@ void reconstruct_fluxes_patch(
     std::vector<std::int8_t>& fct_type, fem::Function<T>& flux)
 {
   /* Geometry */
+  const mesh::Geometry& geometry = a.mesh()->geometry();
+
+  // Spacial dimansion of mesh
+  const std::size_t dim_geom = geometry.cmap().dim();
+
+  // Number of nodes on processor
   int n_nodes = a.mesh()->topology().index_map(0)->size_local();
+
+  // DOFmap (mesh) and node coordinates
+  const graph::AdjacencyList<std::int32_t>& x_dofmap = geometry.dofmap();
+  std::span<const double> x = geometry.x();
 
   /* Function space */
   // Get function space
@@ -83,7 +96,6 @@ void reconstruct_fluxes_patch(
   // Get DOFmap
   std::shared_ptr<const fem::DofMap> dofmap0 = function_space->dofmap();
   assert(dofmap0);
-  const int bs0 = dofmap0->bs();
 
   // BasiX elements of subspaces
   std::vector<int> sub0(1, 0);
@@ -93,39 +105,59 @@ void reconstruct_fluxes_patch(
   const basix::FiniteElement& basix_element1
       = function_space->sub(sub1)->element()->basix_element();
 
-  //   /* DOF transformation */
-  //   std::shared_ptr<const fem::FiniteElement> element0
-  //       = function_space->element();
-  //   const std::function<void(const std::span<T>&,
-  //                            const std::span<const std::uint32_t>&,
-  //                            std::int32_t, int)>& dof_transform
-  //       = element0->get_dof_transformation_function<T>();
-  //   const std::function<void(const std::span<T>&,
-  //                            const std::span<const std::uint32_t>&,
-  //                            std::int32_t, int)>& dof_transform_to_transpose
-  //       = element0->get_dof_transformation_to_transpose_function<T>();
+  /* DOF transformation */
+  std::shared_ptr<const fem::FiniteElement> element0
+      = function_space->element();
+  const std::function<void(const std::span<T>&,
+                           const std::span<const std::uint32_t>&, std::int32_t,
+                           int)>& dof_transform
+      = element0->get_dof_transformation_function<T>();
+  const std::function<void(const std::span<T>&,
+                           const std::span<const std::uint32_t>&, std::int32_t,
+                           int)>& dof_transform_to_transpose
+      = element0->get_dof_transformation_to_transpose_function<T>();
 
-  //   const bool needs_transformation_data
-  //       = element0->needs_dof_transformations() or
-  //       a.needs_facet_permutations();
-  //   std::span<const std::uint32_t> cell_info;
-  //   if (needs_transformation_data)
-  //   {
-  //     std::shared_ptr<const mesh::Mesh> mesh = a.mesh();
-  //     assert(mesh);
-  //     mesh->topology_mutable().create_entity_permutations();
-  //     cell_info = std::span(mesh->topology().get_cell_permutation_info());
-  //   }
+  const bool needs_transformation_data
+      = element0->needs_dof_transformations() or a.needs_facet_permutations();
+  std::span<const std::uint32_t> cell_info;
+  if (needs_transformation_data)
+  {
+    std::shared_ptr<const mesh::Mesh> mesh = a.mesh();
+    assert(mesh);
+    mesh->topology_mutable().create_entity_permutations();
+    cell_info = std::span(mesh->topology().get_cell_permutation_info());
+  }
+
+  /* Prepare Assembly */
+  // Integration kernels
+  const auto& kernel_a = a.kernel(fem::IntegralType::cell, -1);
+  const auto& kernel_l = l.kernel(fem::IntegralType::cell, -1);
+
+  // Coefficients
+  const auto& [coeffs_a, cstride_a]
+      = coefficients_a.at({fem::IntegralType::cell, -1});
+  const auto& [coeffs_l, cstride_l]
+      = coefficients_l.at({fem::IntegralType::cell, -1});
+
+  // Local part of the solution vector (only flux!)
+  std::span<T> x_flux = flux.x()->mutable_array();
 
   /* Solve flux reconstruction on each patch */
   // Loop over all nodes and solve patch problem
   for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
   {
     // Create Sub-DOFmap
-    auto [type_patch, cells_patch, dofs_local, dofs_patch]
+    auto [type_patch, ndof_patch, cells_patch, dofs_local, dofs_patch]
         = submap_equilibration_patch(i_node, function_space,
                                      basix_element0.entity_dofs(),
                                      basix_element1.entity_dofs(), fct_type);
+
+    // Solve patch problem
+    equilibrate_flux_constrmin(dim_geom, type_patch, ndof_patch, cells_patch,
+                               dofmap0->list(), dofmap0->bs(), dof_transform,
+                               dof_transform_to_transpose, kernel_a, kernel_l,
+                               coeffs_a, coeffs_l, cstride_a, cstride_l,
+                               constants_a, constants_l, cell_info);
   }
 }
 
@@ -196,4 +228,4 @@ void reconstruct_fluxes(const fem::Form<T>& a, const fem::Form<T>& l,
                            fct_type, flux);
 }
 
-} // namespace dolfinx_eqlb
+} // namespace dolfinx_adaptivity::equilibration

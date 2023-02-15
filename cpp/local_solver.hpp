@@ -15,7 +15,7 @@
 #include <span>
 #include <vector>
 
-namespace dolfinx_eqlb
+namespace dolfinx_adaptivity
 {
 
 void test_pybind()
@@ -199,4 +199,4 @@ void local_solver(fem::Function<T>& sol_elmt, const fem::Form<T>& a,
   }
 }
 
-} // namespace dolfinx_eqlb
+} // namespace dolfinx_adaptivity

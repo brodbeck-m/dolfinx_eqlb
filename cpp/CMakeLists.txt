@@ -55,11 +55,13 @@ include(GNUInstallDirs)
 set(HEADERS_EQLB
     local_solver.hpp
     reconstruction.hpp
+    solve_patch_constrmin.hpp
 )
 
 target_sources(
   dolfinx_eqlb
   PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/reconstruction.cpp
+  PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/solve_patch_constrmin.cpp
 )
 
 install(FILES ${HEADERS_EQLB} DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/dolfinx_eqlb COMPONENT Development)

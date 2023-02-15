@@ -17,17 +17,19 @@ namespace py = pybind11;
 
 PYBIND11_MODULE(cpp, m)
 {
+  using namespace dolfinx_adaptivity;
+
   // Create module for C++ wrappers
   m.doc() = "DOLFINX equilibration routines Python interface";
 
   // Test function
-  m.def("test_pybind", &dolfinx_eqlb::test_pybind, "Hello-World from c++");
+  m.def("test_pybind", &test_pybind, "Hello-World from c++");
 
   // Local solver
   m.def("local_solver", [](dolfinx::fem::Function<PetscScalar>& sol_elmt,
                            const dolfinx::fem::Form<PetscScalar>& a,
                            const dolfinx::fem::Form<PetscScalar>& l)
-        { dolfinx_eqlb::local_solver<PetscScalar>(sol_elmt, a, l); });
+        { local_solver<PetscScalar>(sol_elmt, a, l); });
 
   // Equilibartion of vector-valued quantity
   //   m.def(
@@ -38,5 +40,5 @@ PYBIND11_MODULE(cpp, m)
   //       { dolfinx_eqlb::reconstruct_flux_patch<PetscScalar>(sol_elmt, a, l);
   //       }, py::return_value_policy::take_ownership);
   m.def("reconstruct_flux_patch",
-        &dolfinx_eqlb::reconstruct_fluxes<PetscScalar>);
+        &equilibration::reconstruct_fluxes<PetscScalar>);
 }
