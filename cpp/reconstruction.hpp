@@ -12,6 +12,7 @@
 #include <dolfinx/mesh/Geometry.h>
 #include <dolfinx/mesh/Mesh.h>
 #include <dolfinx/mesh/Topology.h>
+#include <exception>
 #include <functional>
 #include <iostream>
 #include <iterator>
@@ -73,20 +74,18 @@ void reconstruct_fluxes_patch(
                    std::pair<std::span<const T>, int>>& coefficients_a,
     const std::map<std::pair<fem::IntegralType, int>,
                    std::pair<std::span<const T>, int>>& coefficients_l,
-    std::vector<std::int8_t>& fct_type, fem::Function<T>& flux)
+    std::vector<std::int8_t>& fct_type, fem::Function<T>& flux,
+    fem::Function<T>& flux_dg)
 {
   /* Geometry */
   const mesh::Geometry& geometry = a.mesh()->geometry();
-
-  // Spacial dimansion of mesh
-  const std::size_t dim_geom = geometry.cmap().dim();
+  const int dim = geometry.dim();
 
   // Number of nodes on processor
   int n_nodes = a.mesh()->topology().index_map(0)->size_local();
 
-  // DOFmap (mesh) and node coordinates
-  const graph::AdjacencyList<std::int32_t>& x_dofmap = geometry.dofmap();
-  std::span<const double> x = geometry.x();
+  // Number of elements on processor
+  int n_cells = a.mesh()->topology().index_map(dim)->size_local();
 
   /* Function space */
   // Get function space
@@ -141,6 +140,25 @@ void reconstruct_fluxes_patch(
 
   // Local part of the solution vector (only flux!)
   std::span<T> x_flux = flux.x()->mutable_array();
+  std::span<T> x_flux_dg = flux_dg.x()->mutable_array();
+
+  /* Initialize storage of  stiffnes matrix on each cell*/
+  // Get size for storage array
+  const int dim_fe_space = element0->space_dimension();
+  const int dim_stiffness = dim_fe_space * dim_fe_space;
+
+  // Initialize id, if cell is already initilaized
+  std::vector<std::int8_t> cell_is_evaluated(n_cells, 0);
+
+  // Initialize adjaceny list
+  std::vector<std::int32_t> offset_storage_stiffness(n_cells + 1);
+  std::vector<T> data_storage_stiffness(n_cells * dim_stiffness, 0);
+  std::generate(
+      offset_storage_stiffness.begin(), offset_storage_stiffness.end(),
+      [n = 0, dim_stiffness]() mutable { return dim_stiffness * (n++); });
+
+  graph::AdjacencyList<T> storage_stiffness_cells = graph::AdjacencyList<T>(
+      std::move(data_storage_stiffness), std::move(offset_storage_stiffness));
 
   /* Solve flux reconstruction on each patch */
   // Loop over all nodes and solve patch problem
@@ -153,11 +171,29 @@ void reconstruct_fluxes_patch(
                                      basix_element1.entity_dofs(), fct_type);
 
     // Solve patch problem
-    equilibrate_flux_constrmin(dim_geom, type_patch, ndof_patch, cells_patch,
-                               dofmap0->list(), dofmap0->bs(), dof_transform,
-                               dof_transform_to_transpose, kernel_a, kernel_l,
-                               coeffs_a, coeffs_l, cstride_a, cstride_l,
-                               constants_a, constants_l, cell_info);
+    equilibrate_flux_constrmin(
+        geometry, type_patch, ndof_patch, cells_patch, dofmap0->list(),
+        dofs_local, dofs_patch, dof_transform, dof_transform_to_transpose,
+        kernel_a, kernel_l, coeffs_a, coeffs_l, cstride_a, cstride_l,
+        constants_a, constants_l, cell_info, cell_is_evaluated,
+        storage_stiffness_cells, x_flux, x_flux_dg);
+    // for (auto c : cells_patch)
+    // {
+    //   // Get current stiffness - matrix in storage
+    //   std::span<T> Ae = storage_stiffness_cells.links(c);
+
+    //   // Check if precalculated data can be used
+    //   if (cell_is_evaluated[c] == 0)
+    //   {
+    //     // Evaluate stiffness matrix
+    //     std::fill(Ae.begin(), Ae.end(), 0.5 * c);
+
+    //     // Set identifire for evaluated data
+    //     cell_is_evaluated[c] = 1;
+    //   }
+
+    //   x_flux[c] = Ae[c];
+    // }
   }
 }
 
@@ -172,7 +208,7 @@ template <typename T>
 void reconstruct_fluxes(const fem::Form<T>& a, const fem::Form<T>& l,
                         std::vector<std::int32_t>& fct_esntbound_prime,
                         std::vector<std::int32_t>& fct_esntbound_flux,
-                        fem::Function<T>& flux)
+                        fem::Function<T>& flux, fem::Function<T>& flux_dg)
 {
   /* Geometry data */
   // Get topology
@@ -225,7 +261,7 @@ void reconstruct_fluxes(const fem::Form<T>& a, const fem::Form<T>& l,
   reconstruct_fluxes_patch(a, l, std::span(constants_a), std::span(constants_l),
                            fem::make_coefficients_span(coefficients_a),
                            fem::make_coefficients_span(coefficients_l),
-                           fct_type, flux);
+                           fct_type, flux, flux_dg);
 }
 
 } // namespace dolfinx_adaptivity::equilibration

@@ -52,10 +52,11 @@ target_link_libraries(dolfinx_eqlb PUBLIC dolfinx)
 # Installation of DOLFINX_EQLB Library
 include(GNUInstallDirs)
 
-set(HEADERS_EQLB
-    local_solver.hpp
-    reconstruction.hpp
-    solve_patch_constrmin.hpp
+set(
+  HEADERS_EQLB
+  local_solver.hpp
+  reconstruction.hpp
+  solve_patch_constrmin.hpp
 )
 
 target_sources(
