@@ -17,10 +17,41 @@
 
 namespace dolfinx_adaptivity::equilibration
 {
-// template <typename T>
-//  void equilibrate_flux_constrmin(const int ndof_patch,
-//                                  std::vector<std::int32_t> cells,
-//                                  std::span<T> x_flux)
+/// Assembly annd solution of patch problems
+///
+/// Assembly of the patch-wise equation systems, following [1]. Element
+/// stiffness-matrizes - as these stay constant but appear in multiple
+//  patches - are stored within a adjacency-list. The LHS is assembled
+//  patch-wise and not stored!
+///
+/// @param geometry                   msh->geomtry of the problem
+/// @param type_patch                 Patch type (0-internal, 1-neumann,
+///                                   2-dirichlet, 3-mixed)
+/// @param ndof_patch                 Number of DOFs on patch
+/// @param cells                      List of cells on current patch
+/// @param dofmap_global              dofmap.list() of global FEspace
+/// @param dofmap_elmt                Adjacency list of element-wise DOFs
+///                                   (only non-zero)
+/// @param dofmap_patch               Adjacency list of patch-wise DOFs
+//                                    (only non-zero)
+/// @param dof_transform              DOF-transformation function
+/// @param dof_transform_to_transpose DOF-transformation function
+/// @param kernel_a                   Kernel bilinar form
+/// @param kernel_l                   Kernel linear form
+/// @param coeffs_a                   Coefficients bilinar form
+/// @param coeffs_l                   Coefficients linar form
+/// @param cstride_a                  Coefficients bilinar form
+/// @param cstride_l                  Coefficients linar form
+/// @param constants_a                Constants bilinar form
+/// @param constants_l                Constants linar form
+/// @param cell_info                  Information for DOF transformation
+/// @param cell_is_evaluated          Look-up table if current stiffness
+///                                   has already been evaluated
+/// @param storage_stiffness_cells    Storage element-stiffness matrizes
+/// @param x_flux                     DOFs flux function (Hdiv)
+/// @param x_flux_dg                  DOFs flux function
+///                                   (projected from primal solution)
+
 template <typename T>
 void equilibrate_flux_constrmin(
     const mesh::Geometry& geometry, const int type_patch, const int ndof_patch,

@@ -177,23 +177,6 @@ void reconstruct_fluxes_patch(
         kernel_a, kernel_l, coeffs_a, coeffs_l, cstride_a, cstride_l,
         constants_a, constants_l, cell_info, cell_is_evaluated,
         storage_stiffness_cells, x_flux, x_flux_dg);
-    // for (auto c : cells_patch)
-    // {
-    //   // Get current stiffness - matrix in storage
-    //   std::span<T> Ae = storage_stiffness_cells.links(c);
-
-    //   // Check if precalculated data can be used
-    //   if (cell_is_evaluated[c] == 0)
-    //   {
-    //     // Evaluate stiffness matrix
-    //     std::fill(Ae.begin(), Ae.end(), 0.5 * c);
-
-    //     // Set identifire for evaluated data
-    //     cell_is_evaluated[c] = 1;
-    //   }
-
-    //   x_flux[c] = Ae[c];
-    // }
   }
 }
 
