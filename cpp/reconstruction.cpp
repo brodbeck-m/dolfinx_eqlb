@@ -143,12 +143,22 @@ submap_equilibration_patch(
   std::span<const std::int32_t> cell_patch = node_to_cell->links(i_node);
   const int n_cell_patch = cell_patch.size();
 
-  // DOF counters
+  /* DOF counters */
+  // Number of DOFs per entity
   const int ndof_flux_fct = entity_dofs0[dim_fct][0].size();
   const int ndof_flux_cell = entity_dofs0[dim][0].size();
   const int ndof_cons_cell = entity_dofs1[dim][0].size();
+
+  // Number of all DOFs on entity
   const int ndof_cell = ndof_flux_cell + ndof_cons_cell;
   const int ndof_flux_elmt = 2 * ndof_flux_fct + ndof_flux_cell;
+
+  // Offset of cell-wise DOFs in mixed element
+  const int offset_mixedelmt_dofscell
+      = entity_dofs0[dim_fct].size() * ndof_flux_fct;
+  const int offset_mixedelmt_cons = offset_mixedelmt_dofscell + ndof_flux_cell;
+
+  // Number of DOFs on elmt and patch (only non-zero DOFs)
   const int ndof_elmt = 2 * ndof_flux_fct + ndof_cell;
   const int ndof_patch = n_fct_patch * ndof_flux_fct + n_cell_patch * ndof_cell;
 
@@ -158,7 +168,8 @@ submap_equilibration_patch(
 
   // Initialize counters (on current patch)
   std::int32_t fct_i = fct_patch_aux[0];
-  std::int32_t cell_i = 0;
+  std::int32_t cell_i = -1;
+  std::int32_t cell_im1 = -1;
   std::int32_t c_fct_loop = n_fct_patch;
 
   // Set type of patch (0->internal, 1->neumann, 2->dirichlet, 3->mixed_bound)
@@ -211,27 +222,63 @@ submap_equilibration_patch(
 
   adjacency_offset[0] = 0;
 
-  // Initialize cell adjacent to fct_i
-  cell_i = -1;
-
   // Loop over facets
   std::int32_t dof_patch = 0;
 
   for (std::size_t ii = 0; ii < c_fct_loop; ++ii)
   {
-    // Get cell
+    // Get cells adjacent to fct_i
     std::span<const std::int32_t> cell_fct_i = fct_to_cell->links(fct_i);
-    cell_i = (cell_fct_i[0] == cell_i) ? cell_fct_i[1] : cell_fct_i[0];
 
-    // Get facets of cell_i
-    std::span<const std::int32_t> fct_cell_i = cell_to_fct->links(cell_i);
+    // Get local facet ids
+    std::span<const std::int32_t> fct_cell_i;
+    std::span<const std::int32_t> fct_cell_im1;
 
-    // Get id (cell_local) of fct_i
-    std::int8_t id_facet_loc = 0;
+    std::int8_t id_fct_loc_ci = 0;
+    std::int8_t id_fct_loc_cim1 = 0;
 
-    while (fct_cell_i[id_facet_loc] != fct_i)
+    if (type_patch > 0 && ii == 0)
     {
-      id_facet_loc += 1;
+      cell_i = cell_fct_i[0];
+
+      // Facets of cell
+      fct_cell_i = cell_to_fct->links(cell_i);
+
+      // Get id (cell_local) of fct_i
+      while (fct_cell_i[id_fct_loc_ci] != fct_i)
+      {
+        id_fct_loc_ci += 1;
+      }
+
+      id_fct_loc_cim1 = id_fct_loc_ci;
+    }
+    else
+    {
+      if (cell_fct_i[0] == cell_i)
+      {
+        cell_i = cell_fct_i[1];
+        cell_im1 = cell_fct_i[0];
+      }
+      else
+      {
+        cell_i = cell_fct_i[0];
+        cell_im1 = cell_fct_i[1];
+      }
+
+      // Facets of cells
+      fct_cell_i = cell_to_fct->links(cell_i);
+      fct_cell_im1 = cell_to_fct->links(cell_im1);
+
+      // Get id (cell_local) of fct_i
+      while (fct_cell_i[id_fct_loc_ci] != fct_i)
+      {
+        id_fct_loc_ci += 1;
+      }
+
+      while (fct_cell_im1[id_fct_loc_cim1] != fct_i)
+      {
+        id_fct_loc_cim1 += 1;
+      }
     }
 
     // Offset first DOF (flus DOFs on facet 1) on elmt_i
@@ -269,12 +316,10 @@ submap_equilibration_patch(
     // Get flux-DOFs on fct_i
     for (std::int8_t jj = 0; jj < ndof_flux_fct; ++jj)
     {
-      // Local index
-      int dofl_fct = entity_dofs0[dim_fct][id_facet_loc][jj];
-
       // Add cell-local DOFs
-      data_adjacency_elmt[offs_p] = dofl_fct;
-      data_adjacency_elmt[offs_f + jj] = dofl_fct;
+      data_adjacency_elmt[offs_p] = entity_dofs0[dim_fct][id_fct_loc_ci][jj];
+      data_adjacency_elmt[offs_f + jj]
+          = entity_dofs0[dim_fct][id_fct_loc_cim1][jj];
 
       // Calculate patch-local DOFs
       data_adjacency_patch[offs_p] = dof_patch;
@@ -285,33 +330,13 @@ submap_equilibration_patch(
       offs_p += 1;
     }
 
-    // Get flux-DOFs on cell_i
+    // Get cell-wise DOFs on cell_i
     offs_p += ndof_flux_fct;
 
-    for (std::int8_t jj = 0; jj < ndof_flux_cell; ++jj)
+    for (std::int8_t jj = 0; jj < ndof_cell; ++jj)
     {
-      // Local index
-      int dofl_cell = entity_dofs0[dim][0][jj];
-
       // Add cell-local DOFs
-      data_adjacency_elmt[offs_p] = dofl_cell;
-
-      // Calculate patch-local DOFs
-      data_adjacency_patch[offs_p] = dof_patch;
-
-      // Increment id of patch-local DOFs
-      dof_patch += 1;
-      offs_p += 1;
-    }
-
-    // Get constraining-DOFs on cell_i
-    for (std::int8_t jj = 0; jj < ndof_cons_cell; ++jj)
-    {
-      // Local index
-      int dofl_cell = entity_dofs1[dim][0][jj];
-
-      // Add cell-local DOFs
-      data_adjacency_elmt[offs_p] = dofl_cell;
+      data_adjacency_elmt[offs_p] = offset_mixedelmt_dofscell + jj;
 
       // Calculate patch-local DOFs
       data_adjacency_patch[offs_p] = dof_patch;
@@ -322,21 +347,21 @@ submap_equilibration_patch(
     }
 
     // Get next cell and facet
-    fct_i = next_facet_triangle(id_facet_loc, fct_cell_i, fct_patch);
+    fct_i = next_facet_triangle(id_fct_loc_ci, fct_cell_i, fct_patch);
   }
 
-  // Handle last facet (boundary patches)
+  // Handle last boundary facet (boundary patches)
   if (type_patch > 0)
   {
     // Get facets of cell_i
     std::span<const std::int32_t> fct_cell_i = cell_to_fct->links(cell_i);
 
-    // Get last facet on patch
-    std::int8_t id_facet_loc = 0;
+    // Get local id of facet
+    std::int8_t id_fct_loc = 0;
 
-    while (fct_cell_i[id_facet_loc] != fct_i)
+    while (fct_cell_i[id_fct_loc] != fct_i)
     {
-      id_facet_loc += 1;
+      id_fct_loc += 1;
     }
 
     // Add DOFs to DOFmap
@@ -344,11 +369,8 @@ submap_equilibration_patch(
 
     for (std::int8_t jj = 0; jj < ndof_flux_fct; ++jj)
     {
-      // Local index
-      int dofl_fct = entity_dofs0[dim_fct][id_facet_loc][jj];
-
       // Add cell-local DOFs
-      data_adjacency_elmt[offs_p] = dofl_fct;
+      data_adjacency_elmt[offs_p] = entity_dofs0[dim_fct][id_fct_loc][jj];
 
       // Calculate patch-local DOFs
       data_adjacency_patch[offs_p] = dof_patch;
@@ -370,7 +392,7 @@ submap_equilibration_patch(
       = graph::AdjacencyList<std::int32_t>(std::move(data_adjacency_patch),
                                            std::move(adjacency_offset));
 
-  // if (i_node == 176)
+  // if (i_node == 106)
   // {
   //   std::cout << "Type-Patch: " << type_patch << std::endl;
   //   std::cout << "nDOFs patch: " << ndof_patch << std::endl;
@@ -394,6 +416,16 @@ submap_equilibration_patch(
   //     }
   //     std::cout << "\n";
   //   }
+  //   std::cout << "\n";
+  //   for (std::size_t ii = 0; ii < cells_patch.size(); ++ii)
+  //   {
+  //     for (std::size_t jj = 0; jj < ndof_elmt; ++jj)
+  //     {
+  //       std::cout << dofs_local.links(ii)[jj] << " ";
+  //     }
+  //     std::cout << "\n";
+  //   }
+  //   throw std::exception();
   // }
 
   return {type_patch, ndof_patch, std::move(cells_patch), std::move(dofs_local),
