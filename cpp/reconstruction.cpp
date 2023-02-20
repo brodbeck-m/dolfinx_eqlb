@@ -109,7 +109,6 @@ std::tuple<int, const int, std::vector<std::int32_t>,
 submap_equilibration_patch(
     int i_node, std::shared_ptr<const fem::FunctionSpace> function_space,
     const std::vector<std::vector<std::vector<int>>>& entity_dofs0,
-    const std::vector<std::vector<std::vector<int>>>& entity_dofs1,
     const std::vector<std::int8_t>& fct_type)
 {
   /* Geometry data */
@@ -132,7 +131,7 @@ submap_equilibration_patch(
       = topology.connectivity(dim, dim_fct);
 
   // Counters
-  int fct_per_cell = cell_to_fct->links(0).size();
+  const int fct_per_cell = cell_to_fct->links(0).size();
 
   // Extract facets/cells patch
   std::span<const std::int32_t> fct_patch_aux = node_to_fct->links(i_node);
@@ -147,15 +146,15 @@ submap_equilibration_patch(
   // Number of DOFs per entity
   const int ndof_flux_fct = entity_dofs0[dim_fct][0].size();
   const int ndof_flux_cell = entity_dofs0[dim][0].size();
-  const int ndof_cons_cell = entity_dofs1[dim][0].size();
+  const int ndof_cons_cell = function_space->element()->space_dimension()
+                             - fct_per_cell * ndof_flux_fct - ndof_flux_cell;
 
   // Number of all DOFs on entity
   const int ndof_cell = ndof_flux_cell + ndof_cons_cell;
   const int ndof_flux_elmt = 2 * ndof_flux_fct + ndof_flux_cell;
 
   // Offset of cell-wise DOFs in mixed element
-  const int offset_mixedelmt_dofscell
-      = entity_dofs0[dim_fct].size() * ndof_flux_fct;
+  const int offset_mixedelmt_dofscell = fct_per_cell * ndof_flux_fct;
   const int offset_mixedelmt_cons = offset_mixedelmt_dofscell + ndof_flux_cell;
 
   // Number of DOFs on elmt and patch (only non-zero DOFs)
