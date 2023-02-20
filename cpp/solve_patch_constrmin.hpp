@@ -24,6 +24,10 @@ namespace dolfinx_adaptivity::equilibration
 //  patches - are stored within a adjacency-list. The LHS is assembled
 //  patch-wise and not stored!
 ///
+/// [1] Ern, A. & Vohralík, M.: Polynomial-Degree-Robust A Posteriori
+///     Estimates in a Unified Setting for Conforming, Nonconforming,
+///     Discontinuous Galerkin, and Mixed Discretizations, 2015
+///
 /// @param geometry                   msh->geomtry of the problem
 /// @param type_patch                 Patch type (0-internal, 1-neumann,
 ///                                   2-dirichlet, 3-mixed)
@@ -118,12 +122,12 @@ void equilibrate_flux_constrmin(
       std::fill(Ae.begin(), Ae.end(), 0);
 
       // Evaluate tangent arrays
-      kernel_a(Ae.data(), coeffs_a.data() + cell * cstride_a,
-               constants_a.data(), coordinate_dofs.data(), nullptr, nullptr);
+      kernel_a(Ae.data(), coeffs_a.data() + c * cstride_a, constants_a.data(),
+               coordinate_dofs.data(), nullptr, nullptr);
 
       // DOF transformation
-      dof_transform(Ae, cell_info, cell, ndim0);
-      dof_transform_to_transpose(Ae, cell_info, cell, ndim0);
+      dof_transform(Ae, cell_info, c, ndim0);
+      dof_transform_to_transpose(Ae, cell_info, c, ndim0);
 
       // Set identifire for evaluated data
       cell_is_evaluated[c] = 1;
@@ -152,5 +156,24 @@ void equilibrate_flux_constrmin(
       }
     }
   }
+
+  // Debug
+  // std::fill(x_flux_dg.begin(), x_flux_dg.end(), 0);
+  // std::cout << "Type-Patch: " << type_patch << std::endl;
+  // std::cout << "nDOFs patch: " << ndof_patch << std::endl;
+  // std::cout << "nDOFs nonzero elmt: " << dofmap_elmt.links(0).size()
+  //           << std::endl;
+  // int offset = 0;
+  // for (std::size_t k = 0; k < ndof_patch; ++k)
+  // {
+  //   // Calculate offset
+  //   offset = k * ndof_patch;
+
+  //   for (std::size_t l = 0; l < ndof_patch; ++l)
+  //   {
+  //     // Assemble stiffness matrix
+  //     x_flux_dg[offset + l] = A_patch(k, l);
+  //   }
+  // }
 }
 } // namespace dolfinx_adaptivity::equilibration

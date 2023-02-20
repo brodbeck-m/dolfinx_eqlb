@@ -240,7 +240,6 @@ void reconstruct_fluxes(const fem::Form<T>& a, const fem::Form<T>& l,
 
   /* Initialize essential boundary conditions for reconstructed flux */
   // TODO - Implement preparation of boundary conditions
-
   reconstruct_fluxes_patch(a, l, std::span(constants_a), std::span(constants_l),
                            fem::make_coefficients_span(coefficients_a),
                            fem::make_coefficients_span(coefficients_l),

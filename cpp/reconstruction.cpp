@@ -392,41 +392,41 @@ submap_equilibration_patch(
       = graph::AdjacencyList<std::int32_t>(std::move(data_adjacency_patch),
                                            std::move(adjacency_offset));
 
-  // if (i_node == 106)
+  // std::cout << "Type-Patch: " << type_patch << std::endl;
+  // std::cout << "nDOFs patch: " << ndof_patch << std::endl;
+  // std::cout << "Facets patch: ";
+  // for (auto fct : fct_patch)
   // {
-  //   std::cout << "Type-Patch: " << type_patch << std::endl;
-  //   std::cout << "nDOFs patch: " << ndof_patch << std::endl;
-  //   std::cout << "Facets patch: ";
-  //   for (auto fct : fct_patch)
-  //   {
-  //     std::cout << fct << " ";
-  //   }
-  //   std::cout << "\n";
-  //   std::cout << "Cells patch: ";
-  //   for (auto cell : cells_patch)
-  //   {
-  //     std::cout << cell << " ";
-  //   }
-  //   std::cout << "\n";
-  //   for (std::size_t ii = 0; ii < cells_patch.size(); ++ii)
-  //   {
-  //     for (std::size_t jj = 0; jj < ndof_elmt; ++jj)
-  //     {
-  //       std::cout << dofs_patch.links(ii)[jj] << " ";
-  //     }
-  //     std::cout << "\n";
-  //   }
-  //   std::cout << "\n";
-  //   for (std::size_t ii = 0; ii < cells_patch.size(); ++ii)
-  //   {
-  //     for (std::size_t jj = 0; jj < ndof_elmt; ++jj)
-  //     {
-  //       std::cout << dofs_local.links(ii)[jj] << " ";
-  //     }
-  //     std::cout << "\n";
-  //   }
-  //   throw std::exception();
+  //   std::cout << fct << " ";
   // }
+  // std::cout << "\n";
+  // std::cout << "Cells patch: ";
+  // for (auto cell : cells_patch)
+  // {
+  //   std::cout << cell << " ";
+  // }
+  // std::cout << "\n";
+  // for (std::size_t ii = 0; ii < cells_patch.size(); ++ii)
+  // {
+  //   for (std::size_t jj = 0; jj < ndof_elmt; ++jj)
+  //   {
+  //     std::cout << dofs_patch.links(ii)[jj] << " ";
+  //   }
+  //   std::cout << "\n";
+  // }
+  // std::cout << "\n DOFs patch (global):\n";
+  // const graph::AdjacencyList<std::int32_t>& dofs0
+  //     = function_space->dofmap()->list();
+  // for (std::size_t ii = 0; ii < cells_patch.size(); ++ii)
+  // {
+  //   auto cell_i = cells_patch[ii];
+  //   for (std::size_t jj = 0; jj < ndof_elmt; ++jj)
+  //   {
+  //     std::cout << dofs0.links(cell_i)[dofs_local.links(ii)[jj]] << " ";
+  //   }
+  //   std::cout << "\n";
+  // }
+  // throw std::exception();
 
   return {type_patch, ndof_patch, std::move(cells_patch), std::move(dofs_local),
           std::move(dofs_patch)};
