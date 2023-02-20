@@ -35,6 +35,7 @@ namespace dolfinx_adaptivity::equilibration
 /// @param i_node         ID (local on partition!) of current node
 /// @param function_space FunctionSpace of mixed problem
 /// @param entity_dofs0   BasiX/FiniteElement.entity_dofs flux subspace
+/// @param entity_dofs1   BasiX/FiniteElement.entity_dofs constraint
 ///                       subspace
 /// @param fct_type       Vector (len: number of fcts on partition)
 ///                       determine the facet type
@@ -51,13 +52,16 @@ std::tuple<int, const int, std::vector<std::int32_t>,
 submap_equilibration_patch(
     int i_node, std::shared_ptr<const fem::FunctionSpace> function_space,
     const std::vector<std::vector<std::vector<int>>>& entity_dofs0,
+    const std::vector<std::vector<std::vector<int>>>& entity_dofs1,
     const std::vector<std::int8_t>& fct_type);
 
 /// Execute calculation of patch constributions to flux
 ///
 /// @param a              The bilinear form to assemble
 /// @param l              The linar form to assemble
+/// @param constants_a    Constants that appear in 'a'
 /// @param constants_l    Constants that appear in 'l'
+/// @param coefficients_a Coefficients that appear in 'a'
 /// @param coefficients_l Coefficients that appear in 'l'
 /// @param fct_type       Vector (len: number of fcts on partition)
 ///                       determine the facet type
@@ -65,7 +69,9 @@ submap_equilibration_patch(
 template <typename T>
 void reconstruct_fluxes_patch(
     const fem::Form<T>& a, const fem::Form<T>& l,
-    std::span<const T> constants_l,
+    std::span<const T> constants_a, std::span<const T> constants_l,
+    const std::map<std::pair<fem::IntegralType, int>,
+                   std::pair<std::span<const T>, int>>& coefficients_a,
     const std::map<std::pair<fem::IntegralType, int>,
                    std::pair<std::span<const T>, int>>& coefficients_l,
     std::vector<std::int8_t>& fct_type, fem::Function<T>& flux,
@@ -92,8 +98,11 @@ void reconstruct_fluxes_patch(
 
   // BasiX elements of subspaces
   std::vector<int> sub0(1, 0);
+  std::vector<int> sub1(1, 1);
   const basix::FiniteElement& basix_element0
       = function_space->sub(sub0)->element()->basix_element();
+  const basix::FiniteElement& basix_element1
+      = function_space->sub(sub1)->element()->basix_element();
 
   /* DOF transformation */
   std::shared_ptr<const fem::FiniteElement> element0
@@ -124,6 +133,8 @@ void reconstruct_fluxes_patch(
   const auto& kernel_l = l.kernel(fem::IntegralType::cell, -1);
 
   // Coefficients
+  const auto& [coeffs_a, cstride_a]
+      = coefficients_a.at({fem::IntegralType::cell, -1});
   const auto& [coeffs_l, cstride_l]
       = coefficients_l.at({fem::IntegralType::cell, -1});
 
@@ -156,14 +167,16 @@ void reconstruct_fluxes_patch(
     // Create Sub-DOFmap
     auto [type_patch, ndof_patch, cells_patch, dofs_local, dofs_patch]
         = submap_equilibration_patch(i_node, function_space,
-                                     basix_element0.entity_dofs(), fct_type);
+                                     basix_element0.entity_dofs(),
+                                     basix_element1.entity_dofs(), fct_type);
 
     // Solve patch problem
     equilibrate_flux_constrmin(
         geometry, type_patch, ndof_patch, cells_patch, dofmap0->list(),
         dofs_local, dofs_patch, dof_transform, dof_transform_to_transpose,
-        kernel_a, kernel_l, coeffs_l, cstride_l, constants_l, cell_info,
-        cell_is_evaluated, storage_stiffness_cells, x_flux, x_flux_dg);
+        kernel_a, kernel_l, coeffs_a, coeffs_l, cstride_a, cstride_l,
+        constants_a, constants_l, cell_info, cell_is_evaluated,
+        storage_stiffness_cells, x_flux, x_flux_dg);
   }
 }
 
@@ -188,8 +201,11 @@ void reconstruct_fluxes(const fem::Form<T>& a, const fem::Form<T>& l,
   const int dim_fct = topology.dim() - 1;
 
   /* Constants and coefficients */
+  const std::vector<T> constants_a = pack_constants(a);
   const std::vector<T> constants_l = pack_constants(l);
 
+  auto coefficients_a = fem::allocate_coefficient_storage(a);
+  fem::pack_coefficients(a, coefficients_a);
   auto coefficients_l = fem::allocate_coefficient_storage(l);
   fem::pack_coefficients(l, coefficients_l);
 
@@ -224,7 +240,8 @@ void reconstruct_fluxes(const fem::Form<T>& a, const fem::Form<T>& l,
 
   /* Initialize essential boundary conditions for reconstructed flux */
   // TODO - Implement preparation of boundary conditions
-  reconstruct_fluxes_patch(a, l, std::span(constants_l),
+  reconstruct_fluxes_patch(a, l, std::span(constants_a), std::span(constants_l),
+                           fem::make_coefficients_span(coefficients_a),
                            fem::make_coefficients_span(coefficients_l),
                            fct_type, flux, flux_dg);
 }

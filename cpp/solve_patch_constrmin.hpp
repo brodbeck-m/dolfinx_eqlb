@@ -42,8 +42,11 @@ namespace dolfinx_adaptivity::equilibration
 /// @param dof_transform_to_transpose DOF-transformation function
 /// @param kernel_a                   Kernel bilinar form
 /// @param kernel_l                   Kernel linear form
+/// @param coeffs_a                   Coefficients bilinar form
 /// @param coeffs_l                   Coefficients linar form
+/// @param cstride_a                  Coefficients bilinar form
 /// @param cstride_l                  Coefficients linar form
+/// @param constants_a                Constants bilinar form
 /// @param constants_l                Constants linar form
 /// @param cell_info                  Information for DOF transformation
 /// @param cell_is_evaluated          Look-up table if current stiffness
@@ -67,8 +70,9 @@ void equilibrate_flux_constrmin(
                              const std::span<const std::uint32_t>&,
                              std::int32_t, int)>& dof_transform_to_transpose,
     fem::FEkernel<T> auto kernel_a, fem::FEkernel<T> auto kernel_l,
-    std::span<const T> coeffs_l, int cstride_l, std::span<const T> constants_l,
-    std::span<const std::uint32_t> cell_info,
+    std::span<const T> coeffs_a, std::span<const T> coeffs_l, int cstride_a,
+    int cstride_l, std::span<const T> constants_a,
+    std::span<const T> constants_l, std::span<const std::uint32_t> cell_info,
     std::vector<std::int8_t>& cell_is_evaluated,
     graph::AdjacencyList<T>& storage_stiffness_cells, std::span<T> x_flux,
     std::span<T> x_flux_dg)
@@ -118,8 +122,8 @@ void equilibrate_flux_constrmin(
       std::fill(Ae.begin(), Ae.end(), 0);
 
       // Evaluate tangent arrays
-      kernel_a(Ae.data(), nullptr, nullptr, coordinate_dofs.data(), nullptr,
-               nullptr);
+      kernel_a(Ae.data(), coeffs_a.data() + c * cstride_a, constants_a.data(),
+               coordinate_dofs.data(), nullptr, nullptr);
 
       // DOF transformation
       dof_transform(Ae, cell_info, c, ndim0);
