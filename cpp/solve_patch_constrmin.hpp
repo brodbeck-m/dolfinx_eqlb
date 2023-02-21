@@ -17,6 +17,14 @@
 
 namespace dolfinx_adaptivity::equilibration
 {
+template <typename T>
+void set_hat_function(std::span<T> coeffs_l,
+                      const std::vector<int>& info_coeffs_l,
+                      const int32_t cell_i, const std::int8_t node_i, T value)
+{
+  coeffs_l[info_coeffs_l[0] * cell_i + info_coeffs_l[1] + node_i] = value;
+}
+
 /// Assembly annd solution of patch problems
 ///
 /// Assembly of the patch-wise equation systems, following [1]. Element
@@ -106,6 +114,9 @@ void equilibrate_flux_constrmin(
     // Get current stiffness-matrix in storage
     std::span<T> Ae = storage_stiffness_cells.links(c);
 
+    // Set hat-function appropriately
+    set_hat_function(coeffs_l, info_coeffs_l, c, inode_local[index], 1.0);
+
     // Evaluate tangent arrays if not already done
     if (cell_is_evaluated[c] == 0)
     {
@@ -154,6 +165,9 @@ void equilibrate_flux_constrmin(
         A_patch(dofs_patch[k], dofs_patch[l]) += Ae[offset + dofs_elmt[l]];
       }
     }
+
+    // Unset hat function
+    set_hat_function(coeffs_l, info_coeffs_l, c, inode_local[index], 0.0);
   }
 
   // Debug
