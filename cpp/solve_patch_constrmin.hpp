@@ -17,6 +17,17 @@
 
 namespace dolfinx_adaptivity::equilibration
 {
+/// Set hat-function for cell_i on patch
+///
+/// Modify coefficients of cell_i such that the function-value of the hat
+/// function has value at the central node of the patch.
+/// @param coeffs_l      Span of the coefficients of all elements
+/// @param info_coeffs_l Infos about the corfficients
+///                      [cstride, begin_hat, begin_flux]
+/// @param cell_i        Identifier (processor level) for current cell
+/// @param node_i        Cell-local id of the central node of the patch
+/// @param value         Value onto whcih the function has to be sed
+
 template <typename T>
 void set_hat_function(std::span<T> coeffs_l,
                       const std::vector<int>& info_coeffs_l,
@@ -25,7 +36,7 @@ void set_hat_function(std::span<T> coeffs_l,
   coeffs_l[info_coeffs_l[0] * cell_i + info_coeffs_l[1] + node_i] = value;
 }
 
-/// Assembly annd solution of patch problems
+/// Assembly and solution of patch problems
 ///
 /// Assembly of the patch-wise equation systems, following [1]. Element
 /// stiffness-matrizes - as these stay constant but appear in multiple
