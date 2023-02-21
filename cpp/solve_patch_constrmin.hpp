@@ -42,9 +42,10 @@ namespace dolfinx_adaptivity::equilibration
 /// @param dof_transform_to_transpose DOF-transformation function
 /// @param kernel_a                   Kernel bilinar form
 /// @param kernel_l                   Kernel linear form
+/// @param consts_l                   Constants linar form
 /// @param coeffs_l                   Coefficients linar form
-/// @param cstride_l                  Coefficients linar form
-/// @param constants_l                Constants linar form
+/// @param info_coeffs_l              Information about storage of coeffs
+///                                   (linear form)
 /// @param cell_info                  Information for DOF transformation
 /// @param cell_is_evaluated          Look-up table if current stiffness
 ///                                   has already been evaluated
@@ -67,7 +68,8 @@ void equilibrate_flux_constrmin(
                              const std::span<const std::uint32_t>&,
                              std::int32_t, int)>& dof_transform_to_transpose,
     fem::FEkernel<T> auto kernel_a, fem::FEkernel<T> auto kernel_l,
-    std::span<const T> coeffs_l, int cstride_l, std::span<const T> constants_l,
+    std::span<const T> consts_l, std::span<T> coeffs_l,
+    const std::vector<int>& info_coeffs_l,
     std::span<const std::uint32_t> cell_info,
     std::vector<std::int8_t>& cell_is_evaluated,
     graph::AdjacencyList<T>& storage_stiffness_cells, std::span<T> x_flux,

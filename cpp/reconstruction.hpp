@@ -59,21 +59,19 @@ submap_equilibration_patch(
 ///
 /// @param a              The bilinear form to assemble
 /// @param l              The linar form to assemble
-/// @param constants_a    Constants that appear in 'a'
-/// @param constants_l    Constants that appear in 'l'
-/// @param coefficients_a Coefficients that appear in 'a'
-/// @param coefficients_l Coefficients that appear in 'l'
+/// @param consts_l       Constants that appear in 'l'
+/// @param coeffs_l       Coefficients that appear in 'l'
+/// @param info_coeffs_l  Information about coefficient storage for 'l'
 /// @param fct_type       Vector (len: number of fcts on partition)
 ///                       determine the facet type
 /// @param flux           Function that holds the reconstructed flux
 template <typename T>
-void reconstruct_fluxes_patch(
-    const fem::Form<T>& a, const fem::Form<T>& l,
-    std::span<const T> constants_l,
-    const std::map<std::pair<fem::IntegralType, int>,
-                   std::pair<std::span<const T>, int>>& coefficients_l,
-    std::vector<std::int8_t>& fct_type, fem::Function<T>& flux,
-    fem::Function<T>& flux_dg)
+void reconstruct_fluxes_patch(const fem::Form<T>& a, const fem::Form<T>& l,
+                              std::span<const T> consts_l,
+                              std::span<T> coeffs_l,
+                              const std::vector<int>& info_coeffs_l,
+                              std::vector<std::int8_t>& fct_type,
+                              fem::Function<T>& flux, fem::Function<T>& flux_dg)
 {
   /* Geometry */
   const mesh::Geometry& geometry = a.mesh()->geometry();
@@ -130,10 +128,6 @@ void reconstruct_fluxes_patch(
   const auto& kernel_a = a.kernel(fem::IntegralType::cell, -1);
   const auto& kernel_l = l.kernel(fem::IntegralType::cell, -1);
 
-  // Coefficients
-  const auto& [coeffs_l, cstride_l]
-      = coefficients_l.at({fem::IntegralType::cell, -1});
-
   // Local part of the solution vector (only flux!)
   std::span<T> x_flux = flux.x()->mutable_array();
   std::span<T> x_flux_dg = flux_dg.x()->mutable_array();
@@ -170,7 +164,7 @@ void reconstruct_fluxes_patch(
     equilibrate_flux_constrmin(
         geometry, type_patch, ndof_patch, cells_patch, dofmap0->list(),
         dofs_local, dofs_patch, dof_transform, dof_transform_to_transpose,
-        kernel_a, kernel_l, coeffs_l, cstride_l, constants_l, cell_info,
+        kernel_a, kernel_l, consts_l, coeffs_l, info_coeffs_l, cell_info,
         cell_is_evaluated, storage_stiffness_cells, x_flux, x_flux_dg);
   }
 }
@@ -196,10 +190,42 @@ void reconstruct_fluxes(const fem::Form<T>& a, const fem::Form<T>& l,
   const int dim_fct = topology.dim() - 1;
 
   /* Constants and coefficients */
+  // Allocate storage of coefficients/constants of linear form
   const std::vector<T> constants_l = pack_constants(l);
 
   auto coefficients_l = fem::allocate_coefficient_storage(l);
   fem::pack_coefficients(l, coefficients_l);
+
+  auto& [coeffs_l, cstride_l]
+      = coefficients_l.at({fem::IntegralType::cell, -1});
+
+  // Pack relevant informations (0->cstride, 1->Begin _hat, 2->Begin flux_dg)
+  std::vector<int> info_coeffs_l(3, 0);
+
+  if (cstride_l - l.coefficient_offsets()[1] > l.coefficient_offsets()[1])
+  {
+    // Set cstride_l
+    info_coeffs_l[0] = cstride_l;
+
+    // Set beginn of _hat-data
+    info_coeffs_l[1] = l.coefficient_offsets()[1];
+
+    // Set beginn of flux_dg-data
+    info_coeffs_l[1] = 0;
+  }
+  else
+  {
+    // Set cstride_l
+    info_coeffs_l[0] = cstride_l;
+
+    // Set beginn of _hat-data
+    info_coeffs_l[1] = 0;
+
+    // Set beginn of flux_dg-data
+    info_coeffs_l[1] = l.coefficient_offsets()[1];
+  }
+
+  // Create modifiable span
 
   // // Test
   // auto& [coeffs_l, cstride_l]
@@ -259,9 +285,8 @@ void reconstruct_fluxes(const fem::Form<T>& a, const fem::Form<T>& l,
 
   /* Initialize essential boundary conditions for reconstructed flux */
   // TODO - Implement preparation of boundary conditions
-  reconstruct_fluxes_patch(a, l, std::span(constants_l),
-                           fem::make_coefficients_span(coefficients_l),
-                           fct_type, flux, flux_dg);
+  reconstruct_fluxes_patch(a, l, std::span(constants_l), std::span(coeffs_l),
+                           info_coeffs_l, fct_type, flux, flux_dg);
 }
 
 } // namespace dolfinx_adaptivity::equilibration
