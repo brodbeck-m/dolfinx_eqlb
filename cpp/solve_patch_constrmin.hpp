@@ -70,6 +70,7 @@ void equilibrate_flux_constrmin(
     fem::FEkernel<T> auto kernel_a, fem::FEkernel<T> auto kernel_l,
     std::span<const T> consts_l, std::span<T> coeffs_l,
     const std::vector<int>& info_coeffs_l,
+    const std::vector<std::int8_t>& inode_local,
     std::span<const std::uint32_t> cell_info,
     std::vector<std::int8_t>& cell_is_evaluated,
     graph::AdjacencyList<T>& storage_stiffness_cells, std::span<T> x_flux,

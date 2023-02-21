@@ -103,7 +103,7 @@ std::int32_t next_facet_triangle(std::int8_t id_fct_i,
 
 namespace dolfinx_adaptivity::equilibration
 {
-std::tuple<int, const int, std::vector<std::int32_t>,
+std::tuple<int, const int, std::vector<std::int32_t>, std::vector<std::int8_t>,
            graph::AdjacencyList<std::int32_t>,
            graph::AdjacencyList<std::int32_t>>
 submap_equilibration_patch(
@@ -130,6 +130,8 @@ submap_equilibration_patch(
       = topology.connectivity(dim_fct, dim);
   std::shared_ptr<const graph::AdjacencyList<std::int32_t>> cell_to_fct
       = topology.connectivity(dim, dim_fct);
+  std::shared_ptr<const graph::AdjacencyList<std::int32_t>> cell_to_node
+      = topology.connectivity(dim, 0);
 
   // Counters
   int fct_per_cell = cell_to_fct->links(0).size();
@@ -219,6 +221,7 @@ submap_equilibration_patch(
   std::vector<std::int32_t> data_adjacency_elmt(len_adjacency),
       data_adjacency_patch(len_adjacency), adjacency_offset(n_cell_patch + 1),
       cells_patch(n_cell_patch);
+  std::vector<std::int8_t> inode_local(n_cell_patch);
 
   adjacency_offset[0] = 0;
 
@@ -281,6 +284,15 @@ submap_equilibration_patch(
       }
     }
 
+    // Get cell-local id of patch-node (i_node)
+    std::span<const std::int32_t> node_cell_i = cell_to_node->links(cell_i);
+    std::int8_t id_node_loc_ci = 0;
+
+    while (node_cell_i[id_node_loc_ci] != i_node)
+    {
+      id_node_loc_ci += 1;
+    }
+
     // Offset first DOF (flus DOFs on facet 1) on elmt_i
     std::int32_t offs_p = (ii + 1) * ndof_elmt;
     adjacency_offset[ii + 1] = offs_p;
@@ -294,6 +306,7 @@ submap_equilibration_patch(
                          : adjacency_offset[ii - 1] + ndof_flux_fct;
       offs_p = adjacency_offset[ii];
       cells_patch[ii] = cell_i;
+      inode_local[ii] = id_node_loc_ci;
     }
     else
     {
@@ -301,12 +314,14 @@ submap_equilibration_patch(
       {
         offs_f = adjacency_offset[ii] + ndof_flux_fct;
         cells_patch[ii + 1] = cell_i;
+        inode_local[ii + 1] = id_node_loc_ci;
       }
       else
       {
         offs_f = adjacency_offset[ii] + ndof_flux_fct;
         offs_p = 0;
         cells_patch[0] = cell_i;
+        inode_local[0] = id_node_loc_ci;
       }
     }
 
@@ -428,7 +443,11 @@ submap_equilibration_patch(
   // }
   // throw std::exception();
 
-  return {type_patch, ndof_patch, std::move(cells_patch), std::move(dofs_local),
+  return {type_patch,
+          ndof_patch,
+          std::move(cells_patch),
+          std::move(inode_local),
+          std::move(dofs_local),
           std::move(dofs_patch)};
 }
 

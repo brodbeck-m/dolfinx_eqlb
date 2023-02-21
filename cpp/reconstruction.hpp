@@ -43,10 +43,11 @@ namespace dolfinx_adaptivity::equilibration
 /// @return ndof_patch    Number of DOFs on patch
 /// @return cells_patch   List of cells (consisnten to local DOFmap)
 ///                       on patch
+/// @return inode_local   Local id of i_node on cell_i
 /// @return dofs_local    Non-Zero DOFs on patch (element-local ID)
 /// @return dofs_patch    Non-Zero DOFs on patch (patch-local ID)
 
-std::tuple<int, const int, std::vector<std::int32_t>,
+std::tuple<int, const int, std::vector<std::int32_t>, std::vector<std::int8_t>,
            graph::AdjacencyList<std::int32_t>,
            graph::AdjacencyList<std::int32_t>>
 submap_equilibration_patch(
@@ -155,7 +156,8 @@ void reconstruct_fluxes_patch(const fem::Form<T>& a, const fem::Form<T>& l,
   for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
   {
     // Create Sub-DOFmap
-    auto [type_patch, ndof_patch, cells_patch, dofs_local, dofs_patch]
+    auto [type_patch, ndof_patch, cells_patch, inode_local, dofs_local,
+          dofs_patch]
         = submap_equilibration_patch(i_node, function_space,
                                      basix_element0.entity_dofs(),
                                      basix_element1.entity_dofs(), fct_type);
@@ -164,8 +166,9 @@ void reconstruct_fluxes_patch(const fem::Form<T>& a, const fem::Form<T>& l,
     equilibrate_flux_constrmin(
         geometry, type_patch, ndof_patch, cells_patch, dofmap0->list(),
         dofs_local, dofs_patch, dof_transform, dof_transform_to_transpose,
-        kernel_a, kernel_l, consts_l, coeffs_l, info_coeffs_l, cell_info,
-        cell_is_evaluated, storage_stiffness_cells, x_flux, x_flux_dg);
+        kernel_a, kernel_l, consts_l, coeffs_l, info_coeffs_l, inode_local,
+        cell_info, cell_is_evaluated, storage_stiffness_cells, x_flux,
+        x_flux_dg);
   }
 }
 
