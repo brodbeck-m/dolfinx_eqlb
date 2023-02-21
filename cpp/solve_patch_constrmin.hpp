@@ -95,15 +95,23 @@ void equilibrate_flux_constrmin(
 
   // Initialize storage of tangent arrays (Penalty for pure Neumann problems)
   Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> A_patch;
+  Eigen::Matrix<T, Eigen::Dynamic, 1> L_patch, flux_patch;
+
+  std::vector<T> Le(ndim0);
+  std::span<T> _Le(Le);
 
   if (type_patch == 0 || type_patch == 1)
   {
     const int ndof_ppatch = ndof_patch + 1;
     A_patch.resize(ndof_ppatch, ndof_ppatch);
+    L_patch.resize(ndof_ppatch);
+    flux_patch.resize(ndof_ppatch);
   }
   else
   {
     A_patch.resize(ndof_patch, ndof_patch);
+    L_patch.resize(ndof_patch);
+    flux_patch.resize(ndof_patch);
   }
 
   for (std::size_t index = 0; index < cells.size(); ++index)
@@ -117,21 +125,22 @@ void equilibrate_flux_constrmin(
     // Set hat-function appropriately
     set_hat_function(coeffs_l, info_coeffs_l, c, inode_local[index], 1.0);
 
-    // Evaluate tangent arrays if not already done
+    /* Evaluate tangent arrays if not already done */
+    // Extract cell geometry
+    auto x_dofs = x_dofmap.links(c);
+    for (std::size_t j = 0; j < x_dofs.size(); ++j)
+    {
+      std::copy_n(std::next(x.begin(), 3 * x_dofs[j]), 3,
+                  std::next(coordinate_dofs.begin(), 3 * j));
+    }
+
+    // Evaluate bilinar form
     if (cell_is_evaluated[c] == 0)
     {
-      // Exctract cell geometry
-      auto x_dofs = x_dofmap.links(c);
-      for (std::size_t j = 0; j < x_dofs.size(); ++j)
-      {
-        std::copy_n(std::next(x.begin(), 3 * x_dofs[j]), 3,
-                    std::next(coordinate_dofs.begin(), 3 * j));
-      }
-
-      // Initialize tangent arrays
+      // Initialize bilinear form
       std::fill(Ae.begin(), Ae.end(), 0);
 
-      // Evaluate tangent arrays
+      // Evaluate bilinar form
       kernel_a(Ae.data(), nullptr, nullptr, coordinate_dofs.data(), nullptr,
                nullptr);
 
@@ -143,6 +152,14 @@ void equilibrate_flux_constrmin(
       cell_is_evaluated[c] = 1;
     }
 
+    // Evaluate linear form
+    std::fill(Le.begin(), Le.end(), 0);
+
+    kernel_l(Le.data(), coeffs_l.data() + c * info_coeffs_l[0], consts_l.data(),
+             coordinate_dofs.data(), nullptr, nullptr);
+
+    dof_transform(_Le, cell_info, c, 1);
+
     /* Assemble into patch system */
     // Element-local and patch-local DOFmap
     std::span<const int32_t> dofs_elmt = dofmap_elmt.links(index);
@@ -151,13 +168,13 @@ void equilibrate_flux_constrmin(
     // Number of non-zero DOFs on element
     int num_nzdof_elmt = dofs_elmt.size();
 
-    // Get number of non-zero DOFs on element
-    int offset = 0;
-
     for (std::size_t k = 0; k < num_nzdof_elmt; ++k)
     {
       // Calculate offset
-      offset = dofs_elmt[k] * ndim0;
+      int offset = dofs_elmt[k] * ndim0;
+
+      // Assemble load vector
+      L_patch(dofs_patch[k]) += Le[dofs_elmt[k]];
 
       for (std::size_t l = 0; l < num_nzdof_elmt; ++l)
       {
