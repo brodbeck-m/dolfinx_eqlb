@@ -70,7 +70,7 @@ void equilibrate_flux_constrmin(
                              const std::span<const std::uint32_t>&,
                              std::int32_t, int)>& dof_transform_to_transpose,
     fem::FEkernel<T> auto kernel_a, fem::FEkernel<T> auto kernel_l,
-    std::span<const T> coeffs_a, std::span<const T> coeffs_l, int cstride_a,
+    std::span<T> coeffs_a, std::span<const T> coeffs_l, int cstride_a,
     int cstride_l, std::span<const T> constants_a,
     std::span<const T> constants_l, std::span<const std::uint32_t> cell_info,
     std::vector<std::int8_t>& cell_is_evaluated,

@@ -70,8 +70,7 @@ template <typename T>
 void reconstruct_fluxes_patch(
     const fem::Form<T>& a, const fem::Form<T>& l,
     std::span<const T> constants_a, std::span<const T> constants_l,
-    const std::map<std::pair<fem::IntegralType, int>,
-                   std::pair<std::span<const T>, int>>& coefficients_a,
+    std::span<T> coefficients_a,
     const std::map<std::pair<fem::IntegralType, int>,
                    std::pair<std::span<const T>, int>>& coefficients_l,
     std::vector<std::int8_t>& fct_type, fem::Function<T>& flux,
@@ -133,8 +132,8 @@ void reconstruct_fluxes_patch(
   const auto& kernel_l = l.kernel(fem::IntegralType::cell, -1);
 
   // Coefficients
-  const auto& [coeffs_a, cstride_a]
-      = coefficients_a.at({fem::IntegralType::cell, -1});
+  // const auto& [coeffs_a, cstride_a]
+  //     = coefficients_a.at({fem::IntegralType::cell, -1});
   const auto& [coeffs_l, cstride_l]
       = coefficients_l.at({fem::IntegralType::cell, -1});
 
@@ -174,9 +173,9 @@ void reconstruct_fluxes_patch(
     equilibrate_flux_constrmin(
         geometry, type_patch, ndof_patch, cells_patch, dofmap0->list(),
         dofs_local, dofs_patch, dof_transform, dof_transform_to_transpose,
-        kernel_a, kernel_l, coeffs_a, coeffs_l, cstride_a, cstride_l,
-        constants_a, constants_l, cell_info, cell_is_evaluated,
-        storage_stiffness_cells, x_flux, x_flux_dg);
+        kernel_a, kernel_l, coefficients_a, coeffs_l, 0, cstride_l, constants_a,
+        constants_l, cell_info, cell_is_evaluated, storage_stiffness_cells,
+        x_flux, x_flux_dg);
   }
 }
 
@@ -209,6 +208,33 @@ void reconstruct_fluxes(const fem::Form<T>& a, const fem::Form<T>& l,
   auto coefficients_l = fem::allocate_coefficient_storage(l);
   fem::pack_coefficients(l, coefficients_l);
 
+  // Test
+  auto& [coeffs_l, cstride_l]
+      = coefficients_l.at({fem::IntegralType::cell, -1});
+
+  std::span<T> _coeff_l(coeffs_l);
+
+  std::cout << "cstride_ls:" << cstride_l << std::endl;
+  std::cout << "Counter DOFs:" << std::endl;
+  for (auto e : l.coefficient_offsets())
+  {
+    std::cout << e << std::endl;
+  }
+
+  std::cout << "Length coefficients:" << _coeff_l.size() << std::endl;
+  std::cout << "Coeffs elmt 10:" << std::endl;
+  for (std::size_t i = 0; i < _coeff_l.size() / cstride_l; ++i)
+  {
+    int offset = i * cstride_l;
+    for (std::size_t j = 0; j < cstride_l; ++j)
+    {
+      std::cout << _coeff_l[offset + j] << " ";
+    }
+    std::cout << "\n";
+  }
+
+  throw std::exception();
+
   /* Mark facest (0->internal, 1->esnt_prim, 2->esnt_flux) */
   // Create look-up table for facets
   std::vector<std::int8_t> fct_type(topology.index_map(dim_fct)->size_local(),
@@ -240,10 +266,9 @@ void reconstruct_fluxes(const fem::Form<T>& a, const fem::Form<T>& l,
 
   /* Initialize essential boundary conditions for reconstructed flux */
   // TODO - Implement preparation of boundary conditions
-  reconstruct_fluxes_patch(a, l, std::span(constants_a), std::span(constants_l),
-                           fem::make_coefficients_span(coefficients_a),
-                           fem::make_coefficients_span(coefficients_l),
-                           fct_type, flux, flux_dg);
+  reconstruct_fluxes_patch(
+      a, l, std::span(constants_a), std::span(constants_l), _coeff_l,
+      fem::make_coefficients_span(coefficients_l), fct_type, flux, flux_dg);
 }
 
 } // namespace dolfinx_adaptivity::equilibration
