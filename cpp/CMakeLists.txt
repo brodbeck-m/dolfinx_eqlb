@@ -58,6 +58,7 @@ set(
   reconstruction.hpp
   Patch.hpp
   PatchFluxEV.hpp
+  StorageStiffness.hpp
   solve_patch_constrmin.hpp
 )
 

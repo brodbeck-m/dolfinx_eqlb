@@ -1,6 +1,7 @@
 #pragma once
 
 #include "PatchFluxEV.hpp"
+#include "StorageStiffness.hpp"
 #include "solve_patch_constrmin.hpp"
 #include <algorithm>
 #include <dolfinx/fem/DofMap.h>
@@ -24,7 +25,8 @@ namespace dolfinx_adaptivity::equilibration
 {
 /// Execute calculation of patch constributions to flux
 ///
-/// @param a              The bilinear form to assemble
+/// @param a              The bilinear forms to assemble
+/// @param l_pen          Penalisation terms to assemble
 /// @param l              The linar form to assemble
 /// @param consts_l       Constants that appear in 'l'
 /// @param coeffs_l       Coefficients that appear in 'l'
@@ -33,7 +35,8 @@ namespace dolfinx_adaptivity::equilibration
 ///                       determine the facet type
 /// @param flux           Function that holds the reconstructed flux
 template <typename T>
-void reconstruct_fluxes_patch(const fem::Form<T>& a, const fem::Form<T>& l,
+void reconstruct_fluxes_patch(const fem::Form<T>& a, const fem::Form<T>& l_pen,
+                              const fem::Form<T>& l,
                               std::span<const T> consts_l,
                               std::span<T> coeffs_l,
                               const std::vector<int>& info_coeffs_l,
@@ -91,33 +94,20 @@ void reconstruct_fluxes_patch(const fem::Form<T>& a, const fem::Form<T>& l,
   PatchFluxEV patch
       = PatchFluxEV(n_nodes, a.mesh(), fct_type, a.function_spaces().at(0),
                     basix_element_flux);
+  std::cout << "Test passed" << std::endl;
 
   /* Prepare Assembly */
-  // Integration kernels
   const auto& kernel_a = a.kernel(fem::IntegralType::cell, -1);
+  const auto& kernel_lpen = l_pen.kernel(fem::IntegralType::cell, -1);
   const auto& kernel_l = l.kernel(fem::IntegralType::cell, -1);
 
   // Local part of the solution vector (only flux!)
   std::span<T> x_flux = flux.x()->mutable_array();
   std::span<T> x_flux_dg = flux_dg.x()->mutable_array();
 
-  /* Initialize storage of  stiffnes matrix on each cell*/
-  // Get size for storage array
-  const int dim_fe_space = patch.ndofs_elmt();
-  const int dim_stiffness = dim_fe_space * dim_fe_space;
-
-  // Initialize id, if cell is already initilaized
-  std::vector<std::int8_t> cell_is_evaluated(n_cells, 0);
-
-  // Initialize adjaceny list
-  std::vector<std::int32_t> offset_storage_stiffness(n_cells + 1);
-  std::vector<T> data_storage_stiffness(n_cells * dim_stiffness, 0);
-  std::generate(
-      offset_storage_stiffness.begin(), offset_storage_stiffness.end(),
-      [n = 0, dim_stiffness]() mutable { return dim_stiffness * (n++); });
-
-  graph::AdjacencyList<T> storage_stiffness_cells = graph::AdjacencyList<T>(
-      std::move(data_storage_stiffness), std::move(offset_storage_stiffness));
+  // Initialize storage of tangents on each cell
+  // StorageStiffness<T> storage_stiffness
+  //     = StorageStiffness<T>(n_cells, patch.ndofs_elmt(), patch.ndofs_cons());
 
   /* Solve flux reconstruction on each patch */
   // Loop over all nodes and solve patch problem
@@ -128,22 +118,23 @@ void reconstruct_fluxes_patch(const fem::Form<T>& a, const fem::Form<T>& l,
 
     // Solve patch problem
     equilibrate_flux_constrmin(geometry, patch, dofmap0->list(), dof_transform,
-                               dof_transform_to_transpose, kernel_a, kernel_l,
-                               consts_l, coeffs_l, info_coeffs_l, cell_info,
-                               cell_is_evaluated, storage_stiffness_cells,
-                               x_flux, x_flux_dg);
+                               dof_transform_to_transpose, kernel_a,
+                               kernel_lpen, kernel_l, consts_l, coeffs_l,
+                               info_coeffs_l, cell_info, x_flux, x_flux_dg);
+    std::cout << "Test passed" << std::endl;
   }
 }
 
 /// Execute flux calculation based on H(div) conforming equilibration
 ///
-/// @param a                   The bilinear form to assemble
+/// @param a                   The bilinears form to assemble
 /// @param l                   The linar form to assemble
 /// @param fct_esntbound_prime Facets of essential BCs of primal problem
 /// @param fct_esntbound_flux  Facets of essential BCs on flux field
 /// @param flux                Function that holds the reconstructed flux
 template <typename T>
-void reconstruct_fluxes(const fem::Form<T>& a, const fem::Form<T>& l,
+void reconstruct_fluxes(const fem::Form<T>& a, const fem::Form<T>& l_pen,
+                        const fem::Form<T>& l,
                         std::vector<std::int32_t>& fct_esntbound_prime,
                         std::vector<std::int32_t>& fct_esntbound_flux,
                         fem::Function<T>& flux, fem::Function<T>& flux_dg)
@@ -222,8 +213,9 @@ void reconstruct_fluxes(const fem::Form<T>& a, const fem::Form<T>& l,
 
   /* Initialize essential boundary conditions for reconstructed flux */
   // TODO - Implement preparation of boundary conditions
-  reconstruct_fluxes_patch(a, l, std::span(constants_l), std::span(coeffs_l),
-                           info_coeffs_l, std::span(fct_type), flux, flux_dg);
+  reconstruct_fluxes_patch(a, l_pen, l, std::span(constants_l),
+                           std::span(coeffs_l), info_coeffs_l,
+                           std::span(fct_type), flux, flux_dg);
 }
 
 } // namespace dolfinx_adaptivity::equilibration
