@@ -78,7 +78,8 @@ void equilibrate_flux_constrmin(
     fem::FEkernel<T> auto kernel_a, fem::FEkernel<T> auto kernel_lpen,
     fem::FEkernel<T> auto kernel_l, std::span<const T> consts_l,
     std::span<T> coeffs_l, const std::vector<int>& info_coeffs_l,
-    std::span<const std::uint32_t> cell_info, std::span<T> x_flux,
+    std::span<const std::uint32_t> cell_info,
+    StorageStiffness<T>& storage_stiffness, std::span<T> x_flux,
     std::span<T> x_flux_dg)
 {
   // Initilaize storage cell geoemtry
@@ -109,8 +110,6 @@ void equilibrate_flux_constrmin(
   Eigen::Matrix<T, Eigen::Dynamic, 1> L_patch, flux_patch;
 
   std::vector<T> Le(ndim0);
-  std::vector<T> Ae(ndim0 * ndim0);
-  std::fill(Ae.begin(), Ae.end(), 0);
   std::span<T> _Le(Le);
 
   if (type_patch < 2)
@@ -132,11 +131,11 @@ void equilibrate_flux_constrmin(
     std::int32_t c = cells[index];
 
     // Get current stiffness-matrix in storage
-    // std::span<T> Ae = storage_stiffness.stiffness_elmt(c);
-    // std::span<T> Pe = storage_stiffness.penalty_elmt(c);
+    std::span<T> Ae = storage_stiffness.stiffness_elmt(c);
+    std::span<T> Pe = storage_stiffness.penalty_elmt(c);
 
     // Set hat-function appropriately
-    set_hat_function(coeffs_l, info_coeffs_l, c, inode_local[index], 1.0);
+    // set_hat_function(coeffs_l, info_coeffs_l, c, inode_local[index], 1.0);
 
     /* Evaluate tangent arrays if not already done */
     // Extract cell geometry
@@ -148,31 +147,27 @@ void equilibrate_flux_constrmin(
     }
 
     // Evaluate bilinar form
-    // if (storage_stiffness.evaluation_status(c) == 0)
-    // {
-    //   std::cout << unsigned(storage_stiffness.evaluation_status(c))
-    //             << std::endl;
-    //   // // Initialize bilinear form
-    //   // std::fill(Ae.begin(), Ae.end(), 0);
-    //   // std::fill(Pe.begin(), Pe.end(), 0);
+    if (storage_stiffness.evaluation_status(c) == 0)
+    {
+      // Initialize bilinear form
+      std::fill(Ae.begin(), Ae.end(), 0);
+      std::fill(Pe.begin(), Pe.end(), 0);
 
-    //   // // Evaluate bilinar form
-    //   // kernel_a(Ae.data(), nullptr, nullptr, coordinate_dofs.data(),
-    //   nullptr,
-    //   //          nullptr);
+      // Evaluate bilinar form
+      kernel_a(Ae.data(), nullptr, nullptr, coordinate_dofs.data(), nullptr,
+               nullptr);
 
-    //   // // Evaluate penalty terms
-    //   // kernel_lpen(Pe.data(), nullptr, nullptr, coordinate_dofs.data(),
-    //   // nullptr,
-    //   //             nullptr);
+      // Evaluate penalty terms
+      kernel_lpen(Pe.data(), nullptr, nullptr, coordinate_dofs.data(), nullptr,
+                  nullptr);
 
-    //   // // DOF transformation
-    //   // dof_transform(Ae, cell_info, c, ndim0);
-    //   // dof_transform_to_transpose(Ae, cell_info, c, ndim0);
+      // DOF transformation
+      dof_transform(Ae, cell_info, c, ndim0);
+      dof_transform_to_transpose(Ae, cell_info, c, ndim0);
 
-    //   // Set identifire for evaluated data
-    //   storage_stiffness.mark_cell_evaluated(c);
-    // }
+      // Set identifire for evaluated data
+      storage_stiffness.mark_cell_evaluated(c);
+    }
 
     // Evaluate linear form
     std::fill(Le.begin(), Le.end(), 0);
@@ -209,22 +204,19 @@ void equilibrate_flux_constrmin(
       const int ndofs_cons = patch.ndofs_cons();
       const int offset = patch.ndofs_flux_nz();
 
-      std::vector<T> Pe(ndofs_cons);
-      std::fill(Pe.begin(), Pe.end(), 0);
-
       // Loop over DOFs
       for (std::size_t k = 0; k < ndofs_cons; ++k)
       {
         // Add K_ql
-        A_patch(dofs_patch[offset + k], ndof_ppatch) += Pe[k];
+        A_patch(dofs_patch[offset + k], ndof_ppatch - 1) += Pe[k];
 
         // Add K_lq
-        A_patch(ndof_ppatch, dofs_patch[offset + k]) += Pe[k];
+        A_patch(ndof_ppatch - 1, dofs_patch[offset + k]) += Pe[k];
       }
     }
 
     // Unset hat function
-    set_hat_function(coeffs_l, info_coeffs_l, c, inode_local[index], 0.0);
+    // set_hat_function(coeffs_l, info_coeffs_l, c, inode_local[index], 0.0);
   }
 
   // // Debug

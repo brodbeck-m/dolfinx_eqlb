@@ -94,7 +94,6 @@ void reconstruct_fluxes_patch(const fem::Form<T>& a, const fem::Form<T>& l_pen,
   PatchFluxEV patch
       = PatchFluxEV(n_nodes, a.mesh(), fct_type, a.function_spaces().at(0),
                     basix_element_flux);
-  std::cout << "Test passed" << std::endl;
 
   /* Prepare Assembly */
   const auto& kernel_a = a.kernel(fem::IntegralType::cell, -1);
@@ -106,8 +105,8 @@ void reconstruct_fluxes_patch(const fem::Form<T>& a, const fem::Form<T>& l_pen,
   std::span<T> x_flux_dg = flux_dg.x()->mutable_array();
 
   // Initialize storage of tangents on each cell
-  // StorageStiffness<T> storage_stiffness
-  //     = StorageStiffness<T>(n_cells, patch.ndofs_elmt(), patch.ndofs_cons());
+  StorageStiffness<T> storage_stiffness
+      = StorageStiffness<T>(n_cells, patch.ndofs_elmt(), patch.ndofs_cons());
 
   /* Solve flux reconstruction on each patch */
   // Loop over all nodes and solve patch problem
@@ -120,8 +119,8 @@ void reconstruct_fluxes_patch(const fem::Form<T>& a, const fem::Form<T>& l_pen,
     equilibrate_flux_constrmin(geometry, patch, dofmap0->list(), dof_transform,
                                dof_transform_to_transpose, kernel_a,
                                kernel_lpen, kernel_l, consts_l, coeffs_l,
-                               info_coeffs_l, cell_info, x_flux, x_flux_dg);
-    std::cout << "Test passed" << std::endl;
+                               info_coeffs_l, cell_info, storage_stiffness,
+                               x_flux, x_flux_dg);
   }
 }
 
