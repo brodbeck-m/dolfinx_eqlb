@@ -10,12 +10,10 @@
 
 namespace dolfinx_adaptivity::equilibration
 {
-Patch::Patch(int ncells_max, std::shared_ptr<const dolfinx::mesh::Mesh> mesh,
+Patch::Patch(int nnodes_proc, std::shared_ptr<const dolfinx::mesh::Mesh> mesh,
              std::span<const std::int8_t> bfct_type)
-    : _ncells_max(ncells_max), _mesh(mesh), _bfct_type(bfct_type),
-      _dim(mesh->geometry().dim()), _dim_fct(mesh->geometry().dim() - 1),
-      _cells(ncells_max, 0), _fcts(ncells_max + 1, 0),
-      _fcts_sorted_data(ncells_max + 1, 0), _inodes_local(ncells_max, 0)
+    : _mesh(mesh), _bfct_type(bfct_type), _dim(mesh->geometry().dim()),
+      _dim_fct(mesh->geometry().dim() - 1)
 {
   // Initialize connectivities
   _node_to_cell = _mesh->topology().connectivity(0, _dim);
@@ -24,8 +22,35 @@ Patch::Patch(int ncells_max, std::shared_ptr<const dolfinx::mesh::Mesh> mesh,
   _cell_to_fct = _mesh->topology().connectivity(_dim, _dim_fct);
   _cell_to_node = _mesh->topology().connectivity(_dim, 0);
 
+  // Determine maximum patch size
+  set_max_patch_size(nnodes_proc);
+
+  // Reserve storage for patch geometry
+  _cells.resize(_ncells_max);
+  _fcts.resize(_ncells_max + 1);
+  _fcts_sorted_data.resize(_ncells_max + 1);
+  _inodes_local.resize(_ncells_max);
+
   // Initialize number of facets per cell
   _fct_per_cell = _cell_to_fct->links(0).size();
+}
+
+void Patch::set_max_patch_size(int nnodes_proc)
+{
+  // Initialization
+  _ncells_max = 0;
+
+  // Loop over all nodes
+  for (std::size_t i_node = 0; i_node < nnodes_proc; ++i_node)
+  {
+    // Get number of cells on patch
+    int n_cells = _node_to_cell->links(i_node).size();
+
+    if (n_cells > _ncells_max)
+    {
+      _ncells_max = n_cells;
+    }
+  }
 }
 
 std::pair<std::int32_t, std::int32_t> Patch::initialize_patch(int node_i)

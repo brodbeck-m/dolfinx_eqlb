@@ -1,4 +1,5 @@
 #include "PatchFluxEV.hpp"
+#include "Patch.hpp"
 #include <dolfinx/fem/DofMap.h>
 #include <dolfinx/fem/FunctionSpace.h>
 #include <dolfinx/graph/AdjacencyList.h>
@@ -6,6 +7,39 @@
 
 namespace dolfinx_adaptivity::equilibration
 {
+PatchFluxEV::PatchFluxEV(
+    int nnodes_proc, std::shared_ptr<const dolfinx::mesh::Mesh> mesh,
+    std::span<const std::int8_t> bfct_type,
+    const std::shared_ptr<const dolfinx::fem::FunctionSpace> function_space,
+    const basix::FiniteElement& basix_element_flux)
+    : Patch(nnodes_proc, mesh, bfct_type), _function_space(function_space),
+      _entity_dofs_flux(basix_element_flux.entity_dofs()),
+      _ndof_elmt(function_space->element()->space_dimension())
+
+{
+  /* Counter DOFs */
+  // Number of DOFs on mixed-element
+  _ndof_elmt = _function_space->element()->space_dimension();
+
+  // Number of DOFs on subelements
+  _ndof_flux_fct = _entity_dofs_flux[_dim_fct][0].size();
+  _ndof_flux_cell = _entity_dofs_flux[_dim][0].size();
+  _ndof_flux = _fct_per_cell * _ndof_flux_fct + _ndof_flux_cell;
+  _ndof_cons_cell = _ndof_elmt - _ndof_flux;
+  _ndof_cons = _ndof_cons_cell;
+
+  // Number of non-zero DOFs
+  _ndof_elmt_nz = _ndof_elmt - (_fct_per_cell - 2) * _ndof_flux_fct;
+  _ndof_flux_nz = _ndof_flux - (_fct_per_cell - 2) * _ndof_flux_fct;
+
+  /* Reserve storage of DOFmaps */
+  int len_adjacency = _ncells_max * _ndof_elmt_nz;
+
+  _dofsnz_elmt.resize(len_adjacency);
+  _dofsnz_patch.resize(len_adjacency);
+  _offset_dofmap.resize(_ncells_max + 1);
+}
+
 void PatchFluxEV::create_subdofmap(int node_i)
 {
   // Initialize patch

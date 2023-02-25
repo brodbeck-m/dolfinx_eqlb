@@ -63,7 +63,6 @@ set(
 
 target_sources(
   dolfinx_eqlb
-  PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/reconstruction.cpp
   PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Patch.cpp
   PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/PatchFluxEV.cpp
   PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/solve_patch_constrmin.cpp

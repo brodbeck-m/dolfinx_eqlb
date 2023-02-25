@@ -18,11 +18,15 @@ public:
   /// Storage is designed for the maximum patch size occuring within
   /// the current mesh.
   ///
-  /// @param ncells_max Maximum patch-size (number of elements)
-  /// @param mesh       The current mesh
-  /// @param bfct_type  List with type of all boundary facets
-  Patch(int ncells_max, std::shared_ptr<const dolfinx::mesh::Mesh> mesh,
+  /// @param nnodes_proc Numbe rof nodes on current processor
+  /// @param mesh        The current mesh
+  /// @param bfct_type   List with type of all boundary facets
+  Patch(int nnodes_proc, std::shared_ptr<const dolfinx::mesh::Mesh> mesh,
         std::span<const std::int8_t> bfct_type);
+
+  /// Determine maximum patch size
+  /// @param nnodes_proc Number of nodes on current processor
+  void set_max_patch_size(int nnodes_proc);
 
   /* Setter functions */
   void set_fcts_sorted(std::span<const std::int32_t> list_fcts)
@@ -182,7 +186,7 @@ protected:
                                    std::int8_t id_fct_loc);
 
   // Maximum size of patch
-  const int _ncells_max;
+  int _ncells_max;
 
   /* Geometry */
   // The mesh

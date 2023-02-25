@@ -1,5 +1,6 @@
 #pragma once
 
+#include "PatchFluxEV.hpp"
 #include "solve_patch_constrmin.hpp"
 #include <algorithm>
 #include <dolfinx/fem/DofMap.h>
@@ -21,41 +22,6 @@
 
 namespace dolfinx_adaptivity::equilibration
 {
-/// Construction of a sub-DOFmap on each patch
-///
-/// Determines type of patch (0-> internal, 1->bc_neumann, 2->bc_dirichlet
-/// 3->bc_mixed) and creats sorted DOFmap. Sorting of facets/elements/DOFs
-/// follows [1,2].
-///
-/// [1] Moldenhauer, M.: Stress reconstructionand a-posteriori error
-///     estimationfor elasticity (PhdThesis)
-/// [2] Bertrand, F.; Carstensen, C.; Gräßle, B. & Tran, N. T.:
-///     Stabilization-free HHO a posteriori error control, 2022
-///
-/// @param i_node         ID (local on partition!) of current node
-/// @param function_space FunctionSpace of mixed problem
-/// @param entity_dofs0   BasiX/FiniteElement.entity_dofs flux subspace
-/// @param entity_dofs1   BasiX/FiniteElement.entity_dofs constraint
-///                       subspace
-/// @param fct_type       Vector (len: number of fcts on partition)
-///                       determine the facet type
-/// @return type_patch    Type of patch (0, 1, 2 or 3)
-/// @return ndof_patch    Number of DOFs on patch
-/// @return cells_patch   List of cells (consisnten to local DOFmap)
-///                       on patch
-/// @return inode_local   Local id of i_node on cell_i
-/// @return dofs_local    Non-Zero DOFs on patch (element-local ID)
-/// @return dofs_patch    Non-Zero DOFs on patch (patch-local ID)
-
-std::tuple<int, const int, std::vector<std::int32_t>, std::vector<std::int8_t>,
-           graph::AdjacencyList<std::int32_t>,
-           graph::AdjacencyList<std::int32_t>>
-submap_equilibration_patch(
-    int i_node, std::shared_ptr<const fem::FunctionSpace> function_space,
-    const std::vector<std::vector<std::vector<int>>>& entity_dofs0,
-    const std::vector<std::vector<std::vector<int>>>& entity_dofs1,
-    const std::vector<std::int8_t>& fct_type);
-
 /// Execute calculation of patch constributions to flux
 ///
 /// @param a              The bilinear form to assemble
@@ -71,7 +37,7 @@ void reconstruct_fluxes_patch(const fem::Form<T>& a, const fem::Form<T>& l,
                               std::span<const T> consts_l,
                               std::span<T> coeffs_l,
                               const std::vector<int>& info_coeffs_l,
-                              std::vector<std::int8_t>& fct_type,
+                              std::span<std::int8_t> fct_type,
                               fem::Function<T>& flux, fem::Function<T>& flux_dg)
 {
   /* Geometry */
@@ -92,14 +58,6 @@ void reconstruct_fluxes_patch(const fem::Form<T>& a, const fem::Form<T>& l,
   // Get DOFmap
   std::shared_ptr<const fem::DofMap> dofmap0 = function_space->dofmap();
   assert(dofmap0);
-
-  // BasiX elements of subspaces
-  std::vector<int> sub0(1, 0);
-  std::vector<int> sub1(1, 1);
-  const basix::FiniteElement& basix_element0
-      = function_space->sub(sub0)->element()->basix_element();
-  const basix::FiniteElement& basix_element1
-      = function_space->sub(sub1)->element()->basix_element();
 
   /* DOF transformation */
   std::shared_ptr<const fem::FiniteElement> element0
@@ -124,6 +82,16 @@ void reconstruct_fluxes_patch(const fem::Form<T>& a, const fem::Form<T>& l,
     cell_info = std::span(mesh->topology().get_cell_permutation_info());
   }
 
+  /* Initialize Patch */
+  // BasiX elements of flux subspaces
+  std::vector<int> sub0(1, 0);
+  const basix::FiniteElement& basix_element_flux
+      = function_space->sub(sub0)->element()->basix_element();
+
+  PatchFluxEV patch
+      = PatchFluxEV(n_nodes, a.mesh(), fct_type, a.function_spaces().at(0),
+                    basix_element_flux);
+
   /* Prepare Assembly */
   // Integration kernels
   const auto& kernel_a = a.kernel(fem::IntegralType::cell, -1);
@@ -135,7 +103,7 @@ void reconstruct_fluxes_patch(const fem::Form<T>& a, const fem::Form<T>& l,
 
   /* Initialize storage of  stiffnes matrix on each cell*/
   // Get size for storage array
-  const int dim_fe_space = element0->space_dimension();
+  const int dim_fe_space = patch.ndof_elmt();
   const int dim_stiffness = dim_fe_space * dim_fe_space;
 
   // Initialize id, if cell is already initilaized
@@ -156,19 +124,15 @@ void reconstruct_fluxes_patch(const fem::Form<T>& a, const fem::Form<T>& l,
   for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
   {
     // Create Sub-DOFmap
-    auto [type_patch, ndof_patch, cells_patch, inode_local, dofs_local,
-          dofs_patch]
-        = submap_equilibration_patch(i_node, function_space,
-                                     basix_element0.entity_dofs(),
-                                     basix_element1.entity_dofs(), fct_type);
+    patch.create_subdofmap(i_node);
 
     // Solve patch problem
-    equilibrate_flux_constrmin(
-        geometry, type_patch, ndof_patch, cells_patch, dofmap0->list(),
-        dofs_local, dofs_patch, dof_transform, dof_transform_to_transpose,
-        kernel_a, kernel_l, consts_l, coeffs_l, info_coeffs_l, inode_local,
-        cell_info, cell_is_evaluated, storage_stiffness_cells, x_flux,
-        x_flux_dg);
+    // equilibrate_flux_constrmin(
+    //     geometry, type_patch, ndof_patch, cells_patch, dofmap0->list(),
+    //     dofs_local, dofs_patch, dof_transform, dof_transform_to_transpose,
+    //     kernel_a, kernel_l, consts_l, coeffs_l, info_coeffs_l, inode_local,
+    //     cell_info, cell_is_evaluated, storage_stiffness_cells, x_flux,
+    //     x_flux_dg);
   }
 }
 
@@ -260,7 +224,7 @@ void reconstruct_fluxes(const fem::Form<T>& a, const fem::Form<T>& l,
   /* Initialize essential boundary conditions for reconstructed flux */
   // TODO - Implement preparation of boundary conditions
   reconstruct_fluxes_patch(a, l, std::span(constants_l), std::span(coeffs_l),
-                           info_coeffs_l, fct_type, flux, flux_dg);
+                           info_coeffs_l, std::span(fct_type), flux, flux_dg);
 }
 
 } // namespace dolfinx_adaptivity::equilibration
