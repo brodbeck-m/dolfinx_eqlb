@@ -50,19 +50,22 @@ public:
 
   /* Getter functions */
   /// @return Number of DOFs on element
-  int ndof_elmt() { return _ndof_elmt; }
+  int ndofs_elmt() { return _ndof_elmt; }
 
   /// @return Number of non-zero DOFs on element
-  int ndof_elmt_nz() { return _ndof_elmt_nz; }
+  int ndofs_elmt_nz() { return _ndof_elmt_nz; }
 
   /// @return Number of flux-DOFs on element
-  int ndof_flux() { return _ndof_flux; }
+  int ndofs_flux() { return _ndof_flux; }
 
   /// @return Number of non-zero flux-DOFs on element
-  int ndof_flux_nz() { return _ndof_flux_nz; }
+  int ndofs_flux_nz() { return _ndof_flux_nz; }
 
   /// @return Number of constrained-DOFs on element
-  int ndof_cons() { return _ndof_cons; }
+  int ndofs_cons() { return _ndof_cons; }
+
+  /// @return Number of non-zero DOFs on patch
+  int ndofs_patch() { return _ndof_patch_nz; }
 
   /// Extract patch-local DOFs of cell
   /// @param cell_i Patch-local cell-id
@@ -122,7 +125,7 @@ protected:
   int _ndof_flux_fct, _ndof_flux_cell, _ndof_cons_cell, _ndof_flux, _ndof_cons;
 
   // Number on non-zero DOFs on element (on patch)
-  int _ndof_elmt_nz, _ndof_flux_nz;
+  int _ndof_elmt_nz, _ndof_flux_nz, _ndof_patch_nz;
 };
 
 } // namespace dolfinx_adaptivity::equilibration

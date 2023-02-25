@@ -45,10 +45,13 @@ void PatchFluxEV::create_subdofmap(int node_i)
   // Initialize patch
   auto [fct_i, c_fct_loop] = initialize_patch(node_i);
 
+  // Set number of DOFs on patch
+  const int ndof_cell = _ndof_flux_cell + _ndof_cons_cell;
+  _ndof_patch_nz = _nfcts * _ndof_flux_fct + _ncells * ndof_cell;
+
   /* Create DOFmap on patch */
   // Initialisation
   std::int32_t cell_i = -1, dof_patch = 0;
-  const int ndof_cell = _ndof_flux_cell + _ndof_cons_cell;
 
   // Loop over all facets on patch
   for (std::size_t ii = 0; ii < c_fct_loop; ++ii)

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "PatchFluxEV.hpp"
 #include "eigen3/Eigen/Dense"
 #include "eigen3/Eigen/Sparse"
 #include <algorithm>
@@ -48,15 +49,8 @@ void set_hat_function(std::span<T> coeffs_l,
 ///     Discontinuous Galerkin, and Mixed Discretizations, 2015
 ///
 /// @param geometry                   msh->geomtry of the problem
-/// @param type_patch                 Patch type (0-internal, 1-neumann,
-///                                   2-dirichlet, 3-mixed)
-/// @param ndof_patch                 Number of DOFs on patch
-/// @param cells                      List of cells on current patch
+/// @param patch                      The patch
 /// @param dofmap_global              dofmap.list() of global FEspace
-/// @param dofmap_elmt                Adjacency list of element-wise DOFs
-///                                   (only non-zero)
-/// @param dofmap_patch               Adjacency list of patch-wise DOFs
-//                                    (only non-zero)
 /// @param dof_transform              DOF-transformation function
 /// @param dof_transform_to_transpose DOF-transformation function
 /// @param kernel_a                   Kernel bilinar form
@@ -70,16 +64,11 @@ void set_hat_function(std::span<T> coeffs_l,
 ///                                   has already been evaluated
 /// @param storage_stiffness_cells    Storage element-stiffness matrizes
 /// @param x_flux                     DOFs flux function (Hdiv)
-/// @param x_flux_dg                  DOFs flux function
-///                                   (projected from primal solution)
 
 template <typename T>
 void equilibrate_flux_constrmin(
-    const mesh::Geometry& geometry, const int type_patch, const int ndof_patch,
-    std::vector<std::int32_t>& cells,
+    const mesh::Geometry& geometry, PatchFluxEV& patch,
     const graph::AdjacencyList<std::int32_t>& dofmap_global,
-    const graph::AdjacencyList<std::int32_t>& dofmap_elmt,
-    const graph::AdjacencyList<std::int32_t>& dofmap_patch,
     const std::function<void(const std::span<T>&,
                              const std::span<const std::uint32_t>&,
                              std::int32_t, int)>& dof_transform,
@@ -89,7 +78,6 @@ void equilibrate_flux_constrmin(
     fem::FEkernel<T> auto kernel_a, fem::FEkernel<T> auto kernel_l,
     std::span<const T> consts_l, std::span<T> coeffs_l,
     const std::vector<int>& info_coeffs_l,
-    const std::vector<std::int8_t>& inode_local,
     std::span<const std::uint32_t> cell_info,
     std::vector<std::int8_t>& cell_is_evaluated,
     graph::AdjacencyList<T>& storage_stiffness_cells, std::span<T> x_flux,
@@ -101,10 +89,23 @@ void equilibrate_flux_constrmin(
 
   std::vector<double> coordinate_dofs(3 * geometry.cmap().dim());
 
-  // Get number of DOFs on element
-  const int ndim0 = dofmap_global.links(0).size();
+  /* Extract patch informations */
+  // Type patch
+  const int type_patch = patch.type();
 
-  // Initialize storage of tangent arrays (Penalty for pure Neumann problems)
+  // Cells on patch
+  std::span<const std::int32_t> cells = patch.cells();
+
+  // List local node-ids on central node
+  std::span<const std::int8_t> inode_local = patch.inodes_local();
+
+  // DOF counters
+  const int ndim0 = patch.ndofs_elmt();
+  const int ndof_elmt_nz = patch.ndofs_elmt_nz();
+  const int ndof_patch = patch.ndofs_patch();
+
+  // Initialize storage of tangent arrays (Penalty for pure Neumann
+  // problems)
   Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> A_patch;
   Eigen::Matrix<T, Eigen::Dynamic, 1> L_patch, flux_patch;
 
@@ -173,13 +174,10 @@ void equilibrate_flux_constrmin(
 
     /* Assemble into patch system */
     // Element-local and patch-local DOFmap
-    std::span<const int32_t> dofs_elmt = dofmap_elmt.links(index);
-    std::span<const int32_t> dofs_patch = dofmap_patch.links(index);
+    std::span<const int32_t> dofs_elmt = patch.dofs_elmt(index);
+    std::span<const int32_t> dofs_patch = patch.dofs_patch(index);
 
-    // Number of non-zero DOFs on element
-    int num_nzdof_elmt = dofs_elmt.size();
-
-    for (std::size_t k = 0; k < num_nzdof_elmt; ++k)
+    for (std::size_t k = 0; k < ndof_elmt_nz; ++k)
     {
       // Calculate offset
       int offset = dofs_elmt[k] * ndim0;
@@ -187,7 +185,7 @@ void equilibrate_flux_constrmin(
       // Assemble load vector
       L_patch(dofs_patch[k]) += Le[dofs_elmt[k]];
 
-      for (std::size_t l = 0; l < num_nzdof_elmt; ++l)
+      for (std::size_t l = 0; l < ndof_elmt_nz; ++l)
       {
         // Assemble stiffness matrix
         A_patch(dofs_patch[k], dofs_patch[l]) += Ae[offset + dofs_elmt[l]];
@@ -198,12 +196,10 @@ void equilibrate_flux_constrmin(
     set_hat_function(coeffs_l, info_coeffs_l, c, inode_local[index], 0.0);
   }
 
-  // Debug
+  // // Debug
   // std::fill(x_flux_dg.begin(), x_flux_dg.end(), 0);
   // std::cout << "Type-Patch: " << type_patch << std::endl;
   // std::cout << "nDOFs patch: " << ndof_patch << std::endl;
-  // std::cout << "nDOFs nonzero elmt: " << dofmap_elmt.links(0).size()
-  //           << std::endl;
   // int offset = 0;
   // for (std::size_t k = 0; k < ndof_patch; ++k)
   // {

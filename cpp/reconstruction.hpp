@@ -103,7 +103,7 @@ void reconstruct_fluxes_patch(const fem::Form<T>& a, const fem::Form<T>& l,
 
   /* Initialize storage of  stiffnes matrix on each cell*/
   // Get size for storage array
-  const int dim_fe_space = patch.ndof_elmt();
+  const int dim_fe_space = patch.ndofs_elmt();
   const int dim_stiffness = dim_fe_space * dim_fe_space;
 
   // Initialize id, if cell is already initilaized
@@ -127,12 +127,11 @@ void reconstruct_fluxes_patch(const fem::Form<T>& a, const fem::Form<T>& l,
     patch.create_subdofmap(i_node);
 
     // Solve patch problem
-    // equilibrate_flux_constrmin(
-    //     geometry, type_patch, ndof_patch, cells_patch, dofmap0->list(),
-    //     dofs_local, dofs_patch, dof_transform, dof_transform_to_transpose,
-    //     kernel_a, kernel_l, consts_l, coeffs_l, info_coeffs_l, inode_local,
-    //     cell_info, cell_is_evaluated, storage_stiffness_cells, x_flux,
-    //     x_flux_dg);
+    equilibrate_flux_constrmin(geometry, patch, dofmap0->list(), dof_transform,
+                               dof_transform_to_transpose, kernel_a, kernel_l,
+                               consts_l, coeffs_l, info_coeffs_l, cell_info,
+                               cell_is_evaluated, storage_stiffness_cells,
+                               x_flux, x_flux_dg);
   }
 }
 
