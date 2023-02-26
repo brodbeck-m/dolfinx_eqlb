@@ -14,6 +14,7 @@
 #include <dolfinx/mesh/Geometry.h>
 #include <dolfinx/mesh/Mesh.h>
 #include <dolfinx/mesh/Topology.h>
+#include <dolfinx/mesh/cell_types.h>
 #include <exception>
 #include <functional>
 #include <iostream>
@@ -155,30 +156,28 @@ void reconstruct_fluxes(const fem::Form<T>& a, const fem::Form<T>& l_pen,
   auto& [coeffs_l, cstride_l]
       = coefficients_l.at({fem::IntegralType::cell, -1});
 
+  // Get ndofs of _hat fe-space
+  int ndof_hat = dolfinx::mesh::cell_num_entities(topology.cell_type(), 0);
+
   // Pack relevant informations (0->cstride, 1->Begin _hat, 2->Begin flux_dg)
   std::vector<int> info_coeffs_l(3, 0);
+  info_coeffs_l[0] = cstride_l;
 
-  if (cstride_l - l.coefficient_offsets()[1] > l.coefficient_offsets()[1])
+  if (cstride_l - l.coefficient_offsets()[1] == ndof_hat)
   {
-    // Set cstride_l
-    info_coeffs_l[0] = cstride_l;
-
     // Set beginn of _hat-data
     info_coeffs_l[1] = l.coefficient_offsets()[1];
 
     // Set beginn of flux_dg-data
-    info_coeffs_l[1] = 0;
+    info_coeffs_l[2] = 0;
   }
   else
   {
-    // Set cstride_l
-    info_coeffs_l[0] = cstride_l;
-
     // Set beginn of _hat-data
     info_coeffs_l[1] = 0;
 
     // Set beginn of flux_dg-data
-    info_coeffs_l[1] = l.coefficient_offsets()[1];
+    info_coeffs_l[2] = l.coefficient_offsets()[1];
   }
 
   /* Mark facest (0->internal, 1->esnt_prim, 2->esnt_flux) */

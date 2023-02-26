@@ -135,7 +135,7 @@ void equilibrate_flux_constrmin(
     std::span<T> Pe = storage_stiffness.penalty_elmt(c);
 
     // Set hat-function appropriately
-    // set_hat_function(coeffs_l, info_coeffs_l, c, inode_local[index], 1.0);
+    set_hat_function(coeffs_l, info_coeffs_l, c, inode_local[index], 1.0);
 
     /* Evaluate tangent arrays if not already done */
     // Extract cell geometry
@@ -216,7 +216,7 @@ void equilibrate_flux_constrmin(
     }
 
     // Unset hat function
-    // set_hat_function(coeffs_l, info_coeffs_l, c, inode_local[index], 0.0);
+    set_hat_function(coeffs_l, info_coeffs_l, c, inode_local[index], 0.0);
   }
 
   // // Debug
