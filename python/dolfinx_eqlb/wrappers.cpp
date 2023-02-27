@@ -32,13 +32,25 @@ PYBIND11_MODULE(cpp, m)
         { local_solver<PetscScalar>(sol_elmt, a, l); });
 
   // Equilibartion of vector-valued quantity
-  //   m.def(
-  //       "reconstruct_flux_patch",
-  //       [](dolfinx::fem::Function<PetscScalar>& sol_elmt,
-  //          const dolfinx::fem::Form<PetscScalar>& a,
-  //          const dolfinx::fem::Form<PetscScalar>& l)
-  //       { dolfinx_eqlb::reconstruct_flux_patch<PetscScalar>(sol_elmt, a, l);
-  //       }, py::return_value_policy::take_ownership);
-  m.def("reconstruct_flux_patch",
-        &equilibration::reconstruct_fluxes<PetscScalar>);
+  m.def(
+      "reconstruct_fluxes",
+      [](const dolfinx::fem::Form<PetscScalar>& a,
+         const dolfinx::fem::Form<PetscScalar>& l_pen,
+         const std::vector<
+             std::shared_ptr<const dolfinx::fem::Form<PetscScalar>>>& l,
+         std::vector<std::int32_t>& fct_esntbound_prime,
+         std::vector<std::int32_t>& fct_esntbound_flux,
+         dolfinx::fem::Function<PetscScalar>& flux_hdiv,
+         dolfinx::fem::Function<PetscScalar>& flux_dg)
+      {
+        equilibration::reconstruct_fluxes<PetscScalar>(
+            a, l_pen, l, fct_esntbound_prime, fct_esntbound_flux, flux_hdiv,
+            flux_dg);
+      },
+      py::arg("a"), py::arg("l_pen"), py::arg("l"),
+      py::arg("fct_esntbound_prime"), py::arg("fct_esntbound_prime"),
+      py::arg("flux_hdiv"), py::arg("flux_dg"),
+      "Local equilibartion of H(div) conforming fluxes.");
+  //   m.def("reconstruct_flux_patch",
+  //         &equilibration::reconstruct_fluxes<PetscScalar>);
 }

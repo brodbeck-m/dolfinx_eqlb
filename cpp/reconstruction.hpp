@@ -133,11 +133,12 @@ void reconstruct_fluxes_patch(const fem::Form<T>& a, const fem::Form<T>& l_pen,
 /// @param fct_esntbound_flux  Facets of essential BCs on flux field
 /// @param flux                Function that holds the reconstructed flux
 template <typename T>
-void reconstruct_fluxes(const fem::Form<T>& a, const fem::Form<T>& l_pen,
-                        const fem::Form<T>& l,
-                        std::vector<std::int32_t>& fct_esntbound_prime,
-                        std::vector<std::int32_t>& fct_esntbound_flux,
-                        fem::Function<T>& flux, fem::Function<T>& flux_dg)
+void reconstruct_fluxes(
+    const fem::Form<T>&, const fem::Form<T>& l_pen,
+    const std::vector<std::shared_ptr<const dolfinx::fem::Form<T>>>& l,
+    std::vector<std::int32_t>& fct_esntbound_prime,
+    std::vector<std::int32_t>& fct_esntbound_flux, fem::Function<T>& flux,
+    fem::Function<T>& flux_dg)
 {
   /* Geometry data */
   // Get topology
@@ -147,11 +148,13 @@ void reconstruct_fluxes(const fem::Form<T>& a, const fem::Form<T>& l_pen,
   const int dim_fct = topology.dim() - 1;
 
   /* Constants and coefficients */
-  // Allocate storage of coefficients/constants of linear form
-  const std::vector<T> constants_l = pack_constants(l);
+  const fem::Form<T>& l0 = *(l[0]);
 
-  auto coefficients_l = fem::allocate_coefficient_storage(l);
-  fem::pack_coefficients(l, coefficients_l);
+  // Allocate storage of coefficients/constants of linear form
+  const std::vector<T> constants_l = pack_constants(l0);
+
+  auto coefficients_l = fem::allocate_coefficient_storage(l0);
+  fem::pack_coefficients(l0, coefficients_l);
 
   auto& [coeffs_l, cstride_l]
       = coefficients_l.at({fem::IntegralType::cell, -1});
@@ -163,10 +166,10 @@ void reconstruct_fluxes(const fem::Form<T>& a, const fem::Form<T>& l_pen,
   std::vector<int> info_coeffs_l(3, 0);
   info_coeffs_l[0] = cstride_l;
 
-  if (cstride_l - l.coefficient_offsets()[1] == ndof_hat)
+  if (cstride_l - l0.coefficient_offsets()[1] == ndof_hat)
   {
     // Set beginn of _hat-data
-    info_coeffs_l[1] = l.coefficient_offsets()[1];
+    info_coeffs_l[1] = l0.coefficient_offsets()[1];
 
     // Set beginn of flux_dg-data
     info_coeffs_l[2] = 0;
@@ -177,7 +180,7 @@ void reconstruct_fluxes(const fem::Form<T>& a, const fem::Form<T>& l_pen,
     info_coeffs_l[1] = 0;
 
     // Set beginn of flux_dg-data
-    info_coeffs_l[2] = l.coefficient_offsets()[1];
+    info_coeffs_l[2] = l0.coefficient_offsets()[1];
   }
 
   /* Mark facest (0->internal, 1->esnt_prim, 2->esnt_flux) */
@@ -211,7 +214,7 @@ void reconstruct_fluxes(const fem::Form<T>& a, const fem::Form<T>& l_pen,
 
   /* Initialize essential boundary conditions for reconstructed flux */
   // TODO - Implement preparation of boundary conditions
-  reconstruct_fluxes_patch(a, l_pen, l, std::span(constants_l),
+  reconstruct_fluxes_patch(a, l_pen, l0, std::span(constants_l),
                            std::span(coeffs_l), info_coeffs_l,
                            std::span(fct_type), flux, flux_dg);
 }
