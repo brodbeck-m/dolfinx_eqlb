@@ -4,6 +4,7 @@
 #include "StorageStiffness.hpp"
 #include "solve_patch_constrmin.hpp"
 #include <algorithm>
+#include <dolfinx/fem/DirichletBC.h>
 #include <dolfinx/fem/DofMap.h>
 #include <dolfinx/fem/Form.h>
 #include <dolfinx/fem/Function.h>
@@ -134,11 +135,14 @@ void reconstruct_fluxes_patch(const fem::Form<T>& a, const fem::Form<T>& l_pen,
 /// @param flux                Function that holds the reconstructed flux
 template <typename T>
 void reconstruct_fluxes(
-    const fem::Form<T>&, const fem::Form<T>& l_pen,
+    const fem::Form<T>& a, const fem::Form<T>& l_pen,
     const std::vector<std::shared_ptr<const dolfinx::fem::Form<T>>>& l,
-    std::vector<std::int32_t>& fct_esntbound_prime,
-    std::vector<std::int32_t>& fct_esntbound_flux, fem::Function<T>& flux,
-    fem::Function<T>& flux_dg)
+    const std::vector<std::vector<std::int32_t>>& fct_esntbound_prime,
+    const std::vector<std::vector<std::int32_t>>& fct_esntbound_flux,
+    const std::vector<
+        std::vector<std::shared_ptr<const dolfinx::fem::DirichletBC<T>>>>&
+        bcs_flux,
+    fem::Function<T>& flux, fem::Function<T>& flux_dg)
 {
   /* Geometry data */
   // Get topology
@@ -191,9 +195,9 @@ void reconstruct_fluxes(
   // Mark facets with essential bcs for primal solution
   // FIXME - Allow for empty arrays
   // FIXME - Parallel computation (input only local facets?)
-  if (!fct_esntbound_prime.empty())
+  if (!fct_esntbound_prime[0].empty())
   {
-    for (const std::int32_t fct : fct_esntbound_prime)
+    for (const std::int32_t fct : fct_esntbound_prime[0])
     {
       // Set marker facet
       fct_type[fct] = 1;
@@ -203,9 +207,9 @@ void reconstruct_fluxes(
   // Mark facets with essential bcs for flux
   // FIXME - Allow for empty arrays
   // FIXME - Parallel computation (input only local facets?)
-  if (!fct_esntbound_flux.empty())
+  if (!fct_esntbound_flux[0].empty())
   {
-    for (const std::int32_t fct : fct_esntbound_flux)
+    for (const std::int32_t fct : fct_esntbound_flux[0])
     {
       // Set marker facet
       fct_type[fct] = 2;

@@ -1,4 +1,5 @@
 #include "caster_petsc.h"
+#include <dolfinx/fem/DirichletBC.h>
 #include <dolfinx/fem/Form.h>
 #include <dolfinx/fem/Function.h>
 #include <iostream>
@@ -38,18 +39,20 @@ PYBIND11_MODULE(cpp, m)
          const dolfinx::fem::Form<PetscScalar>& l_pen,
          const std::vector<
              std::shared_ptr<const dolfinx::fem::Form<PetscScalar>>>& l,
-         std::vector<std::int32_t>& fct_esntbound_prime,
-         std::vector<std::int32_t>& fct_esntbound_flux,
+         const std::vector<std::vector<std::int32_t>>& fct_esntbound_prime,
+         const std::vector<std::vector<std::int32_t>>& fct_esntbound_flux,
+         const std::vector<std::vector<std::shared_ptr<
+             const dolfinx::fem::DirichletBC<PetscScalar>>>>& bcs1,
          dolfinx::fem::Function<PetscScalar>& flux_hdiv,
          dolfinx::fem::Function<PetscScalar>& flux_dg)
       {
         equilibration::reconstruct_fluxes<PetscScalar>(
-            a, l_pen, l, fct_esntbound_prime, fct_esntbound_flux, flux_hdiv,
-            flux_dg);
+            a, l_pen, l, fct_esntbound_prime, fct_esntbound_flux, bcs1,
+            flux_hdiv, flux_dg);
       },
       py::arg("a"), py::arg("l_pen"), py::arg("l"),
       py::arg("fct_esntbound_prime"), py::arg("fct_esntbound_prime"),
-      py::arg("flux_hdiv"), py::arg("flux_dg"),
+      py::arg("bcs"), py::arg("flux_hdiv"), py::arg("flux_dg"),
       "Local equilibartion of H(div) conforming fluxes.");
   //   m.def("reconstruct_flux_patch",
   //         &equilibration::reconstruct_fluxes<PetscScalar>);
