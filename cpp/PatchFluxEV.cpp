@@ -9,7 +9,7 @@ namespace dolfinx_adaptivity::equilibration
 {
 PatchFluxEV::PatchFluxEV(
     int nnodes_proc, std::shared_ptr<const dolfinx::mesh::Mesh> mesh,
-    std::span<const std::int8_t> bfct_type,
+    dolfinx::graph::AdjacencyList<std::int8_t>& bfct_type,
     const std::shared_ptr<const dolfinx::fem::FunctionSpace> function_space,
     const basix::FiniteElement& basix_element_flux)
     : Patch(nnodes_proc, mesh, bfct_type), _function_space(function_space),
@@ -58,7 +58,7 @@ void PatchFluxEV::create_subdofmap(int node_i)
   {
     // Set next cell on patch
     auto [id_fct_loc_ci, id_fct_loc_cim1, fct_next]
-        = fcti_to_celli(ii, fct_i, cell_i);
+        = fcti_to_celli(0, ii, fct_i, cell_i);
 
     // Offset first DOF (flux DOFs on facet 1) on elmt_i
     std::int32_t offs_p = (ii + 1) * _ndof_elmt_nz;
@@ -67,7 +67,7 @@ void PatchFluxEV::create_subdofmap(int node_i)
     // Offset flux DOFs ond second facet elmt_(i-1)
     std::int32_t offs_f;
 
-    if (_type > 0)
+    if (_type[0] > 0)
     {
       // Extract cell_i
       cell_i = _cells[ii];
@@ -133,7 +133,7 @@ void PatchFluxEV::create_subdofmap(int node_i)
   }
 
   // Handle last boundary facet (boundary patches)
-  if (_type > 0)
+  if (_type[0] > 0)
   {
     // Get local id of facet
     std::int8_t id_fct_loc = get_fctid_local(fct_i, cell_i);

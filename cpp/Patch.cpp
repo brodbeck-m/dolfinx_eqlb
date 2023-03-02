@@ -11,9 +11,10 @@
 namespace dolfinx_adaptivity::equilibration
 {
 Patch::Patch(int nnodes_proc, std::shared_ptr<const dolfinx::mesh::Mesh> mesh,
-             std::span<const std::int8_t> bfct_type)
+             dolfinx::graph::AdjacencyList<std::int8_t>& bfct_type)
     : _mesh(mesh), _bfct_type(bfct_type), _dim(mesh->geometry().dim()),
-      _dim_fct(mesh->geometry().dim() - 1)
+      _dim_fct(mesh->geometry().dim() - 1), _type(bfct_type.num_nodes(), 0),
+      _npatches(bfct_type.num_nodes())
 {
   // Initialize connectivities
   _node_to_cell = _mesh->topology().connectivity(0, _dim);
@@ -70,7 +71,8 @@ std::pair<std::int32_t, std::int32_t> Patch::initialize_patch(int node_i)
   set_fcts_sorted(fcts);
 
   // Initialize type of patch
-  _type = 0;
+  std::fill(_type.begin(), _type.end(), 0);
+  _equal_patches = true;
 
   // Initialize first facet
   std::int32_t fct_first = fcts[0];
@@ -78,41 +80,58 @@ std::pair<std::int32_t, std::int32_t> Patch::initialize_patch(int node_i)
   // Initialize loop over facets
   std::int32_t c_fct_loop = _ncells;
 
-  // Determine patch type
   if (_nfcts > _ncells)
   {
-    std::int32_t fct_ef = -1;
-    std::int32_t fct_ep = -1;
+    int count_type = 0;
 
-    // Check for boundary facets (id=1->esnt_prime, id=2, esnt_flux)
-    for (std::int32_t id_fct : fcts)
+    // Determine patch types
+    for (int i = _npatches - 1; i >= 0; --i)
     {
-      if (_bfct_type[id_fct] == 1)
+      // Initializations
+      std::int32_t fct_ef = -1;
+      std::int32_t fct_ep = -1;
+
+      std::span<std::int8_t> bfct_type_i = _bfct_type.links(i);
+
+      // Check for boundary facets (id=1->esnt_prime, id=2, esnt_flux)
+      for (std::int32_t id_fct : fcts)
       {
-        // Mark first facet for DOFmap construction
-        fct_ep = id_fct;
+        if (bfct_type_i[id_fct] == 1)
+        {
+          // Mark first facet for DOFmap construction
+          fct_ep = id_fct;
+        }
+        else if (bfct_type_i[id_fct] == 2)
+        {
+          // Mark first facet for DOFmap construction
+          fct_ef = id_fct;
+        }
       }
-      else if (_bfct_type[id_fct] == 2)
+
+      // Set patch type
+      if (fct_ef < 0)
       {
-        // Mark first facet for DOFmap construction
-        fct_ef = id_fct;
+        _type[i] = 2;
+        count_type += 2;
+
+        // Start patch construction on dirichlet facet
+        fct_first = fct_ep;
+      }
+      else
+      {
+        int type = (fct_ep < 0) ? 1 : 3;
+        _type[i] = type;
+        count_type += type;
+
+        // Start patch construction on neumann facet
+        fct_first = fct_ef;
       }
     }
 
-    // Set patch type
-    if (fct_ef < 0)
+    // Check if all patches have the same type
+    if (count_type / _type[0] == _npatches && count_type % _type[0] == 0)
     {
-      _type = 2;
-
-      // Start patch construction on dirichlet facet
-      fct_first = fct_ep;
-    }
-    else
-    {
-      _type = (fct_ep < 0) ? 1 : 3;
-
-      // Start patch construction on neumann facet
-      fct_first = fct_ef;
+      _equal_patches = false;
     }
   }
 
@@ -120,7 +139,8 @@ std::pair<std::int32_t, std::int32_t> Patch::initialize_patch(int node_i)
 }
 
 std::tuple<std::int8_t, std::int8_t, std::int32_t>
-Patch::fcti_to_celli(int c_fct, std::int32_t fct_i, std::int32_t cell_in)
+Patch::fcti_to_celli(int id_l, int c_fct, std::int32_t fct_i,
+                     std::int32_t cell_in)
 {
   // Initialize local facet_ids
   std::int8_t id_fct_loc_ci = 0;
@@ -136,7 +156,7 @@ Patch::fcti_to_celli(int c_fct, std::int32_t fct_i, std::int32_t cell_in)
   std::span<const std::int32_t> fct_cell_i, fct_cell_im1;
 
   // Cells adjacent to current facet and local facet IDs
-  if (_type > 0 && c_fct == 0)
+  if (_type[id_l] > 0 && c_fct == 0)
   {
     cell_i = cell_fct_i[0];
 
@@ -177,7 +197,7 @@ Patch::fcti_to_celli(int c_fct, std::int32_t fct_i, std::int32_t cell_in)
       = next_facet_triangle(cell_i, fct_cell_i, id_fct_loc_ci);
 
   // Store relevant data
-  if (_type > 0)
+  if (_type[id_l] > 0)
   {
     _cells[c_fct] = cell_i;
     _inodes_local[c_fct] = id_node_loc_ci;

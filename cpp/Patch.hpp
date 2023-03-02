@@ -22,7 +22,7 @@ public:
   /// @param mesh        The current mesh
   /// @param bfct_type   List with type of all boundary facets
   Patch(int nnodes_proc, std::shared_ptr<const dolfinx::mesh::Mesh> mesh,
-        std::span<const std::int8_t> bfct_type);
+        dolfinx::graph::AdjacencyList<std::int8_t>& bfct_type);
 
   /// Determine maximum patch size
   /// @param nnodes_proc Number of nodes on current processor
@@ -47,8 +47,9 @@ public:
   int node_i() { return _nodei; }
 
   /// Return patch type
+  /// @param index Index of equilibrated flux
   /// @return Type of the patch
-  int type() { return _type; }
+  int type(int index) { return _type[index]; }
 
   /// Return number of facets per cell
   /// @return Number of facets per cell
@@ -143,6 +144,7 @@ protected:
   /// [2] Bertrand, F.; Carstensen, C.; Gräßle, B. & Tran, N. T.:
   ///     Stabilization-free HHO a posteriori error control, 2022
   ///
+  /// @param id_l     Id of used LHS
   /// @param c_fct    Counter within loop over all facets of patch
   /// @param fct_i    Processor-local id of facet
   /// @param cell_in  Processor-local id of last cell on patch
@@ -150,7 +152,7 @@ protected:
   /// @return         Cell-local id of fct_i in cell_(i-1),
   /// @return         Next facet on patch
   std::tuple<std::int8_t, std::int8_t, std::int32_t>
-  fcti_to_celli(int c_fct, std::int32_t fct_i, std::int32_t cell_i);
+  fcti_to_celli(int id_l, int c_fct, std::int32_t fct_i, std::int32_t cell_i);
 
   /// Determine local facet-id on cell
   /// @param fct_i Processor-local facet id
@@ -203,14 +205,18 @@ protected:
   int _fct_per_cell;
 
   // Types boundary facets
-  std::span<const std::int8_t> _bfct_type;
+  dolfinx::graph::AdjacencyList<std::int8_t>& _bfct_type;
 
   /* Patch */
   // Central node of patch
   int _nodei;
 
   // Type of patch
-  int _type;
+  std::vector<int> _type;
+  int _npatches;
+
+  // Id if all patches are equal;
+  std::int8_t _equal_patches;
 
   // Number of elements on patch
   int _ncells, _nfcts;

@@ -43,8 +43,10 @@ PYBIND11_MODULE(cpp, m)
          const std::vector<std::vector<std::int32_t>>& fct_esntbound_flux,
          const std::vector<std::vector<std::shared_ptr<
              const dolfinx::fem::DirichletBC<PetscScalar>>>>& bcs1,
-         dolfinx::fem::Function<PetscScalar>& flux_hdiv,
-         dolfinx::fem::Function<PetscScalar>& flux_dg)
+         std::vector<std::shared_ptr<dolfinx::fem::Function<PetscScalar>>>&
+             flux_hdiv,
+         std::vector<std::shared_ptr<dolfinx::fem::Function<PetscScalar>>>&
+             flux_dg)
       {
         equilibration::reconstruct_fluxes<PetscScalar>(
             a, l_pen, l, fct_esntbound_prime, fct_esntbound_flux, bcs1,

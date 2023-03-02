@@ -59,6 +59,7 @@ set(
   Patch.hpp
   PatchFluxEV.hpp
   StorageStiffness.hpp
+  ProblemData.hpp
   solve_patch_constrmin.hpp
 )
 

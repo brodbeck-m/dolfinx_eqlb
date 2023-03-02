@@ -1,10 +1,12 @@
 #pragma once
 
 #include "PatchFluxEV.hpp"
+#include "ProblemData.hpp"
 #include "StorageStiffness.hpp"
 #include "eigen3/Eigen/Dense"
 #include "eigen3/Eigen/Sparse"
 #include <algorithm>
+#include <cmath>
 #include <dolfinx/fem/DofMap.h>
 #include <dolfinx/fem/Form.h>
 #include <dolfinx/fem/Function.h>
@@ -54,16 +56,13 @@ void set_hat_function(std::span<T> coeffs_l,
 /// @param dofmap_global              dofmap.list() of global FEspace
 /// @param dof_transform              DOF-transformation function
 /// @param dof_transform_to_transpose DOF-transformation function
+/// @param cell_info                  Information for DOF transformation
 /// @param kernel_a                   Kernel bilinar form
 /// @param kernel_lpen                Kernel for penalisation terms
-/// @param kernel_l                   Kernel linear form
-/// @param consts_l                   Constants linar form
-/// @param coeffs_l                   Coefficients linar form
-/// @param info_coeffs_l              Information about storage of coeffs
-///                                   (linear form)
-/// @param cell_info                  Information for DOF transformation
+/// @param probelm_data               Linear forms and problem dependent
+///                                   input data
 /// @param storage_stiffness          Storage element tangents
-/// @param x_flux                     DOFs flux function (Hdiv)
+/// @param x_flux                     DOFs projected flux function
 
 template <typename T>
 void equilibrate_flux_constrmin(
@@ -75,13 +74,19 @@ void equilibrate_flux_constrmin(
     const std::function<void(const std::span<T>&,
                              const std::span<const std::uint32_t>&,
                              std::int32_t, int)>& dof_transform_to_transpose,
-    fem::FEkernel<T> auto kernel_a, fem::FEkernel<T> auto kernel_lpen,
-    fem::FEkernel<T> auto kernel_l, std::span<const T> consts_l,
-    std::span<T> coeffs_l, const std::vector<int>& info_coeffs_l,
-    std::span<const std::uint32_t> cell_info,
-    StorageStiffness<T>& storage_stiffness, std::span<T> x_flux,
-    std::span<T> x_flux_dg)
+    std::span<const std::uint32_t> cell_info, fem::FEkernel<T> auto kernel_a,
+    fem::FEkernel<T> auto kernel_lpen, ProblemData<T>& problem_data,
+    StorageStiffness<T>& storage_stiffness, std::span<T> x_flux_dg)
 {
+  // Data from LHS
+  // FIXME - Adjust for multiple LHS
+  const auto kernel_l = problem_data.kernel(0);
+  std::span<const T> consts_l = problem_data.constants(0);
+  std::span<T> coeffs_l = problem_data.coefficients(0);
+  std::vector<int> info_coeffs_l(3, 0);
+  info_coeffs_l[0] = problem_data.cstride(0);
+  info_coeffs_l[1] = problem_data.begin_hat(0);
+
   // Initilaize storage cell geoemtry
   const graph::AdjacencyList<std::int32_t>& x_dofmap = geometry.dofmap();
   std::span<const double> x = geometry.x();
@@ -90,7 +95,8 @@ void equilibrate_flux_constrmin(
 
   /* Extract patch informations */
   // Type patch
-  const int type_patch = patch.type();
+  // FIXME - Adjust for multiple LHS
+  const int type_patch = patch.type(0);
 
   // Cells on patch
   std::span<const std::int32_t> cells = patch.cells();

@@ -28,7 +28,7 @@ public:
   /// @param bfct_type   List with type of all boundary facets
   PatchFluxEV(
       int nnodes_proc, std::shared_ptr<const dolfinx::mesh::Mesh> mesh,
-      std::span<const std::int8_t> bfct_type,
+      dolfinx::graph::AdjacencyList<std::int8_t>& bfct_type,
       const std::shared_ptr<const dolfinx::fem::FunctionSpace> function_space,
       const basix::FiniteElement& basix_element_flux);
 
@@ -36,7 +36,9 @@ public:
   ///
   /// Determines type of patch (0-> internal, 1->bc_neumann, 2->bc_dirichlet
   /// 3->bc_mixed) and creats sorted DOFmap. Sorting of facets/elements/DOFs
-  /// follows [1,2].
+  /// follows [1,2]. The sub-DOFmap is cearted for sub-problem 0. If patch-
+  /// type differs between different patches, use recreate_subdofmap for
+  /// sub-problem i>0.
   ///
   /// [1] Moldenhauer, M.: Stress reconstructionand a-posteriori error
   ///     estimationfor elasticity (PhdThesis)
@@ -45,6 +47,11 @@ public:
   ///
   /// @param node_i Processor-local id of current node
   void create_subdofmap(int node_i);
+
+  void recreate_subdofmap(int index)
+  {
+    throw std::runtime_error("Equilibration: Multiple LHS not supported");
+  }
 
   /* Setter functions */
 
