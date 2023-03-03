@@ -51,6 +51,11 @@ public:
   /// @return Type of the patch
   int type(int index) { return _type[index]; }
 
+  /// Return type-realtion
+  /// @param index Index of equilibrated flux
+  /// @return Type relation of different LHS
+  std::int8_t equal_patch_types(int index) { return _equal_patches; }
+
   /// Return number of facets per cell
   /// @return Number of facets per cell
   int fcts_per_cell() { return _fct_per_cell; }

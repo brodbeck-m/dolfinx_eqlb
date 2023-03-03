@@ -40,7 +40,49 @@ void set_hat_function(std::span<T> coeffs_l,
   coeffs_l[info_coeffs_l[0] * cell_i + info_coeffs_l[1] + node_i] = value;
 }
 
-void assemble_tangents();
+template <typename T>
+void assemble_tangents(
+    Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>& A_patch,
+    Eigen::Matrix<T, Eigen::Dynamic, 1>& L_patch,
+    std::span<const std::int32_t> cells,
+    std::vector<dolfinx::fem::impl::scalar_value_type_t<T>>& coordinate_dofs,
+    const int cstride_geom, PatchFluxEV& patch,
+    const std::function<void(const std::span<T>&,
+                             const std::span<const std::uint32_t>&,
+                             std::int32_t, int)>& dof_transform,
+    const std::function<void(const std::span<T>&,
+                             const std::span<const std::uint32_t>&,
+                             std::int32_t, int)>& dof_transform_to_transpose,
+    std::span<const std::uint32_t> cell_info, fem::FEkernel<T> auto kernel_a,
+    fem::FEkernel<T> auto kernel_lpen, fem::FEkernel<T> auto kernel_l,
+    std::span<const T> constants_l, std::span<T> coefficients_l,
+    const int cstride_l, std::span<const std::int8_t> bmarkers,
+    std::span<const T> bvalues, StorageStiffness<T>& storage_stiffness);
+
+template <typename T>
+void assemble_vector(
+    Eigen::Matrix<T, Eigen::Dynamic, 1>& L_patch,
+    std::span<const std::int32_t> cells,
+    std::vector<dolfinx::fem::impl::scalar_value_type_t<T>>& coordinate_dofs,
+    const int cstride_geom, PatchFluxEV& patch,
+    const std::function<void(const std::span<T>&,
+                             const std::span<const std::uint32_t>&,
+                             std::int32_t, int)>& dof_transform,
+    std::span<const std::uint32_t> cell_info, fem::FEkernel<T> auto kernel_l,
+    std::span<const T> constants_l, std::span<T> coefficients_l,
+    const int cstride_l, std::span<const std::int8_t> bmarkers,
+    std::span<const T> bvalues, StorageStiffness<T>& storage_stiffness)
+{
+  throw std::runtime_error("assembly_vector: Not implemented!")
+}
+
+template <typename T>
+void apply_lifting(std::span<T> Ae, std::span<T> Le,
+                   std::span<const std::int8_t> bmarkers,
+                   std::span<const T> bvalues,
+                   std::span<const int32_t> dofs_elmt,
+                   std::span<const int32_t> dofs_global, const int type_patch,
+                   const int ndof_elmt_nz, const int ndof_elmt);
 
 /// Assembly and solution of patch problems
 ///
@@ -80,56 +122,30 @@ void equilibrate_flux_constrmin(
     fem::FEkernel<T> auto kernel_lpen, ProblemData<T>& problem_data,
     StorageStiffness<T>& storage_stiffness, std::span<T> x_flux_dg)
 {
-  // Data from LHS
-  // FIXME - Adjust for multiple LHS
-  const auto kernel_l = problem_data.kernel(0);
-  std::span<const T> consts_l = problem_data.constants(0);
-  std::span<T> coeffs_l = problem_data.coefficients(0);
-  std::vector<int> info_coeffs_l(3, 0);
-  info_coeffs_l[0] = problem_data.cstride(0);
-  info_coeffs_l[1] = problem_data.begin_hat(0);
-  std::span<const std::int8_t> bmarkers = problem_data.boundary_markers(0);
-  std::span<const T> bvalues = problem_data.boundary_values(0);
+  /* Initialize Patch-LGS*/
+  const int ndof_ppatch = patch.ndofs_patch() + 1;
 
-  /* Extract patch informations */
-  // Type patch
-  // FIXME - Adjust for multiple LHS
-  const int type_patch = patch.type(0);
-
-  // Cells on patch
-  std::span<const std::int32_t> cells = patch.cells();
-  const int ncells = cells.size();
-
-  // List local node-ids on central node
-  std::span<const std::int8_t> inode_local = patch.inodes_local();
-
-  // DOF counters
-  const int ndim0 = patch.ndofs_elmt();
-  const int ndof_elmt_nz = patch.ndofs_elmt_nz();
-  const int ndof_patch = patch.ndofs_patch();
-  const int ndof_ppatch = ndof_patch + 1;
-
-  /* Initialization */
-  // Storage cell geoemtry
-  const graph::AdjacencyList<std::int32_t>& x_dofmap = geometry.dofmap();
-  std::span<const dolfinx::fem::impl::scalar_value_type_t<T>> x = geometry.x();
-
-  const int cstride_geom = 3 * geometry.cmap().dim();
-  std::vector<dolfinx::fem::impl::scalar_value_type_t<T>> coordinate_dofs(
-      ncells * cstride_geom, 0);
-
-  // Tangent arrays (Penalty for pure Neumann problems)
   Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> A_patch;
   Eigen::Matrix<T, Eigen::Dynamic, 1> L_patch, u_patch;
-
-  std::vector<T> Le(ndim0);
-  std::span<T> _Le(Le);
 
   A_patch.resize(ndof_ppatch, ndof_ppatch);
   L_patch.resize(ndof_ppatch);
   u_patch.resize(ndof_ppatch);
 
-  // Set cell geometry and hat-functions
+  /* Initialize hat-function and cell-geometries */
+  // Required patch-data
+  const int ncells = patch.ncells();
+  std::span<const std::int8_t> inode_local = patch.inodes_local();
+
+  // Get geometry data
+  const graph::AdjacencyList<std::int32_t>& x_dofmap = geometry.dofmap();
+  std::span<const dolfinx::fem::impl::scalar_value_type_t<T>> x = geometry.x();
+
+  // Initialize geometry storage
+  const int cstride_geom = 3 * geometry.cmap().dim();
+  std::vector<dolfinx::fem::impl::scalar_value_type_t<T>> coordinate_dofs(
+      ncells * cstride_geom, 0);
+
   for (std::size_t index = 0; index < ncells; ++index)
   {
     // Get current cell
@@ -150,132 +166,60 @@ void equilibrate_flux_constrmin(
     }
   }
 
-  /* Assemble patch LGS */
-  for (std::size_t index = 0; index < ncells; ++index)
+  /* Solve equilibartion */
+  for (std::size_t i_lhs = 0; i_lhs < problem_data.nlhs(); ++i_lhs)
   {
-    // Get current cell
-    std::int32_t c = cells[index];
+    /* Extract data for current LHS */
+    // Integration kernel
+    const auto kernel_l = problem_data.kernel(i_lhs);
 
-    // Get current stiffness-matrix in storage
-    std::span<T> Ae = storage_stiffness.stiffness_elmt(c);
-    std::span<T> Pe = storage_stiffness.penalty_elmt(c);
+    // Constants and coefficients
+    std::span<const T> consts_l = problem_data.constants(i_lhs);
+    std::span<T> coeffs_l = problem_data.coefficients(i_lhs);
 
-    // Get coordinates of current element
-    std::span<dolfinx::fem::impl::scalar_value_type_t<T>> coordinate_dofs_e(
-        coordinate_dofs.data() + index * cstride_geom, cstride_geom);
+    // Infos about coefficients
+    std::vector<int> info_coeffs_l(3, 0);
+    info_coeffs_l[0] = problem_data.cstride(i_lhs);
+    info_coeffs_l[1] = problem_data.begin_hat(i_lhs);
 
-    /* Evaluate tangent arrays if not already done */
-    // Evaluate bilinar form
-    if (storage_stiffness.evaluation_status(c) == 0)
+    // Boundary data
+    std::span<const std::int8_t> bmarkers
+        = problem_data.boundary_markers(i_lhs);
+    std::span<const T> bvalues = problem_data.boundary_values(i_lhs);
+
+    /* Extract patch informations */
+    // Type patch
+    const int type_patch = patch.type(i_lhs);
+
+    // Assemble system
+    if (i_lhs == 0)
     {
-      // Initialize bilinear form
-      std::fill(Ae.begin(), Ae.end(), 0);
-      std::fill(Pe.begin(), Pe.end(), 0);
+      // Get cells
+      std::span<const std::int32_t> cells = patch.cells();
 
-      // Evaluate bilinar form
-      kernel_a(Ae.data(), nullptr, nullptr, coordinate_dofs_e.data(), nullptr,
-               nullptr);
-
-      // Evaluate penalty terms
-      kernel_lpen(Pe.data(), nullptr, nullptr, coordinate_dofs_e.data(),
-                  nullptr, nullptr);
-
-      // DOF transformation
-      dof_transform(Ae, cell_info, c, ndim0);
-      dof_transform_to_transpose(Ae, cell_info, c, ndim0);
-
-      // Set identifire for evaluated data
-      storage_stiffness.mark_cell_evaluated(c);
-    }
-
-    // Evaluate linear form
-    std::fill(Le.begin(), Le.end(), 0);
-
-    kernel_l(Le.data(), coeffs_l.data() + c * info_coeffs_l[0], consts_l.data(),
-             coordinate_dofs_e.data(), nullptr, nullptr);
-
-    dof_transform(_Le, cell_info, c, 1);
-
-    /* Assemble into patch system */
-    // Element-local and patch-local DOFmap
-    std::span<const int32_t> dofs_elmt = patch.dofs_elmt(index);
-    std::span<const int32_t> dofs_patch = patch.dofs_patch(index);
-    std::span<const int32_t> dofs_global = patch.dofs_global(index);
-
-    for (std::size_t k = 0; k < ndof_elmt_nz; ++k)
-    {
-      // Check for boundary condition
-      if (bmarkers[dofs_global[k]] != 0)
-      {
-        // Set boundary value
-        L_patch(dofs_patch[k]) = bvalues[dofs_global[k]];
-
-        // Set main-digonal of stiffness matrix
-        A_patch(dofs_patch[k], dofs_patch[k]) = 1;
-      }
-      else
-      {
-        // Calculate offset
-        int offset = dofs_elmt[k] * ndim0;
-
-        // Assemble load vector
-        L_patch(dofs_patch[k]) += Le[dofs_elmt[k]];
-
-        for (std::size_t l = 0; l < ndof_elmt_nz; ++l)
-        {
-          // Assemble stiffness matrix
-          A_patch(dofs_patch[k], dofs_patch[l]) += Ae[offset + dofs_elmt[l]];
-        }
-      }
-    }
-
-    // Apply lifting
-    if (type_patch == 1 || type_patch == 3)
-    {
-      for (std::size_t k = 0; k < ndof_elmt_nz; ++k)
-      {
-        if (bmarkers[dofs_global[k]] == 0)
-        {
-          // Calculate offset
-          int offset = dofs_elmt[k] * ndim0;
-
-          for (std::size_t l = 0; l < ndof_elmt_nz; ++l)
-          {
-            if (bmarkers[dofs_global[k]] != 0)
-            {
-              L_patch(dofs_patch[k])
-                  -= Ae[offset + dofs_elmt[l]] * bvalues[dofs_global[k]];
-            }
-          }
-        }
-      }
-    }
-
-    // Add penalyt terms
-    if (type_patch < 2)
-    {
-      // Required counters
-      const int ndofs_cons = patch.ndofs_cons();
-      const int offset = patch.ndofs_flux_nz();
-
-      // Loop over DOFs
-      for (std::size_t k = 0; k < ndofs_cons; ++k)
-      {
-        // Add K_ql
-        A_patch(dofs_patch[offset + k], ndof_ppatch - 1) += Pe[k];
-
-        // Add K_lq
-        A_patch(ndof_ppatch - 1, dofs_patch[offset + k]) += Pe[k];
-      }
+      // Assemble tangents
+      assemble_tangents(A_patch, L_patch, cells, coordinate_dofs, cstride_geom,
+                        patch, dof_transform, dof_transform_to_transpose,
+                        cell_info, kernel_a, kernel_lpen, kernel_l, constants_l,
+                        coefficients_l, cstride_l, bmarkers, bvalues,
+                        storage_stiffness);
     }
     else
     {
-      // Set penalty to zero
-      A_patch(ndof_ppatch - 1, ndof_ppatch - 1) = 1.0;
+      if (patch.equal_patch_types)
+      {
+        // Assemble only vector
+        throw std::runtime_error("Not Implemented!");
+      }
+      else
+      {
+        // Recreate patch and reassemble entire system
+        throw std::runtime_error("Not Implemented!");
+      }
     }
   }
 
-  // Unset hat-functions
+  /* Unset hat-functions */
   for (std::size_t index = 0; index < ncells; ++index)
   {
     // Get current cell

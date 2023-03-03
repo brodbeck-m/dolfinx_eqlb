@@ -174,6 +174,11 @@ public:
   /* Setter functions */
 
   /* Getter functions */
+  /// Extract number linearform l_i
+  /// @param index Id of linearform
+  /// @return Number of linearforms
+  int nlhs() const { return _nlhs; }
+
   /// Extract linearform l_i
   /// @param index Id of linearform
   /// @return The linearform
