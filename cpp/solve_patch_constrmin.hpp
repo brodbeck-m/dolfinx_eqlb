@@ -118,18 +118,9 @@ void equilibrate_flux_constrmin(
   std::vector<T> Le(ndim0);
   std::span<T> _Le(Le);
 
-  if (type_patch < 2)
-  {
-    A_patch.resize(ndof_ppatch, ndof_ppatch);
-    L_patch.resize(ndof_ppatch);
-    flux_patch.resize(ndof_ppatch);
-  }
-  else
-  {
-    A_patch.resize(ndof_patch, ndof_patch);
-    L_patch.resize(ndof_patch);
-    flux_patch.resize(ndof_patch);
-  }
+  A_patch.resize(ndof_ppatch, ndof_ppatch);
+  L_patch.resize(ndof_ppatch);
+  flux_patch.resize(ndof_ppatch);
 
   for (std::size_t index = 0; index < cells.size(); ++index)
   {
@@ -219,6 +210,11 @@ void equilibrate_flux_constrmin(
         // Add K_lq
         A_patch(ndof_ppatch - 1, dofs_patch[offset + k]) += Pe[k];
       }
+    }
+    else
+    {
+      // Set penalty to zero
+      A_patch(ndof_ppatch - 1, ndof_ppatch - 1) = 1.0;
     }
 
     // Unset hat function
