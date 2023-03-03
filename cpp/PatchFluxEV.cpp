@@ -37,6 +37,7 @@ PatchFluxEV::PatchFluxEV(
 
   _dofsnz_elmt.resize(len_adjacency);
   _dofsnz_patch.resize(len_adjacency);
+  _dofsnz_global.resize(len_adjacency);
   _offset_dofmap.resize(_ncells_max + 1);
 }
 
@@ -52,6 +53,9 @@ void PatchFluxEV::create_subdofmap(int node_i)
   /* Create DOFmap on patch */
   // Initialisation
   std::int32_t cell_i = -1, dof_patch = 0;
+  const dolfinx::graph::AdjacencyList<std::int32_t>& gdofmap
+      = _function_space->dofmap()->list();
+  std::span<const std::int32_t> gdofs;
 
   // Loop over all facets on patch
   for (std::size_t ii = 0; ii < c_fct_loop; ++ii)
@@ -79,32 +83,48 @@ void PatchFluxEV::create_subdofmap(int node_i)
     }
     else
     {
-      // Extract cell_i
-      cell_i = _cells[ii + 1];
-
       // Offsets for DOFmap creation
       if (ii < _nfcts - 1)
       {
+        // Extract cell_i
+        cell_i = _cells[ii + 1];
+
+        // Offsets
         offs_f = _offset_dofmap[ii] + _ndof_flux_fct;
       }
       else
       {
+        // Extract cell_i
+        cell_i = _cells[0];
+
+        // Offsets
         offs_f = _offset_dofmap[ii] + _ndof_flux_fct;
         offs_p = 0;
       }
     }
 
+    // Get global DOFs on current element
+    gdofs = gdofmap.links(cell_i);
+
     // Get flux-DOFs on fct_i
     for (std::int8_t jj = 0; jj < _ndof_flux_fct; ++jj)
     {
+      // Precalculations
+      int ldof_cell_i = _entity_dofs_flux[_dim_fct][id_fct_loc_ci][jj];
+      int gdof_cell_i = gdofs[ldof_cell_i];
+
       // Add cell-local DOFs
-      _dofsnz_elmt[offs_p] = _entity_dofs_flux[_dim_fct][id_fct_loc_ci][jj];
+      _dofsnz_elmt[offs_p] = ldof_cell_i;
       _dofsnz_elmt[offs_f + jj]
           = _entity_dofs_flux[_dim_fct][id_fct_loc_cim1][jj];
 
       // Calculate patch-local DOFs
       _dofsnz_patch[offs_p] = dof_patch;
       _dofsnz_patch[offs_f + jj] = dof_patch;
+
+      // Calculate global DOFs
+      _dofsnz_global[offs_p] = gdof_cell_i;
+      _dofsnz_global[offs_f + jj] = gdof_cell_i;
 
       // Increment id of patch-local DOFs
       dof_patch += 1;
@@ -116,11 +136,17 @@ void PatchFluxEV::create_subdofmap(int node_i)
 
     for (std::int8_t jj = 0; jj < ndof_cell; ++jj)
     {
+      // Precalculations
+      int ldof_cell_i = _ndof_flux_nz + jj;
+
       // Add cell-local DOFs
-      _dofsnz_elmt[offs_p] = _ndof_flux_nz + jj;
+      _dofsnz_elmt[offs_p] = ldof_cell_i;
 
       // Calculate patch-local DOFs
       _dofsnz_patch[offs_p] = dof_patch;
+
+      // Calculate global DOFs
+      _dofsnz_global[offs_p] = gdofs[ldof_cell_i];
 
       // Increment id of patch-local DOFs
       dof_patch += 1;
@@ -143,11 +169,17 @@ void PatchFluxEV::create_subdofmap(int node_i)
 
     for (std::int8_t jj = 0; jj < _ndof_flux_fct; ++jj)
     {
+      // Precalculations
+      const int ldof_cell_i = _entity_dofs_flux[_dim_fct][id_fct_loc][jj];
+
       // Add cell-local DOFs
       _dofsnz_elmt[offs_p] = _entity_dofs_flux[_dim_fct][id_fct_loc][jj];
 
       // Calculate patch-local DOFs
       _dofsnz_patch[offs_p] = dof_patch;
+
+      // Calculate global DOFs
+      _dofsnz_global[offs_p] = gdofs[ldof_cell_i];
 
       // Increment id of patch-local DOFs
       dof_patch += 1;
@@ -159,6 +191,12 @@ void PatchFluxEV::create_subdofmap(int node_i)
   }
 
   // // Output Debug
+  // std::cout << "Cells: " << std::endl;
+  // for (auto e : _cells)
+  // {
+  //   std::cout << e << " ";
+  // }
+  // std::cout << "\n";
   // std::cout << "\n DOFs patch: " << std::endl;
   // for (std::int8_t jj = 0; jj < _ncells; ++jj)
   // {
@@ -170,7 +208,7 @@ void PatchFluxEV::create_subdofmap(int node_i)
   //   }
   //   std::cout << "\n";
   // }
-  // std::cout << "\n DOFs global: " << std::endl;
+  // std::cout << "\n DOFs global (from local): " << std::endl;
   // const dolfinx::graph::AdjacencyList<std::int32_t>& dofs0
   //     = _function_space->dofmap()->list();
   // for (std::int8_t jj = 0; jj < _ncells; ++jj)
@@ -181,6 +219,17 @@ void PatchFluxEV::create_subdofmap(int node_i)
   //   for (auto e : list)
   //   {
   //     std::cout << dofs0.links(cell_i)[e] << " ";
+  //   }
+  //   std::cout << "\n";
+  // }
+  // std::cout << "\n DOFs global: " << std::endl;
+  // for (std::int8_t jj = 0; jj < _ncells; ++jj)
+  // {
+  //   auto list = dofs_global(jj);
+
+  //   for (auto e : list)
+  //   {
+  //     std::cout << e << " ";
   //   }
   //   std::cout << "\n";
   // }

@@ -74,6 +74,26 @@ public:
   /// @return Number of non-zero DOFs on patch
   int ndofs_patch() { return _ndof_patch_nz; }
 
+  /// Extract global DOFs of cell
+  /// @param cell_i Patch-local cell-id
+  /// @return Global DOFs of cell:_i (zero DOFs excluded)
+  std::span<std::int32_t> dofs_global(int cell_i)
+  {
+    return std::span<std::int32_t>(
+        _dofsnz_global.data() + _offset_dofmap[cell_i],
+        _offset_dofmap[cell_i + 1] - _offset_dofmap[cell_i]);
+  }
+
+  /// Extract global DOFs of cell (const. version)
+  /// @param cell_i Patch-local cell-id
+  /// @return Global DOFs of cell:_i (zero DOFs excluded)
+  std::span<const std::int32_t> dofs_global(int cell_i) const
+  {
+    return std::span<const std::int32_t>(
+        _dofsnz_global.data() + _offset_dofmap[cell_i],
+        _offset_dofmap[cell_i + 1] - _offset_dofmap[cell_i]);
+  }
+
   /// Extract patch-local DOFs of cell
   /// @param cell_i Patch-local cell-id
   /// @return Patch-local DOFs of cell:_i (zero DOFs excluded)
@@ -117,13 +137,14 @@ public:
 protected:
   /*Function (sub-) space*/
   // The function space
-  const std::shared_ptr<const dolfinx::fem::FunctionSpace>& _function_space;
+  const std::shared_ptr<const dolfinx::fem::FunctionSpace> _function_space;
 
   // Connectivity between entities and cell local DOFs
   const std::vector<std::vector<std::vector<int>>>& _entity_dofs_flux;
 
   // Storage sub-dofmap
-  std::vector<std::int32_t> _dofsnz_elmt, _dofsnz_patch, _offset_dofmap;
+  std::vector<std::int32_t> _dofsnz_elmt, _dofsnz_patch, _dofsnz_global,
+      _offset_dofmap;
 
   // Number of DOFs on element (element definition)
   int _ndof_elmt;
