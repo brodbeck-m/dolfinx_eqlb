@@ -54,12 +54,14 @@ include(GNUInstallDirs)
 
 set(
   HEADERS_EQLB
-  local_solver.hpp
-  reconstruction.hpp
   Patch.hpp
   PatchFluxEV.hpp
-  StorageStiffness.hpp
   ProblemData.hpp
+  ProblemDataFlux.hpp
+  StorageStiffness.hpp
+  assembly.hpp
+  local_solver.hpp
+  reconstruction.hpp
   solve_patch_constrmin.hpp
 )
 
@@ -67,7 +69,6 @@ target_sources(
   dolfinx_eqlb
   PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Patch.cpp
   PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/PatchFluxEV.cpp
-  PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/solve_patch_constrmin.cpp
 )
 
 install(FILES ${HEADERS_EQLB} DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/dolfinx_eqlb COMPONENT Development)

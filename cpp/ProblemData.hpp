@@ -50,8 +50,7 @@ public:
       std::vector<std::shared_ptr<fem::Function<T>>>& fluxes)
       : _nlhs(l.size()), _l(l), _flux(fluxes), _kernel(l.size()),
         _offset_cnst(l.size() + 1, 0), _offset_coef(l.size() + 1, 0),
-        _offset_bc(l.size() + 1, 0), _cstride(l.size(), 0),
-        _begin_hat(l.size(), 0), _begin_fluxdg(l.size(), 0)
+        _offset_bc(l.size() + 1, 0), _cstride(l.size(), 0)
   {
     /* Initialize constants */
     std::int32_t size_cnst = 0, size_bc = 0;
@@ -84,6 +83,13 @@ public:
     set_data_boundary(bcs_flux);
   }
 
+  /// Initialize integration kernels and related coefficients
+  ///
+  /// Set vector of function pointers onto integration kernels (LHS)
+  /// over a given subdomain and initialize storage of related coefficients
+  ///
+  /// @param integral_type Integral type
+  /// @param id            Id of integration-subdomain
   void initialize_kernels(dolfinx::fem::IntegralType integral_type, int id)
   {
     // Get DOF-number of hat-function
@@ -104,9 +110,6 @@ public:
       auto& [coeffs_i, cstride_i] = coefficients_i.at({integral_type, id});
       _data_coef.resize(coeffs_i.size());
       _data_coef = std::move(coeffs_i);
-
-      // Get structure of coefficients
-      set_structure_coefficients(0, ndof_hat, l_i.coefficient_offsets());
 
       // Set offsets
       _offset_coef[1] = _data_coef.size();
@@ -157,9 +160,6 @@ public:
         // Set offset
         size_coef = size_coef + cstride * num_entities;
         _offset_coef[i + 1] = size_coef;
-
-        // Get structure of coefficients
-        set_structure_coefficients(i, ndof_hat, offsets_i);
 
         /* Exctract Kernel */
         _kernel[i] = _l[i]->kernel(integral_type, id);
@@ -240,16 +240,6 @@ public:
   /// @return cstride of linearform l_i
   int cstride(int index) { return _cstride[index]; }
 
-  /// Extract begin data hat-function (coefficients) of l_i
-  /// @param index Id of linearform
-  /// @return Begin of hat-function data of linearform l_i
-  int begin_hat(int index) { return _begin_hat[index]; }
-
-  /// Extract begin data flux-function (DG) (coefficients) of l_i
-  /// @param index Id of linearform
-  /// @return Begin of flux-function (DG) data of linearform l_i
-  int begin_fluxdg(int index) { return _begin_fluxdg[index]; }
-
   /// Extract boundary identifires for l_i
   /// @param index Id of linearform
   /// @return Boundary identifires of linearform l_i
@@ -287,7 +277,7 @@ public:
                               _offset_bc[index + 1] - _offset_bc[index]);
   }
 
-private:
+protected:
   /* Handle constants */
   std::int32_t size_constants(const dolfinx::fem::Form<T>& l_i)
   {
@@ -331,31 +321,6 @@ private:
   }
 
   /* Hanlde coefficients */
-  void set_structure_coefficients(int index, int ndof_hat,
-                                  const std::vector<int>& offsets)
-  {
-    // Get cstide
-    int cstride = offsets.back();
-    _cstride[index] = cstride;
-
-    if (cstride - offsets[1] == ndof_hat)
-    {
-      // Set beginn of _hat-data
-      _begin_hat[index] = offsets[1];
-
-      // Set beginn of flux_dg-data
-      _begin_fluxdg[index] = 0;
-    }
-    else
-    {
-      // Set beginn of _hat-data
-      _begin_hat[index] = 0;
-
-      // Set beginn of flux_dg-data
-      _begin_fluxdg[index] = offsets[1];
-    }
-  }
-
   void set_data_coefficients(dolfinx::fem::IntegralType integral_type, int id)
   {
     for (std::size_t i = 0; i < _nlhs; ++i)
@@ -457,7 +422,7 @@ private:
 
   /* Storage coefficients and constants */
   // Informations
-  std::vector<int> _cstride, _begin_hat, _begin_fluxdg;
+  std::vector<int> _cstride;
 
   // Data
   std::vector<T> _data_coef, _data_cnst;

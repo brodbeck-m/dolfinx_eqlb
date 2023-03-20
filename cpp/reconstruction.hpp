@@ -1,7 +1,7 @@
 #pragma once
 
 #include "PatchFluxEV.hpp"
-#include "ProblemData.hpp"
+#include "ProblemDataFlux.hpp"
 #include "StorageStiffness.hpp"
 #include "solve_patch_constrmin.hpp"
 #include <algorithm>
@@ -36,7 +36,7 @@ namespace dolfinx_adaptivity::equilibration
 template <typename T>
 void reconstruct_fluxes_patch(
     const fem::Form<T>& a, const fem::Form<T>& l_pen,
-    ProblemData<T>& problem_data,
+    ProblemDataFlux<T>& problem_data,
     dolfinx::graph::AdjacencyList<std::int8_t>& fct_type,
     fem::Function<T>& flux_dg)
 {
@@ -203,8 +203,9 @@ void reconstruct_fluxes(
   }
 
   /* Initialize essential boundary conditions for reconstructed flux */
-  ProblemData<T> problem_data = ProblemData<T>(l, bcs_flux, flux);
+  ProblemDataFlux<T> problem_data = ProblemDataFlux<T>(l, bcs_flux, flux);
 
+  /* Call equilibration */
   reconstruct_fluxes_patch(a, l_pen, problem_data, fct_type, *(flux_dg[0]));
 }
 

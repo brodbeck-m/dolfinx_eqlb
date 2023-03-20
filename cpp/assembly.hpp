@@ -1,7 +1,60 @@
-#include "solve_patch_constrmin.hpp"
+#pragma once
 
-namespace dolfinx_adaptivity::equilibration
+#include "PatchFluxEV.hpp"
+#include "ProblemDataFlux.hpp"
+#include "StorageStiffness.hpp"
+#include "eigen3/Eigen/Dense"
+#include "eigen3/Eigen/Sparse"
+#include <algorithm>
+#include <cmath>
+#include <dolfinx/fem/DofMap.h>
+#include <dolfinx/fem/Form.h>
+#include <dolfinx/fem/Function.h>
+#include <dolfinx/fem/assembler.h>
+#include <dolfinx/fem/utils.h>
+#include <dolfinx/graph/AdjacencyList.h>
+#include <functional>
+#include <iostream>
+#include <iterator>
+#include <span>
+#include <vector>
+
+namespace dolfinx_adaptivity::equilibration::impl
 {
+template <typename T>
+void apply_lifting(std::span<T> Ae, std::vector<T>& Le,
+                   std::span<const std::int8_t> bmarkers,
+                   std::span<const T> bvalues,
+                   std::span<const int32_t> dofs_elmt,
+                   std::span<const int32_t> dofs_patch,
+                   std::span<const int32_t> dofs_global, const int type_patch,
+                   const int ndof_elmt_nz, const int ndof_elmt)
+{
+  if (type_patch == 1 || type_patch == 3)
+  {
+    for (std::size_t k = 0; k < ndof_elmt_nz; ++k)
+    {
+      std::int32_t dof_global_k = dofs_global[k];
+
+      if (bmarkers[dof_global_k] == 0)
+      {
+        // Calculate offset
+        int offset = dofs_elmt[k] * ndof_elmt;
+
+        for (std::size_t l = 0; l < ndof_elmt_nz; ++l)
+        {
+          if (bmarkers[dof_global_k] != 0)
+          {
+            Le[dofs_patch[k]]
+                -= Ae[offset + dofs_elmt[l]] * bvalues[dof_global_k];
+          }
+        }
+      }
+    }
+  }
+}
+
+template <typename T>
 void assemble_tangents(
     Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>& A_patch,
     Eigen::Matrix<T, Eigen::Dynamic, 1>& L_patch,
@@ -18,7 +71,8 @@ void assemble_tangents(
     fem::FEkernel<T> auto kernel_lpen, fem::FEkernel<T> auto kernel_l,
     std::span<const T> constants_l, std::span<T> coefficients_l,
     const int cstride_l, std::span<const std::int8_t> bmarkers,
-    std::span<const T> bvalues, StorageStiffness<T>& storage_stiffness)
+    std::span<const T> bvalues, StorageStiffness<T>& storage_stiffness,
+    int index_lhs)
 {
   // Counters
   const int ndim0 = patch.ndofs_elmt();
@@ -76,7 +130,7 @@ void assemble_tangents(
 
     /* Assemble into patch system */
     // Get patch type
-    const int type_patch = patch.type();
+    const int type_patch = patch.type(index_lhs);
 
     // Element-local and patch-local DOFmap
     std::span<const int32_t> dofs_elmt = patch.dofs_elmt(index);
@@ -86,8 +140,8 @@ void assemble_tangents(
     if (type_patch == 1 || type_patch == 3)
     {
       // Apply lifting
-      apply_lifting(Ae, Le, bmarkers, bvalues, dofs_elmt, dofs_global,
-                    type_patch, ndof_elmt_nz, ndim0);
+      apply_lifting(Ae, Le, bmarkers, bvalues, dofs_elmt, dofs_patch,
+                    dofs_global, type_patch, ndof_elmt_nz, ndim0);
 
       // Assemble tangents
       for (std::size_t k = 0; k < ndof_elmt_nz; ++k)
@@ -160,32 +214,22 @@ void assemble_tangents(
   }
 }
 
-void apply_lifting(std::span<T> Ae, std::span<T> Le,
-                   std::span<const std::int8_t> bmarkers,
-                   std::span<const T> bvalues,
-                   std::span<const int32_t> dofs_elmt,
-                   std::span<const int32_t> dofs_global, const int type_patch,
-                   const int ndof_elmt_nz, const int ndof_elmt)
+template <typename T>
+void assemble_vector(
+    Eigen::Matrix<T, Eigen::Dynamic, 1>& L_patch,
+    std::span<const std::int32_t> cells,
+    std::vector<dolfinx::fem::impl::scalar_value_type_t<T>>& coordinate_dofs,
+    const int cstride_geom, PatchFluxEV& patch,
+    const std::function<void(const std::span<T>&,
+                             const std::span<const std::uint32_t>&,
+                             std::int32_t, int)>& dof_transform,
+    std::span<const std::uint32_t> cell_info, fem::FEkernel<T> auto kernel_l,
+    std::span<const T> constants_l, std::span<T> coefficients_l,
+    const int cstride_l, std::span<const std::int8_t> bmarkers,
+    std::span<const T> bvalues, StorageStiffness<T>& storage_stiffness,
+    int index_lhs)
 {
-  if (type_patch == 1 || type_patch == 3)
-  {
-    for (std::size_t k = 0; k < ndof_elmt_nz; ++k)
-    {
-      if (bmarkers[dofs_global[k]] == 0)
-      {
-        // Calculate offset
-        int offset = dofs_elmt[k] * ndof_elmt;
-
-        for (std::size_t l = 0; l < ndof_elmt_nz; ++l)
-        {
-          if (bmarkers[dofs_global[k]] != 0)
-          {
-            Le -= Ae[offset + dofs_elmt[l]] * bvalues[dofs_global[k]];
-          }
-        }
-      }
-    }
-  }
+  throw std::runtime_error("assembly_vector: Not implemented!");
 }
 
-} // namespace dolfinx_adaptivity::equilibration
+} // namespace dolfinx_adaptivity::equilibration::impl
