@@ -11,8 +11,11 @@ PatchFluxEV::PatchFluxEV(
     int nnodes_proc, std::shared_ptr<const dolfinx::mesh::Mesh> mesh,
     dolfinx::graph::AdjacencyList<std::int8_t>& bfct_type,
     const std::shared_ptr<const dolfinx::fem::FunctionSpace> function_space,
+    const std::shared_ptr<const dolfinx::fem::FunctionSpace>
+        function_space_fluxhdiv,
     const basix::FiniteElement& basix_element_flux)
     : Patch(nnodes_proc, mesh, bfct_type), _function_space(function_space),
+      _function_space_fluxhdiv(function_space_fluxhdiv),
       _entity_dofs_flux(basix_element_flux.entity_dofs()),
       _ndof_elmt(function_space->element()->space_dimension())
 
@@ -38,6 +41,7 @@ PatchFluxEV::PatchFluxEV(
   _dofsnz_elmt.resize(len_adjacency);
   _dofsnz_patch.resize(len_adjacency);
   _dofsnz_global.resize(len_adjacency);
+  _dofsnz_fluxhdiv.resize(len_adjacency);
   _offset_dofmap.resize(_ncells_max + 1);
 }
 
@@ -55,7 +59,10 @@ void PatchFluxEV::create_subdofmap(int node_i)
   std::int32_t cell_i = -1, dof_patch = 0;
   const dolfinx::graph::AdjacencyList<std::int32_t>& gdofmap
       = _function_space->dofmap()->list();
+  const dolfinx::graph::AdjacencyList<std::int32_t>& fdofmap
+      = _function_space_fluxhdiv->dofmap()->list();
   std::span<const std::int32_t> gdofs;
+  std::span<const std::int32_t> fdofs;
 
   // Loop over all facets on patch
   for (std::size_t ii = 0; ii < c_fct_loop; ++ii)
@@ -105,6 +112,7 @@ void PatchFluxEV::create_subdofmap(int node_i)
 
     // Get global DOFs on current element
     gdofs = gdofmap.links(cell_i);
+    fdofs = fdofmap.links(cell_i);
 
     // Get flux-DOFs on fct_i
     for (std::int8_t jj = 0; jj < _ndof_flux_fct; ++jj)
@@ -112,6 +120,7 @@ void PatchFluxEV::create_subdofmap(int node_i)
       // Precalculations
       int ldof_cell_i = _entity_dofs_flux[_dim_fct][id_fct_loc_ci][jj];
       int gdof_cell_i = gdofs[ldof_cell_i];
+      int fdof_cell_i = fdofs[ldof_cell_i];
 
       // Add cell-local DOFs
       _dofsnz_elmt[offs_p] = ldof_cell_i;
@@ -125,6 +134,10 @@ void PatchFluxEV::create_subdofmap(int node_i)
       // Calculate global DOFs
       _dofsnz_global[offs_p] = gdof_cell_i;
       _dofsnz_global[offs_f + jj] = gdof_cell_i;
+
+      // Calculate global DOFs of H(div) confomring flux
+      _dofsnz_fluxhdiv[offs_p] = fdof_cell_i;
+      _dofsnz_fluxhdiv[offs_f + jj] = fdof_cell_i;
 
       // Increment id of patch-local DOFs
       dof_patch += 1;
@@ -147,6 +160,9 @@ void PatchFluxEV::create_subdofmap(int node_i)
 
       // Calculate global DOFs
       _dofsnz_global[offs_p] = gdofs[ldof_cell_i];
+
+      // Calculate global DOFs of H(div) conforming flux
+      _dofsnz_fluxhdiv[offs_p] = fdofs[ldof_cell_i];
 
       // Increment id of patch-local DOFs
       dof_patch += 1;
@@ -180,6 +196,9 @@ void PatchFluxEV::create_subdofmap(int node_i)
 
       // Calculate global DOFs
       _dofsnz_global[offs_p] = gdofs[ldof_cell_i];
+
+      // Calculate global DOFs of H(div) confomring flux
+      _dofsnz_fluxhdiv[offs_p] = fdofs[ldof_cell_i];
 
       // Increment id of patch-local DOFs
       dof_patch += 1;

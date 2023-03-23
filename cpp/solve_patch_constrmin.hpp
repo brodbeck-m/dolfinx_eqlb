@@ -58,9 +58,10 @@ void equilibrate_flux_constrmin(
                              std::int32_t, int)>& dof_transform_to_transpose,
     std::span<const std::uint32_t> cell_info, fem::FEkernel<T> auto kernel_a,
     fem::FEkernel<T> auto kernel_lpen, ProblemDataFlux<T>& problem_data,
-    StorageStiffness<T>& storage_stiffness, std::span<T> x_flux_dg)
+    StorageStiffness<T>& storage_stiffness)
 {
-  /* Initialize Patch-LGS*/
+  /* Initialize Patch-LGS */
+  // Patch arrays
   const int ndof_ppatch = patch.ndofs_patch() + 1;
 
   Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> A_patch;
@@ -69,6 +70,11 @@ void equilibrate_flux_constrmin(
   A_patch.resize(ndof_ppatch, ndof_ppatch);
   L_patch.resize(ndof_ppatch);
   u_patch.resize(ndof_ppatch);
+
+  // Local solver
+  Eigen::FullPivLU<
+      Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>
+      solver;
 
   /* Initialize hat-function and cell-geometries */
   // Required patch-data
@@ -143,6 +149,9 @@ void equilibrate_flux_constrmin(
           dof_transform, dof_transform_to_transpose, cell_info, kernel_a,
           kernel_lpen, kernel_l, constants_l, coefficients_l, cstride_l,
           bmarkers, bvalues, storage_stiffness, i_lhs);
+
+      // LU-factorization of system matrix
+      solver.compute(A_patch);
     }
     else
     {
@@ -155,6 +164,28 @@ void equilibrate_flux_constrmin(
       {
         // Recreate patch and reassemble entire system
         throw std::runtime_error("Not Implemented!");
+      }
+    }
+
+    // Solve equation system
+    u_patch = solver.solve(L_patch);
+
+    /* Add patch contribution to H(div) flux */
+    // Extract solution vector
+    std::span<T> x_flux_hdiv = problem_data.flux(i_lhs).x()->mutable_array();
+
+    // Add local solution
+    for (std::size_t index = 0; index < ncells; ++index)
+    {
+      // Extract patch-local DOFmap
+      std::span<const int32_t> dofs_patch = patch.dofs_patch(index);
+
+      // Extract global DOFs of H(div) flux
+      std::span<const int32_t> dofs_gflux = patch.dofs_flux_hdiv(index);
+
+      for (std::size_t k = 0; k < patch.ndofs_flux_nz(); ++k)
+      {
+        x_flux_hdiv[dofs_gflux[k]] += u_patch[dofs_patch[k]];
       }
     }
   }

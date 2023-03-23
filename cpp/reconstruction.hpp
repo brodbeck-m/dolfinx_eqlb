@@ -37,8 +37,7 @@ template <typename T>
 void reconstruct_fluxes_patch(
     const fem::Form<T>& a, const fem::Form<T>& l_pen,
     ProblemDataFlux<T>& problem_data,
-    dolfinx::graph::AdjacencyList<std::int8_t>& fct_type,
-    fem::Function<T>& flux_dg)
+    dolfinx::graph::AdjacencyList<std::int8_t>& fct_type)
 {
   /* Geometry */
   const mesh::Geometry& geometry = a.mesh()->geometry();
@@ -90,16 +89,13 @@ void reconstruct_fluxes_patch(
 
   PatchFluxEV patch
       = PatchFluxEV(n_nodes, a.mesh(), fct_type, a.function_spaces().at(0),
-                    basix_element_flux);
+                    problem_data.flux(0).function_space(), basix_element_flux);
 
   /* Prepare Assembly */
   // Set kernels
   const auto& kernel_a = a.kernel(fem::IntegralType::cell, -1);
   const auto& kernel_lpen = l_pen.kernel(fem::IntegralType::cell, -1);
   problem_data.initialize_kernels(fem::IntegralType::cell, -1);
-
-  // Local part of the solution vector (only flux!)
-  std::span<T> x_flux_dg = flux_dg.x()->mutable_array();
 
   // Initialize storage of tangents on each cell
   StorageStiffness<T> storage_stiffness
@@ -115,8 +111,7 @@ void reconstruct_fluxes_patch(
     // Solve patch problem
     equilibrate_flux_constrmin(geometry, patch, dofmap0->list(), dof_transform,
                                dof_transform_to_transpose, cell_info, kernel_a,
-                               kernel_lpen, problem_data, storage_stiffness,
-                               x_flux_dg);
+                               kernel_lpen, problem_data, storage_stiffness);
   }
 }
 
@@ -136,19 +131,16 @@ void reconstruct_fluxes(
     const std::vector<
         std::vector<std::shared_ptr<const dolfinx::fem::DirichletBC<T>>>>&
         bcs_flux,
-    std::vector<std::shared_ptr<fem::Function<T>>>& flux,
-    std::vector<std::shared_ptr<fem::Function<T>>>& flux_dg)
+    std::vector<std::shared_ptr<fem::Function<T>>>& flux_hdiv)
 {
   // Check input
   int n_lhs = l.size();
   int n_fbp = fct_esntbound_prime.size();
   int n_fbf = fct_esntbound_flux.size();
   int n_bcs = bcs_flux.size();
-  int n_flux = flux.size();
-  int n_flux_dg = flux_dg.size();
+  int n_flux = flux_hdiv.size();
 
-  if (n_lhs != n_fbp || n_lhs != n_fbf || n_lhs != n_bcs || n_lhs != n_flux
-      || n_lhs != n_flux_dg)
+  if (n_lhs != n_fbp || n_lhs != n_fbf || n_lhs != n_bcs || n_lhs != n_flux)
   {
     throw std::runtime_error("Equilibration: Input sizes does not match");
   }
@@ -203,10 +195,10 @@ void reconstruct_fluxes(
   }
 
   /* Initialize essential boundary conditions for reconstructed flux */
-  ProblemDataFlux<T> problem_data = ProblemDataFlux<T>(l, bcs_flux, flux);
+  ProblemDataFlux<T> problem_data = ProblemDataFlux<T>(l, bcs_flux, flux_hdiv);
 
   /* Call equilibration */
-  reconstruct_fluxes_patch(a, l_pen, problem_data, fct_type, *(flux_dg[0]));
+  reconstruct_fluxes_patch(a, l_pen, problem_data, fct_type);
 }
 
 } // namespace dolfinx_adaptivity::equilibration

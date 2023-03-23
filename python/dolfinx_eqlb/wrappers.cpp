@@ -44,17 +44,15 @@ PYBIND11_MODULE(cpp, m)
          const std::vector<std::vector<std::shared_ptr<
              const dolfinx::fem::DirichletBC<PetscScalar>>>>& bcs1,
          std::vector<std::shared_ptr<dolfinx::fem::Function<PetscScalar>>>&
-             flux_hdiv,
-         std::vector<std::shared_ptr<dolfinx::fem::Function<PetscScalar>>>&
-             flux_dg)
+             flux_hdiv)
       {
         equilibration::reconstruct_fluxes<PetscScalar>(
             a, l_pen, l, fct_esntbound_prime, fct_esntbound_flux, bcs1,
-            flux_hdiv, flux_dg);
+            flux_hdiv);
       },
       py::arg("a"), py::arg("l_pen"), py::arg("l"),
       py::arg("fct_esntbound_prime"), py::arg("fct_esntbound_prime"),
-      py::arg("bcs"), py::arg("flux_hdiv"), py::arg("flux_dg"),
+      py::arg("bcs"), py::arg("flux_hdiv"),
       "Local equilibartion of H(div) conforming fluxes.");
   //   m.def("reconstruct_flux_patch",
   //         &equilibration::reconstruct_fluxes<PetscScalar>);
