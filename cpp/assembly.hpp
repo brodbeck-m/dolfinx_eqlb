@@ -123,6 +123,8 @@ void assemble_tangents(
       storage_stiffness.mark_cell_evaluated(c);
     }
 
+    // Evaluate linear form
+    std::fill(Le.begin(), Le.end(), 0);
     kernel_l(Le.data(), coefficients_l.data() + c * cstride_l,
              constants_l.data(), coordinate_dofs_e.data(), nullptr, nullptr);
 
@@ -166,7 +168,11 @@ void assemble_tangents(
           for (std::size_t l = 0; l < ndof_elmt_nz; ++l)
           {
             // Assemble stiffness matrix
-            A_patch(dofs_patch[k], dofs_patch[l]) += Ae[offset + dofs_elmt[l]];
+            if (bmarkers[dofs_global[l]] == 0)
+            {
+              A_patch(dofs_patch[k], dofs_patch[l])
+                  += Ae[offset + dofs_elmt[l]];
+            }
           }
         }
       }

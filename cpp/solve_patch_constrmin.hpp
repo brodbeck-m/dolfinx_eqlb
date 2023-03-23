@@ -133,6 +133,9 @@ void equilibrate_flux_constrmin(
     {
       // Get cells
       std::span<const std::int32_t> cells = patch.cells();
+      // Initialize tangents
+      A_patch.setZero();
+      L_patch.setZero();
 
       // Assemble tangents
       impl::assemble_tangents(
@@ -171,16 +174,20 @@ void equilibrate_flux_constrmin(
   // std::cout << "Type-Patch: " << patch.type(0) << std::endl;
   // std::cout << "nDOFs patch: " << patch.ndofs_patch() << std::endl;
   // int offset = 0;
-  // for (std::size_t k = 0; k < patch.ndofs_patch(); ++k)
+  // for (std::size_t k = 0; k < patch.ndofs_patch() + 1; ++k)
   // {
   //   // Calculate offset
-  //   offset = k * patch.ndofs_patch();
+  //   offset = k * (patch.ndofs_patch() + 1);
 
-  //   for (std::size_t l = 0; l < patch.ndofs_patch(); ++l)
+  //   for (std::size_t l = 0; l < patch.ndofs_patch() + 1; ++l)
   //   {
   //     // Assemble stiffness matrix
   //     x_flux_dg[offset + l] = A_patch(k, l);
   //   }
+  // }
+  // for (std::size_t k = 0; k < patch.ndofs_patch() + 1; ++k)
+  // {
+  //   x_flux_dg[k] = L_patch(k);
   // }
 }
 } // namespace dolfinx_adaptivity::equilibration
