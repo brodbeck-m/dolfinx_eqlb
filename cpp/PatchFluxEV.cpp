@@ -180,7 +180,7 @@ void PatchFluxEV::create_subdofmap(int node_i)
     for (std::int8_t jj = _ndof_flux_cell; jj < ndof_cell; ++jj)
     {
       // Precalculations
-      int ldof_cell_i = _ndof_flux_nz + jj;
+      int ldof_cell_i = ndof_fct + jj;
 
       // Add cell-local DOFs
       _dofsnz_elmt[offs_p] = ldof_cell_i;
