@@ -70,6 +70,15 @@ public:
   /// @return Number of non-zero flux-DOFs on element
   int ndofs_flux_nz() { return _ndof_flux_nz; }
 
+  /// @return Number of non-zero flux-DOFs on patch
+  int ndofs_flux_patch_nz() { return _ndof_fluxhdiv; }
+
+  /// @return Number of flux-DOFs per facet
+  int ndofs_flux_fct() { return _ndof_flux_fct; }
+
+  /// @return Number of flux-DOFs per cell
+  int ndofs_flux_cell() { return _ndof_flux_cell; }
+
   /// @return Number of constrained-DOFs on element
   int ndofs_cons() { return _ndof_cons; }
 
@@ -96,24 +105,38 @@ public:
         _offset_dofmap[cell_i + 1] - _offset_dofmap[cell_i]);
   }
 
-  /// Extract global DOFs (H(div) flux) of cell
-  /// @param cell_i Patch-local cell-id
-  /// @return Global DOFs of cell:_i (zero DOFs excluded)
-  std::span<std::int32_t> dofs_flux_hdiv(int cell_i)
+  /// Extract DOFs (collapsed H(div) flux) on patch
+  /// @return Global flux-DOFs
+  std::span<std::int32_t> dofs_fluxhdiv_global()
   {
-    return std::span<std::int32_t>(
-        _dofsnz_fluxhdiv.data() + _offset_dofmap[cell_i],
-        _offset_dofmap[cell_i + 1] - _offset_dofmap[cell_i]);
+    return std::span<std::int32_t>(_list_dofsnz_global_fluxhdiv.data(),
+                                   _ndof_fluxhdiv);
   }
 
-  /// Extract global DOFs (H(div) flux) of cell (const. version)
-  /// @param cell_i Patch-local cell-id
-  /// @return Global DOFs of cell:_i (zero DOFs excluded)
-  std::span<const std::int32_t> dofs_flux_hdiv(int cell_i) const
+  /// Extract DOFs (collapsed H(div) flux) on patch (const. version)
+  /// @return Global flux-DOFs
+  std::span<const std::int32_t> dofs_fluxhdiv_global() const
   {
-    return std::span<const std::int32_t>(
-        _dofsnz_fluxhdiv.data() + _offset_dofmap[cell_i],
-        _offset_dofmap[cell_i + 1] - _offset_dofmap[cell_i]);
+    return std::span<const std::int32_t>(_list_dofsnz_global_fluxhdiv.data(),
+                                         _ndof_fluxhdiv);
+  }
+
+  /// Extract patch-local DOFs (collapsed H(div) flux)
+  /// @param cell_i Patch-local cell-id
+  /// @return Patch-local flux-DOFs
+  std::span<std::int32_t> dofs_fluxhdiv_patch()
+  {
+    return std::span<std::int32_t>(_list_dofsnz_patch_fluxhdiv.data(),
+                                   _ndof_fluxhdiv);
+  }
+
+  /// Extract patch-local DOFs (collapsed H(div) flux) (const. version)
+  /// @param cell_i Patch-local cell-id
+  /// @return Patch-local flux-DOFs
+  std::span<const std::int32_t> dofs_fluxhdiv_patch() const
+  {
+    return std::span<const std::int32_t>(_list_dofsnz_patch_fluxhdiv.data(),
+                                         _ndof_fluxhdiv);
   }
 
   /// Extract patch-local DOFs of cell
@@ -168,7 +191,11 @@ protected:
 
   // Storage sub-dofmap
   std::vector<std::int32_t> _dofsnz_elmt, _dofsnz_patch, _dofsnz_global,
-      _dofsnz_fluxhdiv, _offset_dofmap;
+      _offset_dofmap;
+
+  // Storage DOFs H(div) flux
+  std::vector<std::int32_t> _list_dofsnz_patch_fluxhdiv,
+      _list_dofsnz_global_fluxhdiv;
 
   // Number of DOFs on element (element definition)
   int _ndof_elmt;
@@ -177,7 +204,7 @@ protected:
   int _ndof_flux_fct, _ndof_flux_cell, _ndof_cons_cell, _ndof_flux, _ndof_cons;
 
   // Number on non-zero DOFs on element (on patch)
-  int _ndof_elmt_nz, _ndof_flux_nz, _ndof_patch_nz;
+  int _ndof_elmt_nz, _ndof_flux_nz, _ndof_patch_nz, _ndof_fluxhdiv;
 };
 
 } // namespace dolfinx_adaptivity::equilibration

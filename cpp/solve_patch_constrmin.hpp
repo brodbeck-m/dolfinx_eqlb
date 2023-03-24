@@ -174,19 +174,14 @@ void equilibrate_flux_constrmin(
     // Extract solution vector
     std::span<T> x_flux_hdiv = problem_data.flux(i_lhs).x()->mutable_array();
 
+    // Extract DOFs flux
+    std::span<const int32_t> dofs_flux_patch = patch.dofs_fluxhdiv_patch();
+    std::span<const int32_t> dofs_flux_global = patch.dofs_fluxhdiv_global();
+
     // Add local solution
-    for (std::size_t index = 0; index < ncells; ++index)
+    for (std::size_t k = 0; k < patch.ndofs_flux_patch_nz(); ++k)
     {
-      // Extract patch-local DOFmap
-      std::span<const int32_t> dofs_patch = patch.dofs_patch(index);
-
-      // Extract global DOFs of H(div) flux
-      std::span<const int32_t> dofs_gflux = patch.dofs_flux_hdiv(index);
-
-      for (std::size_t k = 0; k < patch.ndofs_flux_nz(); ++k)
-      {
-        x_flux_hdiv[dofs_gflux[k]] += u_patch[dofs_patch[k]];
-      }
+      x_flux_hdiv[dofs_flux_global[k]] += u_patch[dofs_flux_patch[k]];
     }
   }
 

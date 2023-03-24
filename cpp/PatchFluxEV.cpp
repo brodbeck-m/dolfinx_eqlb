@@ -41,8 +41,10 @@ PatchFluxEV::PatchFluxEV(
   _dofsnz_elmt.resize(len_adjacency);
   _dofsnz_patch.resize(len_adjacency);
   _dofsnz_global.resize(len_adjacency);
-  _dofsnz_fluxhdiv.resize(len_adjacency);
   _offset_dofmap.resize(_ncells_max + 1);
+
+  _list_dofsnz_patch_fluxhdiv.resize(_ncells_max * _ndof_flux_nz);
+  _list_dofsnz_global_fluxhdiv.resize(_ncells_max * _ndof_flux_nz);
 }
 
 void PatchFluxEV::create_subdofmap(int node_i)
@@ -52,7 +54,9 @@ void PatchFluxEV::create_subdofmap(int node_i)
 
   // Set number of DOFs on patch
   const int ndof_cell = _ndof_flux_cell + _ndof_cons_cell;
+  const int ndof_fct = _fct_per_cell * _ndof_flux_fct;
   _ndof_patch_nz = _nfcts * _ndof_flux_fct + _ncells * ndof_cell;
+  _ndof_fluxhdiv = _nfcts * _ndof_flux_fct + _ncells * _ndof_flux_cell;
 
   /* Create DOFmap on patch */
   // Initialisation
@@ -65,6 +69,8 @@ void PatchFluxEV::create_subdofmap(int node_i)
   std::span<const std::int32_t> fdofs;
 
   // Loop over all facets on patch
+  std::int32_t offs_l = 0;
+
   for (std::size_t ii = 0; ii < c_fct_loop; ++ii)
   {
     // Set next cell on patch
@@ -120,7 +126,6 @@ void PatchFluxEV::create_subdofmap(int node_i)
       // Precalculations
       int ldof_cell_i = _entity_dofs_flux[_dim_fct][id_fct_loc_ci][jj];
       int gdof_cell_i = gdofs[ldof_cell_i];
-      int fdof_cell_i = fdofs[ldof_cell_i];
 
       // Add cell-local DOFs
       _dofsnz_elmt[offs_p] = ldof_cell_i;
@@ -136,18 +141,43 @@ void PatchFluxEV::create_subdofmap(int node_i)
       _dofsnz_global[offs_f + jj] = gdof_cell_i;
 
       // Calculate global DOFs of H(div) confomring flux
-      _dofsnz_fluxhdiv[offs_p] = fdof_cell_i;
-      _dofsnz_fluxhdiv[offs_f + jj] = fdof_cell_i;
+      _list_dofsnz_patch_fluxhdiv[offs_l] = dof_patch;
+      _list_dofsnz_global_fluxhdiv[offs_l] = fdofs[ldof_cell_i];
 
       // Increment id of patch-local DOFs
       dof_patch += 1;
       offs_p += 1;
+      offs_l += 1;
     }
 
     // Get cell-wise DOFs on cell_i
     offs_p += _ndof_flux_fct;
 
-    for (std::int8_t jj = 0; jj < ndof_cell; ++jj)
+    for (std::int8_t jj = 0; jj < _ndof_flux_cell; ++jj)
+    {
+      // Precalculations
+      int ldof_cell_i = ndof_fct + jj;
+
+      // Add cell-local DOFs
+      _dofsnz_elmt[offs_p] = ldof_cell_i;
+
+      // Calculate patch-local DOFs
+      _dofsnz_patch[offs_p] = dof_patch;
+
+      // Calculate global DOFs
+      _dofsnz_global[offs_p] = gdofs[ldof_cell_i];
+
+      // Calculate global DOFs of H(div) conforming flux
+      _list_dofsnz_patch_fluxhdiv[offs_l] = dof_patch;
+      _list_dofsnz_global_fluxhdiv[offs_l] = fdofs[ndof_fct + jj];
+
+      // Increment id of patch-local DOFs
+      dof_patch += 1;
+      offs_p += 1;
+      offs_l += 1;
+    }
+
+    for (std::int8_t jj = _ndof_flux_cell; jj < ndof_cell; ++jj)
     {
       // Precalculations
       int ldof_cell_i = _ndof_flux_nz + jj;
@@ -160,9 +190,6 @@ void PatchFluxEV::create_subdofmap(int node_i)
 
       // Calculate global DOFs
       _dofsnz_global[offs_p] = gdofs[ldof_cell_i];
-
-      // Calculate global DOFs of H(div) conforming flux
-      _dofsnz_fluxhdiv[offs_p] = fdofs[ldof_cell_i];
 
       // Increment id of patch-local DOFs
       dof_patch += 1;
@@ -198,11 +225,13 @@ void PatchFluxEV::create_subdofmap(int node_i)
       _dofsnz_global[offs_p] = gdofs[ldof_cell_i];
 
       // Calculate global DOFs of H(div) confomring flux
-      _dofsnz_fluxhdiv[offs_p] = fdofs[ldof_cell_i];
+      _list_dofsnz_patch_fluxhdiv[offs_l] = dof_patch;
+      _list_dofsnz_global_fluxhdiv[offs_l] = fdofs[ldof_cell_i];
 
       // Increment id of patch-local DOFs
       dof_patch += 1;
       offs_p += 1;
+      offs_l += 1;
 
       // Store last facet to facte-list
       _fcts[_nfcts - 1] = fct_i;
@@ -252,6 +281,18 @@ void PatchFluxEV::create_subdofmap(int node_i)
   //   }
   //   std::cout << "\n";
   // }
+  // std::cout << "\n DOFs flux (patch): " << std::endl;
+  // for (std::int8_t jj = 0; jj < _ndof_fluxhdiv; ++jj)
+  // {
+  //   std::cout << _list_dofsnz_patch_fluxhdiv[jj] << " ";
+  // }
+  // std::cout << "\n";
+  // std::cout << "\n DOFs flux (global): " << std::endl;
+  // for (std::int8_t jj = 0; jj < _ndof_fluxhdiv; ++jj)
+  // {
+  //   std::cout << _list_dofsnz_global_fluxhdiv[jj] << " ";
+  // }
+  // std::cout << "\n";
   // throw std::exception();
 }
 } // namespace dolfinx_adaptivity::equilibration
