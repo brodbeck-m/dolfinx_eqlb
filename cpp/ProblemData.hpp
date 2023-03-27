@@ -372,34 +372,37 @@ protected:
   {
     for (std::size_t i = 0; i < _nlhs; ++i)
     {
-      // Extract data for l_i
-      const dolfinx::fem::Form<T>& l_i = *(_l[i]);
-      const std::vector<std::shared_ptr<const dolfinx::fem::DirichletBC<T>>>&
-          bcs
-          = bcs_flux[i];
-
-      std::shared_ptr<const dolfinx::fem::FunctionSpace> function_space
-          = l_i.function_spaces().at(0);
-      std::shared_ptr<const dolfinx::common::IndexMap> index_map
-          = function_space->dofmap()->index_map;
-      int bs = function_space->dofmap()->index_map_bs();
-
-      // Exctract data storage of current form
-      std::span<std::int8_t> bc_marker_i = boundary_markers(i);
-      std::span<T> bc_values_i = boundary_values(i);
-
-      // Set boundary markers
-      for (std::size_t k = 0; k < bcs.size(); ++k)
+      if (!bcs_flux[i].empty())
       {
-        assert(bcs[k]);
-        assert(bcs[k]->function_space());
-        if (function_space->contains(*bcs[k]->function_space()))
-        {
-          // Mark boundary DOFs
-          bcs[k]->mark_dofs(bc_marker_i);
+        // Extract data for subproblem i
+        const dolfinx::fem::Form<T>& l_i = *(_l[i]);
+        const std::vector<std::shared_ptr<const dolfinx::fem::DirichletBC<T>>>&
+            bcs
+            = bcs_flux[i];
 
-          // Write boundary values into local data-structure
-          bcs[k]->dof_values(bc_values_i);
+        std::shared_ptr<const dolfinx::fem::FunctionSpace> function_space
+            = l_i.function_spaces().at(0);
+        std::shared_ptr<const dolfinx::common::IndexMap> index_map
+            = function_space->dofmap()->index_map;
+        int bs = function_space->dofmap()->index_map_bs();
+
+        // Exctract data storage of current form
+        std::span<std::int8_t> bc_marker_i = boundary_markers(i);
+        std::span<T> bc_values_i = boundary_values(i);
+
+        // Set boundary markers
+        for (std::size_t k = 0; k < bcs.size(); ++k)
+        {
+          assert(bcs[k]);
+          assert(bcs[k]->function_space());
+          if (function_space->contains(*bcs[k]->function_space()))
+          {
+            // Mark boundary DOFs
+            bcs[k]->mark_dofs(bc_marker_i);
+
+            // Write boundary values into local data-structure
+            bcs[k]->dof_values(bc_values_i);
+          }
         }
       }
     }

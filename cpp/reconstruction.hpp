@@ -186,10 +186,27 @@ void reconstruct_fluxes(
     // FIXME - Parallel computation (input only local facets?)
     if (!fct_esntbound_flux[i].empty())
     {
+      // Check if boundary conditions are set
+      if (bcs_flux[i].empty())
+      {
+        throw std::runtime_error(
+            "Equilibration: Essential BC for flux required");
+      }
+
+      // Set markers
       for (const std::int32_t fct : fct_esntbound_flux[0])
       {
         // Set marker facet
         fct_type_i[fct] = 2;
+      }
+    }
+    else
+    {
+      // Check if boundary conditions are set
+      if (!bcs_flux[i].empty())
+      {
+        throw std::runtime_error(
+            "Equilibration: No essential BC for flux required");
       }
     }
   }
