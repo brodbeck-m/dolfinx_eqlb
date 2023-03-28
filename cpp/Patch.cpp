@@ -8,10 +8,12 @@
 #include <span>
 #include <vector>
 
+using namespace dolfinx;
+
 namespace dolfinx_adaptivity::equilibration
 {
-Patch::Patch(int nnodes_proc, std::shared_ptr<const dolfinx::mesh::Mesh> mesh,
-             dolfinx::graph::AdjacencyList<std::int8_t>& bfct_type)
+Patch::Patch(int nnodes_proc, std::shared_ptr<const mesh::Mesh> mesh,
+             graph::AdjacencyList<std::int8_t>& bfct_type)
     : _mesh(mesh), _bfct_type(bfct_type), _dim(mesh->geometry().dim()),
       _dim_fct(mesh->geometry().dim() - 1), _type(bfct_type.num_nodes(), 0),
       _npatches(bfct_type.num_nodes())

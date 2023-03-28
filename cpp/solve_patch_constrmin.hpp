@@ -20,6 +20,8 @@
 #include <span>
 #include <vector>
 
+using namespace dolfinx;
+
 namespace dolfinx_adaptivity::equilibration
 {
 /// Assembly and solution of patch problems
@@ -84,11 +86,11 @@ void equilibrate_flux_constrmin(
 
   // Get geometry data
   const graph::AdjacencyList<std::int32_t>& x_dofmap = geometry.dofmap();
-  std::span<const dolfinx::fem::impl::scalar_value_type_t<T>> x = geometry.x();
+  std::span<const fem::impl::scalar_value_type_t<T>> x = geometry.x();
 
   // Initialize geometry storage/ hat-function
   const int cstride_geom = 3 * geometry.cmap().dim();
-  std::vector<dolfinx::fem::impl::scalar_value_type_t<T>> coordinate_dofs(
+  std::vector<fem::impl::scalar_value_type_t<T>> coordinate_dofs(
       ncells * cstride_geom, 0);
 
   for (std::size_t index = 0; index < ncells; ++index)
@@ -100,7 +102,7 @@ void equilibrate_flux_constrmin(
     problem_data.set_hat_function(c, inode_local[index], 1.0);
 
     // Copy cell geometry
-    std::span<dolfinx::fem::impl::scalar_value_type_t<T>> coordinate_dofs_e(
+    std::span<fem::impl::scalar_value_type_t<T>> coordinate_dofs_e(
         coordinate_dofs.data() + index * cstride_geom, cstride_geom);
 
     auto x_dofs = x_dofmap.links(c);

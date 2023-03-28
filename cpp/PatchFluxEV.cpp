@@ -5,14 +5,15 @@
 #include <dolfinx/graph/AdjacencyList.h>
 #include <iostream>
 
+using namespace dolfinx;
+
 namespace dolfinx_adaptivity::equilibration
 {
 PatchFluxEV::PatchFluxEV(
-    int nnodes_proc, std::shared_ptr<const dolfinx::mesh::Mesh> mesh,
-    dolfinx::graph::AdjacencyList<std::int8_t>& bfct_type,
-    const std::shared_ptr<const dolfinx::fem::FunctionSpace> function_space,
-    const std::shared_ptr<const dolfinx::fem::FunctionSpace>
-        function_space_fluxhdiv,
+    int nnodes_proc, std::shared_ptr<const mesh::Mesh> mesh,
+    graph::AdjacencyList<std::int8_t>& bfct_type,
+    const std::shared_ptr<const fem::FunctionSpace> function_space,
+    const std::shared_ptr<const fem::FunctionSpace> function_space_fluxhdiv,
     const basix::FiniteElement& basix_element_flux)
     : Patch(nnodes_proc, mesh, bfct_type), _function_space(function_space),
       _function_space_fluxhdiv(function_space_fluxhdiv),
@@ -61,9 +62,9 @@ void PatchFluxEV::create_subdofmap(int node_i)
   /* Create DOFmap on patch */
   // Initialisation
   std::int32_t cell_i = -1, dof_patch = 0;
-  const dolfinx::graph::AdjacencyList<std::int32_t>& gdofmap
+  const graph::AdjacencyList<std::int32_t>& gdofmap
       = _function_space->dofmap()->list();
-  const dolfinx::graph::AdjacencyList<std::int32_t>& fdofmap
+  const graph::AdjacencyList<std::int32_t>& fdofmap
       = _function_space_fluxhdiv->dofmap()->list();
   std::span<const std::int32_t> gdofs;
   std::span<const std::int32_t> fdofs;
@@ -257,7 +258,7 @@ void PatchFluxEV::create_subdofmap(int node_i)
   //   std::cout << "\n";
   // }
   // std::cout << "\n DOFs global (from local): " << std::endl;
-  // const dolfinx::graph::AdjacencyList<std::int32_t>& dofs0
+  // const graph::AdjacencyList<std::int32_t>& dofs0
   //     = _function_space->dofmap()->list();
   // for (std::int8_t jj = 0; jj < _ncells; ++jj)
   // {

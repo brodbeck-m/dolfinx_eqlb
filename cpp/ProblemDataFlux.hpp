@@ -17,6 +17,8 @@
 #include <utility>
 #include <vector>
 
+using namespace dolfinx;
+
 namespace dolfinx_adaptivity::equilibration
 {
 template <typename T>
@@ -32,10 +34,9 @@ public:
   /// @param bcs_flux List of list of BCs for each equilibarted flux
   /// @param fluxes   List of list of flux functions for each sub-problem
   ProblemDataFlux(
-      const std::vector<std::shared_ptr<const dolfinx::fem::Form<T>>>& l,
+      const std::vector<std::shared_ptr<const fem::Form<T>>>& l,
       const std::vector<
-          std::vector<std::shared_ptr<const dolfinx::fem::DirichletBC<T>>>>&
-          bcs_flux,
+          std::vector<std::shared_ptr<const fem::DirichletBC<T>>>>& bcs_flux,
       std::vector<std::shared_ptr<fem::Function<T>>>& fluxes)
       : ProblemData<T>(l, bcs_flux, fluxes), _begin_hat(l.size(), 0),
         _begin_fluxdg(l.size(), 0)
@@ -49,21 +50,21 @@ public:
   ///
   /// @param integral_type Integral type
   /// @param id            Id of integration-subdomain
-  void initialize_kernels(dolfinx::fem::IntegralType integral_type, int id)
+  void initialize_kernels(fem::IntegralType integral_type, int id)
   {
     // Get DOF-number of hat-function
-    int ndof_hat = dolfinx::mesh::cell_num_entities(
+    int ndof_hat = mesh::cell_num_entities(
         this->_l[0]->mesh()->topology().cell_type(), 0);
 
     if (this->_nlhs == 1)
     {
       /* Get LHS */
-      const dolfinx::fem::Form<T>& l_i = *(this->_l[0]);
+      const fem::Form<T>& l_i = *(this->_l[0]);
 
       /* Initialize coefficients */
       // Initialize data
-      auto coefficients_i = dolfinx::fem::allocate_coefficient_storage(l_i);
-      dolfinx::fem::pack_coefficients(l_i, coefficients_i);
+      auto coefficients_i = fem::allocate_coefficient_storage(l_i);
+      fem::pack_coefficients(l_i, coefficients_i);
 
       // Extract and store data
       auto& [coeffs_i, cstride_i] = coefficients_i.at({integral_type, id});
@@ -88,10 +89,10 @@ public:
       for (std::size_t i = 0; i < this->_nlhs; ++i)
       {
         /* Get LHS */
-        const dolfinx::fem::Form<T>& l_i = *(this->_l[i]);
+        const fem::Form<T>& l_i = *(this->_l[i]);
 
         /* Initialize datastructure coefficients */
-        const std::vector<std::shared_ptr<const dolfinx::fem::Function<T>>>&
+        const std::vector<std::shared_ptr<const fem::Function<T>>>&
             coefficients_i
             = l_i.coefficients();
         const std::vector<int> offsets_i = l_i.coefficient_offsets();
@@ -104,13 +105,13 @@ public:
           cstride = offsets_i.back();
           switch (integral_type)
           {
-          case dolfinx::fem::IntegralType::cell:
+          case fem::IntegralType::cell:
             num_entities = l_i.cell_domains(id).size();
             break;
-          case dolfinx::fem::IntegralType::exterior_facet:
+          case fem::IntegralType::exterior_facet:
             num_entities = l_i.exterior_facet_domains(id).size() / 2;
             break;
-          case dolfinx::fem::IntegralType::interior_facet:
+          case fem::IntegralType::interior_facet:
             num_entities = l_i.interior_facet_domains(id).size() / 2;
             break;
           default:

@@ -15,6 +15,8 @@
 #include <utility>
 #include <vector>
 
+using namespace dolfinx;
+
 namespace dolfinx_adaptivity::equilibration
 {
 template <typename T>
@@ -43,10 +45,9 @@ public:
   /// @param bcs_flux List of list of BCs for each equilibarted flux
   /// @param fluxes   List of list of flux functions for each sub-problem
   ProblemData(
-      const std::vector<std::shared_ptr<const dolfinx::fem::Form<T>>>& l,
+      const std::vector<std::shared_ptr<const fem::Form<T>>>& l,
       const std::vector<
-          std::vector<std::shared_ptr<const dolfinx::fem::DirichletBC<T>>>>&
-          bcs_flux,
+          std::vector<std::shared_ptr<const fem::DirichletBC<T>>>>& bcs_flux,
       std::vector<std::shared_ptr<fem::Function<T>>>& fluxes)
       : _nlhs(l.size()), _l(l), _flux(fluxes), _kernel(l.size()),
         _offset_cnst(l.size() + 1, 0), _offset_coef(l.size() + 1, 0),
@@ -58,7 +59,7 @@ public:
     for (std::size_t i = 0; i < _nlhs; ++i)
     {
       // Get current linear form
-      const dolfinx::fem::Form<T>& l_i = *(l[i]);
+      const fem::Form<T>& l_i = *(l[i]);
 
       // Get sizes (constants, boundary conditions)
       std::int32_t size_cnst_i = size_constants(l_i);
@@ -90,21 +91,21 @@ public:
   ///
   /// @param integral_type Integral type
   /// @param id            Id of integration-subdomain
-  void initialize_kernels(dolfinx::fem::IntegralType integral_type, int id)
+  void initialize_kernels(fem::IntegralType integral_type, int id)
   {
     // Get DOF-number of hat-function
-    int ndof_hat = dolfinx::mesh::cell_num_entities(
-        _l[0]->mesh()->topology().cell_type(), 0);
+    int ndof_hat
+        = mesh::cell_num_entities(_l[0]->mesh()->topology().cell_type(), 0);
 
     if (_nlhs == 1)
     {
       /* Get LHS */
-      const dolfinx::fem::Form<T>& l_i = *(_l[0]);
+      const fem::Form<T>& l_i = *(_l[0]);
 
       /* Initialize coefficients */
       // Initialize data
-      auto coefficients_i = dolfinx::fem::allocate_coefficient_storage(l_i);
-      dolfinx::fem::pack_coefficients(l_i, coefficients_i);
+      auto coefficients_i = fem::allocate_coefficient_storage(l_i);
+      fem::pack_coefficients(l_i, coefficients_i);
 
       // Extract and store data
       auto& [coeffs_i, cstride_i] = coefficients_i.at({integral_type, id});
@@ -126,10 +127,10 @@ public:
       for (std::size_t i = 0; i < _nlhs; ++i)
       {
         /* Get LHS */
-        const dolfinx::fem::Form<T>& l_i = *(_l[i]);
+        const fem::Form<T>& l_i = *(_l[i]);
 
         /* Initialize datastructure coefficients */
-        const std::vector<std::shared_ptr<const dolfinx::fem::Function<T>>>&
+        const std::vector<std::shared_ptr<const fem::Function<T>>>&
             coefficients_i
             = l_i.coefficients();
         const std::vector<int> offsets_i = l_i.coefficient_offsets();
@@ -142,13 +143,13 @@ public:
           cstride = offsets_i.back();
           switch (integral_type)
           {
-          case dolfinx::fem::IntegralType::cell:
+          case fem::IntegralType::cell:
             num_entities = l_i.cell_domains(id).size();
             break;
-          case dolfinx::fem::IntegralType::exterior_facet:
+          case fem::IntegralType::exterior_facet:
             num_entities = l_i.exterior_facet_domains(id).size() / 2;
             break;
-          case dolfinx::fem::IntegralType::interior_facet:
+          case fem::IntegralType::interior_facet:
             num_entities = l_i.interior_facet_domains(id).size() / 2;
             break;
           default:
@@ -182,7 +183,7 @@ public:
   /// Extract linearform l_i
   /// @param index Id of linearform
   /// @return The linearform
-  const dolfinx::fem::Form<T>& l(int index) const { return *(_l[index]); }
+  const fem::Form<T>& l(int index) const { return *(_l[index]); }
 
   /// Extract integration kernel of l_i
   /// @param index Id of linearform
@@ -197,7 +198,7 @@ public:
   /// Extract flux function
   /// @param index Id of subproblem
   /// @return The flux-function
-  dolfinx::fem::Function<T>& flux(int index) const { return *(_flux[index]); }
+  fem::Function<T>& flux(int index) const { return *(_flux[index]); }
 
   /// Extract constants of l_i
   /// @param index Id of linearform
@@ -279,11 +280,10 @@ public:
 
 protected:
   /* Handle constants */
-  std::int32_t size_constants(const dolfinx::fem::Form<T>& l_i)
+  std::int32_t size_constants(const fem::Form<T>& l_i)
   {
     // Extract constants
-    const std::vector<std::shared_ptr<const dolfinx::fem::Constant<T>>>&
-        constants_i
+    const std::vector<std::shared_ptr<const fem::Constant<T>>>& constants_i
         = l_i.constants();
 
     // Get overall size
@@ -300,10 +300,9 @@ protected:
     for (std::size_t i = 0; i < _nlhs; ++i)
     {
       // Extract data for l_i
-      const dolfinx::fem::Form<T>& l_i = *(_l[i]);
+      const fem::Form<T>& l_i = *(_l[i]);
 
-      const std::vector<std::shared_ptr<const dolfinx::fem::Constant<T>>>&
-          constants_i
+      const std::vector<std::shared_ptr<const fem::Constant<T>>>& constants_i
           = l_i.constants();
 
       std::span<T> data_cnst = constants(i);
@@ -321,15 +320,14 @@ protected:
   }
 
   /* Hanlde coefficients */
-  void set_data_coefficients(dolfinx::fem::IntegralType integral_type, int id)
+  void set_data_coefficients(fem::IntegralType integral_type, int id)
   {
     for (std::size_t i = 0; i < _nlhs; ++i)
     {
       // Get current linear form
-      const dolfinx::fem::Form<T>& l_i = *(_l[i]);
+      const fem::Form<T>& l_i = *(_l[i]);
 
-      const std::vector<std::shared_ptr<const dolfinx::fem::Function<T>>>&
-          coefficients_i
+      const std::vector<std::shared_ptr<const fem::Function<T>>>& coefficients_i
           = l_i.coefficients();
       const std::vector<int> offsets_i = l_i.coefficient_offsets();
 
@@ -348,9 +346,9 @@ protected:
   }
 
   /* Handle boundary data */
-  std::int32_t size_boundary(const dolfinx::fem::Form<T>& l_i, bool bc_is_set)
+  std::int32_t size_boundary(const fem::Form<T>& l_i, bool bc_is_set)
   {
-    std::shared_ptr<const dolfinx::common::IndexMap> index_map
+    std::shared_ptr<const common::IndexMap> index_map
         = l_i.function_spaces().at(0)->dofmap()->index_map;
     int bs = l_i.function_spaces().at(0)->dofmap()->index_map_bs();
 
@@ -367,22 +365,20 @@ protected:
 
   void set_data_boundary(
       const std::vector<
-          std::vector<std::shared_ptr<const dolfinx::fem::DirichletBC<T>>>>&
-          bcs_flux)
+          std::vector<std::shared_ptr<const fem::DirichletBC<T>>>>& bcs_flux)
   {
     for (std::size_t i = 0; i < _nlhs; ++i)
     {
       if (!bcs_flux[i].empty())
       {
         // Extract data for subproblem i
-        const dolfinx::fem::Form<T>& l_i = *(_l[i]);
-        const std::vector<std::shared_ptr<const dolfinx::fem::DirichletBC<T>>>&
-            bcs
+        const fem::Form<T>& l_i = *(_l[i]);
+        const std::vector<std::shared_ptr<const fem::DirichletBC<T>>>& bcs
             = bcs_flux[i];
 
-        std::shared_ptr<const dolfinx::fem::FunctionSpace> function_space
+        std::shared_ptr<const fem::FunctionSpace> function_space
             = l_i.function_spaces().at(0);
-        std::shared_ptr<const dolfinx::common::IndexMap> index_map
+        std::shared_ptr<const common::IndexMap> index_map
             = function_space->dofmap()->index_map;
         int bs = function_space->dofmap()->index_map_bs();
 
@@ -412,7 +408,7 @@ protected:
   const int _nlhs;
 
   // Linearforms
-  const std::vector<std::shared_ptr<const dolfinx::fem::Form<T>>>& _l;
+  const std::vector<std::shared_ptr<const fem::Form<T>>>& _l;
 
   // Integration kernels
   std::vector<

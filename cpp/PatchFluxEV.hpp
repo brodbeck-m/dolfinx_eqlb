@@ -13,6 +13,8 @@
 #include <span>
 #include <vector>
 
+using namespace dolfinx;
+
 namespace dolfinx_adaptivity::equilibration
 {
 class PatchFluxEV : public Patch
@@ -27,11 +29,10 @@ public:
   /// @param mesh        The current mesh
   /// @param bfct_type   List with type of all boundary facets
   PatchFluxEV(
-      int nnodes_proc, std::shared_ptr<const dolfinx::mesh::Mesh> mesh,
-      dolfinx::graph::AdjacencyList<std::int8_t>& bfct_type,
-      const std::shared_ptr<const dolfinx::fem::FunctionSpace> function_space,
-      const std::shared_ptr<const dolfinx::fem::FunctionSpace>
-          function_space_fluxhdiv,
+      int nnodes_proc, std::shared_ptr<const mesh::Mesh> mesh,
+      graph::AdjacencyList<std::int8_t>& bfct_type,
+      const std::shared_ptr<const fem::FunctionSpace> function_space,
+      const std::shared_ptr<const fem::FunctionSpace> function_space_fluxhdiv,
       const basix::FiniteElement& basix_element_flux);
 
   /// Construction of a sub-DOFmap on each patch
@@ -182,9 +183,8 @@ public:
 protected:
   /*Function (sub-) space*/
   // The function space
-  const std::shared_ptr<const dolfinx::fem::FunctionSpace> _function_space;
-  const std::shared_ptr<const dolfinx::fem::FunctionSpace>
-      _function_space_fluxhdiv;
+  const std::shared_ptr<const fem::FunctionSpace> _function_space;
+  const std::shared_ptr<const fem::FunctionSpace> _function_space_fluxhdiv;
 
   // Connectivity between entities and cell local DOFs
   const std::vector<std::vector<std::vector<int>>>& _entity_dofs_flux;

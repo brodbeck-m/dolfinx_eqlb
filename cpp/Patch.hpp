@@ -8,6 +8,8 @@
 #include <span>
 #include <vector>
 
+using namespace dolfinx;
+
 namespace dolfinx_adaptivity::equilibration
 {
 class Patch
@@ -21,8 +23,8 @@ public:
   /// @param nnodes_proc Numbe rof nodes on current processor
   /// @param mesh        The current mesh
   /// @param bfct_type   List with type of all boundary facets
-  Patch(int nnodes_proc, std::shared_ptr<const dolfinx::mesh::Mesh> mesh,
-        dolfinx::graph::AdjacencyList<std::int8_t>& bfct_type);
+  Patch(int nnodes_proc, std::shared_ptr<const mesh::Mesh> mesh,
+        graph::AdjacencyList<std::int8_t>& bfct_type);
 
   /// Determine maximum patch size
   /// @param nnodes_proc Number of nodes on current processor
@@ -196,11 +198,11 @@ protected:
 
   /* Geometry */
   // The mesh
-  std::shared_ptr<const dolfinx::mesh::Mesh> _mesh;
+  std::shared_ptr<const mesh::Mesh> _mesh;
 
   // The connectivities
-  std::shared_ptr<const dolfinx::graph::AdjacencyList<std::int32_t>>
-      _node_to_cell, _node_to_fct, _fct_to_cell, _cell_to_fct, _cell_to_node;
+  std::shared_ptr<const graph::AdjacencyList<std::int32_t>> _node_to_cell,
+      _node_to_fct, _fct_to_cell, _cell_to_fct, _cell_to_node;
 
   // Dimensions
   const int _dim, _dim_fct;
@@ -209,7 +211,7 @@ protected:
   int _fct_per_cell;
 
   // Types boundary facets
-  dolfinx::graph::AdjacencyList<std::int8_t>& _bfct_type;
+  graph::AdjacencyList<std::int8_t>& _bfct_type;
 
   /* Patch */
   // Central node of patch

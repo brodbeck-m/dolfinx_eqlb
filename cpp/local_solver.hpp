@@ -15,6 +15,8 @@
 #include <span>
 #include <vector>
 
+using namespace dolfinx;
+
 namespace dolfinx_adaptivity
 {
 

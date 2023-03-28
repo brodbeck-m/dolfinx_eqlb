@@ -19,6 +19,8 @@
 #include <span>
 #include <vector>
 
+using namespace dolfinx;
+
 namespace dolfinx_adaptivity::equilibration::impl
 {
 template <typename T>
@@ -59,7 +61,7 @@ void assemble_tangents(
     Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>& A_patch,
     Eigen::Matrix<T, Eigen::Dynamic, 1>& L_patch,
     std::span<const std::int32_t> cells,
-    std::vector<dolfinx::fem::impl::scalar_value_type_t<T>>& coordinate_dofs,
+    std::vector<fem::impl::scalar_value_type_t<T>>& coordinate_dofs,
     const int cstride_geom, PatchFluxEV& patch,
     const std::function<void(const std::span<T>&,
                              const std::span<const std::uint32_t>&,
@@ -96,7 +98,7 @@ void assemble_tangents(
     std::span<T> Pe = storage_stiffness.penalty_elmt(c);
 
     // Get coordinates of current element
-    std::span<dolfinx::fem::impl::scalar_value_type_t<T>> coordinate_dofs_e(
+    std::span<fem::impl::scalar_value_type_t<T>> coordinate_dofs_e(
         coordinate_dofs.data() + index * cstride_geom, cstride_geom);
 
     /* Evaluate tangent arrays if not already done */
@@ -224,7 +226,7 @@ template <typename T>
 void assemble_vector(
     Eigen::Matrix<T, Eigen::Dynamic, 1>& L_patch,
     std::span<const std::int32_t> cells,
-    std::vector<dolfinx::fem::impl::scalar_value_type_t<T>>& coordinate_dofs,
+    std::vector<fem::impl::scalar_value_type_t<T>>& coordinate_dofs,
     const int cstride_geom, PatchFluxEV& patch,
     const std::function<void(const std::span<T>&,
                              const std::span<const std::uint32_t>&,

@@ -24,6 +24,8 @@
 #include <span>
 #include <vector>
 
+using namespace dolfinx;
+
 namespace dolfinx_adaptivity::equilibration
 {
 /// Execute calculation of patch constributions to flux
@@ -34,10 +36,9 @@ namespace dolfinx_adaptivity::equilibration
 /// @param fct_type       Lookup-table for facet-types
 /// @param flux_dg        Function that holds the projected fluxes
 template <typename T>
-void reconstruct_fluxes_patch(
-    const fem::Form<T>& a, const fem::Form<T>& l_pen,
-    ProblemDataFlux<T>& problem_data,
-    dolfinx::graph::AdjacencyList<std::int8_t>& fct_type)
+void reconstruct_fluxes_patch(const fem::Form<T>& a, const fem::Form<T>& l_pen,
+                              ProblemDataFlux<T>& problem_data,
+                              graph::AdjacencyList<std::int8_t>& fct_type)
 {
   /* Geometry */
   const mesh::Geometry& geometry = a.mesh()->geometry();
@@ -125,11 +126,10 @@ void reconstruct_fluxes_patch(
 template <typename T>
 void reconstruct_fluxes(
     const fem::Form<T>& a, const fem::Form<T>& l_pen,
-    const std::vector<std::shared_ptr<const dolfinx::fem::Form<T>>>& l,
+    const std::vector<std::shared_ptr<const fem::Form<T>>>& l,
     const std::vector<std::vector<std::int32_t>>& fct_esntbound_prime,
     const std::vector<std::vector<std::int32_t>>& fct_esntbound_flux,
-    const std::vector<
-        std::vector<std::shared_ptr<const dolfinx::fem::DirichletBC<T>>>>&
+    const std::vector<std::vector<std::shared_ptr<const fem::DirichletBC<T>>>>&
         bcs_flux,
     std::vector<std::shared_ptr<fem::Function<T>>>& flux_hdiv)
 {
@@ -161,9 +161,9 @@ void reconstruct_fluxes(
   std::generate(offsets_fct_type.begin(), offsets_fct_type.end(),
                 [n = 0, nnodes]() mutable { return nnodes * (n++); });
 
-  dolfinx::graph::AdjacencyList<std::int8_t> fct_type
-      = dolfinx::graph::AdjacencyList<std::int8_t>(std::move(data_fct_type),
-                                                   std::move(offsets_fct_type));
+  graph::AdjacencyList<std::int8_t> fct_type
+      = graph::AdjacencyList<std::int8_t>(std::move(data_fct_type),
+                                          std::move(offsets_fct_type));
 
   // Set data
   for (std::size_t i = 0; i < n_lhs; ++i)
