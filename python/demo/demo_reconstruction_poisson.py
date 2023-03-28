@@ -17,7 +17,8 @@ Different problem setups:
 3.) u_ext = sin(2*pi * x) * cos(2*pi * y), Dirichlet-BC on [1,2,3,4]
 4.) u_ext = sin(2*pi * x) * cos(2*pi * y), Dirichlet-BC on [1,3]
 5.) u_ext = sin(2*pi * x) * cos(2*pi * y), Dirichlet-BC on [2,4]
-
+6.) u_ext = 0.25 + 0.25 * x^2 + 0.5 * y^2, Dirichlet-BC on [1,2,3,4]
+7.) u_ext = 0.25 + 0.25 * x^2 + 0.5 * y^2, Dirichlet-BC on [2,4]
 '''
 
 import numpy as np
@@ -37,7 +38,7 @@ from dolfinx_eqlb import equilibration, lsolver
 # --- Input parameters
 # Spacial discretisation
 sdisc_eorder = 1
-sdisc_nelmt = 5
+sdisc_nelmt = 1
 
 # Equilibration
 eqlb_fluxorder = 1
@@ -45,22 +46,25 @@ eqlb_fluxorder = 1
 # Type of manufactured solution
 extsol_type = 4
 
+# Linear algebra
+lgs_solver = 'cg'
+
 # Convergence study
-convstudy_nref = 5
+convstudy_nref = 7
 convstudy_reffct = 2
 
 # Timing
 timing_nretry = 3
 
 # --- Manufactured solution ---
-# Primal problem: Homogenous boundary conditions
+# Primal problem (trigonometric): Homogenous boundary conditions
 
 
-def ext_sol_homogenous(pkt):
+def ext_sol_1(pkt):
     return lambda x: pkt.sin(2 * pkt.pi * x[0]) * pkt.sin(2 * pkt.pi * x[1])
 
 
-def ext_flux_homogenous(x):
+def ext_flux_1(x):
     # Initialize flux
     sig = np.zeros((2, x.shape[1]), dtype=PETSc.ScalarType)
 
@@ -71,14 +75,14 @@ def ext_flux_homogenous(x):
     return sig
 
 
-# Primal problem: Inhomogenous boundary conditions
+# Primal problem (trigonometric): Inhomogenous boundary conditions
 
 
-def ext_sol_inhomogenous(pkt):
+def ext_sol_2(pkt):
     return lambda x: pkt.sin(2 * pkt.pi * x[0]) * pkt.cos(2 * pkt.pi * x[1])
 
 
-def ext_flux_inhomogenous(x):
+def ext_flux_2(x):
     # Initialize flux
     sig = np.zeros((2, x.shape[1]), dtype=PETSc.ScalarType)
 
@@ -87,6 +91,23 @@ def ext_flux_inhomogenous(x):
     sig[1] = 2 * np.pi * np.sin(2 * np.pi * x[0]) * np.sin(2 * np.pi * x[1])
 
     return sig
+
+
+# Primal problem (polynomial): Inhomogenous boundary conditions
+def ext_sol_3(pkt):
+    return lambda x: 0.25 + 0.25 * (x[0] ** 2) + 0.5 * (x[1] ** 2)
+
+
+def ext_flux_3(x):
+    # Initialize flux
+    sig = np.zeros((2, x.shape[1]), dtype=PETSc.ScalarType)
+
+    # Set flux
+    sig[0] = -0.5 * x[0]
+    sig[1] = -x[1]
+
+    return sig
+
 
 # --- Setup primal problem ---
 
@@ -143,7 +164,7 @@ def setup_poisson_primal(n_elmt, eorder, uext_ufl, boundid_prime_vn):
     return msh, facet_tag, V_u, dfem.form(a), dfem.form(l), f
 
 
-def assemble_poisson_primal(facet_tag, V_u, a, l, uext_np, boundid_prime_dir):
+def assemble_poisson_primal(facet_tag, V_u, a, l, uext_np, boundid_prime_dir, solver_type='cg'):
     # --- Set boundary conditions ---
     uD = dfem.Function(V_u)
     uD.interpolate(uext_np)
@@ -174,7 +195,15 @@ def assemble_poisson_primal(facet_tag, V_u, a, l, uext_np, boundid_prime_dir):
     dfem.set_bc(L, bc_esnt)
 
     # --- Initialize solver ---
-    args = "-ksp_type cg -pc_type hypre -pc_hypre_type euclid -ksp_rtol 1e-10 -ksp_atol 1e-12 -ksp_converged_reason"
+    if solver_type == 'cg':
+        args = "-ksp_type cg -pc_type hypre -pc_hypre_type euclid -ksp_rtol 1e-10 -ksp_atol 1e-12 -ksp_max_it 1000"
+    if solver_type == 'mumps':
+        args = "-ksp_type preonly -pc_type mumps -ksp_rtol 1e-10 -ksp_atol 1e-12"
+    if solver_type == 'superlu_dist':
+        args = "-ksp_type preonly -pc_type superlu_dist -ksp_rtol 1e-10 -ksp_atol 1e-12"
+    else:
+        args = "-ksp_type preonly -pc_type lu -ksp_rtol 1e-10 -ksp_atol 1e-12"
+
     petsc4py.init(args)
     solver = PETSc.KSP().create(MPI.COMM_WORLD)
     solver.setOperators(A)
@@ -371,49 +400,67 @@ extime = {'prime_setup': 0.0,
 # Initialize exact solution
 if extsol_type == 1:
     # Function handles for u_ext/sig_ext
-    u_ext_np = ext_sol_homogenous(np)
-    u_ext_ufl = ext_sol_homogenous(ufl)
-    sig_ext = ext_flux_homogenous
+    u_ext_np = ext_sol_1(np)
+    u_ext_ufl = ext_sol_1(ufl)
+    sig_ext = ext_flux_1
 
     # Set dirichlet-ids
     boundid_prime_dir = [1, 3]
     boundid_prime_vn = [2, 4]
 elif extsol_type == 2:
     # Function handles for u_ext/sig_ext
-    u_ext_np = ext_sol_inhomogenous(np)
-    u_ext_ufl = ext_sol_inhomogenous(ufl)
-    sig_ext = ext_flux_inhomogenous
+    u_ext_np = ext_sol_1(np)
+    u_ext_ufl = ext_sol_1(ufl)
+    sig_ext = ext_flux_1
 
     # Set dirichlet-ids
     boundid_prime_dir = [1, 2]
     boundid_prime_vn = [3, 4]
 elif extsol_type == 3:
     # Function handles for u_ext/sig_ext
-    u_ext_np = ext_sol_inhomogenous(np)
-    u_ext_ufl = ext_sol_inhomogenous(ufl)
-    sig_ext = ext_flux_inhomogenous
+    u_ext_np = ext_sol_2(np)
+    u_ext_ufl = ext_sol_2(ufl)
+    sig_ext = ext_flux_2
 
     # Set dirichlet-ids
     boundid_prime_dir = [1, 2, 3, 4]
     boundid_prime_vn = []
 elif extsol_type == 4:
     # Function handles for u_ext/sig_ext
-    u_ext_np = ext_sol_inhomogenous(np)
-    u_ext_ufl = ext_sol_inhomogenous(ufl)
-    sig_ext = ext_flux_inhomogenous
+    u_ext_np = ext_sol_2(np)
+    u_ext_ufl = ext_sol_2(ufl)
+    sig_ext = ext_flux_2
 
     # Set dirichlet-ids
     boundid_prime_dir = [1, 3]
     boundid_prime_vn = [2, 4]
 elif extsol_type == 5:
     # Function handles for u_ext/sig_ext
-    u_ext_np = ext_sol_inhomogenous(np)
-    u_ext_ufl = ext_sol_inhomogenous(ufl)
-    sig_ext = ext_flux_inhomogenous
+    u_ext_np = ext_sol_2(np)
+    u_ext_ufl = ext_sol_2(ufl)
+    sig_ext = ext_flux_2
 
     # Set dirichlet-ids
     boundid_prime_dir = [2, 4]
     boundid_prime_vn = [1, 3]
+elif extsol_type == 6:
+    # Function handles for u_ext/sig_ext
+    u_ext_np = ext_sol_3(np)
+    u_ext_ufl = ext_sol_3(ufl)
+    sig_ext = ext_flux_3
+
+    # Set dirichlet-ids
+    boundid_prime_dir = [3, 4]
+    boundid_prime_vn = [1, 2]
+elif extsol_type == 7:
+    # Function handles for u_ext/sig_ext
+    u_ext_np = ext_sol_3(np)
+    u_ext_ufl = ext_sol_3(ufl)
+    sig_ext = ext_flux_3
+
+    # Set dirichlet-ids
+    boundid_prime_dir = [1, 2, 3, 4]
+    boundid_prime_vn = [1, 2]
 else:
     raise RuntimeError('No such solution option!')
 
@@ -437,8 +484,8 @@ for i_timing in range(0, timing_nretry):
 
         # Assemble LGS (primal problem)
         extime['prime_assemble'] -= time.perf_counter()
-        solver, L, u_prime = assemble_poisson_primal(
-            facets, V_u, form_a, form_l, u_ext_np, boundid_prime_dir)
+        solver, L, u_prime = assemble_poisson_primal(facets, V_u, form_a, form_l, u_ext_np,
+                                                     boundid_prime_dir, solver_type=lgs_solver)
         extime['prime_assemble'] += time.perf_counter()
 
         # Solve primal problem
