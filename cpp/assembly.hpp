@@ -58,7 +58,7 @@ void apply_lifting(std::span<T> Ae, std::vector<T>& Le,
 
 template <typename T>
 void assemble_tangents(
-    Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>& A_patch,
+    Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>& A_patch,
     Eigen::Matrix<T, Eigen::Dynamic, 1>& L_patch,
     std::span<const std::int32_t> cells,
     std::vector<fem::impl::scalar_value_type_t<T>>& coordinate_dofs,

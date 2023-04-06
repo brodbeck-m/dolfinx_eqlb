@@ -66,7 +66,7 @@ void equilibrate_flux_constrmin(
   // Patch arrays
   const int ndof_ppatch = patch.ndofs_patch() + 1;
 
-  Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> A_patch;
+  Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic> A_patch;
   Eigen::Matrix<T, Eigen::Dynamic, 1> L_patch, u_patch;
 
   A_patch.resize(ndof_ppatch, ndof_ppatch);
@@ -74,8 +74,7 @@ void equilibrate_flux_constrmin(
   u_patch.resize(ndof_ppatch);
 
   // Local solver
-  Eigen::FullPivLU<
-      Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>
+  Eigen::PartialPivLU<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic>>
       solver;
 
   /* Initialize hat-function and cell-geometries */
