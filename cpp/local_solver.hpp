@@ -1,7 +1,6 @@
 #pragma once
 
 #include "eigen3/Eigen/Dense"
-#include "eigen3/Eigen/Sparse"
 #include <algorithm>
 #include <dolfinx/fem/DofMap.h>
 #include <dolfinx/fem/Form.h>
@@ -110,16 +109,10 @@ void local_solver(fem::Function<T>& sol_elmt, const fem::Form<T>& a,
   const int num_dofs0 = dofs0.links(0).size();
   const int ndim0 = bs0 * num_dofs0;
 
-  Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> A_e;
-  Eigen::Matrix<double, Eigen::Dynamic, 1> L_e, u_e;
+  Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic> A_e;
+  Eigen::Matrix<T, Eigen::Dynamic, 1> L_e, u_e;
 
-  Eigen::ConjugateGradient<
-      Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>,
-      Eigen::Lower | Eigen::Upper>
-      solver;
-  // Eigen::FullPivLU<
-  //     Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>
-  //     solver;
+  Eigen::LLT<Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>> solver;
 
   A_e.resize(ndim0, ndim0);
   L_e.resize(ndim0);
@@ -161,9 +154,9 @@ void local_solver(fem::Function<T>& sol_elmt, const fem::Form<T>& a,
         }
 
         // Initialize element array with zeros
-        std::fill(A_e.reshaped().begin(), A_e.reshaped().end(), 0);
-        std::fill(L_e.begin(), L_e.end(), 0);
-        std::fill(u_e.begin(), u_e.end(), 5);
+        A_e.setZero();
+        L_e.setZero();
+        u_e.setZero();
 
         // Tabluate system
         kernel_a(A_e.data(), coeffs_a.data() + index * cstride_a,

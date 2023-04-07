@@ -26,7 +26,7 @@ sdisc_nelmt = 50
 elmt_type = 'Lagrange'
 elmt_order = 3
 
-# Input projection (ufl, func_cg, func_dg, ufl_func_cg)
+# Input projection (const, ufl, func_cg, func_dg, ufl_func_cg)
 rhs_type = 'ufl'
 rhs_retry = 1
 
@@ -91,7 +91,19 @@ def set_rhs(rhs_type, msh, is_vectorial=False):
             else:
                 return rhs_x(np, x, spacedim)
 
-    if (rhs_type == 'ufl'):
+    def rhs_const(msh, spacedim, is_vectorial):
+        if is_vectorial:
+            if (spacedim == 2):
+                rhs = dfem.Constant(msh, PETSc.ScalarType((5, 2)))
+            else:
+                rhs = dfem.Constant(msh, PETSc.ScalarType((5, 2, 3)))
+            return rhs
+        else:
+            return dfem.Constant(msh, PETSc.ScalarType(5))
+
+    if (rhs_type == 'const'):
+        func = rhs_const(msh, msh.geometry.dim, is_vectorial)
+    elif (rhs_type == 'ufl'):
         x = ufl.SpatialCoordinate(msh)
         func = rhs_pkg(ufl, x, msh.geometry.dim, is_vectorial)
     elif (rhs_type == 'func_cg'):
