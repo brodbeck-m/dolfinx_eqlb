@@ -11,7 +11,7 @@ import dolfinx
 import dolfinx.mesh as dmesh
 import dolfinx.fem as dfem
 
-import dolfinx_eqlb.cpp
+from dolfinx_eqlb import lsolver
 
 import ufl
 
@@ -233,8 +233,7 @@ def local_projection(V, a, l, rhs_retry=1):
     # Solve projection repeatedly
     for ii in range(0, rhs_retry):
         # Solve equation system
-        dolfinx_eqlb.cpp.local_solver(
-            u_proj._cpp_object, form_a, form_l)
+        lsolver.local_solver_cholesky([u_proj], form_a, [form_l])
 
     return u_proj
 

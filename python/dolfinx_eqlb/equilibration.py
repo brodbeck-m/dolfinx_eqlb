@@ -1,9 +1,6 @@
 # --- Imports ---
 import numpy as np
-import petsc4py
-from petsc4py import PETSc
 import typing
-import time
 
 
 import dolfinx.fem as dfem
