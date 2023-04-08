@@ -58,9 +58,9 @@ def local_solver_cg(list_func: typing.List[dfem.function.Function],
 # --- Local projection ---
 
 
-def local_projection(V_target: dfem.function.FunctionSpace,
-                     list_rhs: typing.List[typing.Any],
-                     quadrature_degree=None):
+def local_projector(V_target: dfem.function.FunctionSpace,
+                    list_rhs: typing.List[typing.Any],
+                    quadrature_degree=None):
     # Number of LHS
     n_lhs = len(list_rhs)
 
@@ -90,7 +90,7 @@ def local_projection(V_target: dfem.function.FunctionSpace,
         list_l.append(dfem.form(ufl.inner(list_rhs[i], v) * dvol))
 
         # Solution function
-        func = dfem.Function(func)
+        func = dfem.Function(V_target)
         list_sol.append(func)
         list_sol_cpp.append(func._cpp_object)
 

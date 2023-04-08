@@ -187,9 +187,10 @@ def setup_problem(cell, n_elmt, elmt_type, elmt_degree, rhs_type):
     else:
         dvol = ufl.dx
 
-    l = ufl.inner(set_rhs(rhs_type, msh, is_vectorial=is_vectorial), v)*dvol
+    f_rhs = set_rhs(rhs_type, msh, is_vectorial=is_vectorial)
+    l = ufl.inner(f_rhs, v)*dvol
 
-    return V, a, l
+    return V, a, l, f_rhs
 
 
 # --- Projection routines ---
@@ -246,8 +247,8 @@ time_proj_local = np.zeros(timing_nretry)
 # Time projections
 for n in range(0, timing_nretry):
     # Create mesh
-    V_proj, a, l = setup_problem(sdisc_ctype, sdisc_nelmt,
-                                 elmt_type, elmt_order, rhs_type)
+    V_proj, a, l, lhs = setup_problem(sdisc_ctype, sdisc_nelmt,
+                                      elmt_type, elmt_order, rhs_type)
 
     # Global projection
     time_proj_global[n] -= time.perf_counter()
