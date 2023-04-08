@@ -53,6 +53,10 @@ public:
         _offset_cnst(l.size() + 1, 0), _offset_coef(l.size() + 1, 0),
         _offset_bc(l.size() + 1, 0), _cstride(l.size(), 0)
   {
+    // Check if boundary conditions are set
+    bool id_no_bcs = bcs_flux.empty();
+    std::int32_t size_bc_i = 0;
+
     /* Initialize constants */
     std::int32_t size_cnst = 0, size_bc = 0;
 
@@ -63,7 +67,11 @@ public:
 
       // Get sizes (constants, boundary conditions)
       std::int32_t size_cnst_i = size_constants(l_i);
-      std::int32_t size_bc_i = size_boundary(l_i, bcs_flux[i].empty());
+
+      if (!id_no_bcs)
+      {
+        size_bc_i = size_boundary(l_i, bcs_flux[i].empty());
+      }
 
       // Increment overall size
       size_cnst += size_cnst_i;
@@ -74,14 +82,16 @@ public:
       _offset_bc[i + 1] = size_bc;
     }
 
-    // Resize storage
+    // Resize storage and set values
     _data_cnst.resize(size_cnst, 0.0);
-    _bdof_marker.resize(size_bc, false);
-    _bdof_values.resize(size_bc, 0.0);
-
-    // Set data
     set_data_constants();
-    set_data_boundary(bcs_flux);
+
+    if (!id_no_bcs)
+    {
+      _bdof_marker.resize(size_bc, false);
+      _bdof_values.resize(size_bc, 0.0);
+      set_data_boundary(bcs_flux);
+    }
   }
 
   /// Initialize integration kernels and related coefficients
@@ -93,10 +103,6 @@ public:
   /// @param id            Id of integration-subdomain
   void initialize_kernels(fem::IntegralType integral_type, int id)
   {
-    // Get DOF-number of hat-function
-    int ndof_hat
-        = mesh::cell_num_entities(_l[0]->mesh()->topology().cell_type(), 0);
-
     if (_nlhs == 1)
     {
       /* Get LHS */
