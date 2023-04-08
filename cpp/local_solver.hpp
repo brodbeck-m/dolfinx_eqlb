@@ -217,4 +217,25 @@ void local_solver_cholesky(
   // Solve problems element-wise
   local_solver(vec_sol, a, vec_l, llt_solver);
 }
+
+/// Local solver (using the CG solver)
+///
+/// @param vec_sol List of solution vectors
+/// @param a       Bilinear form of all problems
+/// @param vec_l   List of multiple linear forms
+template <typename T>
+void local_solver_cg(
+    std::vector<std::shared_ptr<fem::Function<T>>>& vec_sol,
+    const fem::Form<T>& a,
+    const std::vector<std::shared_ptr<const fem::Form<T>>>& vec_l)
+{
+  // Initialize solver
+  Eigen::ConjugateGradient<
+      Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic>,
+      Eigen::Lower | Eigen::Upper>
+      cg_solver;
+
+  // Solve problems element-wise
+  local_solver(vec_sol, a, vec_l, cg_solver);
+}
 } // namespace dolfinx_adaptivity

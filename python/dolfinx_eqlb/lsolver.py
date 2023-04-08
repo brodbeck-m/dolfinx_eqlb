@@ -53,7 +53,8 @@ def local_solver_cg(list_func: typing.List[dfem.function.Function],
     # Prepare input for local solver
     list_func_cpp = prepare_input(list_l, list_func)
 
-    raise RuntimeError('CG-solver currently not supported')
+    # Perform local solution
+    dolfinx_eqlb.cpp.local_solver_cg(list_func_cpp, a, list_l)
 
 # --- Local projection ---
 

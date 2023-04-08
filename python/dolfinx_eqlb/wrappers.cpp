@@ -46,6 +46,17 @@ PYBIND11_MODULE(cpp, m)
       py::arg("solution"), py::arg("a"), py::arg("l"),
       "Local solver based on the Cholesky decomposition");
 
+  m.def(
+      "local_solver_cg",
+      [](std::vector<std::shared_ptr<dolfinx::fem::Function<PetscScalar>>>&
+             sol_elmt,
+         const dolfinx::fem::Form<PetscScalar>& a,
+         const std::vector<
+             std::shared_ptr<const dolfinx::fem::Form<PetscScalar>>>& l)
+      { local_solver_cg<PetscScalar>(sol_elmt, a, l); },
+      py::arg("solution"), py::arg("a"), py::arg("l"),
+      "Local solver based on a Conjugated-Gradient solver");
+
   // Equilibartion of vector-valued quantity
   m.def(
       "reconstruct_fluxes",

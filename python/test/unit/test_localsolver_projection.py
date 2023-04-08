@@ -630,7 +630,7 @@ def test_localprojection_multi_lhs(cell, is_vectorvalued, degree, test_func, n_l
 '''Test different solver for LGS'''
 
 
-@pytest.mark.parametrize("type_solver", ["lu", "cholesky"])
+@pytest.mark.parametrize("type_solver", ["lu", "cholesky", "cg"])
 def test_localprojection_solvers(type_solver):
     # Create problem
     msh, cell_basix = setup_problem_projection(ufl.tetrahedron, 2)
