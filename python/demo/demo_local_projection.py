@@ -107,9 +107,33 @@ def set_rhs(rhs_type, msh, is_vectorial=False):
         x = ufl.SpatialCoordinate(msh)
         func = rhs_pkg(ufl, x, msh.geometry.dim, is_vectorial)
     elif (rhs_type == 'func_cg'):
-        raise NotImplementedError('Projection of CG-Function not implemented!')
+        # Lambda function for interpolation
+        def f_intpl(x): return rhs_pkg(np, x, msh.geometry.dim, is_vectorial)
+        # Create Function
+        if is_vectorial:
+            P_rhs = ufl.VectorElement('CG', msh.ufl_cell(), 2)
+        else:
+            P_rhs = ufl.FiniteElement('CG', msh.ufl_cell(), 2)
+
+        V_rhs = dfem.FunctionSpace(msh, P_rhs)
+        func = dfem.Function(V_rhs)
+
+        # Interpolate values
+        func.interpolate(f_intpl)
     elif (rhs_type == 'func_dg'):
-        raise NotImplementedError('Projection of DG-Function not implemented!')
+        # Lambda function for interpolation
+        def f_intpl(x): return rhs_pkg(np, x, msh.geometry.dim, is_vectorial)
+        # Create Function
+        if is_vectorial:
+            P_rhs = ufl.VectorElement('DG', msh.ufl_cell(), 2)
+        else:
+            P_rhs = ufl.FiniteElement('DG', msh.ufl_cell(), 2)
+
+        V_rhs = dfem.FunctionSpace(msh, P_rhs)
+        func = dfem.Function(V_rhs)
+
+        # Interpolate values
+        func.interpolate(f_intpl)
     elif (rhs_type == 'ufl_func_cg'):
         raise NotImplementedError(
             'Projection of the gardient of a CG-Function not implemented!')
@@ -259,6 +283,15 @@ for n in range(0, timing_nretry):
     u_local = local_projection(V_proj, a, l, rhs_retry=rhs_retry)
     time_proj_local[n] += time.perf_counter()
 
+
+outfile = dolfinx.io.XDMFFile(
+    MPI.COMM_WORLD, "DebugProjection.xdmf", "w")
+u_global.name = 'ProjGlob'
+u_local.name = 'ProjLoc'
+outfile.write_mesh(V_proj.mesh)
+outfile.write_function(u_global, 1)
+outfile.write_function(u_local, 1)
+outfile.close()
 
 # Output results
 if (np.allclose(u_global.vector.array, u_local.vector.array)):

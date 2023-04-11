@@ -238,7 +238,7 @@ def project_fluxes_primal(eorder, u_prime):
     l = dfem.form(ufl.inner(flux, v) * ufl.dx)
 
     # Solve projection locally
-    lsolver.local_solver(sig_proj, a, l)
+    lsolver.local_solver_cholesky([sig_proj], a, [l])
 
     return sig_proj
 

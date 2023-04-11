@@ -230,9 +230,8 @@ void local_solver_cg(
     const std::vector<std::shared_ptr<const fem::Form<T>>>& vec_l)
 {
   // Initialize solver
-  Eigen::ConjugateGradient<
-      Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic>,
-      Eigen::Lower | Eigen::Upper>
+  Eigen::ConjugateGradient<Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>,
+                           Eigen::Lower | Eigen::Upper>
       cg_solver;
 
   // Solve problems element-wise

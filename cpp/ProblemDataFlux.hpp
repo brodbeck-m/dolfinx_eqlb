@@ -70,6 +70,7 @@ public:
       auto& [coeffs_i, cstride_i] = coefficients_i.at({integral_type, id});
       this->_data_coef.resize(coeffs_i.size());
       this->_data_coef = std::move(coeffs_i);
+      this->_cstride[0] = cstride_i;
 
       // Get structure of coefficients
       set_structure_coefficients(0, ndof_hat, l_i.coefficient_offsets());
@@ -200,7 +201,6 @@ protected:
   {
     // Get cstide
     int cstride = offsets.back();
-    this->_cstride[index] = cstride;
 
     if (cstride - offsets[1] == ndof_hat)
     {

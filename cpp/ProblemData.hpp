@@ -117,6 +117,7 @@ public:
       auto& [coeffs_i, cstride_i] = coefficients_i.at({integral_type, id});
       _data_coef.resize(coeffs_i.size());
       _data_coef = std::move(coeffs_i);
+      _cstride[0] = cstride_i;
 
       // Set offsets
       _offset_coef[1] = _data_coef.size();
@@ -348,6 +349,7 @@ protected:
 
       // Move data into storage
       std::move(coeffs_i.begin(), coeffs_i.end(), data_coef.begin());
+      _cstride[i] = cstride_i;
     }
   }
 
