@@ -73,7 +73,8 @@ public:
       this->_cstride[0] = cstride_i;
 
       // Get structure of coefficients
-      set_structure_coefficients(0, ndof_hat, l_i.coefficient_offsets());
+      set_structure_coefficients(0, l_i.coefficients(),
+                                 l_i.coefficient_offsets());
 
       // Set offsets
       this->_offset_coef[1] = this->_data_coef.size();
@@ -126,7 +127,7 @@ public:
         this->_offset_coef[i + 1] = size_coef;
 
         // Get structure of coefficients
-        set_structure_coefficients(i, ndof_hat, offsets_i);
+        set_structure_coefficients(i, l_i.coefficients(), offsets_i);
 
         /* Exctract Kernel */
         this->_kernel[i] = this->_l[i]->kernel(integral_type, id);
@@ -192,31 +193,35 @@ public:
   /// Extract begin data flux-function (DG) (coefficients) of l_i
   /// @param index Id of linearform
   /// @return Begin of flux-function (DG) data of linearform l_i
-  int begin_fluxdg(int index) { return _begin_fluxdg[index]; }
+  int begin_fluxdg(int index)
+  {
+    throw std::runtime_error('Coefficients of flux currently unavailable');
+  }
 
 protected:
   /* Hanlde coefficients */
-  void set_structure_coefficients(int index, int ndof_hat,
+  void set_structure_coefficients(int index, auto& list_coeffs,
                                   const std::vector<int>& offsets)
   {
-    // Get cstide
-    int cstride = offsets.back();
+    // Counter error handling
+    int count_hat = 0;
 
-    if (cstride - offsets[1] == ndof_hat)
+    for (std::size_t i = 0; i < list_coeffs.size(); ++i)
     {
-      // Set beginn of _hat-data
-      _begin_hat[index] = offsets[1];
+      if (list_coeffs[i]->name == "hat")
+      {
+        // Set begin within coefficient-vector
+        _begin_hat[index] = offsets[i];
 
-      // Set beginn of flux_dg-data
-      _begin_fluxdg[index] = 0;
+        // Set identifier for error handling
+        count_hat += 1;
+      }
     }
-    else
-    {
-      // Set beginn of _hat-data
-      _begin_hat[index] = 0;
 
-      // Set beginn of flux_dg-data
-      _begin_fluxdg[index] = offsets[1];
+    // Error handling indetification of hat-function
+    if (count_hat != 1)
+    {
+      throw std::runtime_error("hat-function could not be idetified");
     }
   }
 

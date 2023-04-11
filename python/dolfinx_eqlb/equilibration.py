@@ -89,6 +89,9 @@ class EquilibratorEV():
         # Set hat-function
         self.hat_function = dfem.Function(self.V_hat)
 
+        # Set identifire
+        self.hat_function.name = "hat"
+
         # Create trial and test functions
         sig, r = ufl.TrialFunctions(self.V)
         v, q = ufl.TestFunctions(self.V)
