@@ -225,8 +225,8 @@ protected:
     }
   }
 
-  /* Storage coefficients and constants */
-  // Informations
+  /* Variables */
+  // Infos on constants and coefficients
   std::vector<int> _begin_hat, _begin_fluxdg;
 };
 } // namespace dolfinx_adaptivity::equilibration

@@ -175,14 +175,36 @@ void equilibrate_flux_constrmin(
     // Extract solution vector
     std::span<T> x_flux_hdiv = problem_data.flux(i_lhs).x()->mutable_array();
 
-    // Extract DOFs flux
+    // Extract DOFs
     std::span<const int32_t> dofs_flux_patch = patch.dofs_fluxhdiv_patch();
     std::span<const int32_t> dofs_flux_global = patch.dofs_fluxhdiv_global();
 
     // Add local solution
-    for (std::size_t k = 0; k < patch.ndofs_flux_patch_nz(); ++k)
+    if (type_patch == 1 || type_patch == 3)
     {
-      x_flux_hdiv[dofs_flux_global[k]] += u_patch[dofs_flux_patch[k]];
+      // Flux DOFs within mixed fe-space
+      std::span<const int32_t> dofs_flux_mixed = patch.dofs_fluxhdiv_mixed();
+
+      for (std::size_t k = 0; k < patch.ndofs_flux_patch_nz(); ++k)
+      {
+        std::int32_t dof_flux_glob = dofs_flux_global[k];
+
+        if (bmarkers[dofs_flux_mixed[k]])
+        {
+          x_flux_hdiv[dof_flux_glob] = u_patch[dofs_flux_patch[k]];
+        }
+        else
+        {
+          x_flux_hdiv[dof_flux_glob] += u_patch[dofs_flux_patch[k]];
+        }
+      }
+    }
+    else
+    {
+      for (std::size_t k = 0; k < patch.ndofs_flux_patch_nz(); ++k)
+      {
+        x_flux_hdiv[dofs_flux_global[k]] += u_patch[dofs_flux_patch[k]];
+      }
     }
   }
 

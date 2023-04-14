@@ -45,10 +45,12 @@ void apply_lifting(std::span<T> Ae, std::vector<T>& Le,
 
         for (std::size_t l = 0; l < ndof_elmt_nz; ++l)
         {
-          if (bmarkers[dof_global_k] != 0)
+          std::int32_t dof_global_l = dofs_global[l];
+
+          if (bmarkers[dof_global_l] != 0)
           {
-            Le[dofs_patch[k]]
-                -= Ae[offset + dofs_elmt[l]] * bvalues[dof_global_k];
+            Le[dofs_elmt[k]]
+                -= Ae[offset + dofs_elmt[l]] * bvalues[dof_global_l];
           }
         }
       }

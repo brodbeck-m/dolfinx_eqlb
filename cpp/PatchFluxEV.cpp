@@ -46,6 +46,7 @@ PatchFluxEV::PatchFluxEV(
 
   _list_dofsnz_patch_fluxhdiv.resize(_ncells_max * _ndof_flux_nz);
   _list_dofsnz_global_fluxhdiv.resize(_ncells_max * _ndof_flux_nz);
+  _list_dofsnz_mixed_fluxhdiv.resize(_ncells_max * _ndof_flux_nz);
 }
 
 void PatchFluxEV::create_subdofmap(int node_i)
@@ -144,6 +145,7 @@ void PatchFluxEV::create_subdofmap(int node_i)
       // Calculate global DOFs of H(div) confomring flux
       _list_dofsnz_patch_fluxhdiv[offs_l] = dof_patch;
       _list_dofsnz_global_fluxhdiv[offs_l] = fdofs[ldof_cell_i];
+      _list_dofsnz_mixed_fluxhdiv[offs_l] = gdof_cell_i;
 
       // Increment id of patch-local DOFs
       dof_patch += 1;
@@ -158,6 +160,7 @@ void PatchFluxEV::create_subdofmap(int node_i)
     {
       // Precalculations
       int ldof_cell_i = ndof_fct + jj;
+      int gdof_cell_i = gdofs[ldof_cell_i];
 
       // Add cell-local DOFs
       _dofsnz_elmt[offs_p] = ldof_cell_i;
@@ -166,11 +169,12 @@ void PatchFluxEV::create_subdofmap(int node_i)
       _dofsnz_patch[offs_p] = dof_patch;
 
       // Calculate global DOFs
-      _dofsnz_global[offs_p] = gdofs[ldof_cell_i];
+      _dofsnz_global[offs_p] = gdof_cell_i;
 
       // Calculate global DOFs of H(div) conforming flux
       _list_dofsnz_patch_fluxhdiv[offs_l] = dof_patch;
       _list_dofsnz_global_fluxhdiv[offs_l] = fdofs[ndof_fct + jj];
+      _list_dofsnz_mixed_fluxhdiv[offs_l] = gdof_cell_i;
 
       // Increment id of patch-local DOFs
       dof_patch += 1;
@@ -215,6 +219,7 @@ void PatchFluxEV::create_subdofmap(int node_i)
     {
       // Precalculations
       const int ldof_cell_i = _entity_dofs_flux[_dim_fct][id_fct_loc][jj];
+      int gdof_cell_i = gdofs[ldof_cell_i];
 
       // Add cell-local DOFs
       _dofsnz_elmt[offs_p] = _entity_dofs_flux[_dim_fct][id_fct_loc][jj];
@@ -223,11 +228,12 @@ void PatchFluxEV::create_subdofmap(int node_i)
       _dofsnz_patch[offs_p] = dof_patch;
 
       // Calculate global DOFs
-      _dofsnz_global[offs_p] = gdofs[ldof_cell_i];
+      _dofsnz_global[offs_p] = gdof_cell_i;
 
       // Calculate global DOFs of H(div) confomring flux
       _list_dofsnz_patch_fluxhdiv[offs_l] = dof_patch;
       _list_dofsnz_global_fluxhdiv[offs_l] = fdofs[ldof_cell_i];
+      _list_dofsnz_mixed_fluxhdiv[offs_l] = gdof_cell_i;
 
       // Increment id of patch-local DOFs
       dof_patch += 1;
