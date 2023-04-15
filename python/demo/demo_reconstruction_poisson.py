@@ -44,7 +44,7 @@ sdisc_nelmt = 1
 eqlb_fluxorder = 1
 
 # Type of manufactured solution
-extsol_type = 4
+extsol_type = 3
 
 # Linear algebra
 lgs_solver = "cg"
@@ -226,31 +226,34 @@ def solve_poisson_primal(solver, L, u_prime):
     u_prime.x.scatter_forward()
 
 
-def projection_primal(eorder, fluxorder, u_prime, rhs_prime):
+def projection_primal(eorder, fluxorder, u_prime, rhs_prime, mult_rhs=False):
     # Create DG-space for projected flux
     msh = u_prime.function_space.mesh
 
-    V_flux_proj = dfem.FunctionSpace(
-        msh, ufl.VectorElement("DG", msh.ufl_cell(), eorder - 1)
-    )
-    V_rhs_proj = dfem.FunctionSpace(
-        msh, ufl.FiniteElement("DG", msh.ufl_cell(), fluxorder - 1)
-    )
+    # Create function spaces
+    V_flux_proj = dfem.FunctionSpace(msh, ufl.VectorElement("DG", msh.ufl_cell(), eorder - 1))
+    V_rhs_proj = dfem.FunctionSpace(msh, ufl.FiniteElement("DG", msh.ufl_cell(), fluxorder - 1))
 
-    # # Perform projections
-    # list_proj = lsolver.local_projector(
-    #     V_rhs_proj, [-u_prime.dx(0), -u_prime.dx(1), rhs_prime]
-    # )
+    if mult_rhs:
+        # Projection
+        list_proj = lsolver.local_projector(V_rhs_proj, [-u_prime.dx(0), -u_prime.dx(1), rhs_prime])
 
-    # # Assemble flux
-    # sig_proj = dfem.Function(V_flux_proj)
-    # sig_proj.x.array[0::2] = list_proj[0].x.array[:]
-    # sig_proj.x.array[1::2] = list_proj[1].x.array[:]
+        # Assemble flux
+        sig_proj = dfem.Function(V_flux_proj)
+        sig_proj.x.array[0::2] = list_proj[0].x.array[:]
+        sig_proj.x.array[1::2] = list_proj[1].x.array[:]
 
-    sig_proj = lsolver.local_projector(V_flux_proj, [-ufl.grad(u_prime)])
-    rhs_proj = lsolver.local_projector(V_rhs_proj, [rhs_prime])
+        return sig_proj, list_proj[2]
+    else:
+        # Create function spaces
+        V_flux_proj = dfem.FunctionSpace(msh, ufl.VectorElement("DG", msh.ufl_cell(), eorder - 1))
+        V_rhs_proj = dfem.FunctionSpace(msh, ufl.FiniteElement("DG", msh.ufl_cell(), fluxorder - 1))
 
-    return sig_proj[0], rhs_proj[0]
+        # Projection
+        sig_proj = lsolver.local_projector(V_flux_proj, [-ufl.grad(u_prime)])
+        rhs_proj = lsolver.local_projector(V_rhs_proj, [rhs_prime])
+
+        return sig_proj[0], rhs_proj[0]
 
 
 # --- Setup equilibration ---
@@ -419,8 +422,8 @@ if extsol_type == 1:
     sig_ext = ext_flux_1
 
     # Set dirichlet-ids
-    boundid_prime_dir = [1, 3]
-    boundid_prime_vn = [2, 4]
+    boundid_prime_dir = [1, 2, 3, 4]
+    boundid_prime_vn = []
 elif extsol_type == 2:
     # Function handles for u_ext/sig_ext
     u_ext_np = ext_sol_1(np)
@@ -464,8 +467,8 @@ elif extsol_type == 6:
     sig_ext = ext_flux_3
 
     # Set dirichlet-ids
-    boundid_prime_dir = [3, 4]
-    boundid_prime_vn = [1, 2]
+    boundid_prime_dir = [1, 2, 3, 4]
+    boundid_prime_vn = []
 elif extsol_type == 7:
     # Function handles for u_ext/sig_ext
     u_ext_np = ext_sol_3(np)
@@ -473,8 +476,8 @@ elif extsol_type == 7:
     sig_ext = ext_flux_3
 
     # Set dirichlet-ids
-    boundid_prime_dir = [1, 2, 3, 4]
-    boundid_prime_vn = [1, 2]
+    boundid_prime_dir = [2, 4]
+    boundid_prime_vn = [1, 3]
 else:
     raise RuntimeError("No such solution option!")
 
@@ -518,7 +521,7 @@ for i_timing in range(0, timing_nretry):
         # Project fluxes into DG-space
         extime["prime_project"] -= time.perf_counter()
         sig_proj, rhs_proj = projection_primal(
-            sdisc_eorder, eqlb_fluxorder, u_prime, rhs_prime
+            sdisc_eorder, eqlb_fluxorder, u_prime, rhs_prime, mult_rhs=False
         )
         extime["prime_project"] += time.perf_counter()
 
@@ -551,11 +554,15 @@ for i_timing in range(0, timing_nretry):
 
         # Export solution to paraview (only in first repetition)
         if i_timing == 0:
+            # Evaluate exakt flux
+            vD = dfem.Function(equilibrator.V_flux)
+            vD.interpolate(sig_ext)
+
             # Set function names
             u_prime.name = "u_prime"
             sig_proj.name = "sig_proj"
-            rhs_proj.name = "rhs_proj"
             equilibrator.list_flux[0].name = "sig_eqlb"
+            vD.name = 'sig_ext'
 
             # Name output file
             outname = (
@@ -568,13 +575,15 @@ for i_timing in range(0, timing_nretry):
                 + ".xdmf"
             )
 
+            
+
             # Write to xdmf
             outfile = dolfinx.io.XDMFFile(MPI.COMM_WORLD, outname, "w")
             outfile.write_mesh(msh)
             outfile.write_function(u_prime, 1)
             outfile.write_function(sig_proj, 1)
-            outfile.write_function(rhs_proj, 1)
             outfile.write_function(equilibrator.list_flux[0], 1)
+            outfile.write_function(vD, 1)
             outfile.close()
 
         # Output to console
