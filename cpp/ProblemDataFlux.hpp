@@ -38,9 +38,11 @@ public:
       const std::vector<
           std::vector<std::shared_ptr<const fem::DirichletBC<T>>>>& bcs_flux,
       std::vector<std::shared_ptr<fem::Function<T>>>& fluxes)
-      : ProblemData<T>(l, bcs_flux, fluxes), _begin_hat(l.size(), 0),
+      : ProblemData<T>(fluxes), _begin_hat(l.size(), 0),
         _begin_fluxdg(l.size(), 0)
   {
+    // Set RHS of problems
+    this->set_rhs(l, bcs_flux);
   }
 
   /// Initialize integration kernels and related coefficients
@@ -185,6 +187,11 @@ public:
   }
 
   /* Getter functions*/
+  /// Extract flux function
+  /// @param index Id of subproblem
+  /// @return The flux (fe function)
+  fem::Function<T>& flux(int index) const { return *(this->_solfunc[index]); }
+
   /// Extract begin data hat-function (coefficients) of l_i
   /// @param index Id of linearform
   /// @return Begin of hat-function data of linearform l_i

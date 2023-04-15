@@ -41,57 +41,14 @@ public:
   /// Initializes storage of all constants, the boundary-DOF lookup tables
   //  and the boundary values for all LHS considered within the equilibartion.
   ///
-  /// @param l        List of all LHS
-  /// @param bcs_flux List of list of BCs for each equilibarted flux
-  /// @param fluxes   List of list of flux functions for each sub-problem
-  ProblemData(
-      const std::vector<std::shared_ptr<const fem::Form<T>>>& l,
-      const std::vector<
-          std::vector<std::shared_ptr<const fem::DirichletBC<T>>>>& bcs_flux,
-      std::vector<std::shared_ptr<fem::Function<T>>>& fluxes)
-      : _nlhs(l.size()), _l(l), _flux(fluxes), _kernel(l.size()),
-        _offset_cnst(l.size() + 1, 0), _offset_coef(l.size() + 1, 0),
-        _offset_bc(l.size() + 1, 0), _cstride(l.size(), 0)
+  /// @param bcs       List of list of BCs for each problem
+  /// @param solutions List of list solution functions for each problem
+  ProblemData(std::vector<std::shared_ptr<fem::Function<T>>>& sol_func)
+      : _nlhs(sol_func.size()), _solfunc(sol_func), _l(sol_func.size()),
+        _kernel(sol_func.size()), _offset_cnst(sol_func.size() + 1, 0),
+        _offset_coef(sol_func.size() + 1, 0),
+        _offset_bc(sol_func.size() + 1, 0), _cstride(sol_func.size(), 0)
   {
-    // Check if boundary conditions are set
-    bool id_no_bcs = bcs_flux.empty();
-    std::int32_t size_bc_i = 0;
-
-    /* Initialize constants */
-    std::int32_t size_cnst = 0, size_bc = 0;
-
-    for (std::size_t i = 0; i < _nlhs; ++i)
-    {
-      // Get current linear form
-      const fem::Form<T>& l_i = *(l[i]);
-
-      // Get sizes (constants, boundary conditions)
-      std::int32_t size_cnst_i = size_constants(l_i);
-
-      if (!id_no_bcs)
-      {
-        size_bc_i = size_boundary(l_i, bcs_flux[i].empty());
-      }
-
-      // Increment overall size
-      size_cnst += size_cnst_i;
-      size_bc += size_bc_i;
-
-      // Set offset
-      _offset_cnst[i + 1] = size_cnst;
-      _offset_bc[i + 1] = size_bc;
-    }
-
-    // Resize storage and set values
-    _data_cnst.resize(size_cnst, 0.0);
-    set_data_constants();
-
-    if (!id_no_bcs)
-    {
-      _bdof_marker.resize(size_bc, false);
-      _bdof_values.resize(size_bc, 0.0);
-      set_data_boundary(bcs_flux);
-    }
   }
 
   /// Initialize integration kernels and related coefficients
@@ -180,6 +137,60 @@ public:
   }
 
   /* Setter functions */
+  /// Set different RHS of a set of problems
+  /// @param l Vector with forms of RHS
+  void
+  set_rhs(const std::vector<std::shared_ptr<const fem::Form<T>>>& l,
+          const std::vector<
+              std::vector<std::shared_ptr<const fem::DirichletBC<T>>>>& bcs)
+  {
+    // Check input
+    if (l.size() != _nlhs)
+    {
+      throw std::runtime_error("Number of RHS does not match!");
+    }
+
+    // Check if boundary conditions are set
+    bool id_no_bcs = bcs.empty();
+
+    /* Initialize constants */
+    std::int32_t size_cnst = 0, size_bc = 0;
+
+    for (std::size_t i = 0; i < _nlhs; ++i)
+    {
+      // Get current linear form
+      const fem::Form<T>& l_i = *(l[i]);
+      _l[i] = l[i];
+
+      // Get sizes (constants, boundary conditions)
+      std::int32_t size_cnst_i = size_constants(l_i);
+      std::int32_t size_bc_i = 0;
+
+      if (!id_no_bcs)
+      {
+        size_bc_i = size_boundary(l_i, bcs[i].empty());
+      }
+
+      // Increment overall size
+      size_cnst += size_cnst_i;
+      size_bc += size_bc_i;
+
+      // Set offset
+      _offset_cnst[i + 1] = size_cnst;
+      _offset_bc[i + 1] = size_bc;
+    }
+
+    // Resize storage and set values
+    _data_cnst.resize(size_cnst, 0.0);
+    set_data_constants();
+
+    if (!id_no_bcs)
+    {
+      _bdof_marker.resize(size_bc, false);
+      _bdof_values.resize(size_bc, 0.0);
+      set_data_boundary(bcs);
+    }
+  }
 
   /* Getter functions */
   /// Extract number linearform l_i
@@ -202,10 +213,13 @@ public:
     return _kernel[index];
   }
 
-  /// Extract flux function
+  /// Extract solution function
   /// @param index Id of subproblem
-  /// @return The flux-function
-  fem::Function<T>& flux(int index) const { return *(_flux[index]); }
+  /// @return The solution (fe function)
+  fem::Function<T>& solution_function(int index) const
+  {
+    return *(_solfunc[index]);
+  }
 
   /// Extract constants of l_i
   /// @param index Id of linearform
@@ -373,16 +387,16 @@ protected:
 
   void set_data_boundary(
       const std::vector<
-          std::vector<std::shared_ptr<const fem::DirichletBC<T>>>>& bcs_flux)
+          std::vector<std::shared_ptr<const fem::DirichletBC<T>>>>& bcs)
   {
     for (std::size_t i = 0; i < _nlhs; ++i)
     {
-      if (!bcs_flux[i].empty())
+      if (!bcs[i].empty())
       {
         // Extract data for subproblem i
         const fem::Form<T>& l_i = *(_l[i]);
-        const std::vector<std::shared_ptr<const fem::DirichletBC<T>>>& bcs
-            = bcs_flux[i];
+        const std::vector<std::shared_ptr<const fem::DirichletBC<T>>>& bc_i
+            = bcs[i];
 
         std::shared_ptr<const fem::FunctionSpace> function_space
             = l_i.function_spaces().at(0);
@@ -395,17 +409,17 @@ protected:
         std::span<T> bc_values_i = boundary_values(i);
 
         // Set boundary markers
-        for (std::size_t k = 0; k < bcs.size(); ++k)
+        for (std::size_t k = 0; k < bc_i.size(); ++k)
         {
-          assert(bcs[k]);
-          assert(bcs[k]->function_space());
-          if (function_space->contains(*bcs[k]->function_space()))
+          assert(bc_i[k]);
+          assert(bc_i[k]->function_space());
+          if (function_space->contains(*bc_i[k]->function_space()))
           {
             // Mark boundary DOFs
-            bcs[k]->mark_dofs(bc_marker_i);
+            bc_i[k]->mark_dofs(bc_marker_i);
 
             // Write boundary values into local data-structure
-            bcs[k]->dof_values(bc_values_i);
+            bc_i[k]->dof_values(bc_values_i);
           }
         }
       }
@@ -416,7 +430,7 @@ protected:
   const int _nlhs;
 
   // Linearforms
-  const std::vector<std::shared_ptr<const fem::Form<T>>>& _l;
+  std::vector<std::shared_ptr<const fem::Form<T>>> _l;
 
   // Integration kernels
   std::vector<
@@ -424,8 +438,8 @@ protected:
                          const int*, const std::uint8_t*)>>
       _kernel;
 
-  // Flux functions
-  std::vector<std::shared_ptr<fem::Function<T>>>& _flux;
+  // Solution functions
+  std::vector<std::shared_ptr<fem::Function<T>>>& _solfunc;
 
   /* Storage coefficients and constants */
   // Informations

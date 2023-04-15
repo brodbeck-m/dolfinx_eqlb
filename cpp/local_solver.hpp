@@ -43,7 +43,9 @@ void local_solver(std::vector<std::shared_ptr<fem::Function<T>>>& vec_sol,
   const std::vector<std::vector<std::shared_ptr<const fem::DirichletBC<T>>>>
       bcs;
   equilibration::ProblemData<T> problem_data
-      = equilibration::ProblemData<T>(vec_l, bcs, vec_sol);
+      = equilibration::ProblemData<T>(vec_sol);
+
+  problem_data.set_rhs(vec_l, bcs);
 
   // Prepare cell geometry
   const mesh::Geometry& geometry = a.mesh()->geometry();
@@ -130,7 +132,7 @@ void local_solver(std::vector<std::shared_ptr<fem::Function<T>>>& vec_sol,
 
           // Solution vector
           std::span<T> vec_sol_elmt
-              = problem_data.flux(i_lhs).x()->mutable_array();
+              = problem_data.solution_function(i_lhs).x()->mutable_array();
 
           /* Solve cell-wise problem */
           if (i_lhs == 0)
