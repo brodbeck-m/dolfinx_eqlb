@@ -8,7 +8,7 @@ import dolfinx.mesh as dmesh
 from dolfinx.fem.bcs import DirichletBCMetaClass
 import ufl
 
-from dolfinx_eqlb.cpp import reconstruct_fluxes
+from dolfinx_eqlb.cpp import reconstruct_fluxes_minimisation
 
 # --- Equilibartion of fluxes ---
 
@@ -130,5 +130,5 @@ class EquilibratorEV():
         self.list_bcs_flux = list_bcs_flux
 
     def equilibrate_fluxes(self):
-        reconstruct_fluxes(self.form_a, self.form_lpen, self.list_form_l, self.list_bfct_prime,
-                           self.list_bfct_flux, self.list_bcs_flux, self.list_flux_cpp)
+        reconstruct_fluxes_minimisation(self.form_a, self.form_lpen, self.list_form_l, self.list_bfct_prime,
+                                        self.list_bfct_flux, self.list_bcs_flux, self.list_flux_cpp)

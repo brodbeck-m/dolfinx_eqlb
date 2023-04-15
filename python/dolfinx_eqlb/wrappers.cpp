@@ -59,7 +59,7 @@ PYBIND11_MODULE(cpp, m)
 
   // Equilibartion of vector-valued quantity
   m.def(
-      "reconstruct_fluxes",
+      "reconstruct_fluxes_minimisation",
       [](const dolfinx::fem::Form<PetscScalar>& a,
          const dolfinx::fem::Form<PetscScalar>& l_pen,
          const std::vector<
@@ -78,7 +78,6 @@ PYBIND11_MODULE(cpp, m)
       py::arg("a"), py::arg("l_pen"), py::arg("l"),
       py::arg("fct_esntbound_prime"), py::arg("fct_esntbound_prime"),
       py::arg("bcs"), py::arg("flux_hdiv"),
-      "Local equilibartion of H(div) conforming fluxes.");
-  //   m.def("reconstruct_flux_patch",
-  //         &equilibration::reconstruct_fluxes<PetscScalar>);
+      "Local equilibartion of H(div) conforming fluxes, solving patch-wise "
+      "constrined minimisation problems.");
 }

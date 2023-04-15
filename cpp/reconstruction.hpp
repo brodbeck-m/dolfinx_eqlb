@@ -116,42 +116,30 @@ void reconstruct_fluxes_patch(const fem::Form<T>& a, const fem::Form<T>& l_pen,
   }
 }
 
-/// Execute flux calculation based on H(div) conforming equilibration
+/// Mark facets of entire mesh (internal, neumann, dirichlet)
 ///
-/// @param a                   The bilinears form to assemble
-/// @param l                   The linar form to assemble
+/// During the equilibration process, the type of boundary facets is required.
+/// This routine uses the following facet-colors
+///     - Internal fact: 0
+///     - Boundary factet (essential BC primal problem): 1
+///     - Boundary factet (essential BC flux): 2
+///
+/// @param topology            Mesh-topology of the problem
 /// @param fct_esntbound_prime Facets of essential BCs of primal problem
 /// @param fct_esntbound_flux  Facets of essential BCs on flux field
-/// @param flux                Function that holds the reconstructed flux
+/// @param bcs_flux            Essential boundary conditions for the flux
+/// @return
 template <typename T>
-void reconstruct_fluxes(
-    const fem::Form<T>& a, const fem::Form<T>& l_pen,
-    const std::vector<std::shared_ptr<const fem::Form<T>>>& l,
+graph::AdjacencyList<std::int8_t> mark_mesh_facets(
+    const int n_lhs, const mesh::Topology& topology,
     const std::vector<std::vector<std::int32_t>>& fct_esntbound_prime,
     const std::vector<std::vector<std::int32_t>>& fct_esntbound_flux,
     const std::vector<std::vector<std::shared_ptr<const fem::DirichletBC<T>>>>&
-        bcs_flux,
-    std::vector<std::shared_ptr<fem::Function<T>>>& flux_hdiv)
+        bcs_flux)
 {
-  // Check input
-  int n_lhs = l.size();
-  int n_fbp = fct_esntbound_prime.size();
-  int n_fbf = fct_esntbound_flux.size();
-  int n_bcs = bcs_flux.size();
-  int n_flux = flux_hdiv.size();
-
-  if (n_lhs != n_fbp || n_lhs != n_fbf || n_lhs != n_bcs || n_lhs != n_flux)
-  {
-    throw std::runtime_error("Equilibration: Input sizes does not match");
-  }
-  /* Geometry data */
-  // Get topology
-  const mesh::Topology& topology = a.mesh()->topology();
-
   // Facet dimansion
   const int dim_fct = topology.dim() - 1;
 
-  /* Mark facest (0->internal, 1->esnt_prim, 2->esnt_flux) */
   // Initialize data storage
   std::int32_t nnodes = topology.index_map(dim_fct)->size_local();
   std::vector<std::int8_t> data_fct_type(nnodes * n_lhs, 0);
@@ -210,6 +198,44 @@ void reconstruct_fluxes(
       }
     }
   }
+
+  return std::move(fct_type);
+}
+
+/// Execute flux calculation based on H(div) conforming equilibration
+///
+/// @param a                   The bilinears form to assemble
+/// @param l                   The linar form to assemble
+/// @param fct_esntbound_prime Facets of essential BCs of primal problem
+/// @param fct_esntbound_flux  Facets of essential BCs on flux field
+/// @param bcs_flux            Essential boundary conditions for the flux
+/// @param flux                Function that holds the reconstructed flux
+template <typename T>
+void reconstruct_fluxes(
+    const fem::Form<T>& a, const fem::Form<T>& l_pen,
+    const std::vector<std::shared_ptr<const fem::Form<T>>>& l,
+    const std::vector<std::vector<std::int32_t>>& fct_esntbound_prime,
+    const std::vector<std::vector<std::int32_t>>& fct_esntbound_flux,
+    const std::vector<std::vector<std::shared_ptr<const fem::DirichletBC<T>>>>&
+        bcs_flux,
+    std::vector<std::shared_ptr<fem::Function<T>>>& flux_hdiv)
+{
+  // Check input
+  int n_lhs = l.size();
+  int n_fbp = fct_esntbound_prime.size();
+  int n_fbf = fct_esntbound_flux.size();
+  int n_bcs = bcs_flux.size();
+  int n_flux = flux_hdiv.size();
+
+  if (n_lhs != n_fbp || n_lhs != n_fbf || n_lhs != n_bcs || n_lhs != n_flux)
+  {
+    throw std::runtime_error("Equilibration: Input sizes does not match");
+  }
+
+  /* Facet coloring */
+  graph::AdjacencyList<std::int8_t> fct_type
+      = mark_mesh_facets(n_lhs, a.mesh()->topology(), fct_esntbound_prime,
+                         fct_esntbound_flux, bcs_flux);
 
   /* Initialize essential boundary conditions for reconstructed flux */
   ProblemDataFlux<T> problem_data = ProblemDataFlux<T>(l, bcs_flux, flux_hdiv);
