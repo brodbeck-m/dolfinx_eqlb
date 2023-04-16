@@ -47,44 +47,46 @@ public:
   {
   }
 
-  // void initialize_coefficients(const std::vector<std::int32_t>& cells)
-  // {
-  //   // Number of cells
-  //   const int n_cells = cells.size();
+  void initialize_coefficients(const std::vector<std::int32_t>& cells)
+  {
+    // FIXME: Use fem::IntegralType and regio id as input and determine list of
+    // cells here Number of cells
+    const int n_cells = cells.size();
 
-  //   /* Determine size of coefficient storage */
-  //   std::int32_t size_coef = 0;
+    /* Determine size of coefficient storage */
+    std::int32_t size_coef = 0;
 
-  //   for (std::size_t i = 0; i < this->_nlhs; ++i)
-  //   {
-  //     // Determine DOF number per element
-  //     int ndofs_fluxdg
-  //         = _flux_dg[i]->function_space()->element()->space_dimension();
-  //     int ndofs_rhsdg
-  //         = _rhs_dg[i]->function_space()->element()->space_dimension();
+    for (std::size_t i = 0; i < this->_nlhs; ++i)
+    {
+      // Determine DOF number per element
+      int ndofs_fluxdg
+          = _flux_dg[i]->function_space()->element()->space_dimension();
+      int ndofs_rhsdg
+          = _rhs_dg[i]->function_space()->element()->space_dimension();
 
-  //     int ctride_i = ndofs_fluxdg + ndofs_rhsdg;
+      int cstride_i = ndofs_fluxdg + ndofs_rhsdg;
 
-  //     // Increment overall number of coefficients
-  //     size_coef += cstride_i * n_cells;
+      // Increment overall number of coefficients
+      size_coef += cstride_i * n_cells;
 
-  //     // Set offsets and cstride
-  //     _offset_coef[i + 1] = size_coef;
-  //     _cstride[i] = cstride_i;
-  //   }
+      // Set offsets and cstride
+      this->_offset_coef[i + 1] = size_coef;
+      this->_cstride[i] = cstride_i;
+    }
 
-  //   // Resize storage for coefficients
-  //   _data_coef.resize(size_coef);
+    // Resize storage for coefficients
+    this->_data_coef.resize(size_coef);
 
-  //   /* Set coefficient data */
-  // }
+    /* Set coefficient data */
+    // TODO - Add copy of function values into coefficient array
+    throw std::runtime_error('Initialization of coefficients not implemented')
+  }
 
-  // /* Setter functions*/
-  // void set_form(const std::vector<std::shared_ptr<const fem::Form<T>>>&
-  // forms)
-  // {
-  //   set_rhs(forms);
-  // }
+  /* Setter functions*/
+  void set_form(const std::vector<std::shared_ptr<const fem::Form<T>>>& forms)
+  {
+    set_rhs(forms);
+  }
 
   // /* Getter functions*/
 
