@@ -1,6 +1,7 @@
 #pragma once
 
 #include "PatchFluxEV.hpp"
+#include "ProblemDataCstmFlux.hpp"
 #include "ProblemDataFlux.hpp"
 #include "StorageStiffness.hpp"
 #include "solve_patch_constrmin.hpp"
@@ -204,6 +205,9 @@ graph::AdjacencyList<std::int8_t> mark_mesh_facets(
 
 /// Execute flux calculation based on H(div) conforming equilibration
 ///
+/// Equilibration based on local minimazation problems. Weak forms
+/// discretized using ufl.
+///
 /// @param a                   The bilinears form to assemble
 /// @param l                   The linar form to assemble
 /// @param fct_esntbound_prime Facets of essential BCs of primal problem
@@ -237,11 +241,48 @@ void reconstruct_fluxes(
       = mark_mesh_facets(n_lhs, a.mesh()->topology(), fct_esntbound_prime,
                          fct_esntbound_flux, bcs_flux);
 
-  /* Initialize essential boundary conditions for reconstructed flux */
-  ProblemDataFlux<T> problem_data = ProblemDataFlux<T>(l, bcs_flux, flux_hdiv);
+  /* Initialize problem data */
+  ProblemDataFlux<T> problem_data = ProblemDataFlux<T>(flux_hdiv, bcs_flux, l);
 
   /* Call equilibration */
   reconstruct_fluxes_patch(a, l_pen, problem_data, fct_type);
+}
+
+template <typename T>
+void reconstruct_fluxes(
+    std::vector<std::shared_ptr<fem::Function<T>>>& flux_hdiv,
+    std::vector<std::shared_ptr<fem::Function<T>>>& flux_dg,
+    std::vector<std::shared_ptr<fem::Function<T>>>& rhs_dg,
+    const std::vector<std::vector<std::int32_t>>& fct_esntbound_prime,
+    const std::vector<std::vector<std::int32_t>>& fct_esntbound_flux,
+    const std::vector<std::vector<std::shared_ptr<const fem::DirichletBC<T>>>>&
+        bcs_flux,
+    const std::vector<std::shared_ptr<const fem::Form<T>>>& form_o1)
+{
+  // Check input
+  int n_rhs = rhs_dg.size();
+  int n_fbp = fct_esntbound_prime.size();
+  int n_fbf = fct_esntbound_flux.size();
+  int n_bcs = bcs_flux.size();
+  int n_flux_hdiv = flux_hdiv.size();
+  int n_flux_dg = flux_dg.size();
+
+  if (n_rhs != n_fbp || n_rhs != n_fbf || n_rhs != n_bcs || n_rhs != n_flux_hdiv
+      || n_rhs != n_flux_dg)
+  {
+    throw std::runtime_error("Equilibration: Input sizes does not match");
+  }
+
+  /* Facet coloring */
+  graph::AdjacencyList<std::int8_t> fct_type
+      = mark_mesh_facets(n_rhs, rhs_dg[0]->function_space()->mesh()->topology(),
+                         fct_esntbound_prime, fct_esntbound_flux, bcs_flux);
+
+  /* Initialize essential boundary conditions for reconstructed flux */
+  ProblemDataCstmFlux<T> problem_data
+      = ProblemDataCstmFlux<T>(flux_hdiv, flux_dg, rhs_dg, bcs_flux);
+
+  /* Call equilibration */
 }
 
 } // namespace dolfinx_adaptivity::equilibration

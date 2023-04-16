@@ -25,24 +25,40 @@ template <typename T>
 class ProblemDataFlux : public ProblemData<T>
 {
 public:
-  /// Initialize storage of data for LHS
+  /// Initialize storage of data for equilibration of (multiple) fluxes
   ///
-  /// Initializes storage of all constants, the boundary-DOF lookup tables
-  //  and the boundary values for all LHS considered within the equilibartion.
+  /// Initializes storage of the boundary-DOF lookup tables, the boundary values
+  /// as well as the actual solution functions for all RHS within a set of
+  /// problems.
   ///
-  /// @param l        List of all LHS
-  /// @param bcs_flux List of list of BCs for each equilibarted flux
   /// @param fluxes   List of list of flux functions for each sub-problem
+  /// @param bcs_flux List of list of BCs for each equilibarted flux
   ProblemDataFlux(
-      const std::vector<std::shared_ptr<const fem::Form<T>>>& l,
+      std::vector<std::shared_ptr<fem::Function<T>>>& fluxes,
+      const std::vector<
+          std::vector<std::shared_ptr<const fem::DirichletBC<T>>>>& bcs_flux)
+      : ProblemData<T>(fluxes, bcs_flux), _begin_hat(fluxes.size(), 0),
+        _begin_fluxdg(fluxes.size(), 0)
+  {
+  }
+
+  /// Initialize storage of data for equilibration of (multiple) fluxes
+  ///
+  /// Initializes storage of all forms, constants, the boundary-DOF lookup
+  /// tables, the boundary values as well as the actual solution functions
+  /// for all RHS within a set of problems.
+  ///
+  /// @param fluxes   List of list of flux functions for each sub-problem
+  /// @param bcs_flux List of list of BCs for each equilibarted flux
+  /// @param l        List of all RHS (ufl)
+  ProblemDataFlux(
+      std::vector<std::shared_ptr<fem::Function<T>>>& fluxes,
       const std::vector<
           std::vector<std::shared_ptr<const fem::DirichletBC<T>>>>& bcs_flux,
-      std::vector<std::shared_ptr<fem::Function<T>>>& fluxes)
-      : ProblemData<T>(fluxes), _begin_hat(l.size(), 0),
-        _begin_fluxdg(l.size(), 0)
+      const std::vector<std::shared_ptr<const fem::Form<T>>>& l)
+      : ProblemData<T>(fluxes, bcs_flux, l), _begin_hat(fluxes.size(), 0),
+        _begin_fluxdg(fluxes.size(), 0)
   {
-    // Set RHS of problems
-    this->set_rhs(l, bcs_flux);
   }
 
   /// Initialize integration kernels and related coefficients
@@ -54,10 +70,6 @@ public:
   /// @param id            Id of integration-subdomain
   void initialize_kernels(fem::IntegralType integral_type, int id)
   {
-    // Get DOF-number of hat-function
-    int ndof_hat = mesh::cell_num_entities(
-        this->_l[0]->mesh()->topology().cell_type(), 0);
-
     if (this->_nlhs == 1)
     {
       /* Get LHS */

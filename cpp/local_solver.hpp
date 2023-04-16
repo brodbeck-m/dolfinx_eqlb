@@ -43,9 +43,7 @@ void local_solver(std::vector<std::shared_ptr<fem::Function<T>>>& vec_sol,
   const std::vector<std::vector<std::shared_ptr<const fem::DirichletBC<T>>>>
       bcs;
   equilibration::ProblemData<T> problem_data
-      = equilibration::ProblemData<T>(vec_sol);
-
-  problem_data.set_rhs(vec_l, bcs);
+      = equilibration::ProblemData<T>(vec_sol, bcs, vec_l);
 
   // Prepare cell geometry
   const mesh::Geometry& geometry = a.mesh()->geometry();

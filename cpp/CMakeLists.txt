@@ -58,6 +58,7 @@ set(
   PatchFluxEV.hpp
   ProblemData.hpp
   ProblemDataFlux.hpp
+  ProblemDataCstmFlux.hpp
   StorageStiffness.hpp
   assembly.hpp
   local_solver.hpp

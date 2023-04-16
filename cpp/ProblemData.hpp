@@ -36,19 +36,118 @@ class ProblemData
   using scalar_value_type_t = typename scalar_value_type<T>::value_type;
 
 public:
-  /// Initialize storage of data for LHS
+  /// Initialize storage of data of (multiple) RHS
   ///
-  /// Initializes storage of all constants, the boundary-DOF lookup tables
-  //  and the boundary values for all LHS considered within the equilibartion.
+  /// Initializes storage of the boundary-DOF lookup tables, the boundary values
+  /// as well as the actual solution functions for all RHS within a set of
+  /// problems.
   ///
-  /// @param bcs       List of list of BCs for each problem
-  /// @param solutions List of list solution functions for each problem
-  ProblemData(std::vector<std::shared_ptr<fem::Function<T>>>& sol_func)
-      : _nlhs(sol_func.size()), _solfunc(sol_func), _l(sol_func.size()),
+  /// @param sol_func List of list solution functions for each problem
+  /// @param bcs      List of list of BCs for each problem
+  ProblemData(std::vector<std::shared_ptr<fem::Function<T>>>& sol_func,
+              const std::vector<
+                  std::vector<std::shared_ptr<const fem::DirichletBC<T>>>>& bcs)
+      : _nlhs(sol_func.size()), _solfunc(sol_func),
+        _offset_bc(sol_func.size() + 1, 0)
+  {
+    // Extract function space on which BCs are set
+    const std::shared_ptr<const fem::FunctionSpace> function_space
+        = sol_func[0]->function_space();
+
+    /* Set boundary conditions */
+    // Check if boundary conditions are set
+    bool id_no_bcs = bcs.empty();
+
+    /* Initialize constants */
+    std::int32_t size_bc = 0;
+
+    for (std::size_t i = 0; i < _nlhs; ++i)
+    {
+      // Get size
+      std::int32_t size_bc_i = 0;
+
+      if (!id_no_bcs)
+      {
+        size_bc_i = size_boundary(function_space, bcs[i].empty());
+      }
+
+      // Increment overall size
+      size_bc += size_bc_i;
+
+      // Set offset
+      _offset_bc[i + 1] = size_bc;
+    }
+
+    // Resize storage and set values
+    if (!id_no_bcs)
+    {
+      _bdof_marker.resize(size_bc, false);
+      _bdof_values.resize(size_bc, 0.0);
+      set_data_boundary(bcs, function_space);
+    }
+  }
+
+  /// Initialize storage of data of (multiple) RHS
+  ///
+  /// Initializes storage of all forms, constants, the boundary-DOF lookup
+  /// tables, the boundary values as well as the actual solution functions
+  /// for all RHS within a set of problems.
+  ///
+  /// @param sol_func List of list solution functions for each problem
+  /// @param bcs      List of list of BCs for each problem
+  /// @param l        List of all RHS
+  ProblemData(std::vector<std::shared_ptr<fem::Function<T>>>& sol_func,
+              const std::vector<
+                  std::vector<std::shared_ptr<const fem::DirichletBC<T>>>>& bcs,
+              const std::vector<std::shared_ptr<const fem::Form<T>>>& l)
+      : _nlhs(sol_func.size()), _solfunc(sol_func), _l(l),
         _kernel(sol_func.size()), _offset_cnst(sol_func.size() + 1, 0),
         _offset_coef(sol_func.size() + 1, 0),
         _offset_bc(sol_func.size() + 1, 0), _cstride(sol_func.size(), 0)
   {
+    // Check if boundary conditions are set
+    bool id_no_bcs = bcs.empty();
+    std::int32_t size_bc_i = 0;
+
+    // Extract function space on which BCs are set
+    const std::shared_ptr<const fem::FunctionSpace> function_space
+        = l[0]->function_spaces().at(0);
+
+    /* Initialize constants */
+    std::int32_t size_cnst = 0, size_bc = 0;
+
+    for (std::size_t i = 0; i < _nlhs; ++i)
+    {
+      // Get current linear form
+      const fem::Form<T>& l_i = *(l[i]);
+
+      // Get sizes (constants, boundary conditions)
+      std::int32_t size_cnst_i = size_constants(l_i);
+
+      if (!id_no_bcs)
+      {
+        size_bc_i = size_boundary(function_space, bcs[i].empty());
+      }
+
+      // Increment overall size
+      size_cnst += size_cnst_i;
+      size_bc += size_bc_i;
+
+      // Set offset
+      _offset_cnst[i + 1] = size_cnst;
+      _offset_bc[i + 1] = size_bc;
+    }
+
+    // Resize storage and set values
+    _data_cnst.resize(size_cnst, 0.0);
+    set_data_constants();
+
+    if (!id_no_bcs)
+    {
+      _bdof_marker.resize(size_bc, false);
+      _bdof_values.resize(size_bc, 0.0);
+      set_data_boundary(bcs, function_space);
+    }
   }
 
   /// Initialize integration kernels and related coefficients
@@ -139,22 +238,30 @@ public:
   /* Setter functions */
   /// Set different RHS of a set of problems
   /// @param l Vector with forms of RHS
-  void
-  set_rhs(const std::vector<std::shared_ptr<const fem::Form<T>>>& l,
-          const std::vector<
-              std::vector<std::shared_ptr<const fem::DirichletBC<T>>>>& bcs)
+  void set_rhs(const std::vector<std::shared_ptr<const fem::Form<T>>>& l)
   {
     // Check input
-    if (l.size() != _nlhs)
+    if (_l.size() != 0)
     {
-      throw std::runtime_error("Number of RHS does not match!");
+      throw std::runtime_error("RHS of problems already set!");
+    }
+    else
+    {
+      if (l.size() != _nlhs)
+      {
+        throw std::runtime_error("Number of RHS does not match!");
+      }
     }
 
-    // Check if boundary conditions are set
-    bool id_no_bcs = bcs.empty();
+    // Set storage
+    _l.resize(_nlhs);
+    _kernel.resize(_nlhs);
+    _offset_coef.resize(_nlhs + 1, 0);
+    _offset_cnst.resize(_nlhs + 1, 0);
+    _cstride.resize(_nlhs);
 
     /* Initialize constants */
-    std::int32_t size_cnst = 0, size_bc = 0;
+    std::int32_t size_cnst = 0;
 
     for (std::size_t i = 0; i < _nlhs; ++i)
     {
@@ -164,32 +271,17 @@ public:
 
       // Get sizes (constants, boundary conditions)
       std::int32_t size_cnst_i = size_constants(l_i);
-      std::int32_t size_bc_i = 0;
-
-      if (!id_no_bcs)
-      {
-        size_bc_i = size_boundary(l_i, bcs[i].empty());
-      }
 
       // Increment overall size
       size_cnst += size_cnst_i;
-      size_bc += size_bc_i;
 
       // Set offset
       _offset_cnst[i + 1] = size_cnst;
-      _offset_bc[i + 1] = size_bc;
     }
 
     // Resize storage and set values
     _data_cnst.resize(size_cnst, 0.0);
     set_data_constants();
-
-    if (!id_no_bcs)
-    {
-      _bdof_marker.resize(size_bc, false);
-      _bdof_values.resize(size_bc, 0.0);
-      set_data_boundary(bcs);
-    }
   }
 
   /* Getter functions */
@@ -368,11 +460,13 @@ protected:
   }
 
   /* Handle boundary data */
-  std::int32_t size_boundary(const fem::Form<T>& l_i, bool bc_is_set)
+  std::int32_t
+  size_boundary(const std::shared_ptr<const fem::FunctionSpace> function_space,
+                bool bc_is_set)
   {
     std::shared_ptr<const common::IndexMap> index_map
-        = l_i.function_spaces().at(0)->dofmap()->index_map;
-    int bs = l_i.function_spaces().at(0)->dofmap()->index_map_bs();
+        = function_space->dofmap()->index_map;
+    int bs = function_space->dofmap()->index_map_bs();
 
     // Check if essential bcs are required
     if (!bc_is_set)
@@ -387,7 +481,8 @@ protected:
 
   void set_data_boundary(
       const std::vector<
-          std::vector<std::shared_ptr<const fem::DirichletBC<T>>>>& bcs)
+          std::vector<std::shared_ptr<const fem::DirichletBC<T>>>>& bcs,
+      const std::shared_ptr<const fem::FunctionSpace> function_space)
   {
     for (std::size_t i = 0; i < _nlhs; ++i)
     {
@@ -398,8 +493,6 @@ protected:
         const std::vector<std::shared_ptr<const fem::DirichletBC<T>>>& bc_i
             = bcs[i];
 
-        std::shared_ptr<const fem::FunctionSpace> function_space
-            = l_i.function_spaces().at(0);
         std::shared_ptr<const common::IndexMap> index_map
             = function_space->dofmap()->index_map;
         int bs = function_space->dofmap()->index_map_bs();
