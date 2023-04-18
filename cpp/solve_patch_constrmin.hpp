@@ -1,7 +1,7 @@
 #pragma once
 
 #include "PatchFluxEV.hpp"
-#include "ProblemDataFlux.hpp"
+#include "ProblemDataFluxEV.hpp"
 #include "StorageStiffness.hpp"
 #include "assembly.hpp"
 #include "eigen3/Eigen/Dense"
@@ -59,7 +59,7 @@ void equilibrate_flux_constrmin(
                              const std::span<const std::uint32_t>&,
                              std::int32_t, int)>& dof_transform_to_transpose,
     std::span<const std::uint32_t> cell_info, fem::FEkernel<T> auto kernel_a,
-    fem::FEkernel<T> auto kernel_lpen, ProblemDataFlux<T>& problem_data,
+    fem::FEkernel<T> auto kernel_lpen, ProblemDataFluxEV<T>& problem_data,
     StorageStiffness<T>& storage_stiffness)
 {
   /* Initialize Patch-LGS */

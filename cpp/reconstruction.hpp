@@ -1,8 +1,8 @@
 #pragma once
 
 #include "PatchFluxEV.hpp"
-#include "ProblemDataCstmFlux.hpp"
-#include "ProblemDataFlux.hpp"
+#include "ProblemDataFluxCstm.hpp"
+#include "ProblemDataFluxEV.hpp"
 #include "StorageStiffness.hpp"
 #include "solve_patch_constrmin.hpp"
 #include <algorithm>
@@ -38,7 +38,7 @@ namespace dolfinx_adaptivity::equilibration
 /// @param flux_dg        Function that holds the projected fluxes
 template <typename T>
 void reconstruct_fluxes_patch(const fem::Form<T>& a, const fem::Form<T>& l_pen,
-                              ProblemDataFlux<T>& problem_data,
+                              ProblemDataFluxEV<T>& problem_data,
                               graph::AdjacencyList<std::int8_t>& fct_type)
 {
   /* Geometry */
@@ -242,7 +242,8 @@ void reconstruct_fluxes(
                          fct_esntbound_flux, bcs_flux);
 
   /* Initialize problem data */
-  ProblemDataFlux<T> problem_data = ProblemDataFlux<T>(flux_hdiv, bcs_flux, l);
+  ProblemDataFluxEV<T> problem_data
+      = ProblemDataFluxEV<T>(flux_hdiv, bcs_flux, l);
 
   /* Call equilibration */
   reconstruct_fluxes_patch(a, l_pen, problem_data, fct_type);
@@ -279,8 +280,8 @@ void reconstruct_fluxes(
                          fct_esntbound_prime, fct_esntbound_flux, bcs_flux);
 
   /* Initialize essential boundary conditions for reconstructed flux */
-  ProblemDataCstmFlux<T> problem_data
-      = ProblemDataCstmFlux<T>(flux_hdiv, flux_dg, rhs_dg, bcs_flux);
+  ProblemDataFluxCstm<T> problem_data
+      = ProblemDataFluxCstm<T>(flux_hdiv, flux_dg, rhs_dg, bcs_flux);
 
   /* Call equilibration */
 }

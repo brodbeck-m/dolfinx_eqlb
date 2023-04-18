@@ -1,7 +1,6 @@
 #pragma once
 
 #include "PatchFluxEV.hpp"
-#include "ProblemDataFlux.hpp"
 #include "StorageStiffness.hpp"
 #include "eigen3/Eigen/Dense"
 #include "eigen3/Eigen/Sparse"

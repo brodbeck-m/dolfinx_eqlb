@@ -22,7 +22,7 @@ using namespace dolfinx;
 namespace dolfinx_adaptivity::equilibration
 {
 template <typename T>
-class ProblemDataFlux : public ProblemData<T>
+class ProblemDataFluxEV : public ProblemData<T>
 {
 public:
   /// Initialize storage of data for equilibration of (multiple) fluxes
@@ -33,7 +33,7 @@ public:
   ///
   /// @param fluxes   List of list of flux functions for each sub-problem
   /// @param bcs_flux List of list of BCs for each equilibarted flux
-  ProblemDataFlux(
+  ProblemDataFluxEV(
       std::vector<std::shared_ptr<fem::Function<T>>>& fluxes,
       const std::vector<
           std::vector<std::shared_ptr<const fem::DirichletBC<T>>>>& bcs_flux)
@@ -51,7 +51,7 @@ public:
   /// @param fluxes   List of list of flux functions for each sub-problem
   /// @param bcs_flux List of list of BCs for each equilibarted flux
   /// @param l        List of all RHS (ufl)
-  ProblemDataFlux(
+  ProblemDataFluxEV(
       std::vector<std::shared_ptr<fem::Function<T>>>& fluxes,
       const std::vector<
           std::vector<std::shared_ptr<const fem::DirichletBC<T>>>>& bcs_flux,

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "ProblemData.hpp"
-#include "ProblemDataFlux.hpp"
+#include "ProblemDataFluxEV.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -23,7 +23,7 @@ using namespace dolfinx;
 namespace dolfinx_adaptivity::equilibration
 {
 template <typename T>
-class ProblemDataCstmFlux : public ProblemDataFlux<T>
+class ProblemDataFluxCstm : public ProblemDataFluxEV<T>
 {
 public:
   /// Initialize storage of data for equilibration of (multiple) fluxes
@@ -36,21 +36,21 @@ public:
   /// @param fluxed_dg List of list of flux functions (DG)
   /// @param rhs_dg    List of list of projected right-hand-sides
   /// @param bcs_flux  List of list of BCs for each equilibarted flux
-  ProblemDataCstmFlux(
+  ProblemDataFluxCstm(
       std::vector<std::shared_ptr<fem::Function<T>>>& fluxes,
       std::vector<std::shared_ptr<fem::Function<T>>>& fluxes_dg,
       std::vector<std::shared_ptr<fem::Function<T>>>& rhs_dg,
       const std::vector<
           std::vector<std::shared_ptr<const fem::DirichletBC<T>>>>& bcs_flux)
-      : ProblemDataFlux<T>(fluxes, bcs_flux), _flux_dg(fluxes_dg),
+      : ProblemDataFluxEV<T>(fluxes, bcs_flux), _flux_dg(fluxes_dg),
         _rhs_dg(rhs_dg), _begin_rhsdg(fluxes.size(), 0)
   {
   }
 
   void initialize_coefficients(const std::vector<std::int32_t>& cells)
   {
-    // FIXME: Use fem::IntegralType and regio id as input and determine list of
-    // cells here Number of cells
+    // FIXME: Use fem::IntegralType and region id as input and determine list of
+    // cells here number of cells
     const int n_cells = cells.size();
 
     /* Determine size of coefficient storage */
@@ -79,7 +79,7 @@ public:
 
     /* Set coefficient data */
     // TODO - Add copy of function values into coefficient array
-    throw std::runtime_error('Initialization of coefficients not implemented')
+    throw std::runtime_error('Initialization of coefficients not implemented');
   }
 
   /* Setter functions*/
