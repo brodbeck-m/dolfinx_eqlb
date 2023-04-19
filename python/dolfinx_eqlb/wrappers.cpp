@@ -71,7 +71,7 @@ PYBIND11_MODULE(cpp, m)
          std::vector<std::shared_ptr<dolfinx::fem::Function<PetscScalar>>>&
              flux_hdiv)
       {
-        equilibration::reconstruct_fluxes<PetscScalar>(
+        equilibration::reconstruct_fluxes_ev<PetscScalar>(
             a, l_pen, l, fct_esntbound_prime, fct_esntbound_flux, bcs1,
             flux_hdiv);
       },
@@ -79,5 +79,30 @@ PYBIND11_MODULE(cpp, m)
       py::arg("fct_esntbound_prime"), py::arg("fct_esntbound_prime"),
       py::arg("bcs"), py::arg("flux_hdiv"),
       "Local equilibartion of H(div) conforming fluxes, solving patch-wise "
-      "constrined minimisation problems.");
+      "constrained minimisation problems.");
+
+  m.def(
+      "reconstruct_fluxes_semiexplt",
+      [](std::vector<std::shared_ptr<dolfinx::fem::Function<PetscScalar>>>&
+             flux_hdiv,
+         std::vector<std::shared_ptr<dolfinx::fem::Function<PetscScalar>>>&
+             flux_dg,
+         std::vector<std::shared_ptr<dolfinx::fem::Function<PetscScalar>>>&
+             rhs_dg,
+         const std::vector<std::vector<std::int32_t>>& fct_esntbound_prime,
+         const std::vector<std::vector<std::int32_t>>& fct_esntbound_flux,
+         const std::vector<std::vector<std::shared_ptr<
+             const dolfinx::fem::DirichletBC<PetscScalar>>>>& bcs,
+         const std::vector<std::shared_ptr<const fem::Form<PetscScalar>>>&
+             form_o1)
+      {
+        equilibration::reconstruct_fluxes_cstm<PetscScalar>(
+            flux_hdiv, flux_dg, rhs_dg, fct_esntbound_prime, fct_esntbound_flux,
+            bcs, form_o1);
+      },
+      py::arg("flux_hdiv"), py::arg("flux_dg"), py::arg("rhs_dg"),
+      py::arg("fct_esntbound_prime"), py::arg("fct_esntbound_prime"),
+      py::arg("bcs"), py::arg("forms"),
+      "Local equilibartion of H(div) conforming fluxes, solving patch-wise "
+      "constrained minimisation problems within a semi-explisit approach.");
 }

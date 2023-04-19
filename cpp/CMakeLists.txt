@@ -56,6 +56,7 @@ set(
   HEADERS_EQLB
   Patch.hpp
   PatchFluxEV.hpp
+  PatchFluxCstm.hpp
   ProblemData.hpp
   ProblemDataFluxEV.hpp
   ProblemDataFluxCstm.hpp

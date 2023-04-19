@@ -85,10 +85,45 @@ public:
   /* Setter functions*/
   void set_form(const std::vector<std::shared_ptr<const fem::Form<T>>>& forms)
   {
-    set_rhs(forms);
+    // Check input data
+    if (forms.size() != this->_nlhs)
+    {
+      throw std::runtime_error(
+          "Equilibration: Input sizes of RHS does not match");
+    }
+
+    // Call setter from parent
+    this->set_rhs(forms);
   }
 
-  // /* Getter functions*/
+  /* Getter functions*/
+  /// Extract mesh
+  /// @return The mesh
+  std::shared_ptr<const mesh::Mesh> mesh()
+  {
+    return this->_solfunc[0]->function_space()->mesh();
+  }
+
+  /// Extract FunctionSpace of H(div) flux
+  /// @return The FunctionSpace
+  std::shared_ptr<const fem::FunctionSpace> fspace_flux_hdiv() const
+  {
+    return this->_solfunc[0]->function_space();
+  }
+
+  /// Extract FunctionSpace of projected flux
+  /// @return The FunctionSpace
+  std::shared_ptr<const fem::FunctionSpace> fspace_flux_dg() const
+  {
+    return _flux_dg[0]->function_space();
+  }
+
+  /// Extract FunctionSpace of projected RHS
+  /// @return The FunctionSpace
+  std::shared_ptr<const fem::FunctionSpace> fspace_rhs_dg() const
+  {
+    return _rhs_dg[0]->function_space();
+  }
 
 protected:
   /* Variables */

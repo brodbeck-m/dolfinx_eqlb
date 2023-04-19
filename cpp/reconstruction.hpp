@@ -1,5 +1,6 @@
 #pragma once
 
+#include "PatchFluxCstm.hpp"
 #include "PatchFluxEV.hpp"
 #include "ProblemDataFluxCstm.hpp"
 #include "ProblemDataFluxEV.hpp"
@@ -117,6 +118,79 @@ void reconstruct_fluxes_patch(const fem::Form<T>& a, const fem::Form<T>& l_pen,
   }
 }
 
+template <typename T, int id_flux_order = -1>
+void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data,
+                              graph::AdjacencyList<std::int8_t>& fct_type)
+{
+  assert(flux_order < 0);
+
+  /* Geometry */
+  // Extract mesh
+  std::shared_ptr<const mesh::Mesh> mesh = problem_data.mesh();
+
+  // Spacial dimension
+  const int dim = mesh->geometry().dim();
+
+  // Number of nodes on processor
+  int n_nodes = mesh->topology().index_map(0)->size_local();
+
+  // Number of elements on processor
+  int n_cells = mesh->topology().index_map(dim)->size_local();
+
+  /* Execute equilibration */
+  // BasiX element of H(div) flux
+  const basix::FiniteElement& basix_element_fluxhdiv
+      = problem_data.fspace_flux_hdiv()->element()->basix_element();
+
+  // BasiX element CG-element (same order as projected flux)
+  const basix::FiniteElement& basix_element_fluxdg
+      = problem_data.fspace_flux_hdiv()->element()->basix_element();
+  basix::FiniteElement basix_element_fluxcg = basix::create_element(
+      basix_element_fluxdg.family(), basix_element_fluxdg.cell_type(),
+      basix_element_fluxdg.degree(), basix_element_fluxdg.lagrange_variant());
+
+  if constexpr (id_flux_order == 1)
+  {
+    // Initialise patch
+    PatchFluxCstm<T, 1> patch = PatchFluxCstm<T, 1>(
+        n_nodes, mesh, fct_type, problem_data.fspace_flux_hdiv(),
+        problem_data.fspace_flux_dg(), basix_element_fluxhdiv,
+        basix_element_fluxcg);
+
+    // Initialize kernels
+
+    std::cout << "fluxorder 1" << std::endl;
+    throw std::exception();
+
+    // Run equilibration
+    for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
+    {
+      // Create Sub-DOFmap
+      // patch.create_subdofmap(i_node);
+    }
+  }
+  else
+  {
+    // Initialise patch
+    PatchFluxCstm<T, 2> patch = PatchFluxCstm<T, 2>(
+        n_nodes, mesh, fct_type, problem_data.fspace_flux_hdiv(),
+        problem_data.fspace_flux_dg(), problem_data.fspace_rhs_dg(),
+        basix_element_fluxhdiv, basix_element_fluxcg);
+
+    // Initialise coefficients
+
+    std::cout << "fluxorder >1" << std::endl;
+    throw std::exception();
+
+    // Run equilibration
+    for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
+    {
+      // Create Sub-DOFmap
+      // patch.create_subdofmap(i_node);
+    }
+  }
+}
+
 /// Mark facets of entire mesh (internal, neumann, dirichlet)
 ///
 /// During the equilibration process, the type of boundary facets is required.
@@ -215,7 +289,7 @@ graph::AdjacencyList<std::int8_t> mark_mesh_facets(
 /// @param bcs_flux            Essential boundary conditions for the flux
 /// @param flux                Function that holds the reconstructed flux
 template <typename T>
-void reconstruct_fluxes(
+void reconstruct_fluxes_ev(
     const fem::Form<T>& a, const fem::Form<T>& l_pen,
     const std::vector<std::shared_ptr<const fem::Form<T>>>& l,
     const std::vector<std::vector<std::int32_t>>& fct_esntbound_prime,
@@ -246,11 +320,11 @@ void reconstruct_fluxes(
       = ProblemDataFluxEV<T>(flux_hdiv, bcs_flux, l);
 
   /* Call equilibration */
-  reconstruct_fluxes_patch(a, l_pen, problem_data, fct_type);
+  reconstruct_fluxes_patch<T>(a, l_pen, problem_data, fct_type);
 }
 
 template <typename T>
-void reconstruct_fluxes(
+void reconstruct_fluxes_cstm(
     std::vector<std::shared_ptr<fem::Function<T>>>& flux_hdiv,
     std::vector<std::shared_ptr<fem::Function<T>>>& flux_dg,
     std::vector<std::shared_ptr<fem::Function<T>>>& rhs_dg,
@@ -274,6 +348,10 @@ void reconstruct_fluxes(
     throw std::runtime_error("Equilibration: Input sizes does not match");
   }
 
+  // Flux order
+  const int order_flux
+      = flux_hdiv[0]->function_space()->element()->basix_element().degree();
+
   /* Facet coloring */
   graph::AdjacencyList<std::int8_t> fct_type
       = mark_mesh_facets(n_rhs, rhs_dg[0]->function_space()->mesh()->topology(),
@@ -284,6 +362,19 @@ void reconstruct_fluxes(
       = ProblemDataFluxCstm<T>(flux_hdiv, flux_dg, rhs_dg, bcs_flux);
 
   /* Call equilibration */
+  if (order_flux == 1)
+  {
+    // Set integration kernels
+    problem_data.set_form(form_o1);
+
+    // Perform equilibration
+    reconstruct_fluxes_patch<T, 1>(problem_data, fct_type);
+  }
+  else
+  {
+    // Perform equilibration
+    reconstruct_fluxes_patch<T, 2>(problem_data, fct_type);
+  }
 }
 
 } // namespace dolfinx_adaptivity::equilibration
