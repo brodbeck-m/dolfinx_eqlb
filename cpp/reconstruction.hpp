@@ -7,6 +7,7 @@
 #include "StorageStiffness.hpp"
 #include "solve_patch_constrmin.hpp"
 #include <algorithm>
+#include <basix/e-lagrange.h>
 #include <dolfinx/fem/DirichletBC.h>
 #include <dolfinx/fem/DofMap.h>
 #include <dolfinx/fem/Form.h>
@@ -144,10 +145,10 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data,
 
   // BasiX element CG-element (same order as projected flux)
   const basix::FiniteElement& basix_element_fluxdg
-      = problem_data.fspace_flux_hdiv()->element()->basix_element();
-  basix::FiniteElement basix_element_fluxcg = basix::create_element(
-      basix_element_fluxdg.family(), basix_element_fluxdg.cell_type(),
-      basix_element_fluxdg.degree(), basix_element_fluxdg.lagrange_variant());
+      = problem_data.fspace_flux_dg()->element()->basix_element();
+  basix::FiniteElement basix_element_fluxcg = basix::element::create_lagrange(
+      basix_element_fluxdg.cell_type(), basix_element_fluxdg.degree(),
+      basix_element_fluxdg.lagrange_variant(), false);
 
   if constexpr (id_flux_order == 1)
   {
@@ -158,15 +159,14 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data,
         basix_element_fluxcg);
 
     // Initialize kernels
-
-    std::cout << "fluxorder 1" << std::endl;
-    throw std::exception();
+    // problem_data.initialize_kernels(fem::IntegralType::cell, -1);
 
     // Run equilibration
-    for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
+    // for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
+    for (std::size_t i_node = 106; i_node < 107; ++i_node)
     {
       // Create Sub-DOFmap
-      // patch.create_subdofmap(i_node);
+      patch.create_subdofmap(i_node);
     }
   }
   else
@@ -179,14 +179,12 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data,
 
     // Initialise coefficients
 
-    std::cout << "fluxorder >1" << std::endl;
-    throw std::exception();
-
     // Run equilibration
-    for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
+    // for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
+    for (std::size_t i_node = 176; i_node < 177; ++i_node)
     {
       // Create Sub-DOFmap
-      // patch.create_subdofmap(i_node);
+      patch.create_subdofmap(i_node);
     }
   }
 }

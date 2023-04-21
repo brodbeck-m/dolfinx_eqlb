@@ -209,6 +209,7 @@ Patch::fcti_to_celli(int id_l, int c_fct, std::int32_t fct_i,
     if (c_fct < _nfcts - 1)
     {
       _cells[c_fct + 1] = cell_i;
+      _cells[c_fct] = cell_im1;
       _inodes_local[c_fct + 1] = id_node_loc_ci;
     }
     else
