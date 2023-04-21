@@ -32,7 +32,6 @@ public:
   /// @param function_space_fluxhdiv Function space of H(div) flux
   /// @param function_space_fluxdg   Function space of projected flux
   /// @param function_space_rhsdg    Function space of projected RHS
-  /// @param basix_element_fluxhdiv  BasiX element of H(div) flux
   /// @param basix_element_fluxdg    BasiX element of projected flux
   PatchFluxCstm(
       int nnodes_proc, std::shared_ptr<const mesh::Mesh> mesh,
@@ -40,32 +39,47 @@ public:
       const std::shared_ptr<const fem::FunctionSpace> function_space_fluxhdiv,
       const std::shared_ptr<const fem::FunctionSpace> function_space_fluxdg,
       const std::shared_ptr<const fem::FunctionSpace> function_space_rhsdg,
-      const basix::FiniteElement& basix_element_fluxhdiv,
       const basix::FiniteElement& basix_element_fluxdg)
       : Patch(nnodes_proc, mesh, bfct_type),
+        _degree_elmt_fluxhdiv(
+            function_space_fluxhdiv->element()->basix_element().degree() - 1),
+        _degree_elmt_fluxdg(basix_element_fluxdg.degree()),
         _function_space_fluxhdiv(function_space_fluxhdiv),
         _function_space_fluxdg(function_space_fluxdg),
         _function_space_rhsdg(function_space_rhsdg),
-        _entity_dofs_fluxhdiv(basix_element_fluxhdiv.entity_dofs()),
         _entity_dofs_fluxcg(basix_element_fluxdg.entity_closure_dofs())
   {
     assert(flux_order < 0);
 
     /* Counter DOFs */
-    const int degree_rt = basix_element_fluxhdiv.degree() - 1;
-
     // Number of DOFs (H(div) flux)
     _ndof_flux = _function_space_fluxhdiv->element()->space_dimension();
-    _ndof_flux_fct = degree_rt + 1;
+    _ndof_flux_fct = _degree_elmt_fluxhdiv + 1;
     _ndof_flux_cell = _ndof_flux - this->_fct_per_cell * _ndof_flux_fct;
-    _ndof_flux_add_cell = 0.5 * degree_rt * (degree_rt - 1);
+    _ndof_flux_add_cell
+        = 0.5 * _degree_elmt_fluxhdiv * (_degree_elmt_fluxhdiv - 1);
     _ndof_flux_div_cell = _ndof_flux_cell - _ndof_flux_add_cell;
 
     _ndof_flux_nz = _ndof_flux - (this->_fct_per_cell - 2) * _ndof_flux_fct;
 
     // Number of DOFs (projected flux)
     _ndof_fluxdg = _function_space_fluxdg->element()->space_dimension();
-    _ndof_fluxdg_fct = _entity_dofs_fluxcg[_dim_fct][0].size();
+
+    if constexpr (id_flux_order == 1)
+    {
+      _ndof_fluxdg_fct = 1;
+    }
+    else
+    {
+      if (_degree_elmt_fluxdg == 0)
+      {
+        _ndof_fluxdg_fct = 1;
+      }
+      else
+      {
+        _ndof_fluxdg_fct = _entity_dofs_fluxcg[_dim_fct][0].size();
+      }
+    }
 
     /* Reserve storage of DOFmaps */
     int len_adjacency_hflux_fct = _ncells_max * 2 * _ndof_flux_fct;
@@ -109,11 +123,9 @@ public:
       graph::AdjacencyList<std::int8_t>& bfct_type,
       std::shared_ptr<const fem::FunctionSpace> function_space_fluxhdiv,
       std::shared_ptr<const fem::FunctionSpace> function_space_fluxdg,
-      const basix::FiniteElement& basix_element_fluxhdiv,
       const basix::FiniteElement& basix_element_fluxdg)
       : PatchFluxCstm(nnodes_proc, mesh, bfct_type, function_space_fluxhdiv,
-                      function_space_fluxdg, nullptr, basix_element_fluxhdiv,
-                      basix_element_fluxdg)
+                      function_space_fluxdg, nullptr, basix_element_fluxdg)
   {
   }
 
@@ -216,10 +228,10 @@ public:
 
         // Offset DOFs projected flux on facet
         offs_fdg_fct = 2 * ii * ndof_fluxdg_fct;
-        _offset_list_fluxdg[iip1] = offs_fdg_fct;
+        _offset_list_fluxdg[iip1] = 2 * iip1 * ndof_fluxdg_fct;
 
         // Current cell and offset cell_(i-1)
-        if (ii < _nfcts - 1)
+        if (ii < _ncells - 1)
         {
           // Extract cell_i
           cell_i = _cells[ii + 1];
@@ -241,73 +253,88 @@ public:
         }
       }
 
-      // Get DOFS of H(div) flux on fct_i
-      for (std::int8_t jj = 0; jj < _ndof_flux_fct; ++jj)
+      if constexpr (id_flux_order == 1)
       {
+        /* Get DOFS of H(div) flux on fct_i */
         // Precalculations
-        int ldof_cell_i = id_fct_loc_ci * _ndof_flux_fct + jj;
-        int ldof_cell_im1 = id_fct_loc_cim1 * _ndof_flux_fct + jj;
+        int ldof_cell_i = id_fct_loc_ci * _ndof_flux_fct;
+        int ldof_cell_im1 = id_fct_loc_cim1 * _ndof_flux_fct;
 
         // Add cell-local DOFs
         _dofsnz_elmt_fct[offs_fhdiv_fct] = ldof_cell_i;
-        _dofsnz_elmt_fct[offs_f + jj] = ldof_cell_im1;
+        _dofsnz_elmt_fct[offs_f] = ldof_cell_im1;
 
         // Add global DOFs
         _dofsnz_glob_fct[offs_fhdiv_fct] = cell_i * _ndof_flux + ldof_cell_i;
-        _dofsnz_glob_fct[offs_f + jj] = cell_im1 * _ndof_flux + ldof_cell_im1;
+        _dofsnz_glob_fct[offs_f] = cell_im1 * _ndof_flux + ldof_cell_im1;
 
-        // Increment offset
-        offs_fhdiv_fct += 1;
+        /* Get DOFS of projected flux on fct_i */
+        // TODO - Consider facet orientation (evaluation jump operator)
+        int gdof_cell_i = cell_i * _ndof_fluxdg;
+        int gdof_cell_im1 = cell_im1 * _ndof_fluxdg;
+
+        _list_fctdofs_fluxdg[offs_fdg_fct] = gdof_cell_i;
+        _list_fctdofs_fluxdg[offs_fdg_fct + 1] = gdof_cell_i + 1;
+        _list_fctdofs_fluxdg[offs_fdg_fct + 2] = gdof_cell_im1;
+        _list_fctdofs_fluxdg[offs_fdg_fct + 3] = gdof_cell_im1 + 1;
       }
-
-      // Get DOFS of projected flux on fct_i
-      // TODO - Consider facet orientation (evaluation jump operator)
-      for (std::int8_t jj = 0; jj < _ndof_fluxdg_fct; ++jj)
+      else
       {
-        // Add cell-local DOFs
-        if constexpr (id_flux_order == 1)
-        {
-          int gdof_cell_i = cell_i * _ndof_fluxdg;
-          int gdof_cell_im1 = cell_i * _ndof_fluxdg;
-
-          _list_fctdofs_fluxdg[offs_fdg_fct] = gdof_cell_i;
-          _list_fctdofs_fluxdg[offs_fdg_fct + 1] = gdof_cell_i + 1;
-          _list_fctdofs_fluxdg[offs_fdg_fct + 2] = gdof_cell_im1;
-          _list_fctdofs_fluxdg[offs_fdg_fct + 3] = gdof_cell_im1 + 1;
-
-          // Increment offset
-          offs_fdg_fct += bs_fluxdg;
-        }
-        else
+        /* Get DOFS of H(div) flux on fct_i */
+        for (std::int8_t jj = 0; jj < _ndof_flux_fct; ++jj)
         {
           // Precalculations
-          int ldof_cell_i = _entity_dofs_fluxcg[_dim_fct][id_fct_loc_ci][jj];
-          int ldof_cell_im1
-              = _entity_dofs_fluxcg[_dim_fct][id_fct_loc_cim1][jj];
+          int ldof_cell_i = id_fct_loc_ci * _ndof_flux_fct + jj;
+          int ldof_cell_im1 = id_fct_loc_cim1 * _ndof_flux_fct + jj;
 
-          int offs_fdg = offs_fdg_fct + _ndof_flux_fct;
-          _list_fctdofs_fluxdg[offs_fdg_fct] = ldof_cell_i;
-          _list_fctdofs_fluxdg[offs_fdg] = ldof_cell_im1;
+          // Add cell-local DOFs
+          _dofsnz_elmt_fct[offs_fhdiv_fct] = ldof_cell_i;
+          _dofsnz_elmt_fct[offs_f + jj] = ldof_cell_im1;
+
+          // Add global DOFs
+          _dofsnz_glob_fct[offs_fhdiv_fct] = cell_i * _ndof_flux + ldof_cell_i;
+          _dofsnz_glob_fct[offs_f + jj] = cell_im1 * _ndof_flux + ldof_cell_im1;
 
           // Increment offset
-          offs_fdg_fct += 1;
+          offs_fhdiv_fct += 1;
         }
-      }
 
-      // Get cell-wise DOFs on cell_i
-      for (std::int8_t jj = 0; jj < _ndof_flux_cell; ++jj)
-      {
-        // Precalculations
-        int ldof_cell_i = ndof_fct + jj;
+        /* Get DOFS of projected flux on fct_i */
+        // TODO - Consider facet orientation (evaluation jump operator)
+        if (_degree_elmt_fluxdg > 0)
+        {
+          for (std::int8_t jj = 0; jj < _ndof_fluxdg_fct; ++jj)
+          {
+            // Precalculations
+            int ldof_cell_i = _entity_dofs_fluxcg[_dim_fct][id_fct_loc_ci][jj];
+            int ldof_cell_im1
+                = _entity_dofs_fluxcg[_dim_fct][id_fct_loc_cim1][jj];
 
-        // Add cell-local DOFs
-        _dofsnz_elmt_cell[offs_fhdiv_cell] = ldof_cell_i;
+            int offs_fdg = offs_fdg_fct + _ndof_fluxdg_fct;
+            _list_fctdofs_fluxdg[offs_fdg_fct] = ldof_cell_i;
+            _list_fctdofs_fluxdg[offs_fdg] = ldof_cell_im1;
 
-        // Add global DOFs
-        _dofsnz_glob_cell[offs_fhdiv_cell] = cell_i * _ndof_flux + ldof_cell_i;
+            // Increment offset
+            offs_fdg_fct += 1;
+          }
+        }
 
-        // Increment offset
-        offs_fhdiv_cell += 1;
+        /* Get cell-wise DOFs on cell_i */
+        for (std::int8_t jj = 0; jj < _ndof_flux_cell; ++jj)
+        {
+          // Precalculations
+          int ldof_cell_i = ndof_fct + jj;
+
+          // Add cell-local DOFs
+          _dofsnz_elmt_cell[offs_fhdiv_cell] = ldof_cell_i;
+
+          // Add global DOFs
+          _dofsnz_glob_cell[offs_fhdiv_cell]
+              = cell_i * _ndof_flux + ldof_cell_i;
+
+          // Increment offset
+          offs_fhdiv_cell += 1;
+        }
       }
 
       // Set next facet
@@ -328,11 +355,11 @@ public:
       _offset_dofmap_fct[_nfcts] = 2 * _nfcts * _ndof_flux_fct;
       _offset_list_fluxdg[_nfcts] = 2 * _nfcts * ndof_fluxdg_fct;
 
-      // Get DOFS of H(div) flux on fct_i
-      for (std::int8_t jj = 0; jj < _ndof_flux_fct; ++jj)
+      if constexpr (id_flux_order == 1)
       {
+        /* Get DOFS of H(div) flux on fct_i */
         // Precalculations
-        int ldof_cell_i = id_fct_loc * _ndof_flux_fct + jj;
+        int ldof_cell_i = id_fct_loc * _ndof_flux_fct;
 
         // Add cell-local DOFs
         _dofsnz_elmt_fct[offs_fhdiv_fct] = ldof_cell_i;
@@ -340,93 +367,110 @@ public:
         // Add global DOFs
         _dofsnz_glob_fct[offs_fhdiv_fct] = cell_i * _ndof_flux + ldof_cell_i;
 
-        // Increment offset
-        offs_fhdiv_fct += 1;
-      }
-
-      // Get DOFS of projected flux on fct_i
-      for (std::int8_t jj = 0; jj < _ndof_fluxdg_fct; ++jj)
-      {
+        /* Get DOFS of projected flux on fct_i */
         // Precalculations
-        int ldof_cell_i = _entity_dofs_fluxcg[_dim_fct][id_fct_loc][jj];
+        int gdof_cell_i = cell_i * _ndof_fluxdg;
 
-        // Add cell-local DOFs
-        if constexpr (id_flux_order == 1)
+        // Add global DOFs
+        _list_fctdofs_fluxdg[offs_fdg_fct] = gdof_cell_i;
+        _list_fctdofs_fluxdg[offs_fdg_fct + 1] = gdof_cell_i + 1;
+        _list_fctdofs_fluxdg[offs_fdg_fct + 2] = gdof_cell_i;
+        _list_fctdofs_fluxdg[offs_fdg_fct + 3] = gdof_cell_i + 1;
+      }
+      else
+      {
+        /* Get DOFS of H(div) flux on fct_i */
+        for (std::int8_t jj = 0; jj < _ndof_flux_fct; ++jj)
         {
-          int gdof_cell_i = cell_i * _ndof_fluxdg + ldof_cell_i;
+          // Precalculations
+          int ldof_cell_i = id_fct_loc * _ndof_flux_fct + jj;
 
-          _list_fctdofs_fluxdg[offs_fdg_fct] = gdof_cell_i;
-          _list_fctdofs_fluxdg[offs_fdg_fct + 1] = gdof_cell_i + 1;
+          // Add cell-local DOFs
+          _dofsnz_elmt_fct[offs_fhdiv_fct] = ldof_cell_i;
+
+          // Add global DOFs
+          _dofsnz_glob_fct[offs_fhdiv_fct] = cell_i * _ndof_flux + ldof_cell_i;
 
           // Increment offset
-          offs_fdg_fct += bs_fluxdg;
+          offs_fhdiv_fct += 1;
         }
-        else
+
+        // Get DOFS of projected flux on fct_i
+        if (_degree_elmt_fluxdg > 0)
         {
-          _list_fctdofs_fluxdg[offs_fdg_fct] = ldof_cell_i;
-          _list_fctdofs_fluxdg[offs_fdg_fct + ndof_fluxdg_fct] = ldof_cell_i;
+          for (std::int8_t jj = 0; jj < _ndof_fluxdg_fct; ++jj)
+          {
+            // Precalculations
+            int ldof_cell_i = _entity_dofs_fluxcg[_dim_fct][id_fct_loc][jj];
 
-          // Increment offset
-          offs_fdg_fct += 1;
+            // Add cell-local DOFs
+            _list_fctdofs_fluxdg[offs_fdg_fct] = ldof_cell_i;
+            _list_fctdofs_fluxdg[offs_fdg_fct + ndof_fluxdg_fct] = ldof_cell_i;
+
+            // Increment offset
+            offs_fdg_fct += 1;
+          }
         }
       }
     }
 
-    // Debug
-    std::cout << "ndof_flux: " << _ndof_flux << std::endl;
-    std::cout << "ndof_flux_fct: " << _ndof_flux_fct << std::endl;
-    std::cout << "ndof_flux_cell (div): " << _ndof_flux_div_cell << std::endl;
-    std::cout << "ndof_flux_cell (add): " << _ndof_flux_add_cell << std::endl;
+    // // Debug
+    // std::cout << "ndof_flux: " << _ndof_flux << std::endl;
+    // std::cout << "ndof_flux_fct: " << _ndof_flux_fct << std::endl;
+    // std::cout << "ndof_flux_cell (div): " << _ndof_flux_div_cell <<
+    // std::endl; std::cout << "ndof_flux_cell (add): " << _ndof_flux_add_cell
+    // << std::endl;
 
-    std::cout << "ndof_flux_dg: " << _ndof_fluxdg << std::endl;
-    std::cout << "ndof_flux_dg (fct): " << _ndof_fluxdg_fct << std::endl;
+    // std::cout << "ndof_flux_dg: " << _ndof_fluxdg << std::endl;
+    // std::cout << "ndof_flux_dg (fct): " << _ndof_fluxdg_fct << std::endl;
 
-    std::cout << "Offset fct-dofs (flux-dg): " << std::endl;
-    for (auto e : _offset_list_fluxdg)
-    {
-      std::cout << e << " ";
-    }
-    std::cout << "\n";
+    // std::cout << "Offset fct-dofs (flux-dg): " << std::endl;
+    // for (auto e : _offset_list_fluxdg)
+    // {
+    //   std::cout << e << " ";
+    // }
+    // std::cout << "\n";
 
-    std::cout << "Cells: " << std::endl;
-    for (auto e : _cells)
-    {
-      std::cout << e << " ";
-    }
-    std::cout << "\n";
+    // std::cout << "Cells: " << std::endl;
+    // for (auto e : _cells)
+    // {
+    //   std::cout << e << " ";
+    // }
+    // std::cout << "\n";
 
-    std::cout << "Global DOFs flux (H(div)) facet:" << std::endl;
-    for (std::int8_t i = 0; i < _ncells; ++i)
-    {
-      auto dofs_facet = dofs_flux_fct_global(i);
-      for (auto dof : dofs_facet)
-      {
-        std::cout << dof << " ";
-      }
-      std::cout << "\n";
-    }
+    // std::cout << "Global DOFs flux (H(div)) facet:" << std::endl;
+    // for (std::int8_t i = 0; i < _ncells; ++i)
+    // {
+    //   auto dofs_facet = dofs_flux_fct_global(i);
+    //   for (auto dof : dofs_facet)
+    //   {
+    //     std::cout << dof << " ";
+    //   }
+    //   std::cout << "\n";
+    // }
 
-    std::cout << "Global DOFs flux (H(div)) cell:" << std::endl;
-    for (std::int8_t i = 0; i < _ncells; ++i)
-    {
-      auto dofs_cell = dofs_flux_cell_global(i);
-      for (auto dof : dofs_cell)
-      {
-        std::cout << dof << " ";
-      }
-      std::cout << "\n";
-    }
+    // std::cout << "Global DOFs flux (H(div)) cell:" << std::endl;
+    // for (std::int8_t i = 0; i < _ncells; ++i)
+    // {
+    //   auto dofs_cell = dofs_flux_cell_global(i);
+    //   for (auto dof : dofs_cell)
+    //   {
+    //     std::cout << dof << " ";
+    //   }
+    //   std::cout << "\n";
+    // }
 
-    std::cout << "Global DOFs flux (projected) facet:" << std::endl;
-    for (std::int8_t i = 0; i < _nfcts; ++i)
-    {
-      auto dofs_cell = dofs_projflux_fct(i);
-      for (auto dof : dofs_cell)
-      {
-        std::cout << dof << " ";
-      }
-      std::cout << "\n";
-    }
+    // std::cout << "Global DOFs flux (projected) facet:" << std::endl;
+    // std::cout << "n_fcts: " << _nfcts << std::endl;
+    // for (std::int8_t i = 0; i < _nfcts; ++i)
+    // {
+    //   auto dofs_cell = dofs_projflux_fct(i);
+    //   for (auto dof : dofs_cell)
+    //   {
+    //     std::cout << dof << " ";
+    //   }
+    //   std::cout << "\n";
+    // }
   }
 
   void recreate_subdofmap(int index)
@@ -469,13 +513,15 @@ public:
 
 protected:
   /*Function (sub-) space*/
+  // Element degree of fluxes (degree of RT elements starts with 0!)
+  const int _degree_elmt_fluxhdiv, _degree_elmt_fluxdg;
+
   // The function space
   std::shared_ptr<const fem::FunctionSpace> _function_space_fluxhdiv,
       _function_space_fluxdg, _function_space_rhsdg;
 
   // Connectivity between entities and cell local DOFs
-  const std::vector<std::vector<std::vector<int>>>&_entity_dofs_fluxhdiv,
-      _entity_dofs_fluxcg;
+  const std::vector<std::vector<std::vector<int>>>& _entity_dofs_fluxcg;
 
   // Storage sub-dofmaps (H(div) flux)
   std::vector<std::int32_t> _dofsnz_elmt_fct, _dofsnz_glob_fct,

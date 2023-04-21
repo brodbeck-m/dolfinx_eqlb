@@ -139,31 +139,28 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data,
   int n_cells = mesh->topology().index_map(dim)->size_local();
 
   /* Execute equilibration */
-  // BasiX element of H(div) flux
-  const basix::FiniteElement& basix_element_fluxhdiv
-      = problem_data.fspace_flux_hdiv()->element()->basix_element();
-
   // BasiX element CG-element (same order as projected flux)
   const basix::FiniteElement& basix_element_fluxdg
       = problem_data.fspace_flux_dg()->element()->basix_element();
+  bool is_dg = (basix_element_fluxdg.degree() == 0) ? true : false;
+
   basix::FiniteElement basix_element_fluxcg = basix::element::create_lagrange(
       basix_element_fluxdg.cell_type(), basix_element_fluxdg.degree(),
-      basix_element_fluxdg.lagrange_variant(), false);
+      basix_element_fluxdg.lagrange_variant(), is_dg);
 
   if constexpr (id_flux_order == 1)
   {
     // Initialise patch
     PatchFluxCstm<T, 1> patch = PatchFluxCstm<T, 1>(
         n_nodes, mesh, fct_type, problem_data.fspace_flux_hdiv(),
-        problem_data.fspace_flux_dg(), basix_element_fluxhdiv,
-        basix_element_fluxcg);
+        problem_data.fspace_flux_dg(), basix_element_fluxcg);
 
     // Initialize kernels
     // problem_data.initialize_kernels(fem::IntegralType::cell, -1);
 
     // Run equilibration
     // for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
-    for (std::size_t i_node = 106; i_node < 107; ++i_node)
+    for (std::size_t i_node = 220; i_node < 221; ++i_node)
     {
       // Create Sub-DOFmap
       patch.create_subdofmap(i_node);
@@ -175,13 +172,13 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data,
     PatchFluxCstm<T, 2> patch = PatchFluxCstm<T, 2>(
         n_nodes, mesh, fct_type, problem_data.fspace_flux_hdiv(),
         problem_data.fspace_flux_dg(), problem_data.fspace_rhs_dg(),
-        basix_element_fluxhdiv, basix_element_fluxcg);
+        basix_element_fluxcg);
 
     // Initialise coefficients
 
     // Run equilibration
     // for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
-    for (std::size_t i_node = 176; i_node < 177; ++i_node)
+    for (std::size_t i_node = 106; i_node < 107; ++i_node)
     {
       // Create Sub-DOFmap
       patch.create_subdofmap(i_node);
