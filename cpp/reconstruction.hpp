@@ -159,8 +159,7 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data,
     // problem_data.initialize_kernels(fem::IntegralType::cell, -1);
 
     // Run equilibration
-    // for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
-    for (std::size_t i_node = 220; i_node < 221; ++i_node)
+    for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
     {
       // Create Sub-DOFmap
       patch.create_subdofmap(i_node);
@@ -177,8 +176,7 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data,
     // Initialise coefficients
 
     // Run equilibration
-    // for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
-    for (std::size_t i_node = 106; i_node < 107; ++i_node)
+    for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
     {
       // Create Sub-DOFmap
       patch.create_subdofmap(i_node);
