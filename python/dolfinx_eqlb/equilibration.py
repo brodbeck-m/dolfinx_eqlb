@@ -70,6 +70,7 @@ class EquilibratorEV():
         # Initialize connectivities
         msh.topology.create_connectivity(0, 1)
         msh.topology.create_connectivity(0, 2)
+        msh.topology.create_connectivity(1, 0)
         msh.topology.create_connectivity(1, 2)
         msh.topology.create_connectivity(2, 0)
         msh.topology.create_connectivity(2, 1)
