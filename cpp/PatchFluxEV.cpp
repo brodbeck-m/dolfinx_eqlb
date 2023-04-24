@@ -76,7 +76,7 @@ void PatchFluxEV::create_subdofmap(int node_i)
   for (std::size_t ii = 0; ii < c_fct_loop; ++ii)
   {
     // Set next cell on patch
-    auto [id_fct_loc_ci, id_fct_loc_cim1, fct_next]
+    auto [id_fct_loc_ci, id_fct_loc_cim1, id_cell_plus, fct_next]
         = fcti_to_celli(0, ii, fct_i, cell_i);
 
     // Offset first DOF (flux DOFs on facet 1) on elmt_i

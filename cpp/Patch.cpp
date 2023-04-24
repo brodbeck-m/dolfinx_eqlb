@@ -21,6 +21,7 @@ Patch::Patch(int nnodes_proc, std::shared_ptr<const mesh::Mesh> mesh,
   // Initialize connectivities
   _node_to_cell = _mesh->topology().connectivity(0, _dim);
   _node_to_fct = _mesh->topology().connectivity(0, _dim_fct);
+  _fct_to_node = _mesh->topology().connectivity(_dim_fct, 0);
   _fct_to_cell = _mesh->topology().connectivity(_dim_fct, _dim);
   _cell_to_fct = _mesh->topology().connectivity(_dim, _dim_fct);
   _cell_to_node = _mesh->topology().connectivity(_dim, 0);
@@ -140,7 +141,7 @@ std::pair<std::int32_t, std::int32_t> Patch::initialize_patch(int node_i)
   return {fct_first, c_fct_loop};
 }
 
-std::tuple<std::int8_t, std::int8_t, std::int32_t>
+std::tuple<std::int8_t, std::int8_t, std::int8_t, std::int32_t>
 Patch::fcti_to_celli(int id_l, int c_fct, std::int32_t fct_i,
                      std::int32_t cell_in)
 {
@@ -150,6 +151,9 @@ Patch::fcti_to_celli(int id_l, int c_fct, std::int32_t fct_i,
 
   // Initialize id of next cell
   std::int32_t cell_i, cell_im1;
+
+  // Initialize +/- ids of cells on facet
+  std::int8_t id_cell_plus;
 
   // Get cells adjacent to fct_i
   std::span<const std::int32_t> cell_fct_i = _fct_to_cell->links(fct_i);
@@ -161,6 +165,7 @@ Patch::fcti_to_celli(int id_l, int c_fct, std::int32_t fct_i,
   if (_type[id_l] > 0 && c_fct == 0)
   {
     cell_i = cell_fct_i[0];
+    cell_im1 = cell_i;
 
     // Facets of cells
     fct_cell_i = _cell_to_fct->links(cell_i);
@@ -203,6 +208,7 @@ Patch::fcti_to_celli(int id_l, int c_fct, std::int32_t fct_i,
   {
     _cells[c_fct] = cell_i;
     _inodes_local[c_fct] = id_node_loc_ci;
+    id_cell_plus = (cell_i == cell_fct_i[0]) ? 1 : 0;
   }
   else
   {
@@ -211,15 +217,17 @@ Patch::fcti_to_celli(int id_l, int c_fct, std::int32_t fct_i,
       _cells[c_fct + 1] = cell_i;
       _cells[c_fct] = cell_im1;
       _inodes_local[c_fct + 1] = id_node_loc_ci;
+      id_cell_plus = (cell_i == cell_fct_i[0]) ? 1 : 0;
     }
     else
     {
       _cells[0] = cell_i;
       _inodes_local[0] = id_node_loc_ci;
+      id_cell_plus = (cell_i == cell_fct_i[0]) ? 1 : 0;
     }
   }
 
-  return {id_fct_loc_ci, id_fct_loc_cim1, fct_next};
+  return {id_fct_loc_ci, id_fct_loc_cim1, id_cell_plus, fct_next};
 }
 
 std::int8_t Patch::get_fctid_local(std::int32_t fct_i, std::int32_t cell_i)

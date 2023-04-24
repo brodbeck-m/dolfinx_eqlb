@@ -81,7 +81,8 @@ public:
       }
     }
 
-    /* Reserve storage of DOFmaps */
+    /* Reserve storage */
+    // DOFMaps
     int len_adjacency_hflux_fct = _ncells_max * 2 * _ndof_flux_fct;
     int len_adjacency_hflux_cell = _ncells_max * _ndof_flux_cell;
     int len_adjacency_dflux_fct = _ncells_max * _ndof_fluxdg_fct;
@@ -94,6 +95,7 @@ public:
     _dofsnz_glob_cell.resize(len_adjacency_hflux_cell);
     _offset_dofmap_cell.resize(_ncells_max + 1, 0);
 
+    // DOFs of projected flux on facets
     if constexpr (id_flux_order == 1)
     {
       _list_fctdofs_fluxdg.resize(4 * (_ncells_max + 1), 0);
@@ -104,6 +106,12 @@ public:
       _list_fctdofs_fluxdg.resize(2 * (_ncells_max + 1) * _ndof_fluxdg_fct, 0);
       _offset_list_fluxdg.resize(_ncells_max + 2, 0);
     }
+
+    // Local facet IDs
+    _localid_fct.resize(2 * (_ncells_max + 1));
+
+    // +/- cells of facet
+    _fct_cellpm.resize(2 * (_ncells_max + 1));
   }
 
   /// Initialization
@@ -171,12 +179,18 @@ public:
     for (std::size_t ii = 0; ii < c_fct_loop; ++ii)
     {
       // Set next cell on patch
-      auto [id_fct_loc_ci, id_fct_loc_cim1, fct_next]
+      auto [id_fct_loc_ci, id_fct_loc_cim1, id_cell_plus, fct_next]
           = fcti_to_celli(0, ii, fct_i, cell_i);
+
+      // Store local facet ids
+      int offs_fct = 2 * ii;
+      _localid_fct[offs_fct] = id_fct_loc_cim1;
+      _localid_fct[offs_fct + 1] = id_fct_loc_ci;
 
       // Offset flux DOFs ond second facet elmt_(i-1)
       std::int32_t offs_f, offs_fhdiv_fct, offs_fhdiv_cell, offs_fdg_fct;
 
+      // Extract data and set offsets for data storage
       if (_type[0] > 0)
       {
         // Extract cell_i
@@ -253,6 +267,26 @@ public:
         }
       }
 
+      // Ser marker for +/- cell
+      std::int32_t cell_puls, cell_minus;
+      if (id_cell_plus == 0)
+      {
+        _fct_cellpm[offs_fct] = cell_im1;
+        _fct_cellpm[offs_fct + 1] = cell_i;
+
+        cell_puls = cell_im1;
+        cell_minus = cell_i;
+      }
+      else
+      {
+        _fct_cellpm[offs_fct] = cell_i;
+        _fct_cellpm[offs_fct + 1] = cell_im1;
+
+        cell_puls = cell_i;
+        cell_minus = cell_im1;
+      }
+
+      // Extract DOFmaps
       if constexpr (id_flux_order == 1)
       {
         /* Get DOFS of H(div) flux on fct_i */
@@ -270,13 +304,13 @@ public:
 
         /* Get DOFS of projected flux on fct_i */
         // TODO - Consider facet orientation (evaluation jump operator)
-        int gdof_cell_i = cell_i * _ndof_fluxdg;
-        int gdof_cell_im1 = cell_im1 * _ndof_fluxdg;
+        int gdof_cell_p = cell_puls * _ndof_fluxdg;
+        int gdof_cell_m = cell_minus * _ndof_fluxdg;
 
-        _list_fctdofs_fluxdg[offs_fdg_fct] = gdof_cell_i;
-        _list_fctdofs_fluxdg[offs_fdg_fct + 1] = gdof_cell_i + 1;
-        _list_fctdofs_fluxdg[offs_fdg_fct + 2] = gdof_cell_im1;
-        _list_fctdofs_fluxdg[offs_fdg_fct + 3] = gdof_cell_im1 + 1;
+        _list_fctdofs_fluxdg[offs_fdg_fct] = gdof_cell_p;
+        _list_fctdofs_fluxdg[offs_fdg_fct + 1] = gdof_cell_p + 1;
+        _list_fctdofs_fluxdg[offs_fdg_fct + 2] = gdof_cell_m;
+        _list_fctdofs_fluxdg[offs_fdg_fct + 3] = gdof_cell_m + 1;
       }
       else
       {
@@ -303,16 +337,28 @@ public:
         // TODO - Consider facet orientation (evaluation jump operator)
         if (_degree_elmt_fluxdg > 0)
         {
+          // Determin local facet-id of puls/minus cell
+          std::int32_t id_fct_loc_p, id_fct_loc_m;
+          if (id_cell_plus == 0)
+          {
+            id_fct_loc_p = id_fct_loc_cim1;
+            id_fct_loc_m = id_fct_loc_ci;
+          }
+          else
+          {
+            id_fct_loc_p = id_fct_loc_ci;
+            id_fct_loc_m = id_fct_loc_cim1;
+          }
+
           for (std::int8_t jj = 0; jj < _ndof_fluxdg_fct; ++jj)
           {
             // Precalculations
-            int ldof_cell_i = _entity_dofs_fluxcg[_dim_fct][id_fct_loc_ci][jj];
-            int ldof_cell_im1
-                = _entity_dofs_fluxcg[_dim_fct][id_fct_loc_cim1][jj];
+            int ldof_cell_p = _entity_dofs_fluxcg[_dim_fct][id_fct_loc_p][jj];
+            int ldof_cell_m = _entity_dofs_fluxcg[_dim_fct][id_fct_loc_m][jj];
 
             int offs_fdg = offs_fdg_fct + _ndof_fluxdg_fct;
-            _list_fctdofs_fluxdg[offs_fdg_fct] = ldof_cell_i;
-            _list_fctdofs_fluxdg[offs_fdg] = ldof_cell_im1;
+            _list_fctdofs_fluxdg[offs_fdg_fct] = ldof_cell_p;
+            _list_fctdofs_fluxdg[offs_fdg] = ldof_cell_m;
 
             // Increment offset
             offs_fdg_fct += 1;
@@ -347,6 +393,15 @@ public:
     {
       // Get local id of facet
       std::int8_t id_fct_loc = get_fctid_local(fct_i, cell_i);
+
+      // Store local facet ids
+      int offs_fct = 2 * _nfcts - 2;
+      _localid_fct[offs_fct] = id_fct_loc;
+      _localid_fct[offs_fct + 1] = id_fct_loc;
+
+      // Store marker for +/- cell
+      _fct_cellpm[offs_fct] = cell_i;
+      _fct_cellpm[offs_fct + 1] = cell_i;
 
       // Initialize offsets
       std::int32_t offs_fhdiv_fct = (2 * _ncells - 1) * _ndof_flux_fct;
@@ -412,6 +467,9 @@ public:
           }
         }
       }
+
+      // Set next facet
+      _fcts[_nfcts - 1] = fct_i;
     }
 
     // // Debug
@@ -433,6 +491,13 @@ public:
 
     // std::cout << "Cells: " << std::endl;
     // for (auto e : _cells)
+    // {
+    //   std::cout << e << " ";
+    // }
+    // std::cout << "\n";
+
+    // std::cout << "Facets: " << std::endl;
+    // for (auto e : _fcts)
     // {
     //   std::cout << e << " ";
     // }
@@ -471,6 +536,20 @@ public:
     //   }
     //   std::cout << "\n";
     // }
+
+    // std::cout << "Local facet IDs: " << std::endl;
+    // for (auto id : _localid_fct)
+    // {
+    //   std::cout << unsigned(id) << " ";
+    // }
+    // std::cout << "\n";
+
+    // std::cout << "cell+-: " << std::endl;
+    // for (auto cell : _fct_cellpm)
+    // {
+    //   std::cout << cell << " ";
+    // }
+    // std::cout << "\n";
   }
 
   void recreate_subdofmap(int index)
@@ -489,6 +568,41 @@ public:
     return std::span<std::int32_t>(
         _dofsnz_glob_fct.data() + _offset_dofmap_fct[cell_i],
         _offset_dofmap_fct[cell_i + 1] - _offset_dofmap_fct[cell_i]);
+  }
+
+  /// Extract global facet-DOFs (H(div) flux)
+  /// @param cell_i Patch-local cell-id
+  /// @param fct_i Patch-local facet-id
+  /// @return List DOFs (zero DOFs excluded)
+  std::span<std::int32_t> dofs_flux_fct_global(int cell_i, int fct_i)
+  {
+    int offs = (cell_i == fct_i) ? _ndof_flux_fct + _offset_dofmap_fct[cell_i]
+                                 : _offset_dofmap_fct[cell_i];
+    return std::span<std::int32_t>(_dofsnz_glob_fct.data() + offs,
+                                   _ndof_flux_fct);
+  }
+
+  /// Extract global facet-DOFs (H(div) flux) (const. version)
+  /// @param cell_i Patch-local cell-id
+  /// @return List DOFs (zero DOFs excluded)
+  std::span<const std::int32_t> dofs_flux_fct_global(int cell_i) const
+  {
+    return std::span<const std::int32_t>(
+        _dofsnz_glob_fct.data() + _offset_dofmap_fct[cell_i],
+        _offset_dofmap_fct[cell_i + 1] - _offset_dofmap_fct[cell_i]);
+  }
+
+  /// Extract global facet-DOFs (H(div) flux) (const. version)
+  /// @param cell_i Patch-local cell-id
+  /// @param fct_i Patch-local facet-id
+  /// @return List DOFs (zero DOFs excluded)
+  std::span<const std::int32_t> dofs_flux_fct_global(int cell_i,
+                                                     int fct_i) const
+  {
+    int offs = (cell_i == fct_i) ? _ndof_flux_fct + _offset_dofmap_fct[cell_i]
+                                 : _offset_dofmap_fct[cell_i];
+    return std::span<const std::int32_t>(_dofsnz_glob_fct.data() + offs,
+                                         _ndof_flux_fct);
   }
 
   /// Extract global cell-DOFs (H(div) flux)
@@ -511,6 +625,30 @@ public:
         _offset_list_fluxdg[fct_i + 1] - _offset_list_fluxdg[fct_i]);
   }
 
+  /// Get global node-ids on facet
+  /// @param fct_i Patch-local facet-id
+  /// @return List of nodes on facets
+  std::span<const std::int32_t> nodes_on_fct(int fct_i) const
+  {
+    int id;
+
+    if (_type[0] > 0)
+    {
+      return _fct_to_node->links(_fcts[fct_i]);
+    }
+    else
+    {
+      if (fct_i == 0)
+      {
+        return _fct_to_node->links(_fcts[_nfcts - 1]);
+      }
+      else
+      {
+        return _fct_to_node->links(_fcts[fct_i - 1]);
+      }
+    }
+  }
+
 protected:
   /*Function (sub-) space*/
   // Element degree of fluxes (degree of RT elements starts with 0!)
@@ -529,13 +667,19 @@ protected:
   std::vector<std::int32_t> _dofsnz_elmt_cell, _dofsnz_glob_cell,
       _offset_dofmap_cell;
 
-  // Facet DOFs projected flux
+  // Facet DOFs projected flux (fct_a: [flux_Ea, flux_Eap1], fct_ap1: [] ...)
   std::vector<std::int32_t> _list_fctdofs_fluxdg, _offset_list_fluxdg;
 
   // Number of DOFs on sub-elements (element definition)
   int _ndof_flux_fct, _ndof_flux_div_cell, _ndof_flux_add_cell, _ndof_flux_cell,
       _ndof_flux, _ndof_flux_nz;
   int _ndof_fluxdg_fct, _ndof_fluxdg, _ndof_rhsdg;
+
+  // Local facet IDs (fct_a: [id_fct_Ea, id_fct_Ep1])
+  std::vector<std::int8_t> _localid_fct;
+
+  // +/- cells adjacent to fct
+  std::vector<std::int32_t> _fct_cellpm;
 };
 
 } // namespace dolfinx_adaptivity::equilibration
