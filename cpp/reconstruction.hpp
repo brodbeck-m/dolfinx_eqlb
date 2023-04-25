@@ -6,6 +6,7 @@
 #include "ProblemDataFluxEV.hpp"
 #include "StorageStiffness.hpp"
 #include "solve_patch_constrmin.hpp"
+#include "solve_patch_semiexplt.hpp"
 #include <algorithm>
 #include <basix/e-lagrange.h>
 #include <dolfinx/fem/DirichletBC.h>
@@ -155,20 +156,20 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data,
         n_nodes, mesh, fct_type, problem_data.fspace_flux_hdiv(),
         problem_data.fspace_flux_dg(), basix_element_fluxcg);
 
-    // Initialize kernels
-    // problem_data.initialize_kernels(fem::IntegralType::cell, -1);
-
     // Run equilibration
     for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
     {
       // Create Sub-DOFmap
       patch.create_subdofmap(i_node);
+
+      // Solve patch problem
+      equilibrate_flux_constrmin<T, 1>(mesh->geometry(), patch, problem_data);
     }
   }
   else
   {
     // Initialise patch
-    PatchFluxCstm<T, 2> patch = PatchFluxCstm<T, 2>(
+    PatchFluxCstm<T, 3> patch = PatchFluxCstm<T, 3>(
         n_nodes, mesh, fct_type, problem_data.fspace_flux_hdiv(),
         problem_data.fspace_flux_dg(), problem_data.fspace_rhs_dg(),
         basix_element_fluxcg);
