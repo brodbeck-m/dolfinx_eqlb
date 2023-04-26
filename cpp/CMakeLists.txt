@@ -66,6 +66,7 @@ set(
   reconstruction.hpp
   solve_patch_constrmin.hpp
   solve_patch_semiexplt.hpp
+  utils.hpp
 )
 
 target_sources(

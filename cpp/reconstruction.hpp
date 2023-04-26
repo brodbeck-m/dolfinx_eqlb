@@ -7,8 +7,11 @@
 #include "StorageStiffness.hpp"
 #include "solve_patch_constrmin.hpp"
 #include "solve_patch_semiexplt.hpp"
+#include "utils.hpp"
 #include <algorithm>
+#include <array>
 #include <basix/e-lagrange.h>
+#include <dolfinx/fem/CoordinateElement.h>
 #include <dolfinx/fem/DirichletBC.h>
 #include <dolfinx/fem/DofMap.h>
 #include <dolfinx/fem/Form.h>
@@ -129,6 +132,7 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data,
   /* Geometry */
   // Extract mesh
   std::shared_ptr<const mesh::Mesh> mesh = problem_data.mesh();
+  const fem::CoordinateElement& cmap = mesh->geometry().cmap();
 
   // Spacial dimension
   const int dim = mesh->geometry().dim();
@@ -139,7 +143,6 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data,
   // Number of elements on processor
   int n_cells = mesh->topology().index_map(dim)->size_local();
 
-  /* Execute equilibration */
   // BasiX element CG-element (same order as projected flux)
   const basix::FiniteElement& basix_element_fluxdg
       = problem_data.fspace_flux_dg()->element()->basix_element();
@@ -149,12 +152,20 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data,
       basix_element_fluxdg.cell_type(), basix_element_fluxdg.degree(),
       basix_element_fluxdg.lagrange_variant(), is_dg);
 
+  /* Execute equilibration */
   if constexpr (id_flux_order == 1)
   {
     // Initialise patch
     PatchFluxCstm<T, 1> patch = PatchFluxCstm<T, 1>(
         n_nodes, mesh, fct_type, problem_data.fspace_flux_hdiv(),
         problem_data.fspace_flux_dg(), basix_element_fluxcg);
+
+    // Tabulate coordinate element
+    std::vector<T> points(dim, 0);
+    std::array<std::size_t, 4> c_basis_shape = cmap.tabulate_shape(1, 1);
+    std::vector<double> c_basis_values = std::vector<double>(std::reduce(
+        c_basis_shape.begin(), c_basis_shape.end(), 1, std::multiplies{}));
+    cmap.tabulate(1, std::span<T>(points), {1, dim}, c_basis_values);
 
     // Run equilibration
     for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
