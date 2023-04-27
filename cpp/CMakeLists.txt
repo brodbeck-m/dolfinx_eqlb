@@ -54,6 +54,7 @@ include(GNUInstallDirs)
 
 set(
   HEADERS_EQLB
+  KernelData.hpp
   Patch.hpp
   PatchFluxEV.hpp
   PatchFluxCstm.hpp
@@ -71,6 +72,7 @@ set(
 
 target_sources(
   dolfinx_eqlb
+  PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/KernelData.cpp
   PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Patch.cpp
   PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/PatchFluxEV.cpp
 )

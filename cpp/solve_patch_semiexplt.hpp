@@ -1,5 +1,6 @@
 #pragma once
 
+#include "KernelData.hpp"
 #include "PatchFluxCstm.hpp"
 #include "ProblemDataFluxCstm.hpp"
 #include "eigen3/Eigen/Dense"
@@ -25,9 +26,14 @@ namespace dolfinx_adaptivity::equilibration
 template <typename T, int id_flux_order = -1>
 void equilibrate_flux_constrmin(const mesh::Geometry& geometry,
                                 PatchFluxCstm<T, id_flux_order>& patch,
-                                ProblemDataFluxCstm<T>& problem_data)
+                                ProblemDataFluxCstm<T>& problem_data,
+                                KernelData& kernel_data)
 {
   assert(flux_order < 0);
+
+  /* Geometry data */
+  const graph::AdjacencyList<std::int32_t>& x_dofmap = geometry.dofmap();
+  std::span<const fem::impl::scalar_value_type_t<T>> x = geometry.x();
 
   /* Extract patch data */
   // Elements on patch
@@ -35,8 +41,40 @@ void equilibrate_flux_constrmin(const mesh::Geometry& geometry,
   int ncells = patch.ncells();
 
   /* Initialize solution process */
+  // Jacobian J, inverse K and determinant detJ
+  std::array<double, 9> Jb;
+  dolfinx_adaptivity::mdspan2_t J(Jb.data(), 2, 2);
+  std::array<double, 9> Kb;
+  dolfinx_adaptivity::mdspan2_t K(Kb.data(), 2, 2);
+  double detJ = 0;
+  std::array<double, 18> detJ_scratch;
 
-  // Solve equilibration
+  // Physical normal
+  std::array<double, 2> n_phys;
+
+  // Extract geometry data
+  const int cstride_geom = 3 * geometry.cmap().dim();
+  std::vector<fem::impl::scalar_value_type_t<T>> coordinate_dofs(
+      ncells * cstride_geom, 0);
+
+  for (std::size_t index = 0; index < ncells; ++index)
+  {
+    // Get current cell
+    std::int32_t c = cells[index];
+
+    // Copy cell geometry
+    std::span<fem::impl::scalar_value_type_t<T>> coordinate_dofs_e(
+        coordinate_dofs.data() + index * cstride_geom, cstride_geom);
+
+    auto x_dofs = x_dofmap.links(c);
+    for (std::size_t j = 0; j < x_dofs.size(); ++j)
+    {
+      std::copy_n(std::next(x.begin(), 3 * x_dofs[j]), 3,
+                  std::next(coordinate_dofs_e.begin(), 3 * j));
+    }
+  }
+
+  /* Solve equilibration */
   for (std::size_t i_rhs = 0; i_rhs < problem_data.nlhs(); ++i_rhs)
   {
     // Data dependent on RHS

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "KernelData.hpp"
 #include "PatchFluxCstm.hpp"
 #include "PatchFluxEV.hpp"
 #include "ProblemDataFluxCstm.hpp"
@@ -160,12 +161,8 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data,
         n_nodes, mesh, fct_type, problem_data.fspace_flux_hdiv(),
         problem_data.fspace_flux_dg(), basix_element_fluxcg);
 
-    // Tabulate coordinate element
-    std::vector<T> points(dim, 0);
-    std::array<std::size_t, 4> c_basis_shape = cmap.tabulate_shape(1, 1);
-    std::vector<double> c_basis_values = std::vector<double>(std::reduce(
-        c_basis_shape.begin(), c_basis_shape.end(), 1, std::multiplies{}));
-    cmap.tabulate(1, std::span<T>(points), {1, dim}, c_basis_values);
+    // Initialize KernelData
+    KernelData kernel_data = KernelData(mesh);
 
     // Run equilibration
     for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
@@ -174,7 +171,8 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data,
       patch.create_subdofmap(i_node);
 
       // Solve patch problem
-      equilibrate_flux_constrmin<T, 1>(mesh->geometry(), patch, problem_data);
+      equilibrate_flux_constrmin<T, 1>(mesh->geometry(), patch, problem_data,
+                                       kernel_data);
     }
   }
   else
