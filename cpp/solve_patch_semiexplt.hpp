@@ -64,9 +64,9 @@ void equilibrate_flux_constrmin(const mesh::Geometry& geometry,
   std::array<double, 18> detJ_scratch;
 
   // Physical normal
-  std::array<double, 2> n_phys;
+  std::array<double, 2> normal_phys;
 
-  // Storage cell geometry
+  // Storage cell geometries
   const int cstride_geom = 3 * nnodes_cell;
   std::vector<double> coordinate_dofs(ncells * cstride_geom, 0);
 
@@ -117,10 +117,12 @@ void equilibrate_flux_constrmin(const mesh::Geometry& geometry,
     }
     else if (type_patch == 1)
     {
+      loop_end = ncells;
       throw std::runtime_error("Equilibration: Neumann BCs not supported!");
     }
     else
     {
+      loop_end = ncells + 1;
       throw std::runtime_error("Equilibration: Neumann BCs not supported!");
     }
 
@@ -139,6 +141,11 @@ void equilibrate_flux_constrmin(const mesh::Geometry& geometry,
       // Isoparametric mappring cell
       const double detJ
           = kernel_data.compute_jacobian(J, K, detJ_scratch, coords);
+
+      // Compute physical normal
+      std::int8_t fctid_loc_plus = 0;
+
+      kernel_data.physical_fct_normal(normal_phys, K, fctid_loc_plus);
 
       // Set DOFs for cell
       // FIXME - Add jump contribution

@@ -36,8 +36,10 @@ KernelData::KernelData(std::shared_ptr<const mesh::Mesh> mesh)
   basix::cell::type basix_cell
       = mesh::cell_type_to_basix_type(topology.cell_type());
 
-  std::tie(_facet_normals, _normals_shape)
+  std::tie(_fct_normals, _normals_shape)
       = basix::cell::facet_outward_normals(basix_cell);
+
+  _fct_normal_out = basix::cell::facet_orientations(basix_cell);
 }
 
 double KernelData::compute_jacobian(dolfinx_adaptivity::mdspan2_t J,
@@ -70,4 +72,33 @@ double KernelData::compute_jacobian(dolfinx_adaptivity::mdspan2_t J,
   return std::fabs(
       fem::CoordinateElement::compute_jacobian_determinant(J, detJ_scratch));
 }
+
+void KernelData::physical_fct_normal(std::span<double> normal_phys,
+                                     dolfinx_adaptivity::mdspan2_t K,
+                                     std::int8_t fct_id)
+{
+  // Set physical normal to zero
+  std::fill(normal_phys.begin(), normal_phys.end(), 0);
+
+  // Extract normal on reference cell
+  std::span<const double> normal_ref = fct_normal(fct_id);
+
+  // n_phys = F^(-T) * n_ref
+  for (int i = 0; i < _gdim; ++i)
+  {
+    for (int j = 0; j < _gdim; ++j)
+    {
+      normal_phys[i] += K(j, i) * normal_ref[j];
+    }
+  }
+
+  // Normalize vector
+  double norm = 0;
+  std::for_each(normal_phys.begin(), normal_phys.end(),
+                [&norm](auto ni) { norm += std::pow(ni, 2); });
+  norm = std::sqrt(norm);
+  std::for_each(normal_phys.begin(), normal_phys.end(),
+                [norm](auto& ni) { ni = ni / norm; });
+}
+
 } // namespace dolfinx_adaptivity::equilibration
