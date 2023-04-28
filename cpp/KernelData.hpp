@@ -75,6 +75,16 @@ public:
     return _fct_normal_out[id_fct];
   }
 
+  /// Returns id if cell-normal points outward
+  /// @param id_fct1 The cell-local facet id
+  /// @param id_fct2 The cell-local facet id
+  /// @return Direction indicator (true->outward)
+  std::pair<bool, bool> fct_normal_is_outward(std::int8_t id_fct1,
+                                              std::int8_t id_fct2)
+  {
+    return {_fct_normal_out[id_fct1], _fct_normal_out[id_fct2]};
+  }
+
 protected:
   /* Variable definitions */
   // Dimensions

@@ -625,6 +625,132 @@ public:
         _offset_list_fluxdg[fct_i + 1] - _offset_list_fluxdg[fct_i]);
   }
 
+  /// Return local facet id of E_a on T_a
+  ///
+  /// T_a has only two facets, that are relevant for current patch.
+  /// Following the convention, T_a is adjacent to E_am1 and E_a!
+  ///
+  /// @param fct_i  Patch-local id of facet E_a (a>0)
+  /// @param cell_i Patch-local id of cell T_a (a>0)
+  /// @return Local facte id
+  std::int8_t fctid_local(int fct_i, int cell_i)
+  {
+    int ifct, offst;
+
+    if (_type[0] == 0)
+    {
+      if (fct_i == 0)
+      {
+        ifct = _ncells - 1;
+
+        if (cell_i == 1)
+        {
+          offst = 1;
+        }
+        else if (cell_i == _ncells)
+        {
+          offst = 0;
+        }
+        else
+        {
+          throw std::runtime_error("Cell not adjacent to facet");
+        }
+      }
+      else
+      {
+        ifct = fct_i - 1;
+
+        if (cell_i == fct_i)
+        {
+          offst = 0;
+        }
+        else if (cell_i == fct_i + 1)
+        {
+          offst = 1;
+        }
+        else
+        {
+          throw std::runtime_error("Cell not adjacent to facet");
+        }
+      }
+    }
+    else
+    {
+      ifct = fct_i;
+
+      if (fct_i == 0)
+      {
+        if (cell_i == 1)
+        {
+          offst = 0;
+        }
+        else
+        {
+          throw std::runtime_error("Cell not adjacent to facet");
+        }
+      }
+      if (fct_i == (_ncells + 1))
+      {
+        if (cell_i == fct_i - 1)
+        {
+          offst = 0;
+        }
+        else
+        {
+          throw std::runtime_error("Cell not adjacent to facet");
+        }
+      }
+      else
+      {
+        if (cell_i == fct_i)
+        {
+          offst = 0;
+        }
+        else if (cell_i == fct_i + 1)
+        {
+          offst = 1;
+        }
+        else
+        {
+          throw std::runtime_error("Cell not adjacent to facet");
+        }
+      }
+    }
+
+    return _localid_fct[2 * ifct + offst];
+  }
+
+  /// Return locat facet ids of facet E_a on adjacent cells
+  /// @param fct_i Patch-local id of facet E_a (a>0)
+  /// @return Local facet ids on adjacent cells T_a and T_ap1
+  std::span<const std::int8_t> fctid_local(int fct_i) const
+  {
+    int fcti = identify_fct(fct_i);
+
+    return std::span<const std::int8_t>(_localid_fct.data() + 2 * fcti, 2);
+  }
+
+  /// Return local facet ids of E_a and E_am1 on cell T_a
+  /// @param cell_i Patch-local id of cell T_a (a>0)
+  /// @return Local facet ids of facets E_a and E_am1
+  std::pair<std::int8_t, std::int8_t> fctid_local(int cell_i)
+  {
+    int fcti, fctim1;
+
+    if ((cell_i == 1) && (_type[0] == 0))
+    {
+      fcti = 0;
+      fctim1 = _ncells - 1;
+    }
+    else
+    {
+      fcti = identify_fct(cell_i);
+      fctim1 = fcti - 1;
+    }
+
+    return {_localid_fct[2 * fcti], _localid_fct[2 * fctim1 + 1]};
+  }
+
   /// Get global node-ids on facet
   /// @param fct_i Patch-local facet-id
   /// @return List of nodes on facets
@@ -650,7 +776,19 @@ public:
   }
 
 protected:
-  /*Function (sub-) space*/
+  int identify_fct(int fct_i)
+  {
+    int ifct = fct_i;
+
+    if (_type[0] == 0)
+    {
+      ifct = (fct_i == 0) ? _ncells - 1 : fct_i - 1;
+    }
+
+    return ifct;
+  }
+
+  /* Variables */
   // Element degree of fluxes (degree of RT elements starts with 0!)
   const int _degree_elmt_fluxhdiv, _degree_elmt_fluxdg;
 
@@ -675,7 +813,7 @@ protected:
       _ndof_flux, _ndof_flux_nz;
   int _ndof_fluxdg_fct, _ndof_fluxdg, _ndof_rhsdg;
 
-  // Local facet IDs (fct_a: [id_fct_Ea, id_fct_Ep1])
+  // Local facet IDs (fct_a: [id_fct_Ta, id_fct_Tap1])
   std::vector<std::int8_t> _localid_fct;
 
   // +/- cells adjacent to fct

@@ -5,18 +5,21 @@
 #include "ProblemDataFluxCstm.hpp"
 #include "eigen3/Eigen/Dense"
 #include "utils.hpp"
-#include <algorithm>
-#include <cmath>
+
 #include <dolfinx/fem/DofMap.h>
 #include <dolfinx/fem/Form.h>
 #include <dolfinx/fem/Function.h>
 #include <dolfinx/fem/assembler.h>
 #include <dolfinx/fem/utils.h>
 #include <dolfinx/graph/AdjacencyList.h>
+
+#include <algorithm>
+#include <cmath>
 #include <functional>
 #include <iostream>
 #include <iterator>
 #include <span>
+#include <tuple>
 #include <vector>
 
 using namespace dolfinx;
@@ -66,9 +69,13 @@ void equilibrate_flux_constrmin(const mesh::Geometry& geometry,
   // Physical normal
   std::array<double, 2> normal_phys;
 
-  // Storage cell geometries
+  // Storage cell geometries/ normal orientation
   const int cstride_geom = 3 * nnodes_cell;
   std::vector<double> coordinate_dofs(ncells * cstride_geom, 0);
+
+  std::int8_t fctloc_ea, fctloc_eam1;
+  bool noutward_ea, noutward_eam1;
+  std::vector<double> dprefactor_dof(ncells * 2, 1.0);
 
   for (std::size_t index = 0; index < ncells; ++index)
   {
@@ -85,7 +92,20 @@ void equilibrate_flux_constrmin(const mesh::Geometry& geometry,
       std::copy_n(std::next(x.begin(), 3 * x_dofs[j]), 3,
                   std::next(coordinate_dofs_e.begin(), 3 * j));
     }
+
+    // Get local fact ids on cell_i
+    std::tie(fctloc_ea, fctloc_eam1) = patch.fctid_local(index + 1);
+
+    // Get indicators if reference normals are pointing outward
+    std::tie(noutward_ea, noutward_eam1)
+        = kernel_data.fct_normal_is_outward(fctloc_ea, fctloc_eam1);
+
+    // Set prefactor
+    dprefactor_dof[2 * index] = (noutward_ea) ? 1.0 : -1.0;
+    dprefactor_dof[2 * index + 1] = (noutward_eam1) ? 1.0 : -1.0;
   }
+
+  dolfinx_adaptivity::mdspan2_t prefactor_dof(dprefactor_dof.data(), ncells, 2);
 
   /* Solve equilibration */
   for (std::size_t i_rhs = 0; i_rhs < problem_data.nlhs(); ++i_rhs)
@@ -113,7 +133,7 @@ void equilibrate_flux_constrmin(const mesh::Geometry& geometry,
 
       // Set DOFs for cell 1
       coeffs_flux[0][0] = 0;
-      coeffs_flux[0][1] = detJ / 6;
+      coeffs_flux[0][1] = prefactor_dof(0, 1) * detJ / 6;
     }
     else if (type_patch == 1)
     {
@@ -149,9 +169,11 @@ void equilibrate_flux_constrmin(const mesh::Geometry& geometry,
 
       // Set DOFs for cell
       // FIXME - Add jump contribution
-      T jump = 0;
-      coeffs_flux[id_a][0] = jump - coeffs_flux[id_a - 1][1];
-      coeffs_flux[id_a][1] = detJ / 6 - coeffs_flux[id_a][0];
+      double jump = 0;
+      coeffs_flux[id_a][0]
+          = prefactor_dof(id_a, 0) * (jump - coeffs_flux[id_a - 1][1]);
+      coeffs_flux[id_a][1]
+          = prefactor_dof(id_a, 1) * (detJ / 6 - coeffs_flux[id_a][0]);
     }
 
     /* Solution step 2: Minimisation */
