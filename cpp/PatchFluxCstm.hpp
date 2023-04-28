@@ -1,13 +1,16 @@
 #pragma once
 
 #include "Patch.hpp"
-#include <algorithm>
+
 #include <basix/finite-element.h>
 #include <dolfinx/fem/FiniteElement.h>
 #include <dolfinx/fem/FunctionSpace.h>
 #include <dolfinx/graph/AdjacencyList.h>
 #include <dolfinx/mesh/Mesh.h>
 #include <dolfinx/mesh/Topology.h>
+
+#include <algorithm>
+#include <cassert>
 #include <iostream>
 #include <memory>
 #include <span>
@@ -303,7 +306,6 @@ public:
         _dofsnz_glob_fct[offs_f] = cell_im1 * _ndof_flux + ldof_cell_im1;
 
         /* Get DOFS of projected flux on fct_i */
-        // TODO - Consider facet orientation (evaluation jump operator)
         int gdof_cell_p = cell_puls * _ndof_fluxdg;
         int gdof_cell_m = cell_minus * _ndof_fluxdg;
 
@@ -559,70 +561,15 @@ public:
 
   /* Setter functions */
 
-  /* Getter functions */
-  /// Extract global facet-DOFs (H(div) flux)
-  /// @param cell_i Patch-local cell-id
-  /// @return List DOFs (zero DOFs excluded)
-  std::span<std::int32_t> dofs_flux_fct_global(int cell_i)
-  {
-    return std::span<std::int32_t>(
-        _dofsnz_glob_fct.data() + _offset_dofmap_fct[cell_i],
-        _offset_dofmap_fct[cell_i + 1] - _offset_dofmap_fct[cell_i]);
-  }
-
-  /// Extract global facet-DOFs (H(div) flux)
-  /// @param cell_i Patch-local cell-id
+  /* Getter functions (Geometry) */
+  /// Get global node-ids on facet
   /// @param fct_i Patch-local facet-id
-  /// @return List DOFs (zero DOFs excluded)
-  std::span<std::int32_t> dofs_flux_fct_global(int cell_i, int fct_i)
+  /// @return List of nodes on facets
+  std::span<const std::int32_t> nodes_on_fct(int fct_i)
   {
-    int offs = (cell_i == fct_i) ? _ndof_flux_fct + _offset_dofmap_fct[cell_i]
-                                 : _offset_dofmap_fct[cell_i];
-    return std::span<std::int32_t>(_dofsnz_glob_fct.data() + offs,
-                                   _ndof_flux_fct);
-  }
+    int fcti = fctid_patch_to_data(fct_i);
 
-  /// Extract global facet-DOFs (H(div) flux) (const. version)
-  /// @param cell_i Patch-local cell-id
-  /// @return List DOFs (zero DOFs excluded)
-  std::span<const std::int32_t> dofs_flux_fct_global(int cell_i) const
-  {
-    return std::span<const std::int32_t>(
-        _dofsnz_glob_fct.data() + _offset_dofmap_fct[cell_i],
-        _offset_dofmap_fct[cell_i + 1] - _offset_dofmap_fct[cell_i]);
-  }
-
-  /// Extract global facet-DOFs (H(div) flux) (const. version)
-  /// @param cell_i Patch-local cell-id
-  /// @param fct_i Patch-local facet-id
-  /// @return List DOFs (zero DOFs excluded)
-  std::span<const std::int32_t> dofs_flux_fct_global(int cell_i,
-                                                     int fct_i) const
-  {
-    int offs = (cell_i == fct_i) ? _ndof_flux_fct + _offset_dofmap_fct[cell_i]
-                                 : _offset_dofmap_fct[cell_i];
-    return std::span<const std::int32_t>(_dofsnz_glob_fct.data() + offs,
-                                         _ndof_flux_fct);
-  }
-
-  /// Extract global cell-DOFs (H(div) flux)
-  /// @param cell_i Patch-local cell-id
-  /// @return List DOFs (zero DOFs excluded)
-  std::span<std::int32_t> dofs_flux_cell_global(int cell_i)
-  {
-    return std::span<std::int32_t>(
-        _dofsnz_glob_cell.data() + _offset_dofmap_cell[cell_i],
-        _offset_dofmap_cell[cell_i + 1] - _offset_dofmap_cell[cell_i]);
-  }
-
-  /// Extract facet-DOFs (projected flux)
-  /// @param cell_i Patch-local facet-id
-  /// @return List DOFs (zero DOFs excluded)
-  std::span<std::int32_t> dofs_projflux_fct(int fct_i)
-  {
-    return std::span<std::int32_t>(
-        _list_fctdofs_fluxdg.data() + _offset_list_fluxdg[fct_i],
-        _offset_list_fluxdg[fct_i + 1] - _offset_list_fluxdg[fct_i]);
+    return _fct_to_node->links(_fcts[fcti]);
   }
 
   /// Return local facet id of E_a on T_a
@@ -635,6 +582,8 @@ public:
   /// @return Local facte id
   std::int8_t fctid_local(int fct_i, int cell_i)
   {
+    assert(cell_i > 0);
+
     int ifct, offst;
 
     if (_type[0] == 0)
@@ -720,21 +669,13 @@ public:
     return _localid_fct[2 * ifct + offst];
   }
 
-  /// Return locat facet ids of facet E_a on adjacent cells
-  /// @param fct_i Patch-local id of facet E_a (a>0)
-  /// @return Local facet ids on adjacent cells T_a and T_ap1
-  std::span<const std::int8_t> fctid_local(int fct_i) const
-  {
-    int fcti = identify_fct(fct_i);
-
-    return std::span<const std::int8_t>(_localid_fct.data() + 2 * fcti, 2);
-  }
-
   /// Return local facet ids of E_a and E_am1 on cell T_a
   /// @param cell_i Patch-local id of cell T_a (a>0)
   /// @return Local facet ids of facets E_a and E_am1
   std::pair<std::int8_t, std::int8_t> fctid_local(int cell_i)
   {
+    assert(cell_i > 0);
+
     int fcti, fctim1;
 
     if ((cell_i == 1) && (_type[0] == 0))
@@ -744,39 +685,68 @@ public:
     }
     else
     {
-      fcti = identify_fct(cell_i);
+      fcti = fctid_patch_to_data(cell_i);
       fctim1 = fcti - 1;
     }
 
     return {_localid_fct[2 * fcti], _localid_fct[2 * fctim1 + 1]};
   }
 
-  /// Get global node-ids on facet
-  /// @param fct_i Patch-local facet-id
-  /// @return List of nodes on facets
-  std::span<const std::int32_t> nodes_on_fct(int fct_i) const
+  /* Getter functions (DOFmap) */
+  /// Extract global facet-DOFs (H(div) flux)
+  /// @param cell_i Patch-local cell-id
+  /// @return List DOFs (zero DOFs excluded)
+  std::span<const std::int32_t> dofs_flux_fct_global(int cell_i)
   {
-    int id;
+    int celli = cellid_patch_to_data(cell_i);
 
-    if (_type[0] > 0)
-    {
-      return _fct_to_node->links(_fcts[fct_i]);
-    }
-    else
-    {
-      if (fct_i == 0)
-      {
-        return _fct_to_node->links(_fcts[_nfcts - 1]);
-      }
-      else
-      {
-        return _fct_to_node->links(_fcts[fct_i - 1]);
-      }
-    }
+    return std::span<const std::int32_t>(
+        _dofsnz_glob_fct.data() + _offset_dofmap_fct[celli],
+        _offset_dofmap_fct[celli + 1] - _offset_dofmap_fct[celli]);
+  }
+
+  /// Extract global facet-DOFs (H(div) flux)
+  /// @param cell_i Patch-local cell-id
+  /// @param fct_i Patch-local facet-id
+  /// @return List DOFs (zero DOFs excluded)
+  // FIXME - Check definition of facet id
+  std::span<const std::int32_t> dofs_flux_fct_global(int cell_i, int fct_i)
+  {
+    int offs = (cell_i == fct_i) ? _ndof_flux_fct + _offset_dofmap_fct[cell_i]
+                                 : _offset_dofmap_fct[cell_i];
+    return std::span<const std::int32_t>(_dofsnz_glob_fct.data() + offs,
+                                         _ndof_flux_fct);
+  }
+
+  /// Extract global cell-DOFs (H(div) flux)
+  /// @param cell_i Patch-local cell-id
+  /// @return List DOFs (zero DOFs excluded)
+  std::span<const std::int32_t> dofs_flux_cell_global(int cell_i)
+  {
+    int celli = cellid_patch_to_data(cell_i);
+
+    return std::span<const std::int32_t>(
+        _dofsnz_glob_cell.data() + _offset_dofmap_cell[celli],
+        _offset_dofmap_cell[celli + 1] - _offset_dofmap_cell[celli]);
+  }
+
+  /// Extract facet-DOFs (projected flux)
+  /// @param cell_i Patch-local facet-id
+  /// @return List DOFs (zero DOFs excluded)
+  std::span<const std::int32_t> dofs_projflux_fct(int fct_i)
+  {
+    int fcti = fctid_patch_to_data(fct_i);
+
+    return std::span<const std::int32_t>(
+        _list_fctdofs_fluxdg.data() + _offset_list_fluxdg[fcti],
+        _offset_list_fluxdg[fcti + 1] - _offset_list_fluxdg[fcti]);
   }
 
 protected:
-  int identify_fct(int fct_i)
+  /// Get facet id within data structure from patch id
+  /// @param fct_i Patch-local id of facet Ea
+  /// @return Id of facet within data structure
+  int fctid_patch_to_data(int fct_i)
   {
     int ifct = fct_i;
 
@@ -786,6 +756,21 @@ protected:
     }
 
     return ifct;
+  }
+
+  /// Get cell id within data structure from patch id
+  /// @param cell_i Patch-local id of cell Ta
+  /// @return Id of cell within data structure
+  int cellid_patch_to_data(int cell_i)
+  {
+    // // ID of patch cells is always greater zero!
+    // assert(cell_i > 0);
+
+    // int celli = cell_i - 1;
+
+    // return celli;
+
+    return 1;
   }
 
   /* Variables */
@@ -805,7 +790,7 @@ protected:
   std::vector<std::int32_t> _dofsnz_elmt_cell, _dofsnz_glob_cell,
       _offset_dofmap_cell;
 
-  // Facet DOFs projected flux (fct_a: [flux_Ea, flux_Eap1], fct_ap1: [] ...)
+  // Facet DOFs projected flux (fct_a: [flux_E+, flux_E-], fct_ap1: [] ...)
   std::vector<std::int32_t> _list_fctdofs_fluxdg, _offset_list_fluxdg;
 
   // Number of DOFs on sub-elements (element definition)

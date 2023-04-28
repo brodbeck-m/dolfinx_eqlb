@@ -125,6 +125,16 @@ public:
     return _rhs_dg[0]->function_space();
   }
 
+  /// Extract projected primal flux
+  /// @param index Id of subproblem
+  /// @return The projected flux (fe function)
+  fem::Function<T>& projected_flux(int index) { return *(_flux_dg[index]); }
+
+  /// Extract projected RHS
+  /// @param index Id of subproblem
+  /// @return The projected RHS (fe function)
+  fem::Function<T>& projected_rhs(int index) { return *(_rhs_dg[index]); }
+
 protected:
   /* Variables */
   // Fe functions of projected flux and RHS

@@ -69,6 +69,12 @@ void equilibrate_flux_constrmin(const mesh::Geometry& geometry,
   // Physical normal
   std::array<double, 2> normal_phys;
 
+  // Jump within projected flux
+  std::array<double, 2> jump_proj_flux;
+
+  // DOFs flux (cell-wise H(div))
+  double c_ta_ea, c_ta_eam1, c_tam1_eam1;
+
   // Storage cell geometries/ normal orientation
   const int cstride_geom = 3 * nnodes_cell;
   std::vector<double> coordinate_dofs(ncells * cstride_geom, 0);
@@ -76,6 +82,7 @@ void equilibrate_flux_constrmin(const mesh::Geometry& geometry,
   std::int8_t fctloc_ea, fctloc_eam1;
   bool noutward_ea, noutward_eam1;
   std::vector<double> dprefactor_dof(ncells * 2, 1.0);
+  dolfinx_adaptivity::mdspan2_t prefactor_dof(dprefactor_dof.data(), ncells, 2);
 
   for (std::size_t index = 0; index < ncells; ++index)
   {
@@ -105,16 +112,22 @@ void equilibrate_flux_constrmin(const mesh::Geometry& geometry,
     dprefactor_dof[2 * index + 1] = (noutward_eam1) ? 1.0 : -1.0;
   }
 
-  dolfinx_adaptivity::mdspan2_t prefactor_dof(dprefactor_dof.data(), ncells, 2);
-
   /* Solve equilibration */
   for (std::size_t i_rhs = 0; i_rhs < problem_data.nlhs(); ++i_rhs)
   {
-    // Data dependent on RHS
+    // Patch type
     int type_patch = patch.type(i_rhs);
 
-    // Initialize storage of coefficients
-    T coeffs_flux[ncells][2];
+    // Solution vector (flux, picewise-H(div))
+    std::span<T> x_flux_dhdiv = problem_data.flux(i_rhs).x()->mutable_array();
+
+    // Projected primal flux
+    std::span<T> x_flux_proj
+        = problem_data.projected_flux(i_rhs).x()->mutable_array();
+
+    // Projected RHS
+    std::span<T> x_rhs_proj
+        = problem_data.projected_rhs(i_rhs).x()->mutable_array();
 
     /* Solution step 1: Jump and divergence condition */
     int loop_end;
@@ -122,18 +135,29 @@ void equilibrate_flux_constrmin(const mesh::Geometry& geometry,
     {
       loop_end = ncells + 1;
 
-      // Physical coordinates of cell 1
+      // Physical coordinates of cell
       std::span<double> coordinate_dofs_e(coordinate_dofs.data(), cstride_geom);
       dolfinx_adaptivity::cmdspan2_t coords(coordinate_dofs_e.data(),
                                             nnodes_cell, 3);
 
-      // Isoparametric mappring cell 1
+      // Isoparametric mappring for cell
       const double detJ
           = kernel_data.compute_jacobian(J, K, detJ_scratch, coords);
 
+      // Extract RHS value on current cell
+      T f_i = x_rhs_proj[patch.dofs_projflux_fct(cells[0])[0]];
+
       // Set DOFs for cell 1
-      coeffs_flux[0][0] = 0;
-      coeffs_flux[0][1] = prefactor_dof(0, 1) * detJ / 6;
+      c_ta_eam1 = 0;
+      c_ta_ea = prefactor_dof(0, 1) * f_i * detJ / 6;
+
+      // Store coefficients and set history values
+      std::span<const std::int32_t> gdofs_flux = patch.dofs_flux_fct_global(0);
+
+      x_flux_dhdiv[gdofs_flux[0]] = c_ta_eam1;
+      x_flux_dhdiv[gdofs_flux[1]] = c_ta_ea;
+
+      c_tam1_eam1 = c_ta_ea;
     }
     else if (type_patch == 1)
     {
@@ -151,6 +175,9 @@ void equilibrate_flux_constrmin(const mesh::Geometry& geometry,
       // Set id for acessing storage
       int id_a = a - 1;
 
+      // Global cell id
+      std::int32_t c = cells[id_a];
+
       // Physical coordinates of cell
       std::span<double> coordinate_dofs_e(
           coordinate_dofs.data() + id_a * cstride_geom, cstride_geom);
@@ -163,17 +190,37 @@ void equilibrate_flux_constrmin(const mesh::Geometry& geometry,
           = kernel_data.compute_jacobian(J, K, detJ_scratch, coords);
 
       // Compute physical normal
+      // FIXME - Get local facet id on plus cell!
       std::int8_t fctid_loc_plus = 0;
 
       kernel_data.physical_fct_normal(normal_phys, K, fctid_loc_plus);
 
+      // Extract RHS value
+      T f_i = x_rhs_proj[patch.dofs_projflux_fct(c)[0]];
+
+      // Extract gadients (+/- side) ond facet E_am1
+      std::span<const std::int32_t> dofs_projflux_fct
+          = patch.dofs_projflux_fct(a);
+
+      jump_proj_flux[0] = x_flux_proj[dofs_projflux_fct[0]]
+                          - x_flux_proj[dofs_projflux_fct[2]];
+      jump_proj_flux[1] = x_flux_proj[dofs_projflux_fct[1]]
+                          - x_flux_proj[dofs_projflux_fct[3]];
+
+      double jump_i = jump_proj_flux[0] * normal_phys[0]
+                      + jump_proj_flux[1] * normal_phys[1];
+
       // Set DOFs for cell
-      // FIXME - Add jump contribution
-      double jump = 0;
-      coeffs_flux[id_a][0]
-          = prefactor_dof(id_a, 0) * (jump - coeffs_flux[id_a - 1][1]);
-      coeffs_flux[id_a][1]
-          = prefactor_dof(id_a, 1) * (detJ / 6 - coeffs_flux[id_a][0]);
+      c_ta_eam1 = prefactor_dof(id_a, 0) * (jump_i - c_tam1_eam1);
+      c_ta_ea = prefactor_dof(id_a, 1) * (f_i * detJ / 6 - c_ta_eam1);
+
+      // Store coefficients and set history values
+      std::span<const std::int32_t> gdofs_flux = patch.dofs_flux_fct_global(a);
+
+      x_flux_dhdiv[gdofs_flux[0]] = c_ta_eam1;
+      x_flux_dhdiv[gdofs_flux[1]] = c_ta_ea;
+
+      c_tam1_eam1 = c_ta_ea;
     }
 
     /* Solution step 2: Minimisation */
