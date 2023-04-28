@@ -23,6 +23,17 @@ using namespace dolfinx;
 
 namespace dolfinx_adaptivity::equilibration
 {
+void get_cell_coordinates(std::span<const double> x_g,
+                          std::span<const std::int32_t> x_dofs,
+                          std::vector<double>& coordinate_dofs)
+{
+  for (std::size_t j = 0; j < x_dofs.size(); ++j)
+  {
+    std::copy_n(std::next(x_g.begin(), 3 * x_dofs[j]), 3,
+                std::next(coordinate_dofs.begin(), 3 * j));
+  }
+}
+
 template <typename T, int id_flux_order = -1>
 void equilibrate_flux_constrmin(const mesh::Geometry& geometry,
                                 PatchFluxCstm<T, id_flux_order>& patch,
@@ -33,7 +44,7 @@ void equilibrate_flux_constrmin(const mesh::Geometry& geometry,
 
   /* Geometry data */
   const graph::AdjacencyList<std::int32_t>& x_dofmap = geometry.dofmap();
-  std::span<const fem::impl::scalar_value_type_t<T>> x = geometry.x();
+  std::span<const double> x = geometry.x();
 
   /* Extract patch data */
   // Elements on patch
@@ -41,6 +52,9 @@ void equilibrate_flux_constrmin(const mesh::Geometry& geometry,
   int ncells = patch.ncells();
 
   /* Initialize solution process */
+  // Number of nodes on reference cell
+  int nnodes_cell = kernel_data.nnodes_cell();
+
   // Jacobian J, inverse K and determinant detJ
   std::array<double, 9> Jb;
   dolfinx_adaptivity::mdspan2_t J(Jb.data(), 2, 2);
@@ -52,10 +66,9 @@ void equilibrate_flux_constrmin(const mesh::Geometry& geometry,
   // Physical normal
   std::array<double, 2> n_phys;
 
-  // Extract geometry data
-  const int cstride_geom = 3 * geometry.cmap().dim();
-  std::vector<fem::impl::scalar_value_type_t<T>> coordinate_dofs(
-      ncells * cstride_geom, 0);
+  // Storage cell geometry
+  const int cstride_geom = 3 * nnodes_cell;
+  std::vector<double> coordinate_dofs(ncells * cstride_geom, 0);
 
   for (std::size_t index = 0; index < ncells; ++index)
   {
@@ -63,7 +76,7 @@ void equilibrate_flux_constrmin(const mesh::Geometry& geometry,
     std::int32_t c = cells[index];
 
     // Copy cell geometry
-    std::span<fem::impl::scalar_value_type_t<T>> coordinate_dofs_e(
+    std::span<double> coordinate_dofs_e(
         coordinate_dofs.data() + index * cstride_geom, cstride_geom);
 
     auto x_dofs = x_dofmap.links(c);
@@ -89,13 +102,18 @@ void equilibrate_flux_constrmin(const mesh::Geometry& geometry,
     {
       loop_end = ncells + 1;
 
-      // Cell 1 and determinant
-      std::int32_t cell_i = cells[0];
-      double detj_i = 1;
+      // Physical coordinates of cell 1
+      std::span<double> coordinate_dofs_e(coordinate_dofs.data(), cstride_geom);
+      dolfinx_adaptivity::cmdspan2_t coords(coordinate_dofs_e.data(),
+                                            nnodes_cell, 3);
+
+      // Isoparametric mappring cell 1
+      const double detJ
+          = kernel_data.compute_jacobian(J, K, detJ_scratch, coords);
 
       // Set DOFs for cell 1
       coeffs_flux[0][0] = 0;
-      coeffs_flux[0][1] = detj_i / 6;
+      coeffs_flux[0][1] = detJ / 6;
     }
     else if (type_patch == 1)
     {
@@ -111,15 +129,22 @@ void equilibrate_flux_constrmin(const mesh::Geometry& geometry,
       // Set id for acessing storage
       int id_a = a - 1;
 
-      // Determine cell and Piola mapping
-      std::int32_t cell_i = cells[id_a];
-      double detj_i = 1;
+      // Physical coordinates of cell
+      std::span<double> coordinate_dofs_e(
+          coordinate_dofs.data() + id_a * cstride_geom, cstride_geom);
+
+      dolfinx_adaptivity::cmdspan2_t coords(coordinate_dofs_e.data(),
+                                            nnodes_cell, 3);
+
+      // Isoparametric mappring cell
+      const double detJ
+          = kernel_data.compute_jacobian(J, K, detJ_scratch, coords);
 
       // Set DOFs for cell
       // FIXME - Add jump contribution
       T jump = 0;
       coeffs_flux[id_a][0] = jump - coeffs_flux[id_a - 1][1];
-      coeffs_flux[id_a][1] = 0;
+      coeffs_flux[id_a][1] = detJ / 6 - coeffs_flux[id_a][0];
     }
 
     /* Solution step 2: Minimisation */
