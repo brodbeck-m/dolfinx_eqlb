@@ -20,6 +20,7 @@
 		"ms-python.python",
 		"ms-python.vscode-pylance",
 		"ms-vscode.cpptools",
+		"ms-vscode.cpptools-extension-pack",
 		"twxs.cmake",
 		"vscode.cmake-tools",
 		"gruntfuggly.todo-tree"
