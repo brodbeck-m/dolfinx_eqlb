@@ -73,7 +73,7 @@ void equilibrate_flux_constrmin(const mesh::Geometry& geometry,
   std::array<double, 2> jump_proj_flux;
 
   // DOFs flux (cell-wise H(div))
-  double c_ta_ea, c_ta_eam1, c_tam1_eam1;
+  T c_ta_ea, c_ta_eam1, c_tam1_eam1;
 
   // Storage cell geometries/ normal orientation
   const int cstride_geom = 3 * nnodes_cell;
@@ -145,6 +145,7 @@ void equilibrate_flux_constrmin(const mesh::Geometry& geometry,
           = kernel_data.compute_jacobian(J, K, detJ_scratch, coords);
 
       // Extract RHS value on current cell
+      // FIXME - Acess onto c seems to be wrong --> Check DOFmap
       T f_i = x_rhs_proj[patch.dofs_projflux_fct(cells[0])[0]];
 
       // Set DOFs for cell 1
@@ -152,10 +153,12 @@ void equilibrate_flux_constrmin(const mesh::Geometry& geometry,
       c_ta_ea = prefactor_dof(0, 1) * f_i * detJ / 6;
 
       // Store coefficients and set history values
-      std::span<const std::int32_t> gdofs_flux = patch.dofs_flux_fct_global(0);
+      std::span<const std::int32_t> gdofs_flux = patch.dofs_flux_fct_global(1);
 
+      std::cout << "Patch ID: " << type_patch << std::endl;
+      std::cout << "Value: " << f_i << std::endl;
       x_flux_dhdiv[gdofs_flux[0]] = c_ta_eam1;
-      x_flux_dhdiv[gdofs_flux[1]] = c_ta_ea;
+      x_flux_dhdiv[gdofs_flux[1]] = 1;
 
       c_tam1_eam1 = c_ta_ea;
     }
@@ -199,6 +202,7 @@ void equilibrate_flux_constrmin(const mesh::Geometry& geometry,
       T f_i = x_rhs_proj[patch.dofs_projflux_fct(c)[0]];
 
       // Extract gadients (+/- side) ond facet E_am1
+      // FIXME - Check that always outward normal is used!
       std::span<const std::int32_t> dofs_projflux_fct
           = patch.dofs_projflux_fct(a);
 
@@ -211,14 +215,15 @@ void equilibrate_flux_constrmin(const mesh::Geometry& geometry,
                       + jump_proj_flux[1] * normal_phys[1];
 
       // Set DOFs for cell
+      // FIXME - Add length of facet --> integral incomplete
       c_ta_eam1 = prefactor_dof(id_a, 0) * (jump_i - c_tam1_eam1);
       c_ta_ea = prefactor_dof(id_a, 1) * (f_i * detJ / 6 - c_ta_eam1);
 
       // Store coefficients and set history values
-      std::span<const std::int32_t> gdofs_flux = patch.dofs_flux_fct_global(a);
+      // std::span<const std::int32_t> gdofs_flux = patch.dofs_flux_fct_global(a);
 
-      x_flux_dhdiv[gdofs_flux[0]] = c_ta_eam1;
-      x_flux_dhdiv[gdofs_flux[1]] = c_ta_ea;
+      // x_flux_dhdiv[gdofs_flux[0]] = c_ta_eam1;
+      // x_flux_dhdiv[gdofs_flux[1]] = c_ta_ea;
 
       c_tam1_eam1 = c_ta_ea;
     }

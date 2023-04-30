@@ -763,14 +763,12 @@ protected:
   /// @return Id of cell within data structure
   int cellid_patch_to_data(int cell_i)
   {
-    // // ID of patch cells is always greater zero!
-    // assert(cell_i > 0);
+    // ID of patch cells is always greater zero!
+    assert(cell_i > 0);
 
-    // int celli = cell_i - 1;
+    int celli = cell_i - 1;
 
-    // return celli;
-
-    return 1;
+    return celli;
   }
 
   /* Variables */
