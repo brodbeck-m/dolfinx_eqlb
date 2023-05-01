@@ -193,7 +193,9 @@ public:
       // Offset flux DOFs ond second facet elmt_(i-1)
       std::int32_t offs_f, offs_fhdiv_fct, offs_fhdiv_cell, offs_fdg_fct;
 
-      // Extract data and set offsets for data storage
+      // Extract data, set offsets for data storage and set +/- cells on facet
+      std::int32_t cell_puls, cell_minus;
+
       if (_type[0] > 0)
       {
         // Extract cell_i
@@ -229,7 +231,24 @@ public:
         // Offset DOFs projected flux on facet
         offs_fdg_fct = 2 * ii * ndof_fluxdg_fct;
         _offset_list_fluxdg[iip1] = 2 * iip1 * ndof_fluxdg_fct;
-        ;
+
+        // Store +/- cell of facet
+        if (id_cell_plus == 0)
+        {
+          _fct_cellpm[offs_fct] = ii - 1;
+          _fct_cellpm[offs_fct + 1] = ii;
+
+          cell_puls = cell_im1;
+          cell_minus = cell_i;
+        }
+        else
+        {
+          _fct_cellpm[offs_fct] = ii;
+          _fct_cellpm[offs_fct + 1] = ii - 1;
+
+          cell_puls = cell_i;
+          cell_minus = cell_im1;
+        }
       }
       else
       {
@@ -256,6 +275,24 @@ public:
 
           // Offsets cell_(i-1), flux DOFs facet
           offs_f = _offset_dofmap_fct[ii] + _ndof_flux_fct;
+
+          // Set +/- cells on facte
+          if (id_cell_plus == 0)
+          {
+            _fct_cellpm[offs_fct] = ii;
+            _fct_cellpm[offs_fct + 1] = ii + 1;
+
+            cell_puls = cell_im1;
+            cell_minus = cell_i;
+          }
+          else
+          {
+            _fct_cellpm[offs_fct] = ii + 1;
+            _fct_cellpm[offs_fct + 1] = ii;
+
+            cell_puls = cell_i;
+            cell_minus = cell_im1;
+          }
         }
         else
         {
@@ -267,26 +304,25 @@ public:
           offs_f = _offset_dofmap_fct[ii] + _ndof_flux_fct;
           offs_fhdiv_fct = 0;
           offs_fhdiv_cell = 0;
+
+          // Set +/- cells on facte
+          if (id_cell_plus == 0)
+          {
+            _fct_cellpm[offs_fct] = _ncells - 1;
+            _fct_cellpm[offs_fct + 1] = 0;
+
+            cell_puls = cell_im1;
+            cell_minus = cell_i;
+          }
+          else
+          {
+            _fct_cellpm[offs_fct] = 0;
+            _fct_cellpm[offs_fct + 1] = _ncells - 1;
+
+            cell_puls = cell_i;
+            cell_minus = cell_im1;
+          }
         }
-      }
-
-      // Ser marker for +/- cell
-      std::int32_t cell_puls, cell_minus;
-      if (id_cell_plus == 0)
-      {
-        _fct_cellpm[offs_fct] = cell_im1;
-        _fct_cellpm[offs_fct + 1] = cell_i;
-
-        cell_puls = cell_im1;
-        cell_minus = cell_i;
-      }
-      else
-      {
-        _fct_cellpm[offs_fct] = cell_i;
-        _fct_cellpm[offs_fct + 1] = cell_im1;
-
-        cell_puls = cell_i;
-        cell_minus = cell_im1;
       }
 
       // Extract DOFmaps
@@ -401,9 +437,11 @@ public:
       _localid_fct[offs_fct] = id_fct_loc;
       _localid_fct[offs_fct + 1] = id_fct_loc;
 
-      // Store marker for +/- cell
-      _fct_cellpm[offs_fct] = cell_i;
-      _fct_cellpm[offs_fct + 1] = cell_i;
+      // Correct storage of +/- cells
+      _fct_cellpm[0] = 0;
+      _fct_cellpm[1] = 0;
+      _fct_cellpm[offs_fct] = _ncells - 1;
+      _fct_cellpm[offs_fct + 1] = _ncells - 1;
 
       // Initialize offsets
       std::int32_t offs_fhdiv_fct = (2 * _ncells - 1) * _ndof_flux_fct;
@@ -549,7 +587,7 @@ public:
     // std::cout << "cell+-: " << std::endl;
     // for (auto cell : _fct_cellpm)
     // {
-    //   std::cout << cell << " ";
+    //   std::cout << _cells[cell] << " ";
     // }
     // std::cout << "\n";
   }
@@ -692,6 +730,16 @@ public:
     return {_localid_fct[2 * fcti], _localid_fct[2 * fctim1 + 1]};
   }
 
+  /// Get patach-local id of + and - cell on facet
+  /// @param fct_i Patch-local facet-id
+  /// @return Patch-local cell id of + and - cell
+  std::pair<std::int32_t, std::int32_t> cellpm(int fct_i)
+  {
+    int fcti = fctid_patch_to_data(fct_i);
+
+    return {_fct_cellpm[2 * fcti] + 1, _fct_cellpm[2 * fcti + 1] + 1};
+  }
+
   /* Getter functions (DOFmap) */
   /// Extract global facet-DOFs (H(div) flux)
   /// @param cell_i Patch-local cell-id
@@ -799,7 +847,7 @@ protected:
   // Local facet IDs (fct_a: [id_fct_Ta, id_fct_Tap1])
   std::vector<std::int8_t> _localid_fct;
 
-  // +/- cells adjacent to fct
+  // +/- cells adjacent to fct (patch local ids)
   std::vector<std::int32_t> _fct_cellpm;
 };
 

@@ -66,6 +66,9 @@ void equilibrate_flux_constrmin(const mesh::Geometry& geometry,
   double detJ = 0;
   std::array<double, 18> detJ_scratch;
 
+  // +/- cell on facet Eam1
+  std::int32_t cell_plus_eam1, cell_minus_eam1;
+
   // Physical normal
   std::array<double, 2> normal_phys;
 
@@ -104,7 +107,7 @@ void equilibrate_flux_constrmin(const mesh::Geometry& geometry,
     std::tie(fctloc_ea, fctloc_eam1) = patch.fctid_local(index + 1);
 
     // Get indicators if reference normals are pointing outward
-    std::tie(noutward_ea, noutward_eam1)
+    std::tie(noutward_eam1, noutward_ea)
         = kernel_data.fct_normal_is_outward(fctloc_ea, fctloc_eam1);
 
     // Set prefactor
@@ -146,19 +149,16 @@ void equilibrate_flux_constrmin(const mesh::Geometry& geometry,
 
       // Extract RHS value on current cell
       // FIXME - Acess onto c seems to be wrong --> Check DOFmap
-      T f_i = x_rhs_proj[patch.dofs_projflux_fct(cells[0])[0]];
+      T f_i = x_rhs_proj[cells[0]];
 
       // Set DOFs for cell 1
-      c_ta_eam1 = 0;
       c_ta_ea = prefactor_dof(0, 1) * f_i * detJ / 6;
 
       // Store coefficients and set history values
       std::span<const std::int32_t> gdofs_flux = patch.dofs_flux_fct_global(1);
 
-      std::cout << "Patch ID: " << type_patch << std::endl;
-      std::cout << "Value: " << f_i << std::endl;
-      x_flux_dhdiv[gdofs_flux[0]] = c_ta_eam1;
-      x_flux_dhdiv[gdofs_flux[1]] = 1;
+      x_flux_dhdiv[gdofs_flux[0]] = 0;
+      x_flux_dhdiv[gdofs_flux[1]] = c_ta_ea;
 
       c_tam1_eam1 = c_ta_ea;
     }
@@ -193,18 +193,17 @@ void equilibrate_flux_constrmin(const mesh::Geometry& geometry,
           = kernel_data.compute_jacobian(J, K, detJ_scratch, coords);
 
       // Compute physical normal
-      // FIXME - Get local facet id on plus cell!
-      std::int8_t fctid_loc_plus = 0;
+      std::tie(cell_plus_eam1, cell_minus_eam1) = patch.cellpm(a - 1);
+      std::int8_t fctid_loc_plus = patch.fctid_local(a - 1, cell_plus_eam1);
 
       kernel_data.physical_fct_normal(normal_phys, K, fctid_loc_plus);
 
       // Extract RHS value
-      T f_i = x_rhs_proj[patch.dofs_projflux_fct(c)[0]];
+      T f_i = x_rhs_proj[c];
 
       // Extract gadients (+/- side) ond facet E_am1
-      // FIXME - Check that always outward normal is used!
       std::span<const std::int32_t> dofs_projflux_fct
-          = patch.dofs_projflux_fct(a);
+          = patch.dofs_projflux_fct(a - 1);
 
       jump_proj_flux[0] = x_flux_proj[dofs_projflux_fct[0]]
                           - x_flux_proj[dofs_projflux_fct[2]];
@@ -220,10 +219,10 @@ void equilibrate_flux_constrmin(const mesh::Geometry& geometry,
       c_ta_ea = prefactor_dof(id_a, 1) * (f_i * detJ / 6 - c_ta_eam1);
 
       // Store coefficients and set history values
-      // std::span<const std::int32_t> gdofs_flux = patch.dofs_flux_fct_global(a);
+      std::span<const std::int32_t> gdofs_flux = patch.dofs_flux_fct_global(a);
 
-      // x_flux_dhdiv[gdofs_flux[0]] = c_ta_eam1;
-      // x_flux_dhdiv[gdofs_flux[1]] = c_ta_ea;
+      x_flux_dhdiv[gdofs_flux[0]] = c_ta_eam1;
+      x_flux_dhdiv[gdofs_flux[1]] = c_ta_ea;
 
       c_tam1_eam1 = c_ta_ea;
     }
