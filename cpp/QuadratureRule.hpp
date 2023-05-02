@@ -7,6 +7,7 @@
 #include <dolfinx/mesh/cell_types.h>
 
 #include <algorithm>
+#include <array>
 #include <iostream>
 #include <span>
 #include <vector>
@@ -41,9 +42,9 @@ public:
     _npoints_cell = qrule_cell[1].size();
     _pdim_cell = qrule_cell[0].size() / _npoints_cell;
 
-    // Extract quadrature points
-    _points_cell.resize(qrule_cell[0].size());
-    std::copy(_points_cell.begin(), _points_cell.end(), qrule_cell[0].begin());
+    // Extract quadrature points/ weights
+    _points_cell = qrule_cell.front();
+    _weights_cell = qrule_cell.back();
 
     // Extract quadrature weights
     _weights_cell.resize(_npoints_cell);
@@ -55,47 +56,18 @@ public:
     basix::cell::type b_fct_type
         = basix::cell::sub_entity_type(b_cell_type, _dim_fct, 0);
 
-    // Create basix-element for facet
-    basix::FiniteElement b_elmt_fct
-        = basix::create_element(basix::element::family::P, b_fct_type, 1,
-                                basix::element::lagrange_variant::gll_warped,
-                                basix::element::dpc_variant::unset, false);
-
     // Calculate quadrature points and weights
     std::array<std::vector<double>, 2> qrule_fct
-        = basix::quadrature::make_quadrature(quadrature_type, b_cell_type,
+        = basix::quadrature::make_quadrature(quadrature_type, b_fct_type,
                                              degree);
 
     // Set number of quadrature points
     _npoints_fct = qrule_fct[1].size();
     _pdim_fct = qrule_fct[0].size() / _npoints_fct;
 
-    // Extract quadrature points
-    _points_fct.resize(qrule_fct[0].size());
-    std::copy(_points_fct.begin(), _points_fct.end(), qrule_fct[0].begin());
-
-    // Extract quadrature weights
-    _weights_fct.resize(_npoints_fct);
-    std::copy(_weights_fct.begin(), _weights_fct.end(), qrule_fct[1].begin());
-
-    std::cout << "Cell: " << std::endl;
-    std::cout << "nqpoints_cell: " << _npoints_cell << std::endl;
-    std::cout << "len points: " << qrule_cell[0].size() << std::endl;
-    for (auto e : _points_cell)
-    {
-      std::cout << e << " ";
-    }
-    std::cout << "\n";
-    std::cout << "Facet: " << std::endl;
-    std::cout << "nqpoints_cell: " << _npoints_fct << std::endl;
-    std::cout << "len points: " << qrule_fct[0].size() << std::endl;
-    for (auto e : qrule_fct[0])
-    {
-      std::cout << e << " ";
-    }
-    std::cout << "\n";
-
-    throw std::exception();
+    // Extract quadrature points/ weights
+    _points_fct = qrule_fct.front();
+    _weights_fct = qrule_fct.back();
   }
 
   /* Setter functions */
@@ -109,26 +81,9 @@ public:
   /// @return The quadrature points
   const std::vector<double>& points_cell() const { return _points_cell; }
 
-  //   /// Return the quadrature points for cell integrals
-  //   /// @return The quadrature points
-  //   dolfinx_adaptivity::cmdspan2_t points_cell() const
-  //   {
-  //     return dolfinx_adaptivity::cmdspan2_t(_points_cell.data(),
-  //     _npoints_cell,
-  //                                           2);
-  //   }
-
   /// Return the quadrature points (flattend structure) for facet integrals
   /// @return The quadrature points
-  const std::vector<double>& points_fct() const { return _points_cell; }
-
-  //   /// Return the quadrature points for facet integrals
-  //   /// @return The quadrature points
-  //   dolfinx_adaptivity::cmdspan2_t points_fct() const
-  //   {
-  //     return dolfinx_adaptivity::cmdspan2_t(_points_fct.data(), _npoints_fct,
-  //     2);
-  //   }
+  const std::vector<double>& points_fct() const { return _points_fct; }
 
   /// Return quadrature weights for cell-integrals
   /// @return The quadrature weights
