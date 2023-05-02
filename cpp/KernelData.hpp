@@ -1,6 +1,8 @@
 #pragma once
 
+#include "QuadratureRule.hpp"
 #include "utils.hpp"
+
 #include <basix/cell.h>
 #include <dolfinx/fem/CoordinateElement.h>
 #include <dolfinx/mesh/Geometry.h>
@@ -30,11 +32,13 @@ public:
   /// actual element.
   ///
   /// @param mesh The mesh
-  KernelData(std::shared_ptr<const mesh::Mesh> mesh);
+  KernelData(std::shared_ptr<const mesh::Mesh> mesh,
+             std::shared_ptr<const QuadratureRule> qrule);
 
   double compute_jacobian(dolfinx_adaptivity::mdspan2_t J,
                           dolfinx_adaptivity::mdspan2_t K,
-                          std::span<double> detJ_scratch, cmdspan2_t coords);
+                          std::span<double> detJ_scratch,
+                          dolfinx_adaptivity::cmdspan2_t coords);
 
   /// Calculate physical normal of facet
   /// @param K      The inverse Jacobi-Matrix
@@ -91,9 +95,12 @@ protected:
   std::uint32_t _gdim;
   std::uint32_t _tdim;
 
-  // Description of mesh element
+  // Description mesh element
   int _num_coordinate_dofs;
   bool _is_affine;
+
+  // Quadrature rule
+  std::shared_ptr<const QuadratureRule> _quadrature_rule;
 
   // Tabulation of geometric element
   std::array<std::size_t, 4> _g_basis_shape;

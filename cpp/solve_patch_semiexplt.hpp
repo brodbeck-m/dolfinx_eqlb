@@ -214,7 +214,7 @@ void equilibrate_flux_constrmin(const mesh::Geometry& geometry,
                       + jump_proj_flux[1] * normal_phys[1];
 
       // Set DOFs for cell
-      // FIXME - Add length of facet --> integral incomplete
+      // FIXME - Consider integral of hat function over facet
       c_ta_eam1 = prefactor_dof(id_a, 0) * (jump_i - c_tam1_eam1);
       c_ta_ea = prefactor_dof(id_a, 1) * (f_i * detJ / 6 - c_ta_eam1);
 

@@ -4,7 +4,9 @@ using namespace dolfinx;
 
 namespace dolfinx_adaptivity::equilibration
 {
-KernelData::KernelData(std::shared_ptr<const mesh::Mesh> mesh)
+KernelData::KernelData(std::shared_ptr<const mesh::Mesh> mesh,
+                       std::shared_ptr<const QuadratureRule> qrule)
+    : _quadrature_rule(qrule)
 {
   const mesh::Topology& topology = mesh->topology();
   const mesh::Geometry& geometry = mesh->geometry();

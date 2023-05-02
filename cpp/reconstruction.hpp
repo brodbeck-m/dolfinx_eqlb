@@ -9,8 +9,7 @@
 #include "solve_patch_constrmin.hpp"
 #include "solve_patch_semiexplt.hpp"
 #include "utils.hpp"
-#include <algorithm>
-#include <array>
+
 #include <basix/e-lagrange.h>
 #include <dolfinx/fem/CoordinateElement.h>
 #include <dolfinx/fem/DirichletBC.h>
@@ -25,10 +24,14 @@
 #include <dolfinx/mesh/Mesh.h>
 #include <dolfinx/mesh/Topology.h>
 #include <dolfinx/mesh/cell_types.h>
+
+#include <algorithm>
+#include <array>
 #include <exception>
 #include <functional>
 #include <iostream>
 #include <iterator>
+#include <memory>
 #include <span>
 #include <vector>
 
@@ -161,8 +164,14 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data,
         n_nodes, mesh, fct_type, problem_data.fspace_flux_hdiv(),
         problem_data.fspace_flux_dg(), basix_element_fluxcg);
 
+    // Set quadrature rule
+    // Use quadrature_degree = 2 as phi_i*phi_j has to be integrated exactly
+    QuadratureRule quadrature_rule
+        = QuadratureRule(mesh->topology().cell_type(), 2);
+
     // Initialize KernelData
-    KernelData kernel_data = KernelData(mesh);
+    KernelData kernel_data
+        = KernelData(mesh, std::make_shared<QuadratureRule>(quadrature_rule));
 
     // Run equilibration
     for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)

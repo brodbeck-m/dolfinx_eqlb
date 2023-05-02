@@ -61,6 +61,7 @@ set(
   ProblemData.hpp
   ProblemDataFluxEV.hpp
   ProblemDataFluxCstm.hpp
+  QuadratureRule.hpp
   StorageStiffness.hpp
   assembly.hpp
   local_solver.hpp
