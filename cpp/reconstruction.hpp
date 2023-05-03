@@ -175,8 +175,7 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data,
         problem_data.fspace_flux_hdiv()->element()->basix_element());
 
     // Run equilibration
-    // for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
-    for (std::size_t i_node = 176; i_node < 177; ++i_node)
+    for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
     {
       // Create Sub-DOFmap
       patch.create_subdofmap(i_node);

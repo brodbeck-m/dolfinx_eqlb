@@ -27,7 +27,7 @@ public:
   /// Initialization
   ///
   /// Storage is designed for the maximum patch size occuring within
-  /// the current mesh.
+  /// the current mesh. (Cell-IDs start at 1, facet-IDs at 0!)
   ///
   /// @param nnodes_proc             Numbe rof nodes on current processor
   /// @param mesh                    The current mesh
@@ -600,6 +600,33 @@ public:
   /* Setter functions */
 
   /* Getter functions (Geometry) */
+  /// Return processor-local cell id
+  /// @param cell_i Patch-local cell id
+  /// @return cell
+  std::int32_t cell(int cell_i)
+  {
+    int celli = cellid_patch_to_data(cell_i);
+    return _cells[celli];
+  }
+
+  /// Return processor-local facet id
+  /// @param fct_i Patch-local facet id
+  /// @return facet
+  std::int32_t fct(int fct_i)
+  {
+    int fcti = fctid_patch_to_data(fct_i);
+    return _fcts[fcti];
+  }
+
+  /// Return cell-local node id of patch-central node
+  /// @param cell_i Patch-local cell id
+  /// @return inode_local
+  std::int8_t inode_local(int cell_i)
+  {
+    int celli = cellid_patch_to_data(cell_i);
+    return _inodes_local[celli];
+  }
+
   /// Get global node-ids on facet
   /// @param fct_i Patch-local facet-id
   /// @return List of nodes on facets
@@ -626,7 +653,7 @@ public:
 
     if (_type[0] == 0)
     {
-      if (fct_i == 0)
+      if (fct_i == 0 || fct_i == _ncells)
       {
         ifct = _ncells - 1;
 

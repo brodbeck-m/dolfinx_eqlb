@@ -88,6 +88,7 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
   std::vector<double> dprefactor_dof(ncells * 2, 1.0);
   dolfinx_adaptivity::mdspan2_t prefactor_dof(dprefactor_dof.data(), ncells, 2);
 
+  bool eval_normal_am1 = false;
   for (std::size_t index = 0; index < ncells; ++index)
   {
     // Get current cell
@@ -124,7 +125,6 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
     dprefactor_dof[2 * index + 1] = (noutward_eam1) ? 1.0 : -1.0;
 
     /* Calculation of physical normals */
-    bool eval_normal_am1;
     int a = index + 1;
 
     // Check if last cell is reached (only internal patch!)
@@ -161,7 +161,7 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
     // Get +/- cell on facet E_a
     std::tie(cell_plus, cell_minus) = patch.cellpm(a);
 
-    if (c = cells[cell_plus])
+    if (c == patch.cell(cell_plus))
     {
       // Get local facet id on T_a
       std::int8_t fctid_loc_plus = patch.fctid_local(a, cell_plus);
@@ -265,13 +265,6 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
 
       // Global cell id
       std::int32_t c = cells[id_a];
-
-      // Physical coordinates of cell
-      std::span<double> coordinate_dofs_e(
-          coordinate_dofs.data() + id_a * cstride_geom, cstride_geom);
-
-      dolfinx_adaptivity::cmdspan2_t coords(coordinate_dofs_e.data(),
-                                            nnodes_cell, 3);
 
       // Isoparametric mappring cell
       const double detJ = storage_detJ[id_a];
