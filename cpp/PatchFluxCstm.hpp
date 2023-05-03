@@ -757,11 +757,27 @@ public:
   /// @param cell_i Patch-local cell-id
   /// @param fct_i Patch-local facet-id
   /// @return List DOFs (zero DOFs excluded)
-  // FIXME - Check definition of facet id
   std::span<const std::int32_t> dofs_flux_fct_global(int cell_i, int fct_i)
   {
-    int offs = (cell_i == fct_i) ? _ndof_flux_fct + _offset_dofmap_fct[cell_i]
-                                 : _offset_dofmap_fct[cell_i];
+    // Get cell-id in data-format
+    int celli = cellid_patch_to_data(cell_i);
+
+    // Determine offset based on facet
+    int offs;
+
+    if (fct_i == cell_i)
+    {
+      offs = _ndof_flux_fct + _offset_dofmap_fct[celli];
+    }
+    else if (fct_i == cell_i - 1)
+    {
+      offs = _offset_dofmap_fct[celli];
+    }
+    else
+    {
+      throw std::runtime_error("Cell not adjacent to facet");
+    }
+
     return std::span<const std::int32_t>(_dofsnz_glob_fct.data() + offs,
                                          _ndof_flux_fct);
   }
@@ -775,6 +791,59 @@ public:
 
     return std::span<const std::int32_t>(
         _dofsnz_glob_cell.data() + _offset_dofmap_cell[celli],
+        _offset_dofmap_cell[celli + 1] - _offset_dofmap_cell[celli]);
+  }
+
+  /// Extract cell-local facet-DOFs (H(div) flux)
+  /// @param cell_i Patch-local cell-id
+  /// @return List DOFs (zero DOFs excluded)
+  std::span<const std::int32_t> dofs_flux_fct_local(int cell_i)
+  {
+    int celli = cellid_patch_to_data(cell_i);
+
+    return std::span<const std::int32_t>(
+        _dofsnz_elmt_fct.data() + _offset_dofmap_fct[celli],
+        _offset_dofmap_fct[celli + 1] - _offset_dofmap_fct[celli]);
+  }
+
+  /// Extract cell-local facet-DOFs (H(div) flux)
+  /// @param cell_i Patch-local cell-id
+  /// @param fct_i Patch-local facet-id
+  /// @return List DOFs (zero DOFs excluded)
+  std::span<const std::int32_t> dofs_flux_fct_local(int cell_i, int fct_i)
+  {
+    // Get cell-id in data-format
+    int celli = cellid_patch_to_data(cell_i);
+
+    // Determine offset based on facet
+    int offs;
+
+    if (fct_i == cell_i)
+    {
+      offs = _ndof_flux_fct + _offset_dofmap_fct[celli];
+    }
+    else if (fct_i == cell_i - 1)
+    {
+      offs = _offset_dofmap_fct[celli];
+    }
+    else
+    {
+      throw std::runtime_error("Cell not adjacent to facet");
+    }
+
+    return std::span<const std::int32_t>(_dofsnz_elmt_fct.data() + offs,
+                                         _ndof_flux_fct);
+  }
+
+  /// Extract cell-local cell-DOFs (H(div) flux)
+  /// @param cell_i Patch-local cell-id
+  /// @return List DOFs (zero DOFs excluded)
+  std::span<const std::int32_t> dofs_flux_cell_local(int cell_i)
+  {
+    int celli = cellid_patch_to_data(cell_i);
+
+    return std::span<const std::int32_t>(
+        _dofsnz_elmt_cell.data() + _offset_dofmap_cell[celli],
         _offset_dofmap_cell[celli + 1] - _offset_dofmap_cell[celli]);
   }
 
