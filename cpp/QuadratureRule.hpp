@@ -40,7 +40,6 @@ public:
 
     // Set number of quadrature points
     _npoints_cell = qrule_cell[1].size();
-    _pdim_cell = qrule_cell[0].size() / _npoints_cell;
 
     // Extract quadrature points/ weights
     _points_cell = qrule_cell.front();
@@ -63,7 +62,6 @@ public:
 
     // Set number of quadrature points
     _npoints_fct = qrule_fct[1].size();
-    _pdim_fct = qrule_fct[0].size() / _npoints_fct;
 
     // Extract quadrature points/ weights
     _points_fct = qrule_fct.front();
@@ -75,7 +73,15 @@ public:
   /* Getter functions */
   /// Return the quadrature degree
   /// @return The quadrature degree
-  int degree() { return _degree; }
+  int degree() const { return _degree; }
+
+  /// Return the number of quadrature points on cell
+  /// @return The number of quadrature points
+  std::size_t npoints_cell() const { return _npoints_cell; }
+
+  /// Return the number of quadrature points on facet
+  /// @return The number of quadrature points
+  std::size_t npoints_fct() const { return _npoints_fct; }
 
   /// Return the quadrature points (flattend structure) for cell integrals
   /// @return The quadrature points
@@ -108,13 +114,11 @@ private:
   const int _degree;
 
   // Quadrature points and weights (cell)
-  std::size_t _npoints_cell, _lenpoints_cell;
-  int _pdim_cell;
+  std::size_t _npoints_cell;
   std::vector<double> _points_cell, _weights_cell;
 
   // Quadrature points ans weights (facet)
-  std::size_t _npoints_fct, _lenpoints_fct;
-  int _pdim_fct;
+  std::size_t _npoints_fct;
   std::vector<double> _points_fct, _weights_fct;
 };
 } // namespace dolfinx_adaptivity::equilibration
