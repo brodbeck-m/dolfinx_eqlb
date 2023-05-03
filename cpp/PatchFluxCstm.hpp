@@ -615,7 +615,7 @@ public:
   /// T_a has only two facets, that are relevant for current patch.
   /// Following the convention, T_a is adjacent to E_am1 and E_a!
   ///
-  /// @param fct_i  Patch-local id of facet E_a (a>0)
+  /// @param fct_i  Patch-local id of facet E_a (a>=0)
   /// @param cell_i Patch-local id of cell T_a (a>0)
   /// @return Local facte id
   std::int8_t fctid_local(int fct_i, int cell_i)

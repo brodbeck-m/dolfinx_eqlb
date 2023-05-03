@@ -38,7 +38,7 @@ void get_cell_coordinates(std::span<const double> x_g,
 }
 
 template <typename T, int id_flux_order = -1>
-void equilibrate_flux_constrmin(const mesh::Geometry& geometry,
+void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
                                 PatchFluxCstm<T, id_flux_order>& patch,
                                 ProblemDataFluxCstm<T>& problem_data,
                                 KernelData& kernel_data)
@@ -46,6 +46,7 @@ void equilibrate_flux_constrmin(const mesh::Geometry& geometry,
   assert(flux_order < 0);
 
   /* Geometry data */
+  const int dim = 2;
   const graph::AdjacencyList<std::int32_t>& x_dofmap = geometry.dofmap();
   std::span<const double> x = geometry.x();
 
@@ -63,14 +64,14 @@ void equilibrate_flux_constrmin(const mesh::Geometry& geometry,
   dolfinx_adaptivity::mdspan2_t J(Jb.data(), 2, 2);
   std::array<double, 9> Kb;
   dolfinx_adaptivity::mdspan2_t K(Kb.data(), 2, 2);
-  double detJ = 0;
   std::array<double, 18> detJ_scratch;
+  std::vector<double> storage_detJ(ncells, 0);
 
-  // +/- cell on facet Eam1
-  std::int32_t cell_plus_eam1, cell_minus_eam1;
+  // +/- cells
+  std::int32_t cell_plus, cell_minus, cell_plus_eam1, cell_minus_eam1;
 
   // Physical normal
-  std::array<double, 2> normal_phys;
+  std::vector<double> storage_normal_phys((ncells + 1) * dim, 0);
 
   // Jump within projected flux
   std::array<double, 2> jump_proj_flux;
@@ -92,7 +93,7 @@ void equilibrate_flux_constrmin(const mesh::Geometry& geometry,
     // Get current cell
     std::int32_t c = cells[index];
 
-    // Copy cell geometry
+    /* Copy cell geometry */
     std::span<double> coordinate_dofs_e(
         coordinate_dofs.data() + index * cstride_geom, cstride_geom);
 
@@ -103,16 +104,107 @@ void equilibrate_flux_constrmin(const mesh::Geometry& geometry,
                   std::next(coordinate_dofs_e.begin(), 3 * j));
     }
 
+    /* Piola mapping */
+    // Reshape geometry infos
+    dolfinx_adaptivity::cmdspan2_t coords(coordinate_dofs_e.data(), nnodes_cell,
+                                          3);
+    // Calculate Jacobi, inverse, and determinant
+    storage_detJ[index]
+        = kernel_data.compute_jacobian(J, K, detJ_scratch, coords);
+
+    /* DOF transformation */
     // Get local fact ids on cell_i
     std::tie(fctloc_ea, fctloc_eam1) = patch.fctid_local(index + 1);
 
-    // Get indicators if reference normals are pointing outward
+    // Set prefactor of facte DOFs (H(div) flux)
     std::tie(noutward_eam1, noutward_ea)
         = kernel_data.fct_normal_is_outward(fctloc_ea, fctloc_eam1);
 
-    // Set prefactor
     dprefactor_dof[2 * index] = (noutward_ea) ? 1.0 : -1.0;
     dprefactor_dof[2 * index + 1] = (noutward_eam1) ? 1.0 : -1.0;
+
+    /* Calculation of physical normals */
+    bool eval_normal_am1;
+    int a = index + 1;
+
+    // Check if last cell is reached (only internal patch!)
+    if ((patch.type(0) > 0) && (a == 1))
+    {
+      // Get local facet id of T_0 on E_0
+      std::int8_t fctid_loc_plus = patch.fctid_local(0, 1);
+
+      // Get storage of normal
+      std::span<double> normal_e(storage_normal_phys.data(), dim);
+
+      // Transform normal into physical space
+      kernel_data.physical_fct_normal(normal_e, K, fctid_loc_plus);
+    }
+
+    // Transform normal n_am1 within cell T_a
+    if (eval_normal_am1)
+    {
+      int am1 = a - 1;
+
+      // Unset idetifire
+      eval_normal_am1 = false;
+
+      // Get local facet id of E_am1 on T_a
+      std::int8_t fctid_loc_plus = patch.fctid_local(am1, a);
+
+      // Get storage of normal
+      std::span<double> normal_e(storage_normal_phys.data() + am1 * dim, dim);
+
+      // Transform normal into physical space
+      kernel_data.physical_fct_normal(normal_e, K, fctid_loc_plus);
+    }
+
+    // Get +/- cell on facet E_a
+    std::tie(cell_plus, cell_minus) = patch.cellpm(a);
+
+    if (c = cells[cell_plus])
+    {
+      // Get local facet id on T_a
+      std::int8_t fctid_loc_plus = patch.fctid_local(a, cell_plus);
+
+      // Get storage of normal
+      std::span<double> normal_e(storage_normal_phys.data() + a * dim, dim);
+
+      // Transform normal into physical space
+      kernel_data.physical_fct_normal(normal_e, K, fctid_loc_plus);
+    }
+    else
+    {
+      // Set idetifier to transform n_a within cell T_ap1
+      eval_normal_am1 = true;
+    }
+
+    // Check if last cell is reached (only internal patch!)
+    if ((patch.type(0) == 0) && (a == ncells))
+    {
+      if (eval_normal_am1)
+      {
+        // Recalculate Jacobi on E_1
+        std::span<double> coordinate_dofs_0(coordinate_dofs.data(),
+                                            cstride_geom);
+        dolfinx_adaptivity::cmdspan2_t coords(coordinate_dofs_0.data(),
+                                              nnodes_cell, 3);
+        double detJ = kernel_data.compute_jacobian(J, K, detJ_scratch, coords);
+
+        // Get local facet id of E_0 on T_1
+        std::int8_t fctid_loc_plus = patch.fctid_local(0, 1);
+
+        // Get storage of normal
+        std::span<double> normal_e(storage_normal_phys.data() + ncells * dim,
+                                   dim);
+
+        // Transform normal into physical space
+        kernel_data.physical_fct_normal(normal_e, K, fctid_loc_plus);
+      }
+
+      // Store normal on E_0
+      storage_normal_phys[0] = storage_normal_phys[2 * ncells];
+      storage_normal_phys[1] = storage_normal_phys[2 * ncells + 1];
+    }
   }
 
   /* Solve equilibration */
@@ -138,17 +230,10 @@ void equilibrate_flux_constrmin(const mesh::Geometry& geometry,
     {
       loop_end = ncells + 1;
 
-      // Physical coordinates of cell
-      std::span<double> coordinate_dofs_e(coordinate_dofs.data(), cstride_geom);
-      dolfinx_adaptivity::cmdspan2_t coords(coordinate_dofs_e.data(),
-                                            nnodes_cell, 3);
-
       // Isoparametric mappring for cell
-      const double detJ
-          = kernel_data.compute_jacobian(J, K, detJ_scratch, coords);
+      const double detJ = storage_detJ[0];
 
       // Extract RHS value on current cell
-      // FIXME - Acess onto c seems to be wrong --> Check DOFmap
       T f_i = x_rhs_proj[cells[0]];
 
       // Set DOFs for cell 1
@@ -189,14 +274,10 @@ void equilibrate_flux_constrmin(const mesh::Geometry& geometry,
                                             nnodes_cell, 3);
 
       // Isoparametric mappring cell
-      const double detJ
-          = kernel_data.compute_jacobian(J, K, detJ_scratch, coords);
+      const double detJ = storage_detJ[id_a];
 
-      // Compute physical normal
-      std::tie(cell_plus_eam1, cell_minus_eam1) = patch.cellpm(a - 1);
-      std::int8_t fctid_loc_plus = patch.fctid_local(a - 1, cell_plus_eam1);
-
-      kernel_data.physical_fct_normal(normal_phys, K, fctid_loc_plus);
+      // Extract physical normal
+      std::span<double> normal_phys(storage_normal_phys.data() + a * dim, dim);
 
       // Extract RHS value
       T f_i = x_rhs_proj[c];
@@ -228,6 +309,9 @@ void equilibrate_flux_constrmin(const mesh::Geometry& geometry,
     }
 
     /* Solution step 2: Minimisation */
+    // Get shape functions (H(div) flux)
+    dolfinx_adaptivity::s_cmdspan3_t phi_flux
+        = kernel_data.shapefunctions_flux();
   }
 }
 } // namespace dolfinx_adaptivity::equilibration
