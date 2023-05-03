@@ -4,6 +4,8 @@
 #include "utils.hpp"
 
 #include <basix/cell.h>
+#include <basix/e-lagrange.h>
+#include <basix/finite-element.h>
 #include <dolfinx/fem/CoordinateElement.h>
 #include <dolfinx/mesh/Geometry.h>
 #include <dolfinx/mesh/Mesh.h>
@@ -29,11 +31,28 @@ public:
   /// Kenel data basic constructor
   ///
   /// Generates data required for isoparametric mapping between refernce and
-  /// actual element.
+  /// actual element and tabulates flux element.
   ///
-  /// @param mesh The mesh
+  /// @param mesh  The mesh
+  /// @param qrule The quadrature rule
   KernelData(std::shared_ptr<const mesh::Mesh> mesh,
-             std::shared_ptr<const QuadratureRule> qrule);
+             std::shared_ptr<const QuadratureRule> qrule,
+             const basix::FiniteElement& basix_element_fluxpw);
+
+  /// Kenel data constructor
+  ///
+  /// Generates data required for isoparametric mapping between refernce and
+  /// actual element and tabulates flux element, projected fluxes and projected
+  /// RHS.
+  ///
+  /// @param mesh             The mesh
+  /// @param qrule            The quadrature rule
+  /// @param degree_flux_proj The element degree of the projected flux
+  /// @param degree_rhs_proj  The element degree of the projected RHS
+  KernelData(std::shared_ptr<const mesh::Mesh> mesh,
+             std::shared_ptr<const QuadratureRule> qrule,
+             const basix::FiniteElement& basix_element_fluxpw,
+             int degree_flux_proj, int degree_rhs_proj);
 
   double compute_jacobian(dolfinx_adaptivity::mdspan2_t J,
                           dolfinx_adaptivity::mdspan2_t K,
@@ -52,15 +71,6 @@ public:
   /// Returns number of nodes, forming a reference cell
   /// @return Number of nodes on reference cell
   int nnodes_cell() { return _num_coordinate_dofs; }
-
-  /// Returns facet normal on reference facet
-  /// @param id_fct The cell-local facet id
-  /// @return The facet normal (reference cell)
-  std::span<double> fct_normal(std::int8_t fct_id)
-  {
-    std::size_t tdim = _normals_shape[1];
-    return std::span<double>(_fct_normals.data() + fct_id * tdim, tdim);
-  }
 
   /// Returns facet normal on reference facet (const. version)
   /// @param id_fct The cell-local facet id
@@ -89,6 +99,12 @@ public:
     return {_fct_normal_out[id_fct1], _fct_normal_out[id_fct2]};
   }
 
+  dolfinx_adaptivity::s_cmdspan3_t shapefunctions_flux() const
+  {
+    return stdex::submdspan(_flux_fullbasis, 0, stdex::full_extent,
+                            stdex::full_extent, stdex::full_extent);
+  }
+
 protected:
   /* Variable definitions */
   // Dimensions
@@ -99,17 +115,30 @@ protected:
   int _num_coordinate_dofs;
   bool _is_affine;
 
-  // Quadrature rule
-  std::shared_ptr<const QuadratureRule> _quadrature_rule;
-
-  // Tabulation of geometric element
-  std::array<std::size_t, 4> _g_basis_shape;
-  std::vector<double> _g_basis_values;
-
   // Facet normals (reference element)
   std::vector<double> _fct_normals;
   std::array<std::size_t, 2> _normals_shape;
   std::vector<bool> _fct_normal_out;
+
+  // Quadrature rule
+  std::shared_ptr<const QuadratureRule> _quadrature_rule;
+
+  // Tabulated shape-functions (geometry)
+  std::array<std::size_t, 4> _g_basis_shape;
+  std::vector<double> _g_basis_values;
+
+  // Tabulated shape-functions (pice-wise H(div) flux)
+  std::array<std::size_t, 4> _flux_basis_shape;
+  std::vector<double> _flux_basis_values;
+  dolfinx_adaptivity::cmdspan4_t _flux_fullbasis;
+
+  // Tabulated shape-functions (projected flux)
+  std::array<std::size_t, 4> _fluxproj_basis_shape;
+  std::vector<double> _fluxproj_basis_values;
+
+  // Tabulated shape-functions (projected RHS)
+  std::array<std::size_t, 4> _rhsproj_basis_shape;
+  std::vector<double> _rhsproj_basis_values;
 };
 
 } // namespace dolfinx_adaptivity::equilibration

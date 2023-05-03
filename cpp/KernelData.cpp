@@ -5,7 +5,8 @@ using namespace dolfinx;
 namespace dolfinx_adaptivity::equilibration
 {
 KernelData::KernelData(std::shared_ptr<const mesh::Mesh> mesh,
-                       std::shared_ptr<const QuadratureRule> qrule)
+                       std::shared_ptr<const QuadratureRule> qrule,
+                       const basix::FiniteElement& basix_element_fluxpw)
     : _quadrature_rule(qrule)
 {
   const mesh::Topology& topology = mesh->topology();
@@ -42,6 +43,33 @@ KernelData::KernelData(std::shared_ptr<const mesh::Mesh> mesh,
       = basix::cell::facet_outward_normals(basix_cell);
 
   _fct_normal_out = basix::cell::facet_orientations(basix_cell);
+
+  // Tabulate shape functions of pice-wise flux space
+  std::size_t n_qpoints_cell = qrule->npoints_cell();
+
+  _flux_basis_shape = basix_element_fluxpw.tabulate_shape(0, n_qpoints_cell);
+  _flux_basis_values = std::vector<double>(
+      std::reduce(_flux_basis_shape.begin(), _flux_basis_shape.end(), 1,
+                  std::multiplies{}));
+
+  basix_element_fluxpw.tabulate(0, qrule->points_cell(),
+                                {n_qpoints_cell, _gdim}, _flux_basis_values);
+
+  _flux_fullbasis = dolfinx_adaptivity::cmdspan4_t(_flux_basis_values.data(),
+                                                   _flux_basis_shape);
+}
+
+KernelData::KernelData(std::shared_ptr<const mesh::Mesh> mesh,
+                       std::shared_ptr<const QuadratureRule> qrule,
+                       const basix::FiniteElement& basix_element_fluxpw,
+                       int degree_flux_proj, int degree_rhs_proj)
+    : KernelData(mesh, qrule, basix_element_fluxpw)
+{
+  // Tabulate shape functions of projected flux
+
+  // Tabulate shape-functions of projected RHS
+
+  throw std::runtime_error("Kernel data for higer-order not implemented");
 }
 
 double KernelData::compute_jacobian(dolfinx_adaptivity::mdspan2_t J,
