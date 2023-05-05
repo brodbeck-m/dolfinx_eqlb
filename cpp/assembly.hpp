@@ -223,6 +223,17 @@ void assemble_tangents(
   }
 }
 
+template <typename T, int id_flux_order = -1>
+void assemble_tangents(
+    Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>& A_patch,
+    Eigen::Matrix<T, Eigen::Dynamic, 1>& L_patch,
+    std::span<const std::int32_t> cells, PatchFluxCstm<T, id_flux_order>& patch,
+    KernelData& kernel_data, std::span<T> coefficients,
+    std::vector<double> storage_detJ, const int type_patch)
+{
+  throw std::runtime_error("assembly_tangents: Not implemented!");
+}
+
 template <typename T>
 void assemble_vector(
     Eigen::Matrix<T, Eigen::Dynamic, 1>& L_patch,
@@ -237,6 +248,12 @@ void assemble_vector(
     const int cstride_l, std::span<const std::int8_t> bmarkers,
     std::span<const T> bvalues, StorageStiffness<T>& storage_stiffness,
     int index_lhs)
+{
+  throw std::runtime_error("assembly_vector: Not implemented!");
+}
+
+template <typename T, int id_flux_order = -1>
+void assemble_vector()
 {
   throw std::runtime_error("assembly_vector: Not implemented!");
 }

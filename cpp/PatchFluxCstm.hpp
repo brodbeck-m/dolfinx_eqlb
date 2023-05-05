@@ -768,6 +768,12 @@ public:
   }
 
   /* Getter functions (DOFmap) */
+  /// @return The element degree of the RT space
+  int degree_raviart_thomas() { return _degree_elmt_fluxhdiv; }
+
+  /// @return Number of flux-DOFs on element
+  int ndofs_flux() { return _ndof_flux; }
+
   /// Extract global facet-DOFs (H(div) flux)
   /// @param cell_i Patch-local cell-id
   /// @return List DOFs (zero DOFs excluded)

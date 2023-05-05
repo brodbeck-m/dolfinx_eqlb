@@ -54,8 +54,23 @@ public:
              const basix::FiniteElement& basix_element_fluxpw,
              int degree_flux_proj, int degree_rhs_proj);
 
+  /// Compute isogeometric mapping for a given cell
+  /// @param J            The Jacobian
+  /// @param K            The inverse Jacobian
+  /// @param detJ_scratch Storage for determinant calculation
+  /// @param coords       The cell coordinates
+  /// @return             The determinant of the Jacobian
   double compute_jacobian(dolfinx_adaptivity::mdspan2_t J,
                           dolfinx_adaptivity::mdspan2_t K,
+                          std::span<double> detJ_scratch,
+                          dolfinx_adaptivity::cmdspan2_t coords);
+
+  /// Compute isogeometric mapping for a given cell
+  /// @param J            The Jacobian
+  /// @param detJ_scratch Storage for determinant calculation
+  /// @param coords       The cell coordinates
+  /// @return             The determinant of the Jacobian
+  double compute_jacobian(dolfinx_adaptivity::mdspan2_t J,
                           std::span<double> detJ_scratch,
                           dolfinx_adaptivity::cmdspan2_t coords);
 

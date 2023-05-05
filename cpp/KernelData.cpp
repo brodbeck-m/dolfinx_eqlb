@@ -103,6 +103,34 @@ double KernelData::compute_jacobian(dolfinx_adaptivity::mdspan2_t J,
       fem::CoordinateElement::compute_jacobian_determinant(J, detJ_scratch));
 }
 
+double KernelData::compute_jacobian(dolfinx_adaptivity::mdspan2_t J,
+                                    std::span<double> detJ_scratch,
+                                    dolfinx_adaptivity::cmdspan2_t coords)
+{
+  // Reshape basis functions (geometry)
+  dolfinx_adaptivity::cmdspan4_t full_basis(_g_basis_values.data(),
+                                            _g_basis_shape);
+
+  // Basis functions evaluated at first gauss-point
+  dolfinx_adaptivity::s_cmdspan2_t dphi
+      = stdex::submdspan(full_basis, std::pair{1, (std::size_t)_tdim + 1}, 0,
+                         stdex::full_extent, 0);
+
+  // Compute Jacobian
+  for (std::size_t i = 0; i < J.extent(0); ++i)
+  {
+    for (std::size_t j = 0; j < J.extent(1); ++j)
+    {
+      J(i, j) = 0;
+    }
+  }
+
+  fem::CoordinateElement::compute_jacobian(dphi, coords, J);
+
+  return std::fabs(
+      fem::CoordinateElement::compute_jacobian_determinant(J, detJ_scratch));
+}
+
 void KernelData::physical_fct_normal(std::span<double> normal_phys,
                                      dolfinx_adaptivity::mdspan2_t K,
                                      std::int8_t fct_id)

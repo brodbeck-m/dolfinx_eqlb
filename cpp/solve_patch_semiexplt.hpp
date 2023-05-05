@@ -26,14 +26,36 @@ using namespace dolfinx;
 
 namespace dolfinx_adaptivity::equilibration
 {
-void get_cell_coordinates(std::span<const double> x_g,
-                          std::span<const std::int32_t> x_dofs,
-                          std::vector<double>& coordinate_dofs)
+template <typename T>
+void copy_cell_data(std::span<const T> data_global,
+                    std::span<const std::int32_t> data_dofs,
+                    std::vector<T>& data_cell)
 {
-  for (std::size_t j = 0; j < x_dofs.size(); ++j)
+  for (std::size_t j = 0; j < data_dofs.size(); ++j)
   {
-    std::copy_n(std::next(x_g.begin(), 3 * x_dofs[j]), 3,
-                std::next(coordinate_dofs.begin(), 3 * j));
+    std::copy_n(std::next(data_global.begin(), 3 * data_dofs[j]), 3,
+                std::next(data_cell.begin(), 3 * j));
+  }
+}
+
+template <typename T>
+void copy_cell_data(std::span<const std::int32_t> cells,
+                    const graph::AdjacencyList<std::int32_t>& dofmap_data,
+                    std::span<const T> data_global, std::vector<T>& data_cell,
+                    const int cstride_data)
+{
+  for (std::size_t index = 0; index < cells.size(); ++index)
+  {
+    // Extract cell
+    std::int32_t c = cells[index];
+
+    // DOFs on current cell
+    std::span<const std::int32_t> data_dofs = dofmap_data.links(c);
+
+    // Copy DOFs into flattend storage
+    std::span<T> data_dofs_e(data_cell.data() + index * cstride_data,
+                             cstride_data);
+    copy_cell_data<T>(data_global, data_dofs, data_dofs_e);
   }
 }
 
@@ -309,6 +331,133 @@ void minimise_flux(const mesh::Geometry& geometry,
                    ProblemDataFluxCstm<T>& problem_data,
                    KernelData& kernel_data)
 {
+  assert(flux_order < 0);
+
+  /* Geometry data */
+  const int dim = 2;
+  const graph::AdjacencyList<std::int32_t>& x_dofmap = geometry.dofmap();
+  std::span<const double> x = geometry.x();
+
+  /* Extract patch data */
+  // Data flux element
+  const int degree_rt = patch.degree_raviart_thomas();
+  const int ndofs_flux = patch.ndofs_flux();
+  const graph::AdjacencyList<std::int32_t>& flux_dofmap
+      = problem_data.fspace_flux_hdiv()->dofmap()->list();
+
+  // Cells on patch// Get cells
+  std::span<const std::int32_t> cells = patch.cells();
+  const int ncells = patch.ncells();
+
+  // Factes on patch
+  const int nfcts = patch.nfcts();
+
+  /* Initialize Patch-LGS */
+  // Patch arrays
+  const int size_psystem
+      = 1 + degree_rt * nfcts + 0.5 * degree_rt * (degree_rt - 1) * ncells;
+
+  Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic> A_patch;
+  Eigen::Matrix<T, Eigen::Dynamic, 1> L_patch, u_patch;
+
+  A_patch.resize(size_psystem, size_psystem);
+  L_patch.resize(size_psystem);
+  u_patch.resize(size_psystem);
+
+  // Local solver
+  Eigen::PartialPivLU<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic>>
+      solver;
+
+  /* Initialize solution process */
+  // Number of nodes on reference cell
+  int nnodes_cell = kernel_data.nnodes_cell();
+
+  // Jacobian J and determinant detJ
+  std::array<double, 9> Jb;
+  dolfinx_adaptivity::mdspan2_t J(Jb.data(), 2, 2);
+  std::array<double, 18> detJ_scratch;
+  std::vector<double> storage_detJ(ncells, 0);
+
+  // Storage cell geometries/ normal orientation and coefficients
+  const int cstride_geom = 3 * nnodes_cell;
+  std::vector<double> coordinate_dofs_e(3 * nnodes_cell, 0);
+
+  std::int8_t fctloc_ea, fctloc_eam1;
+  bool noutward_ea, noutward_eam1;
+  std::vector<double> dprefactor_dof(ncells * 2, 1.0);
+  dolfinx_adaptivity::mdspan2_t prefactor_dof(dprefactor_dof.data(), ncells, 2);
+
+  std::vector<T> coefficients(ncells * ndofs_flux, 0);
+
+  for (std::size_t index = 0; index < ncells; ++index)
+  {
+    // Get current cell
+    std::int32_t c = cells[index];
+
+    /* Copy cell coordinates */
+    std::span<const std::int32_t> x_dofs = x_dofmap.links(c);
+    copy_cell_data<double>(x, x_dofs, coordinate_dofs_e);
+
+    /* Piola mapping */
+    // Reshape geometry infos
+    dolfinx_adaptivity::cmdspan2_t coords(coordinate_dofs_e.data(), nnodes_cell,
+                                          3);
+    // Calculate Jacobi, inverse, and determinant
+    storage_detJ[index] = kernel_data.compute_jacobian(J, detJ_scratch, coords);
+
+    /* DOF transformation */
+    // Get local fact ids on cell_i
+    std::tie(fctloc_ea, fctloc_eam1) = patch.fctid_local(index + 1);
+
+    // Set prefactor of facte DOFs (H(div) flux)
+    std::tie(noutward_eam1, noutward_ea)
+        = kernel_data.fct_normal_is_outward(fctloc_ea, fctloc_eam1);
+
+    dprefactor_dof[2 * index] = (noutward_ea) ? 1.0 : -1.0;
+    dprefactor_dof[2 * index + 1] = (noutward_eam1) ? 1.0 : -1.0;
+  }
+
+  for (std::size_t i_rhs = 0; i_rhs < problem_data.nlhs(); ++i_rhs)
+  {
+    /* Extract data */
+    // Patch type
+    const int type_patch = patch.type(i_rhs);
+
+    // Solution vector (flux, picewise-H(div))
+    std::span<T> x_flux_dhdiv = problem_data.flux(i_rhs).x()->mutable_array();
+
+    /* Perform minimisation */
+    if (i_rhs == 0)
+    {
+      // Prepare coefficients
+      copy_cell_data<T>(cells, flux_dofmap, x_flux_dhdiv, coefficients,
+                        ndofs_flux);
+
+      // Initialize tangents
+      A_patch.setZero();
+      L_patch.setZero();
+
+      // Assemble tangents
+      impl::assemble_tangents(A_patch, L_patch, cells, patch, kernel_data,
+                              coefficients, storage_detJ, type_patch);
+
+      // LU-factorization of system matrix
+      solver.compute(A_patch);
+    }
+    else
+    {
+      if (patch.equal_patch_types())
+      {
+        // Assemble only vector
+        throw std::runtime_error("Not Implemented!");
+      }
+      else
+      {
+        // Recreate patch and reassemble entire system
+        throw std::runtime_error("Not Implemented!");
+      }
+    }
+  }
 }
 
 } // namespace dolfinx_adaptivity::equilibration
