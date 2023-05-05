@@ -38,10 +38,10 @@ void get_cell_coordinates(std::span<const double> x_g,
 }
 
 template <typename T, int id_flux_order = -1>
-void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
-                                PatchFluxCstm<T, id_flux_order>& patch,
-                                ProblemDataFluxCstm<T>& problem_data,
-                                KernelData& kernel_data)
+void calc_fluxtilde_explt(const mesh::Geometry& geometry,
+                          PatchFluxCstm<T, id_flux_order>& patch,
+                          ProblemDataFluxCstm<T>& problem_data,
+                          KernelData& kernel_data)
 {
   assert(flux_order < 0);
 
@@ -207,9 +207,9 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
     }
   }
 
-  /* Solve equilibration */
   for (std::size_t i_rhs = 0; i_rhs < problem_data.nlhs(); ++i_rhs)
   {
+    /* Extract data */
     // Patch type
     int type_patch = patch.type(i_rhs);
 
@@ -224,7 +224,7 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
     std::span<T> x_rhs_proj
         = problem_data.projected_rhs(i_rhs).x()->mutable_array();
 
-    /* Solution step 1: Jump and divergence condition */
+    /* Calculate sigma_tilde */
     int loop_end;
     if (type_patch == 0 | type_patch == 2)
     {
@@ -300,11 +300,15 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
 
       c_tam1_eam1 = c_ta_ea;
     }
-
-    /* Solution step 2: Minimisation */
-    // Get shape functions (H(div) flux)
-    dolfinx_adaptivity::s_cmdspan3_t phi_flux
-        = kernel_data.shapefunctions_flux();
   }
 }
+
+template <typename T, int id_flux_order = -1>
+void minimise_flux(const mesh::Geometry& geometry,
+                   PatchFluxCstm<T, id_flux_order>& patch,
+                   ProblemDataFluxCstm<T>& problem_data,
+                   KernelData& kernel_data)
+{
+}
+
 } // namespace dolfinx_adaptivity::equilibration

@@ -174,15 +174,24 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data,
         mesh, std::make_shared<QuadratureRule>(quadrature_rule),
         problem_data.fspace_flux_hdiv()->element()->basix_element());
 
-    // Run equilibration
+    // Step 1: Explicite calculation of sigma_tilde
     for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
     {
       // Create Sub-DOFmap
       patch.create_subdofmap(i_node);
 
-      // Solve patch problem
-      equilibrate_flux_semiexplt<T, 1>(mesh->geometry(), patch, problem_data,
-                                       kernel_data);
+      // Calculate coefficients per patch
+      calc_fluxtilde_explt<T, 1>(mesh->geometry(), patch, problem_data,
+                                 kernel_data);
+    }
+
+    // Step 2: Minimise reconstructed flux
+    for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
+    {
+      // Create Sub-DOFmap
+      patch.create_subdofmap(i_node);
+
+      // Solve minimisation on current patch
     }
   }
   else
