@@ -26,6 +26,10 @@ using namespace dolfinx;
 
 namespace dolfinx_adaptivity::equilibration
 {
+/// Copy cell data from global storage flattend storage (per cell)
+/// @param data_global The global data storage
+/// @param data_dofs   The DOFs on current cell
+/// @param data_cell   The flattend storage of current cell
 template <typename T>
 void copy_cell_data(std::span<const T> data_global,
                     std::span<const std::int32_t> data_dofs,
@@ -38,6 +42,12 @@ void copy_cell_data(std::span<const T> data_global,
   }
 }
 
+/// Copy cell data from global storage flattend storage (per cell)
+/// @param cells        List of cells on patch
+/// @param dofmap_data  DOFmap of data
+/// @param data_global  The global data storage
+/// @param data_cell    The flattend storage of current patch
+/// @param cstride_data Number of data-points per cell
 template <typename T>
 void copy_cell_data(std::span<const std::int32_t> cells,
                     const graph::AdjacencyList<std::int32_t>& dofmap_data,
@@ -438,8 +448,9 @@ void minimise_flux(const mesh::Geometry& geometry,
       L_patch.setZero();
 
       // Assemble tangents
-      impl::assemble_tangents(A_patch, L_patch, cells, patch, kernel_data,
-                              coefficients, storage_detJ, type_patch);
+      impl::assemble_tangents<T, id_flux_order>(A_patch, L_patch, cells, patch,
+                                                kernel_data, coefficients,
+                                                storage_detJ, type_patch);
 
       // LU-factorization of system matrix
       solver.compute(A_patch);
