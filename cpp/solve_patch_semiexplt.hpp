@@ -98,6 +98,7 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
   dolfinx_adaptivity::mdspan2_t K(Kb.data(), 2, 2);
   std::array<double, 18> detJ_scratch;
   std::vector<double> storage_detJ(ncells, 0);
+  std::vector<double> storage_detJf(ncells + 1, 0);
 
   // +/- cells
   std::int32_t cell_plus, cell_minus, cell_plus_eam1, cell_minus_eam1;
@@ -123,6 +124,9 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
   bool eval_normal_am1 = false;
   for (std::size_t index = 0; index < ncells; ++index)
   {
+    // Index using patch nomenclature
+    int a = index + 1;
+
     // Get current cell
     std::int32_t c = cells[index];
 
@@ -141,9 +145,34 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
     // Reshape geometry infos
     dolfinx_adaptivity::cmdspan2_t coords(coordinate_dofs_e.data(), nnodes_cell,
                                           3);
+
     // Calculate Jacobi, inverse, and determinant
     storage_detJ[index]
         = kernel_data.compute_jacobian(J, K, detJ_scratch, coords);
+
+    // Calculate determinant of facet jacobian
+    if ((patch.type(0) > 0) && (a == 1))
+    {
+      // Calculate detJf on facet E0
+      std::span<const std::int32_t> nodes_fct = patch.nodes_on_fct(0);
+      double dx = x[3 * nodes_fct[0]] - x[3 * nodes_fct[1]];
+      double dy = x[3 * nodes_fct[0] + 1] - x[3 * nodes_fct[1] + 1];
+      storage_detJf[0] = std::sqrt(dx * dx + dy * dy);
+
+      // Calculate detJf on facet E1
+      nodes_fct = patch.nodes_on_fct(1);
+      dx = x[3 * nodes_fct[0]] - x[3 * nodes_fct[1]];
+      dy = x[3 * nodes_fct[0] + 1] - x[3 * nodes_fct[1] + 1];
+      storage_detJf[1] = std::sqrt(dx * dx + dy * dy);
+    }
+    else
+    {
+      // Calculate detJf on facet Ea
+      std::span<const std::int32_t> nodes_fct = patch.nodes_on_fct(a);
+      double dx = x[3 * nodes_fct[0]] - x[3 * nodes_fct[1]];
+      double dy = x[3 * nodes_fct[0] + 1] - x[3 * nodes_fct[1] + 1];
+      storage_detJf[a] = std::sqrt(dx * dx + dy * dy);
+    }
 
     /* DOF transformation */
     // Get local fact ids on cell_i
@@ -157,8 +186,6 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
     dprefactor_dof[2 * index + 1] = (noutward_ea) ? 1.0 : -1.0;
 
     /* Calculation of physical normals */
-    int a = index + 1;
-
     // Check if last cell is reached (only internal patch!)
     if ((patch.type(0) > 0) && (a == 1))
     {
@@ -236,6 +263,9 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
       // Store normal on E_0
       storage_normal_phys[0] = storage_normal_phys[2 * ncells];
       storage_normal_phys[1] = storage_normal_phys[2 * ncells + 1];
+
+      // Set detJf on E_0
+      storage_detJf[0] = storage_detJf[ncells];
     }
   }
 
@@ -292,14 +322,15 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
 
     for (std::size_t a = 2; a < loop_end; ++a)
     {
-      // Set id for acessing storage
+      // Set id for accessing storage
       int id_a = a - 1;
 
       // Global cell id
       std::int32_t c = cells[id_a];
 
-      // Isoparametric mappring cell
+      // Isoparametric mapping
       const double detJ = storage_detJ[id_a];
+      const double detJ_Eam1 = storage_detJf[a - 1];
 
       // Extract physical normal
       std::span<double> normal_phys(storage_normal_phys.data() + a * dim, dim);
@@ -307,7 +338,7 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
       // Extract RHS value
       T f_i = x_rhs_proj[c];
 
-      // Extract gadients (+/- side) ond facet E_am1
+      // Extract gradients (+/- side) ond facet E_am1
       std::span<const std::int32_t> dofs_projflux_fct
           = patch.dofs_projflux_fct(a - 1);
 
@@ -320,9 +351,8 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
                       + jump_proj_flux[1] * normal_phys[1];
 
       // Set DOFs for cell
-      // FIXME - Consider integral of hat function over facet
-      c_ta_eam1 = jump_i - c_tam1_eam1;
-      c_ta_ea = f_i * detJ / 6 - c_ta_eam1;
+      c_ta_eam1 = jump_i * 0.5 * detJ_Eam1 - c_tam1_eam1;
+      c_ta_ea = f_i * (detJ / 6) - c_ta_eam1;
 
       // Store coefficients and set history values
       std::span<const std::int32_t> gdofs_flux = patch.dofs_flux_fct_global(a);
