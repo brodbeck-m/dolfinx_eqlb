@@ -64,6 +64,7 @@ set(
   QuadratureRule.hpp
   StorageStiffness.hpp
   assembly.hpp
+  flux_kernels.hpp
   local_solver.hpp
   reconstruction.hpp
   solve_patch_constrmin.hpp

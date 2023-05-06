@@ -82,7 +82,8 @@ public:
 
   /* Setter functions */
 
-  /* Getter functions */
+  /* Getter functions (Geometry of cell) */
+
   /// Returns number of nodes, forming a reference cell
   /// @return Number of nodes on reference cell
   int nnodes_cell() { return _num_coordinate_dofs; }
@@ -114,10 +115,32 @@ public:
     return {_fct_normal_out[id_fct1], _fct_normal_out[id_fct2]};
   }
 
+  /* Getter functions (Shape functions) */
+
+  /// Extract shape functions (H(div) flux)
+  /// Array with indexes i, j and k: phi_j(x_i)[k] is the
+  /// shap-function j at point i within direction k.
+  /// @return Array of shape functions
   dolfinx_adaptivity::s_cmdspan3_t shapefunctions_flux() const
   {
     return stdex::submdspan(_flux_fullbasis, 0, stdex::full_extent,
                             stdex::full_extent, stdex::full_extent);
+  }
+
+  /* Getter functions (Quadrature) */
+
+  /// Extract quadrature weights on cell
+  /// @return The quadrature weights
+  const std::vector<double>& quadrature_weights_cell() const
+  {
+    return _quadrature_rule->weights_cell();
+  }
+
+  /// Extract quadrature weights on facet
+  /// @return The quadrature weights
+  const std::vector<double>& quadrature_weights_facet() const
+  {
+    return _quadrature_rule->weights_fct();
   }
 
 protected:

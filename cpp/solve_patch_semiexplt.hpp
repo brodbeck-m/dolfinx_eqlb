@@ -153,8 +153,8 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
     std::tie(noutward_eam1, noutward_ea)
         = kernel_data.fct_normal_is_outward(fctloc_ea, fctloc_eam1);
 
-    dprefactor_dof[2 * index] = (noutward_ea) ? 1.0 : -1.0;
-    dprefactor_dof[2 * index + 1] = (noutward_eam1) ? 1.0 : -1.0;
+    dprefactor_dof[2 * index] = (noutward_eam1) ? 1.0 : -1.0;
+    dprefactor_dof[2 * index + 1] = (noutward_ea) ? 1.0 : -1.0;
 
     /* Calculation of physical normals */
     int a = index + 1;
@@ -269,13 +269,13 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
       T f_i = x_rhs_proj[cells[0]];
 
       // Set DOFs for cell 1
-      c_ta_ea = prefactor_dof(0, 1) * f_i * detJ / 6;
+      c_ta_ea = f_i * detJ / 6;
 
       // Store coefficients and set history values
       std::span<const std::int32_t> gdofs_flux = patch.dofs_flux_fct_global(1);
 
       x_flux_dhdiv[gdofs_flux[0]] = 0;
-      x_flux_dhdiv[gdofs_flux[1]] = c_ta_ea;
+      x_flux_dhdiv[gdofs_flux[1]] = prefactor_dof(0, 1) * c_ta_ea;
 
       c_tam1_eam1 = c_ta_ea;
     }
@@ -321,14 +321,14 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
 
       // Set DOFs for cell
       // FIXME - Consider integral of hat function over facet
-      c_ta_eam1 = prefactor_dof(id_a, 0) * (jump_i - c_tam1_eam1);
-      c_ta_ea = prefactor_dof(id_a, 1) * (f_i * detJ / 6 - c_ta_eam1);
+      c_ta_eam1 = jump_i - c_tam1_eam1;
+      c_ta_ea = f_i * detJ / 6 - c_ta_eam1;
 
       // Store coefficients and set history values
       std::span<const std::int32_t> gdofs_flux = patch.dofs_flux_fct_global(a);
 
-      x_flux_dhdiv[gdofs_flux[0]] = c_ta_eam1;
-      x_flux_dhdiv[gdofs_flux[1]] = c_ta_ea;
+      x_flux_dhdiv[gdofs_flux[0]] = prefactor_dof(id_a, 0) * c_ta_eam1;
+      x_flux_dhdiv[gdofs_flux[1]] = prefactor_dof(id_a, 1) * c_ta_ea;
 
       c_tam1_eam1 = c_ta_ea;
     }
@@ -352,6 +352,8 @@ void minimise_flux(const mesh::Geometry& geometry,
   // Data flux element
   const int degree_rt = patch.degree_raviart_thomas();
   const int ndofs_flux = patch.ndofs_flux();
+  const int ndofs_flux_fct = patch.ndofs_flux_fct();
+
   const graph::AdjacencyList<std::int32_t>& flux_dofmap
       = problem_data.fspace_flux_hdiv()->dofmap()->list();
 
@@ -423,8 +425,8 @@ void minimise_flux(const mesh::Geometry& geometry,
     std::tie(noutward_eam1, noutward_ea)
         = kernel_data.fct_normal_is_outward(fctloc_ea, fctloc_eam1);
 
-    dprefactor_dof[2 * index] = (noutward_ea) ? 1.0 : -1.0;
-    dprefactor_dof[2 * index + 1] = (noutward_eam1) ? 1.0 : -1.0;
+    dprefactor_dof[2 * index] = (noutward_eam1) ? 1.0 : -1.0;
+    dprefactor_dof[2 * index + 1] = (noutward_ea) ? 1.0 : -1.0;
   }
 
   for (std::size_t i_rhs = 0; i_rhs < problem_data.nlhs(); ++i_rhs)
@@ -448,12 +450,15 @@ void minimise_flux(const mesh::Geometry& geometry,
       L_patch.setZero();
 
       // Assemble tangents
-      impl::assemble_tangents<T, id_flux_order>(A_patch, L_patch, cells, patch,
-                                                kernel_data, coefficients,
-                                                storage_detJ, type_patch);
+      assembly_minimisation<T, id_flux_order, true>(
+          A_patch, L_patch, cells, patch, kernel_data, prefactor_dof,
+          coefficients, storage_detJ, type_patch);
 
       // LU-factorization of system matrix
-      solver.compute(A_patch);
+      if constexpr (id_flux_order > 1)
+      {
+        solver.compute(A_patch);
+      }
     }
     else
     {
@@ -468,7 +473,43 @@ void minimise_flux(const mesh::Geometry& geometry,
         throw std::runtime_error("Not Implemented!");
       }
     }
+
+    // Solve system
+    if constexpr (id_flux_order == 1)
+    {
+      u_patch[0] = L_patch[0] / A_patch(0, 0);
+    }
+    else
+    {
+      u_patch = solver.solve(L_patch);
+    }
+
+    // Correct flux
+    for (std::size_t a = 1; a < ncells + 1; ++a)
+    {
+      int id_a = a - 1;
+
+      // Precfactors on facets of T_a
+      double p_Eam1 = prefactor_dof(id_a, 0), p_Ea = prefactor_dof(id_a, 1);
+
+      // Set d_0
+      std::span<const std::int32_t> fct_dofs = patch.dofs_flux_fct_global(a);
+
+      x_flux_dhdiv[fct_dofs[0]] += p_Eam1 * u_patch[0];
+      x_flux_dhdiv[fct_dofs[ndofs_flux_fct]] -= p_Ea * u_patch[0];
+
+      // Set d_E
+      if constexpr (id_flux_order > 1)
+      {
+        throw std::runtime_error("Not Implemented!");
+      }
+
+      // Set d_T
+      if constexpr (id_flux_order > 2)
+      {
+        throw std::runtime_error("Not Implemented!");
+      }
+    }
   }
 }
-
 } // namespace dolfinx_adaptivity::equilibration

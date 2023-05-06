@@ -78,7 +78,7 @@ PYBIND11_MODULE(cpp, m)
       py::arg("a"), py::arg("l_pen"), py::arg("l"),
       py::arg("fct_esntbound_prime"), py::arg("fct_esntbound_prime"),
       py::arg("bcs"), py::arg("flux_hdiv"),
-      "Local equilibartion of H(div) conforming fluxes, solving patch-wise "
+      "Local equilibration of H(div) conforming fluxes, solving patch-wise "
       "constrained minimisation problems.");
 
   m.def(
@@ -103,6 +103,6 @@ PYBIND11_MODULE(cpp, m)
       py::arg("flux_hdiv"), py::arg("flux_dg"), py::arg("rhs_dg"),
       py::arg("fct_esntbound_prime"), py::arg("fct_esntbound_prime"),
       py::arg("bcs"), py::arg("forms"),
-      "Local equilibartion of H(div) conforming fluxes, solving patch-wise "
-      "constrained minimisation problems within a semi-explisit approach.");
+      "Local equilibration of H(div) conforming fluxes, solving patch-wise "
+      "constrained minimisation problems within a semi-explicit approach.");
 }

@@ -148,7 +148,7 @@ public:
   /// type differs between different patches, use recreate_subdofmap for
   /// sub-problem i>0.
   ///
-  /// [1] Moldenhauer, M.: Stress reconstructionand a-posteriori error
+  /// [1] Moldenhauer, M.: Stress reconstruction and a-posteriori error
   ///     estimationfor elasticity (PhdThesis)
   /// [2] Bertrand, F.; Carstensen, C.; Gräßle, B. & Tran, N. T.:
   ///     Stabilization-free HHO a posteriori error control, 2022
@@ -773,6 +773,12 @@ public:
 
   /// @return Number of flux-DOFs on element
   int ndofs_flux() { return _ndof_flux; }
+
+  /// @return Number of flux-DOFs on facet
+  int ndofs_flux_fct() { return _ndof_flux_fct; }
+
+  /// @return Number of flux-DOFs on cell
+  int ndofs_flux_cell() { return _ndof_flux_cell; }
 
   /// Extract global facet-DOFs (H(div) flux)
   /// @param cell_i Patch-local cell-id
