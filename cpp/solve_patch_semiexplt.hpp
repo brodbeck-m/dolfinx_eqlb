@@ -26,33 +26,53 @@ using namespace dolfinx;
 
 namespace dolfinx_adaptivity::equilibration
 {
-/// Copy cell data from global storage flattend storage (per cell)
+/// Copy cell data from global storage flattened storage (per cell)
 /// @param data_global The global data storage
 /// @param data_dofs   The DOFs on current cell
-/// @param data_cell   The flattend storage of current cell
-template <typename T>
+/// @param data_cell   The flattened storage of current cell
+/// @param bs_data     Block size of data
+template <typename T, int _bs_data = 1>
 void copy_cell_data(std::span<const T> data_global,
                     std::span<const std::int32_t> data_dofs,
-                    std::vector<T>& data_cell)
+                    std::span<T> data_cell, const int bs_data)
 {
   for (std::size_t j = 0; j < data_dofs.size(); ++j)
   {
-    std::copy_n(std::next(data_global.begin(), 3 * data_dofs[j]), 3,
-                std::next(data_cell.begin(), 3 * j));
+    if constexpr (_bs_data == 1)
+    {
+      std::copy_n(std::next(data_global.begin(), data_dofs[j]), 1,
+                  std::next(data_cell.begin(), j));
+    }
+    else if constexpr (_bs_data == 2)
+    {
+      std::copy_n(std::next(data_global.begin(), 2 * data_dofs[j]), 2,
+                  std::next(data_cell.begin(), 2 * j));
+    }
+    else if constexpr (_bs_data == 3)
+    {
+      std::copy_n(std::next(data_global.begin(), 3 * data_dofs[j]), 3,
+                  std::next(data_cell.begin(), 3 * j));
+    }
+    else
+    {
+      std::copy_n(std::next(data_global.begin(), bs_data * data_dofs[j]),
+                  bs_data, std::next(data_cell.begin(), bs_data * j));
+    }
   }
 }
 
-/// Copy cell data from global storage flattend storage (per cell)
+/// Copy cell data from global storage flattened storage (per cell)
 /// @param cells        List of cells on patch
 /// @param dofmap_data  DOFmap of data
 /// @param data_global  The global data storage
-/// @param data_cell    The flattend storage of current patch
+/// @param data_cell    The flattened storage of current patch
 /// @param cstride_data Number of data-points per cell
-template <typename T>
+/// @param bs_data      Block size of data
+template <typename T, int _bs_data = 4>
 void copy_cell_data(std::span<const std::int32_t> cells,
                     const graph::AdjacencyList<std::int32_t>& dofmap_data,
                     std::span<const T> data_global, std::vector<T>& data_cell,
-                    const int cstride_data)
+                    const int cstride_data, const int bs_data)
 {
   for (std::size_t index = 0; index < cells.size(); ++index)
   {
@@ -65,7 +85,22 @@ void copy_cell_data(std::span<const std::int32_t> cells,
     // Copy DOFs into flattend storage
     std::span<T> data_dofs_e(data_cell.data() + index * cstride_data,
                              cstride_data);
-    copy_cell_data<T>(data_global, data_dofs, data_dofs_e);
+    if constexpr (_bs_data == 1)
+    {
+      copy_cell_data<T, 1>(data_global, data_dofs, data_dofs_e, bs_data);
+    }
+    else if constexpr (_bs_data == 2)
+    {
+      copy_cell_data<T, 2>(data_global, data_dofs, data_dofs_e, bs_data);
+    }
+    else if constexpr (_bs_data == 3)
+    {
+      copy_cell_data<T, 3>(data_global, data_dofs, data_dofs_e, bs_data);
+    }
+    else
+    {
+      copy_cell_data<T>(data_global, data_dofs, data_dofs_e, bs_data);
+    }
   }
 }
 
@@ -176,11 +211,11 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
 
     /* DOF transformation */
     // Get local fact ids on cell_i
-    std::tie(fctloc_ea, fctloc_eam1) = patch.fctid_local(index + 1);
+    std::tie(fctloc_eam1, fctloc_ea) = patch.fctid_local(index + 1);
 
     // Set prefactor of facte DOFs (H(div) flux)
     std::tie(noutward_eam1, noutward_ea)
-        = kernel_data.fct_normal_is_outward(fctloc_ea, fctloc_eam1);
+        = kernel_data.fct_normal_is_outward(fctloc_eam1, fctloc_ea);
 
     dprefactor_dof[2 * index] = (noutward_eam1) ? 1.0 : -1.0;
     dprefactor_dof[2 * index + 1] = (noutward_ea) ? 1.0 : -1.0;
@@ -279,12 +314,12 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
     std::span<T> x_flux_dhdiv = problem_data.flux(i_rhs).x()->mutable_array();
 
     // Projected primal flux
-    std::span<T> x_flux_proj
-        = problem_data.projected_flux(i_rhs).x()->mutable_array();
+    std::span<const T> x_flux_proj
+        = problem_data.projected_flux(i_rhs).x()->array();
 
     // Projected RHS
-    std::span<T> x_rhs_proj
-        = problem_data.projected_rhs(i_rhs).x()->mutable_array();
+    std::span<const T> x_rhs_proj
+        = problem_data.projected_rhs(i_rhs).x()->array();
 
     /* Calculate sigma_tilde */
     int loop_end;
@@ -332,8 +367,9 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
       const double detJ = storage_detJ[id_a];
       const double detJ_Eam1 = storage_detJf[a - 1];
 
-      // Extract physical normal
-      std::span<double> normal_phys(storage_normal_phys.data() + a * dim, dim);
+      // Extract physical normal E_am1
+      std::span<double> normal_phys(storage_normal_phys.data() + id_a * dim,
+                                    dim);
 
       // Extract RHS value
       T f_i = x_rhs_proj[c];
@@ -353,6 +389,17 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
       // Set DOFs for cell
       c_ta_eam1 = jump_i * 0.5 * detJ_Eam1 - c_tam1_eam1;
       c_ta_ea = f_i * (detJ / 6) - c_ta_eam1;
+
+      std::cout << "a, cell: " << a << ", " << c << std::endl;
+      std::cout << "DOFs flux_p: " << x_flux_proj[dofs_projflux_fct[0]] << ","
+                << x_flux_proj[dofs_projflux_fct[1]] << ", "
+                << x_flux_proj[dofs_projflux_fct[2]] << ", "
+                << x_flux_proj[dofs_projflux_fct[3]] << std::endl;
+      std::cout << "Normal: " << normal_phys[0] << ", " << normal_phys[1]
+                << std::endl;
+      std::cout << "jump_i, detJf: " << jump_i << ", " << detJ_Eam1
+                << std::endl;
+      std::cout << "\n";
 
       // Store coefficients and set history values
       std::span<const std::int32_t> gdofs_flux = patch.dofs_flux_fct_global(a);
@@ -391,7 +438,7 @@ void minimise_flux(const mesh::Geometry& geometry,
   std::span<const std::int32_t> cells = patch.cells();
   const int ncells = patch.ncells();
 
-  // Factes on patch
+  // Facets on patch
   const int nfcts = patch.nfcts();
 
   /* Initialize Patch-LGS */
@@ -438,7 +485,7 @@ void minimise_flux(const mesh::Geometry& geometry,
 
     /* Copy cell coordinates */
     std::span<const std::int32_t> x_dofs = x_dofmap.links(c);
-    copy_cell_data<double>(x, x_dofs, coordinate_dofs_e);
+    copy_cell_data<double, 3>(x, x_dofs, coordinate_dofs_e, 3);
 
     /* Piola mapping */
     // Reshape geometry infos
@@ -449,11 +496,11 @@ void minimise_flux(const mesh::Geometry& geometry,
 
     /* DOF transformation */
     // Get local fact ids on cell_i
-    std::tie(fctloc_ea, fctloc_eam1) = patch.fctid_local(index + 1);
+    std::tie(fctloc_eam1, fctloc_ea) = patch.fctid_local(index + 1);
 
     // Set prefactor of facte DOFs (H(div) flux)
     std::tie(noutward_eam1, noutward_ea)
-        = kernel_data.fct_normal_is_outward(fctloc_ea, fctloc_eam1);
+        = kernel_data.fct_normal_is_outward(fctloc_eam1, fctloc_ea);
 
     dprefactor_dof[2 * index] = (noutward_eam1) ? 1.0 : -1.0;
     dprefactor_dof[2 * index + 1] = (noutward_ea) ? 1.0 : -1.0;
@@ -472,8 +519,8 @@ void minimise_flux(const mesh::Geometry& geometry,
     if (i_rhs == 0)
     {
       // Prepare coefficients
-      copy_cell_data<T>(cells, flux_dofmap, x_flux_dhdiv, coefficients,
-                        ndofs_flux);
+      copy_cell_data<T, 1>(cells, flux_dofmap, x_flux_dhdiv, coefficients,
+                           ndofs_flux, 1);
 
       // Initialize tangents
       A_patch.setZero();

@@ -175,7 +175,8 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data,
         problem_data.fspace_flux_hdiv()->element()->basix_element());
 
     // Step 1: Explicite calculation of sigma_tilde
-    for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
+    // for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
+    for (std::size_t i_node = 106; i_node < 107; ++i_node)
     {
       // Create Sub-DOFmap
       patch.create_subdofmap(i_node);
@@ -192,6 +193,7 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data,
       patch.create_subdofmap(i_node);
 
       // Solve minimisation on current patch
+      // minimise_flux(mesh->geometry(), patch, problem_data, kernel_data);
     }
   }
   else

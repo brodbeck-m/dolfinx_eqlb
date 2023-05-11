@@ -736,7 +736,7 @@ public:
 
   /// Return local facet ids of E_a and E_am1 on cell T_a
   /// @param cell_i Patch-local id of cell T_a (a>0)
-  /// @return Local facet ids of facets E_a and E_am1
+  /// @return Local facet ids of facets E_am1 and E_a
   std::pair<std::int8_t, std::int8_t> fctid_local(int cell_i)
   {
     assert(cell_i > 0);
@@ -754,7 +754,7 @@ public:
       fctim1 = fcti - 1;
     }
 
-    return {_localid_fct[2 * fcti], _localid_fct[2 * fctim1 + 1]};
+    return {_localid_fct[2 * fctim1 + 1], _localid_fct[2 * fcti]};
   }
 
   /// Get patach-local id of + and - cell on facet

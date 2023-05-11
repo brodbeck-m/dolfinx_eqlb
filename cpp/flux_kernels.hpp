@@ -71,14 +71,14 @@ void kernel_flux_minimisation(std::span<T> Te, int cstride_Te,
 
     // Coefficients d^l_Eam1 and d^l_Ea
     // Interactions with d_0 are also calculated here
-    if constexpr (id_flux_order > 0)
+    if constexpr (id_flux_order > 1)
     {
       throw std::runtime_error("Minimisation only implemented for RT0");
     }
 
     // Coefficients d^r_Ta
     // Interactions with d_0 and d^l_E are also calculated here
-    if constexpr (id_flux_order > 1)
+    if constexpr (id_flux_order > 2)
     {
       throw std::runtime_error("Minimisation only implemented for RT0");
     }
