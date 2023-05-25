@@ -20,7 +20,7 @@ import ufl
 sdisc_ctype = ufl.tetrahedron
 
 # Mesh resolution
-sdisc_nelmt = 50
+sdisc_nelmt = 30
 
 # Element type ('Lagrange', 'VectorLagrange', 'RT', 'BDM')
 elmt_type = 'Lagrange'
@@ -29,6 +29,9 @@ elmt_order = 3
 # Input projection (const, ufl, func_cg, func_dg, ufl_func_cg)
 rhs_type = 'ufl'
 rhs_retry = 1
+
+# Solver settings
+solver_type = 'cg'
 
 # Timing
 timing_nretry = 3
@@ -218,7 +221,7 @@ def setup_problem(cell, n_elmt, elmt_type, elmt_degree, rhs_type):
 
 
 # --- Projection routines ---
-def global_projection(V, a, l, rhs_retry=1, solver_settings=None):
+def global_projection(V, a, l, rhs_retry=1, solver_type=None):
     # Solution Function
     u_proj = dfem.Function(V)
 
@@ -228,12 +231,42 @@ def global_projection(V, a, l, rhs_retry=1, solver_settings=None):
     form_l = dfem.form(l)
     L = dfem.petsc.create_vector(form_l)
 
-    # Set solver
-    args = "-ksp_type cg -pc_type hypre -pc_hypre_type euclid -ksp_converged_reason"
-    petsc4py.init(args)
+    # --- Initialize solver ---
     solver = PETSc.KSP().create(MPI.COMM_WORLD)
     solver.setOperators(A)
 
+    if solver_type is None:
+        # Use basic LU
+        solver.setType(PETSc.KSP.Type.PREONLY)
+        pc = solver.getPC()
+        pc.setType(PETSc.PC.Type.LU)
+
+        solver.setTolerances(rtol=1e-10, atol=1e-10, max_it=1000)
+    else:
+        if solver_type == "cg":
+            solver.setType(PETSc.KSP.Type.CG)
+            pc = solver.getPC()
+            pc.setType(PETSc.PC.Type.HYPRE)
+            pc.setHYPREType("boomeramg")
+
+            solver.setTolerances(rtol=1e-10, atol=1e-10, max_it=1000)
+        elif solver_type == "mumps":
+            solver.setType(PETSc.KSP.Type.PREONLY)
+            pc = solver.getPC()
+            pc.setType(PETSc.PC.Type.LU)
+            pc.setFactorSolverType("mumps")
+
+            solver.setTolerances(rtol=1e-10, atol=1e-10, max_it=1000)
+        elif solver_type == "superlu_dist":
+            solver.setType(PETSc.KSP.Type.PREONLY)
+            pc = solver.getPC()
+            pc.setType(PETSc.PC.Type.LU)
+            pc.setFactorSolverType("superlu_dist")
+
+            solver.setTolerances(rtol=1e-10, atol=1e-10, max_it=1000)
+        else:
+            raise Exception("Unknown solver type: {}".format(solver_type))
+        
     # Solve projection repeatedly
     for ii in range(0, rhs_retry):
         # Recalculate LHS
@@ -276,7 +309,7 @@ for n in range(0, timing_nretry):
 
     # Global projection
     time_proj_global[n] -= time.perf_counter()
-    u_global = global_projection(V_proj, a, l, rhs_retry=rhs_retry)
+    u_global = global_projection(V_proj, a, l, rhs_retry=rhs_retry, solver_type=solver_type)
     time_proj_global[n] += time.perf_counter()
 
     time_proj_local[n] -= time.perf_counter()

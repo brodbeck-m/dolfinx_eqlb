@@ -44,13 +44,13 @@ sdisc_nelmt = 1
 eqlb_fluxorder = 1
 
 # Type of manufactured solution
-extsol_type = 3
+extsol_type = 4
 
 # Linear algebra
 lgs_solver = "cg"
 
 # Convergence study
-convstudy_nref = 8
+convstudy_nref = 9
 convstudy_reffct = 2
 
 # Timing
@@ -203,18 +203,36 @@ def assemble_poisson_primal(
     dfem.set_bc(L, bc_esnt)
 
     # --- Initialize solver ---
-    if solver_type == "cg":
-        args = "-ksp_type cg -pc_type hypre -pc_hypre_type euclid -ksp_rtol 1e-10 -ksp_atol 1e-12 -ksp_max_it 1000"
-    if solver_type == "mumps":
-        args = "-ksp_type preonly -pc_type mumps -ksp_rtol 1e-10 -ksp_atol 1e-12"
-    if solver_type == "superlu_dist":
-        args = "-ksp_type preonly -pc_type superlu_dist -ksp_rtol 1e-10 -ksp_atol 1e-12"
-    else:
-        args = "-ksp_type preonly -pc_type lu -ksp_rtol 1e-10 -ksp_atol 1e-12"
-
-    petsc4py.init(args)
     solver = PETSc.KSP().create(MPI.COMM_WORLD)
     solver.setOperators(A)
+
+    if solver_type == "cg":
+        solver.setType(PETSc.KSP.Type.CG)
+        pc = solver.getPC()
+        pc.setType(PETSc.PC.Type.HYPRE)
+        pc.setHYPREType("boomeramg")
+
+        solver.setTolerances(rtol=1e-10, atol=1e-10, max_it=1000)
+    elif solver_type == "mumps":
+        solver.setType(PETSc.KSP.Type.PREONLY)
+        pc = solver.getPC()
+        pc.setType(PETSc.PC.Type.LU)
+        pc.setFactorSolverType("mumps")
+
+        solver.setTolerances(rtol=1e-10, atol=1e-10, max_it=1000)
+    elif solver_type == "superlu_dist":
+        solver.setType(PETSc.KSP.Type.PREONLY)
+        pc = solver.getPC()
+        pc.setType(PETSc.PC.Type.LU)
+        pc.setFactorSolverType("superlu_dist")
+
+        solver.setTolerances(rtol=1e-10, atol=1e-10, max_it=1000)
+    else:
+        solver.setType(PETSc.KSP.Type.PREONLY)
+        pc = solver.getPC()
+        pc.setType(PETSc.PC.Type.LU)
+
+        solver.setTolerances(rtol=1e-10, atol=1e-10, max_it=1000)
 
     u_prime = dfem.Function(V_u)
 
@@ -256,7 +274,7 @@ def projection_primal(eorder, fluxorder, u_prime, rhs_prime, mult_rhs=False):
         return sig_proj[0], rhs_proj[0]
 
 
-# --- Setup equilibration ---
+# --- Equilibration ---
 
 
 def setup_equilibration(
@@ -296,43 +314,99 @@ def setup_equilibration(
     return fct_bcesnt_primal, fct_bcesnt_flux, bc_esnt_flux
 
 
+# --- Error estimation ---
+
+
+def estimate_error(rhs_prime, u_prime, sig_eqlb):
+    # Extract mesh
+    msh = u_prime.function_space.mesh
+
+    # Initialize storage of error
+    V_e = dfem.FunctionSpace(msh, ufl.FiniteElement("DG", msh.ufl_cell(), 0))
+    v = ufl.TestFunction(V_e)
+
+    # Extract cell diameter
+    h_cell = dfem.Function(V_e)
+    num_cells = msh.topology.index_map(2).size_local + msh.topology.index_map(2).num_ghosts
+    h = dolfinx.cpp.mesh.h(msh, 2, range(num_cells))
+    h_cell.x.array[:] = h
+
+    # Forms for error estimation
+    err_sig = ufl.grad(u_prime) + sig_eqlb
+    err_osc = (h_cell / ufl.pi) * (rhs_prime - ufl.div(sig_eqlb))
+    form_eta_sig = dfem.form(ufl.dot(err_sig, err_sig) * v * ufl.dx)
+    form_eta_osc = dfem.form(ufl.dot(err_osc, err_osc) * v * ufl.dx)
+
+    # Assemble errors
+    Leta_sig = dfem.petsc.create_vector(form_eta_sig)
+    Leta_osc = dfem.petsc.create_vector(form_eta_osc)
+    with L.localForm() as loc_L:
+        loc_L.set(0)
+    dfem.petsc.assemble_vector(Leta_sig, form_eta_sig)
+    dfem.petsc.assemble_vector(Leta_osc, form_eta_osc)
+
+    return Leta_sig, Leta_osc
+
 # --- Error norms ---
-def error_L2(diff_u_uh):
-    return dfem.form(ufl.inner(diff_u_uh, diff_u_uh) * ufl.dx)
+def error_L2(diff_u_uh, qorder=None):
+    if qorder is None:
+        dvol = ufl.dx
+    else:
+        dvol = ufl.dx(degree=qorder)
+    return dfem.form(ufl.inner(diff_u_uh, diff_u_uh) * dvol)
 
+def error_h1(diff_u_uh, qorder=None):
+    if qorder is None:
+        dvol = ufl.dx
+    else:
+        dvol = ufl.dx(degree=qorder)
+    return dfem.form(ufl.inner(ufl.grad(diff_u_uh), ufl.grad(diff_u_uh)) * dvol)
 
-def error_hdiv0(diff_u_uh):
-    return dfem.form(ufl.inner(ufl.div(diff_u_uh), ufl.div(diff_u_uh)) * ufl.dx)
+def error_hdiv0(diff_u_uh, qorder=None):
+    if qorder is None:
+        dvol = ufl.dx
+    else:
+        dvol = ufl.dx(degree=qorder)
+    return dfem.form(ufl.inner(ufl.div(diff_u_uh), ufl.div(diff_u_uh)) * dvol)
 
-
-def calculate_error(uh, u_ex_np, form_error, degree_raise=2):
+def calculate_error(uh, u_ex, form_error, degree_raise=2, use_ufl=False):
     # Create higher order function space
     degree = uh.function_space.ufl_element().degree() + degree_raise
     family = uh.function_space.ufl_element().family()
     mesh = uh.function_space.mesh
 
-    if uh.function_space.num_sub_spaces > 1:
-        elmt = ufl.VectorElement(family, mesh.ufl_cell(), degree)
+    # Initialise quadrature degree
+    qdegree = None
+
+    if use_ufl:
+        # Set quadrature degree
+        qdegree = 10
+
+        # Get spacial coodinate and set error functional
+        e_W = u_ex - uh
     else:
-        elmt = ufl.FiniteElement(family, mesh.ufl_cell(), degree)
+        if uh.function_space.num_sub_spaces > 1:
+            elmt = ufl.VectorElement(family, mesh.ufl_cell(), degree)
+        else:
+            elmt = ufl.FiniteElement(family, mesh.ufl_cell(), degree)
 
-    W = dfem.FunctionSpace(mesh, elmt)
+        W = dfem.FunctionSpace(mesh, elmt)
 
-    # Interpolate approximate solution
-    u_W = dfem.Function(W)
-    u_W.interpolate(uh)
+        # Interpolate approximate solution
+        u_W = dfem.Function(W)
+        u_W.interpolate(uh)
 
-    # Interpolate exact solution, special handling if exact solution
-    # is a ufl expression or a python lambda function
-    u_ex_W = dfem.Function(W)
-    u_ex_W.interpolate(u_ex_np)
+        # Interpolate exact solution, special handling if exact solution
+        # is a ufl expression or a python lambda function
+        u_ex_W = dfem.Function(W)
+        u_ex_W.interpolate(u_ex)
 
-    # Compute the error in the higher order function space
-    e_W = dfem.Function(W)
-    e_W.x.array[:] = u_W.x.array - u_ex_W.x.array
+        # Compute the error in the higher order function space
+        e_W = dfem.Function(W)
+        e_W.x.array[:] = u_W.x.array - u_ex_W.x.array
 
     # Integrate the error
-    error_local = dfem.assemble_scalar(form_error(e_W))
+    error_local = dfem.assemble_scalar(form_error(e_W, qorder = qdegree))
     error_global = mesh.comm.allreduce(error_local, op=MPI.SUM)
     return np.sqrt(error_global)
 
@@ -345,41 +419,88 @@ def init_protocol(i_conv, storage_protocol, nelmt, ndof_prime, ndof_eqlb):
     storage_protocol[i_conv, 3] = ndof_prime
     storage_protocol[i_conv, 4] = ndof_eqlb
 
+def convergence_rates(i_conv, storage_protocol, uh, sig_proj, sig_eqlb, eta_h_sig, eta_h_osc, 
+                      u_ext_np=None, u_ext_ufl=None, sig_ext_np=None, sig_ext_ufl=None):
+    # Evaluate errors (with respect to exact solution)
+    if u_ext_np is None:
+        x = ufl.SpatialCoordinate(uh.function_space.mesh)
+        error_u_i = calculate_error(uh, u_ext_ufl(x), error_L2, use_ufl=True)
+        error_gu_i = calculate_error(uh, u_ext_ufl(x), error_h1, use_ufl=True)
+    else:
+        error_u_i = calculate_error(uh, u_ext_np, error_L2, use_ufl=False)
+        error_gu_i = calculate_error(uh, u_ext_np, error_h1, use_ufl=False)
 
-def convergence_rates(i_conv, storage_protocol, uh, sig_proj, sig_eqlb, u_ext, sig_ext):
-    # Evaluate errors
-    error_u_i = calculate_error(uh, u_ext, error_L2)
-    error_sigp_i = calculate_error(sig_proj, sig_ext, error_L2)
-    error_sige_i = calculate_error(sig_eqlb, sig_ext, error_hdiv0)
+    if sig_ext_np is None:
+        # Spacial coordinate
+        x = ufl.SpatialCoordinate(uh.function_space.mesh)
+
+        # Flux from function
+        if sig_ext_ufl is None:
+            sig_ext = -ufl.grad(u_ext_ufl(x))
+        else:
+            sig_ext = sig_ext_ufl(x)
+
+        # Evaluate errors
+        error_sigp_i = calculate_error(sig_proj, sig_ext, error_L2, use_ufl=True)
+        error_sige_i = calculate_error(sig_eqlb, sig_ext, error_hdiv0, use_ufl=True)
+    else:
+        error_sigp_i = calculate_error(sig_proj, sig_ext_np, error_L2, use_ufl=False)
+        error_sige_i = calculate_error(sig_eqlb, sig_ext_np, error_hdiv0, use_ufl=False)
+
+    # Evaluate estimated error
+    error_gu_estm_i = np.sqrt(np.sum(eta_h_sig + eta_h_osc + 2 * np.multiply(np.sqrt(eta_h_sig), np.sqrt(eta_h_osc))))
+    error_gu_sig_estm_i = np.sqrt(np.sum(eta_h_sig))
+    error_gu_osc_estm_i = np.sqrt(np.sum(eta_h_osc))
 
     # Convergece rate
     if i_conv == 0:
         rate_u = 0
         rate_sigp = 0
         rate_sige = 0
+        rate_gu = 0
+        rate_gu_estm = 0
+        rate_gu_sig_estm = 0
+        rate_gu_osc_estm = 0
     else:
         # Mesh length
         h_i = 1 / storage_protocol[i_conv, 0]
         h_im1 = 1 / storage_protocol[i_conv - 1, 0]
 
         # Previous errors
-        error_u_im1 = storage_protocol[i_conv - 1, 13]
-        error_sigp_im1 = storage_protocol[i_conv - 1, 15]
-        error_sige_im1 = storage_protocol[i_conv - 1, 17]
+        error_u_im1 = storage_protocol[i_conv - 1, 14]
+        error_sigp_im1 = storage_protocol[i_conv - 1, 24]
+        error_sige_im1 = storage_protocol[i_conv - 1, 26]
+
+        error_gu_im1 = storage_protocol[i_conv - 1, 16]
+        error_gu_estm_im1 = storage_protocol[i_conv - 1, 18]
+        error_gu_sig_estm_im1 = storage_protocol[i_conv - 1, 20]
+        error_gu_osc_estm_im1 = storage_protocol[i_conv - 1, 22]
 
         # Convergence rates
         rate_u = np.log(error_u_i / error_u_im1) / np.log(h_i / h_im1)
         rate_sigp = np.log(error_sigp_i / error_sigp_im1) / np.log(h_i / h_im1)
         rate_sige = np.log(error_sige_i / error_sige_im1) / np.log(h_i / h_im1)
 
-    # Store results
-    storage_protocol[i_conv, 13] = error_u_i
-    storage_protocol[i_conv, 14] = rate_u
-    storage_protocol[i_conv, 15] = error_sigp_i
-    storage_protocol[i_conv, 16] = rate_sigp
-    storage_protocol[i_conv, 17] = error_sige_i
-    storage_protocol[i_conv, 18] = rate_sige
+        rate_gu = np.log(error_gu_i / error_gu_im1) / np.log(h_i / h_im1)
+        rate_gu_estm = np.log(error_gu_estm_i / error_gu_estm_im1) / np.log(h_i / h_im1)
+        rate_gu_sig_estm = np.log(error_gu_sig_estm_i / error_gu_sig_estm_im1) / np.log(h_i / h_im1)
+        rate_gu_osc_estm = np.log(error_gu_osc_estm_i / error_gu_osc_estm_im1) / np.log(h_i / h_im1)
 
+    # Store results
+    storage_protocol[i_conv, 14] = error_u_i
+    storage_protocol[i_conv, 15] = rate_u
+    storage_protocol[i_conv, 16] = error_gu_i
+    storage_protocol[i_conv, 17] = rate_gu
+    storage_protocol[i_conv, 18] = error_gu_estm_i
+    storage_protocol[i_conv, 19] = rate_gu_estm
+    storage_protocol[i_conv, 20] = error_gu_sig_estm_i
+    storage_protocol[i_conv, 21] = rate_gu_sig_estm
+    storage_protocol[i_conv, 22] = error_gu_osc_estm_i
+    storage_protocol[i_conv, 23] = rate_gu_osc_estm
+    storage_protocol[i_conv, 24] = error_sigp_i
+    storage_protocol[i_conv, 25] = rate_sigp
+    storage_protocol[i_conv, 26] = error_sige_i
+    storage_protocol[i_conv, 27] = rate_sige
 
 def document_calculation(i_conv, storage_protocol, timing_nretry, extime):
     # Set calculation times
@@ -412,6 +533,7 @@ extime = {
     "prime_project": 0.0,
     "eqlb_setup": 0.0,
     "eqlb_solve": 0.0,
+    "eqlb_error": 0.0
 }
 
 # Initialize exact solution
@@ -482,7 +604,7 @@ else:
     raise RuntimeError("No such solution option!")
 
 # Initialize storage protocol
-storage_protocol = np.zeros((convstudy_nref + 1, 19))
+storage_protocol = np.zeros((convstudy_nref + 1, 28))
 storage_protocol[:, 1] = sdisc_eorder
 storage_protocol[:, 2] = eqlb_fluxorder
 
@@ -552,6 +674,12 @@ for i_timing in range(0, timing_nretry):
         equilibrator.equilibrate_fluxes()
         extime["eqlb_solve"] += time.perf_counter()
 
+        # Estimate error
+        # --- Evaluate error ---
+        extime["eqlb_error"] -= time.perf_counter()
+        error_sig, error_osc = estimate_error(rhs_prime, u_prime, equilibrator.list_flux[0])
+        extime["eqlb_error"] += time.perf_counter()
+
         # Export solution to paraview (only in first repetition)
         if i_timing == 0:
             # Evaluate exakt flux
@@ -612,14 +740,15 @@ for i_timing in range(0, timing_nretry):
                 u_prime,
                 sig_proj,
                 equilibrator.list_flux[0],
-                u_ext_np,
-                sig_ext,
+                error_sig.array,
+                error_osc.array,
+                u_ext_ufl=u_ext_ufl
             )
 
         document_calculation(i_conv, storage_protocol, timing_nretry, extime)
 
 # Export calculation protocol
-header_protocol = "n_elmt, order_prime, order_flux, ndof_prime, ndof_eqlb, tp_setup, tp_assembly, tp_solve, te_project, te_setup, te_solve, tp_tot, te_tot, error_uh, rate_uh, error_sigp, rate_sigp, error_sige, rate_sige"
+header_protocol = "n_elmt, order_prime, order_flux, ndof_prime, ndof_eqlb, tp_setup, tp_assembly, tp_solve, te_project, te_setup, te_solve, tp_tot, te_tot, t_error, error_uh, rate_uh, error_grad-uh, rate_grad-uh, estmerr_grad-uh, rate_estm_grad-uh, estmerr_sig, rate_estm_sig, estmerr_oscl, rate_estm_oscl, error_sigp, rate_sigp, error_sige, rate_sige"
 np.savetxt(
     "DemoEqlb-Poisson_ConvStudy.csv",
     storage_protocol,
