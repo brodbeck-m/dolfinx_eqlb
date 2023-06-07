@@ -390,16 +390,17 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
       c_ta_eam1 = jump_i * 0.5 * detJ_Eam1 - c_tam1_eam1;
       c_ta_ea = f_i * (detJ / 6) - c_ta_eam1;
 
-      std::cout << "a, cell: " << a << ", " << c << std::endl;
-      std::cout << "DOFs flux_p: " << x_flux_proj[dofs_projflux_fct[0]] << ","
-                << x_flux_proj[dofs_projflux_fct[1]] << ", "
-                << x_flux_proj[dofs_projflux_fct[2]] << ", "
-                << x_flux_proj[dofs_projflux_fct[3]] << std::endl;
-      std::cout << "Normal: " << normal_phys[0] << ", " << normal_phys[1]
-                << std::endl;
-      std::cout << "jump_i, detJf: " << jump_i << ", " << detJ_Eam1
-                << std::endl;
-      std::cout << "\n";
+      // std::cout << "a, cell: " << a << ", " << c << std::endl;
+      // std::cout << "DOFs flux_p: " << x_flux_proj[dofs_projflux_fct[0]] <<
+      // ","
+      //           << x_flux_proj[dofs_projflux_fct[1]] << ", "
+      //           << x_flux_proj[dofs_projflux_fct[2]] << ", "
+      //           << x_flux_proj[dofs_projflux_fct[3]] << std::endl;
+      // std::cout << "Normal: " << normal_phys[0] << ", " << normal_phys[1]
+      //           << std::endl;
+      // std::cout << "jump_i, detJf: " << jump_i << ", " << detJ_Eam1
+      //           << std::endl;
+      // std::cout << "\n";
 
       // Store coefficients and set history values
       std::span<const std::int32_t> gdofs_flux = patch.dofs_flux_fct_global(a);

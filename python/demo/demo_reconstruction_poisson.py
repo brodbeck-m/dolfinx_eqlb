@@ -44,10 +44,10 @@ sdisc_nelmt = 1
 eqlb_fluxorder = 1
 
 # Type of manufactured solution
-extsol_type = 4
+extsol_type = 1
 
 # Linear algebra
-lgs_solver = "cg"
+lgs_solver = "mumps"
 
 # Convergence study
 convstudy_nref = 9
@@ -518,6 +518,8 @@ def document_calculation(i_conv, storage_protocol, timing_nretry, extime):
 
     storage_protocol[i_conv, 11] += t_prime_total / timing_nretry
     storage_protocol[i_conv, 12] += t_eqlb_total / timing_nretry
+
+    storage_protocol[i_conv, 13] += extime["eqlb_error"] / timing_nretry
 
     # Set time measures to zero
     for k in extime.keys():
