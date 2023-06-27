@@ -60,13 +60,14 @@ void kernel_flux_minimisation(std::span<T> Te, int cstride_Te,
     diff_phi[0] = p_Eam1 * phi(iq, dofl_Eam1, 0) - p_Ea * phi(iq, dofl_Ea, 0);
     diff_phi[1] = p_Eam1 * phi(iq, dofl_Eam1, 1) - p_Ea * phi(iq, dofl_Ea, 1);
 
-    Te[0] = -(diff_phi[0] * sigtilde_q[0] - diff_phi[1] * sigtilde_q[1]) * detJ;
+    Te[0] = -(diff_phi[0] * sigtilde_q[0] - diff_phi[1] * sigtilde_q[1])
+            * std::fabs(detJ);
 
     // Coefficient d_0: Bilinear form
     if constexpr (asmbl_systmtrx)
     {
-      Te[cstride_Te]
-          = (diff_phi[0] * diff_phi[0] + diff_phi[1] * diff_phi[1]) * detJ;
+      Te[cstride_Te] = (diff_phi[0] * diff_phi[0] + diff_phi[1] * diff_phi[1])
+                       * std::fabs(detJ);
     }
 
     // Coefficients d^l_Eam1 and d^l_Ea
@@ -84,4 +85,4 @@ void kernel_flux_minimisation(std::span<T> Te, int cstride_Te,
     }
   }
 }
-}
+} // namespace dolfinx_adaptivity::equilibration

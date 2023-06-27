@@ -210,15 +210,19 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
     }
 
     /* DOF transformation */
-    // Get local fact ids on cell_i
+    // Get local facet ids on cell_i
     std::tie(fctloc_eam1, fctloc_ea) = patch.fctid_local(index + 1);
+
+    // Calculate correction factor due to mapping
+    // (negative detJ reveolves orientation ansatz functions on facet)
+    double sgn_detj = storage_detJ[index] / std::fabs(storage_detJ[index]);
 
     // Set prefactor of facte DOFs (H(div) flux)
     std::tie(noutward_eam1, noutward_ea)
         = kernel_data.fct_normal_is_outward(fctloc_eam1, fctloc_ea);
 
-    dprefactor_dof[2 * index] = (noutward_eam1) ? 1.0 : -1.0;
-    dprefactor_dof[2 * index + 1] = (noutward_ea) ? 1.0 : -1.0;
+    dprefactor_dof[2 * index] = (noutward_eam1) ? sgn_detj : -sgn_detj;
+    dprefactor_dof[2 * index + 1] = (noutward_ea) ? sgn_detj : -sgn_detj;
 
     /* Calculation of physical normals */
     // Check if last cell is reached (only internal patch!)
@@ -328,7 +332,7 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
       loop_end = ncells + 1;
 
       // Isoparametric mappring for cell
-      const double detJ = storage_detJ[0];
+      const double detJ = std::fabs(storage_detJ[0]);
 
       // Extract RHS value on current cell
       T f_i = x_rhs_proj[cells[0]];
@@ -364,7 +368,7 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
       std::int32_t c = cells[id_a];
 
       // Isoparametric mapping
-      const double detJ = storage_detJ[id_a];
+      const double detJ = std::fabs(storage_detJ[id_a]);
       const double detJ_Eam1 = storage_detJf[a - 1];
 
       // Extract physical normal E_am1

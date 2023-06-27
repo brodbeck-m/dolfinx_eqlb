@@ -99,8 +99,7 @@ double KernelData::compute_jacobian(dolfinx_adaptivity::mdspan2_t J,
   fem::CoordinateElement::compute_jacobian(dphi, coords, J);
   fem::CoordinateElement::compute_jacobian_inverse(J, K);
 
-  return std::fabs(
-      fem::CoordinateElement::compute_jacobian_determinant(J, detJ_scratch));
+  return fem::CoordinateElement::compute_jacobian_determinant(J, detJ_scratch);
 }
 
 double KernelData::compute_jacobian(dolfinx_adaptivity::mdspan2_t J,
@@ -127,8 +126,7 @@ double KernelData::compute_jacobian(dolfinx_adaptivity::mdspan2_t J,
 
   fem::CoordinateElement::compute_jacobian(dphi, coords, J);
 
-  return std::fabs(
-      fem::CoordinateElement::compute_jacobian_determinant(J, detJ_scratch));
+  return fem::CoordinateElement::compute_jacobian_determinant(J, detJ_scratch);
 }
 
 void KernelData::physical_fct_normal(std::span<double> normal_phys,

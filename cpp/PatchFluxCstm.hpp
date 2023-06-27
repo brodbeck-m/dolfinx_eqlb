@@ -888,7 +888,7 @@ public:
 
   /// Extract facet-DOFs (projected flux)
   /// @param cell_i Patch-local facet-id
-  /// @return List DOFs (zero DOFs excluded)
+  /// @return List DOFs [dof1_c+, ..., dofn_c+, dof1_c-, ..., dofn_c-]
   std::span<const std::int32_t> dofs_projflux_fct(int fct_i)
   {
     int fcti = fctid_patch_to_data(fct_i);
