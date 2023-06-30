@@ -342,13 +342,13 @@ public:
         _dofsnz_glob_fct[offs_f] = cell_im1 * _ndof_flux + ldof_cell_im1;
 
         /* Get DOFS of projected flux on fct_i */
-        int gdof_cell_p = cell_puls * _ndof_fluxdg;
-        int gdof_cell_m = cell_minus * _ndof_fluxdg;
+        int gdof_cell_i = cell_i * _ndof_fluxdg;
+        int gdof_cell_im1 = cell_im1 * _ndof_fluxdg;
 
-        _list_fctdofs_fluxdg[offs_fdg_fct] = gdof_cell_p;
-        _list_fctdofs_fluxdg[offs_fdg_fct + 1] = gdof_cell_p + 1;
-        _list_fctdofs_fluxdg[offs_fdg_fct + 2] = gdof_cell_m;
-        _list_fctdofs_fluxdg[offs_fdg_fct + 3] = gdof_cell_m + 1;
+        _list_fctdofs_fluxdg[offs_fdg_fct] = gdof_cell_i;
+        _list_fctdofs_fluxdg[offs_fdg_fct + 1] = gdof_cell_i + 1;
+        _list_fctdofs_fluxdg[offs_fdg_fct + 2] = gdof_cell_im1;
+        _list_fctdofs_fluxdg[offs_fdg_fct + 3] = gdof_cell_im1 + 1;
       }
       else
       {
@@ -888,7 +888,7 @@ public:
 
   /// Extract facet-DOFs (projected flux)
   /// @param cell_i Patch-local facet-id
-  /// @return List DOFs [dof1_c+, ..., dofn_c+, dof1_c-, ..., dofn_c-]
+  /// @return List DOFs [dof1_cip1, ..., dofn_cip1, dof1_ci, ..., dofn_ci]
   std::span<const std::int32_t> dofs_projflux_fct(int fct_i)
   {
     int fcti = fctid_patch_to_data(fct_i);

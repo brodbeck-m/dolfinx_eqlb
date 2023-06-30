@@ -186,7 +186,7 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
         = kernel_data.compute_jacobian(J, K, detJ_scratch, coords);
 
     // Calculate determinant of facet jacobian
-    if ((patch.type(0) > 0) && (a == 1))
+    if (a == 1 && patch.type(0) > 0)
     {
       // Calculate detJf on facet E0
       std::span<const std::int32_t> nodes_fct = patch.nodes_on_fct(0);
@@ -225,86 +225,35 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
     dprefactor_dof[2 * index + 1] = (noutward_ea) ? sgn_detj : -sgn_detj;
 
     /* Calculation of physical normals */
-    // Check if last cell is reached (only internal patch!)
-    if ((patch.type(0) > 0) && (a == 1))
+    if (a == 1 && patch.type(0) > 0)
     {
-      // Get local facet id of T_0 on E_0
-      std::int8_t fctid_loc_plus = patch.fctid_local(0, 1);
+      // Get local facet id of E_0 on T_0
+      std::int8_t fctid_loc = patch.fctid_local(ncells, a);
 
       // Get storage of normal
       std::span<double> normal_e(storage_normal_phys.data(), dim);
 
       // Transform normal into physical space
-      kernel_data.physical_fct_normal(normal_e, K, fctid_loc_plus);
+      kernel_data.physical_fct_normal(normal_e, K, fctid_loc);
     }
 
-    // Transform normal n_am1 within cell T_a
-    if (eval_normal_am1)
-    {
-      int am1 = a - 1;
+    // Get local facet id of E_a on T_a
+    std::int8_t fctid_loc = patch.fctid_local(a, a);
 
-      // Unset idetifire
-      eval_normal_am1 = false;
+    // Get storage of normal
+    std::span<double> normal_e(storage_normal_phys.data() + a * dim, dim);
 
-      // Get local facet id of E_am1 on T_a
-      std::int8_t fctid_loc_plus = patch.fctid_local(am1, a);
-
-      // Get storage of normal
-      std::span<double> normal_e(storage_normal_phys.data() + am1 * dim, dim);
-
-      // Transform normal into physical space
-      kernel_data.physical_fct_normal(normal_e, K, fctid_loc_plus);
-    }
-
-    // Get +/- cell on facet E_a
-    std::tie(cell_plus, cell_minus) = patch.cellpm(a);
-
-    if (c == patch.cell(cell_plus))
-    {
-      // Get local facet id on T_a
-      std::int8_t fctid_loc_plus = patch.fctid_local(a, cell_plus);
-
-      // Get storage of normal
-      std::span<double> normal_e(storage_normal_phys.data() + a * dim, dim);
-
-      // Transform normal into physical space
-      kernel_data.physical_fct_normal(normal_e, K, fctid_loc_plus);
-    }
-    else
-    {
-      // Set idetifier to transform n_a within cell T_ap1
-      eval_normal_am1 = true;
-    }
+    // Transform normal into physical space
+    kernel_data.physical_fct_normal(normal_e, K, fctid_loc);
 
     // Check if last cell is reached (only internal patch!)
-    if ((patch.type(0) == 0) && (a == ncells))
+    if (a == ncells && patch.type(0) == 0)
     {
-      if (eval_normal_am1)
-      {
-        // Recalculate Jacobi on E_1
-        std::span<double> coordinate_dofs_0(coordinate_dofs.data(),
-                                            cstride_geom);
-        dolfinx_adaptivity::cmdspan2_t coords(coordinate_dofs_0.data(),
-                                              nnodes_cell, 3);
-        double detJ = kernel_data.compute_jacobian(J, K, detJ_scratch, coords);
-
-        // Get local facet id of E_0 on T_1
-        std::int8_t fctid_loc_plus = patch.fctid_local(0, 1);
-
-        // Get storage of normal
-        std::span<double> normal_e(storage_normal_phys.data() + ncells * dim,
-                                   dim);
-
-        // Transform normal into physical space
-        kernel_data.physical_fct_normal(normal_e, K, fctid_loc_plus);
-      }
-
-      // Store normal on E_0
+      // Get data for last facet from facet 0
       storage_normal_phys[0] = storage_normal_phys[2 * ncells];
       storage_normal_phys[1] = storage_normal_phys[2 * ncells + 1];
 
-      // Set detJf on E_0
-      storage_detJf[0] = storage_detJf[ncells];
+      storage_detJf[0] = storage_detJf[2 * ncells];
     }
   }
 
@@ -338,13 +287,12 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
       T f_i = x_rhs_proj[cells[0]];
 
       // Set DOFs for cell 1
-      c_ta_ea = f_i * detJ / 6;
+      c_ta_ea = -f_i * detJ / 6;
 
       // Store coefficients and set history values
       std::span<const std::int32_t> gdofs_flux = patch.dofs_flux_fct_global(1);
 
-      x_flux_dhdiv[gdofs_flux[0]] = 0;
-      x_flux_dhdiv[gdofs_flux[1]] = prefactor_dof(0, 1) * c_ta_ea;
+      x_flux_dhdiv[gdofs_flux[1]] += prefactor_dof(0, 1) * c_ta_ea;
 
       c_tam1_eam1 = c_ta_ea;
     }
@@ -378,7 +326,7 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
       // Extract RHS value
       T f_i = x_rhs_proj[c];
 
-      // Extract gradients (+/- side) ond facet E_am1
+      // Extract gradients (+/- side) on facet E_am1
       std::span<const std::int32_t> dofs_projflux_fct
           = patch.dofs_projflux_fct(a - 1);
 
@@ -392,7 +340,7 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
 
       // Set DOFs for cell
       c_ta_eam1 = jump_i * 0.5 * detJ_Eam1 - c_tam1_eam1;
-      c_ta_ea = f_i * (detJ / 6) - c_ta_eam1;
+      c_ta_ea = -f_i * (detJ / 6) - c_ta_eam1;
 
       // std::cout << "a, cell: " << a << ", " << c << std::endl;
       // std::cout << "DOFs flux_p: " << x_flux_proj[dofs_projflux_fct[0]] <<
@@ -409,8 +357,8 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
       // Store coefficients and set history values
       std::span<const std::int32_t> gdofs_flux = patch.dofs_flux_fct_global(a);
 
-      x_flux_dhdiv[gdofs_flux[0]] = prefactor_dof(id_a, 0) * c_ta_eam1;
-      x_flux_dhdiv[gdofs_flux[1]] = prefactor_dof(id_a, 1) * c_ta_ea;
+      x_flux_dhdiv[gdofs_flux[0]] += prefactor_dof(id_a, 0) * c_ta_eam1;
+      x_flux_dhdiv[gdofs_flux[1]] += prefactor_dof(id_a, 1) * c_ta_ea;
 
       c_tam1_eam1 = c_ta_ea;
     }
