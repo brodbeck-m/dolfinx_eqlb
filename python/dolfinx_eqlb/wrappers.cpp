@@ -92,17 +92,15 @@ PYBIND11_MODULE(cpp, m)
          const std::vector<std::vector<std::int32_t>>& fct_esntbound_prime,
          const std::vector<std::vector<std::int32_t>>& fct_esntbound_flux,
          const std::vector<std::vector<std::shared_ptr<
-             const dolfinx::fem::DirichletBC<PetscScalar>>>>& bcs,
-         const std::vector<std::shared_ptr<const fem::Form<PetscScalar>>>&
-             form_o1)
+             const dolfinx::fem::DirichletBC<PetscScalar>>>>& bcs)
       {
         equilibration::reconstruct_fluxes_cstm<PetscScalar>(
             flux_hdiv, flux_dg, rhs_dg, fct_esntbound_prime, fct_esntbound_flux,
-            bcs, form_o1);
+            bcs);
       },
       py::arg("flux_hdiv"), py::arg("flux_dg"), py::arg("rhs_dg"),
       py::arg("fct_esntbound_prime"), py::arg("fct_esntbound_prime"),
-      py::arg("bcs"), py::arg("forms"),
+      py::arg("bcs"),
       "Local equilibration of H(div) conforming fluxes, solving patch-wise "
       "constrained minimisation problems within a semi-explicit approach.");
 }

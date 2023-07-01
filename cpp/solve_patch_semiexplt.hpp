@@ -194,13 +194,8 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
     /* Copy cell geometry */
     std::span<double> coordinate_dofs_e(
         coordinate_dofs.data() + index * cstride_geom, cstride_geom);
-
-    auto x_dofs = x_dofmap.links(c);
-    for (std::size_t j = 0; j < x_dofs.size(); ++j)
-    {
-      std::copy_n(std::next(x.begin(), 3 * x_dofs[j]), 3,
-                  std::next(coordinate_dofs_e.begin(), 3 * j));
-    }
+    std::span<const std::int32_t> x_dofs = x_dofmap.links(c);
+    copy_cell_data<double, 3>(x, x_dofs, coordinate_dofs_e, 3);
 
     /* Piola mapping */
     // Reshape geometry infos
@@ -247,7 +242,7 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
     if (a == 1 && patch.type(0) > 0)
     {
       // Get local facet id of E_0 on T_0
-      std::int8_t fctid_loc = patch.fctid_local(ncells, a);
+      std::int8_t fctid_loc = patch.fctid_local(0, 1);
 
       // Get storage of normal
       std::span<double> normal_e(storage_normal_phys.data(), dim);
@@ -358,20 +353,9 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
                       + jump_proj_flux[1] * normal_phys[1];
 
       // Set DOFs for cell
+      // Positive jump as it is calculated with n_(Ta,Ea)=-n_(Tap1,Ea)!
       c_ta_eam1 = jump_i * 0.5 * detJ_Eam1 - c_tam1_eam1;
       c_ta_ea = -f_i * (detJ / 6) - c_ta_eam1;
-
-      // std::cout << "a, cell: " << a << ", " << c << std::endl;
-      // std::cout << "DOFs flux_p: " << x_flux_proj[dofs_projflux_fct[0]] <<
-      // ","
-      //           << x_flux_proj[dofs_projflux_fct[1]] << ", "
-      //           << x_flux_proj[dofs_projflux_fct[2]] << ", "
-      //           << x_flux_proj[dofs_projflux_fct[3]] << std::endl;
-      // std::cout << "Normal: " << normal_phys[0] << ", " << normal_phys[1]
-      //           << std::endl;
-      // std::cout << "jump_i, detJf: " << jump_i << ", " << detJ_Eam1
-      //           << std::endl;
-      // std::cout << "\n";
 
       // Store coefficients and set history values
       std::span<const std::int32_t> gdofs_flux = patch.dofs_flux_fct_global(a);

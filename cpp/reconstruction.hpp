@@ -175,8 +175,7 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data,
         problem_data.fspace_flux_hdiv()->element()->basix_element());
 
     // Step 1: Explicite calculation of sigma_tilde
-    // for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
-    for (std::size_t i_node = 106; i_node < 107; ++i_node)
+    for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
     {
       // Create Sub-DOFmap
       patch.create_subdofmap(i_node);
@@ -186,9 +185,8 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data,
                                  kernel_data);
     }
 
-    // Step 2: Minimise reconstructed flux
+    // // Step 2 : Minimise reconstructed flux
     // for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
-    // for (std::size_t i_node = 106; i_node < 107; ++i_node)
     // {
     //   // Create Sub-DOFmap
     //   patch.create_subdofmap(i_node);
@@ -356,8 +354,7 @@ void reconstruct_fluxes_cstm(
     const std::vector<std::vector<std::int32_t>>& fct_esntbound_prime,
     const std::vector<std::vector<std::int32_t>>& fct_esntbound_flux,
     const std::vector<std::vector<std::shared_ptr<const fem::DirichletBC<T>>>>&
-        bcs_flux,
-    const std::vector<std::shared_ptr<const fem::Form<T>>>& form_o1)
+        bcs_flux)
 {
   // Check input
   int n_rhs = rhs_dg.size();
@@ -389,9 +386,6 @@ void reconstruct_fluxes_cstm(
   /* Call equilibration */
   if (order_flux == 1)
   {
-    // Set integration kernels
-    problem_data.set_form(form_o1);
-
     // Perform equilibration
     reconstruct_fluxes_patch<T, 1>(problem_data, fct_type);
   }
