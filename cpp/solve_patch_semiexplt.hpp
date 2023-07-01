@@ -3,6 +3,7 @@
 #include "KernelData.hpp"
 #include "PatchFluxCstm.hpp"
 #include "ProblemDataFluxCstm.hpp"
+#include "assemble_patch_semiexplt.hpp"
 #include "eigen3/Eigen/Dense"
 #include "utils.hpp"
 
@@ -26,7 +27,7 @@ using namespace dolfinx;
 
 namespace dolfinx_adaptivity::equilibration
 {
-/// Copy cell data from global storage flattened storage (per cell)
+/// Copy cell data from global storage into flattened array (per cell)
 /// @param data_global The global data storage
 /// @param data_dofs   The DOFs on current cell
 /// @param data_cell   The flattened storage of current cell
@@ -61,7 +62,7 @@ void copy_cell_data(std::span<const T> data_global,
   }
 }
 
-/// Copy cell data from global storage flattened storage (per cell)
+/// Copy cell data from global storage into flattened array (per patch)
 /// @param cells        List of cells on patch
 /// @param dofmap_data  DOFmap of data
 /// @param data_global  The global data storage
@@ -104,6 +105,34 @@ void copy_cell_data(std::span<const std::int32_t> cells,
   }
 }
 
+/// Calculate prefactor of vector-values DOFs on facet
+/// General: Explicite formulas assume that RT-Funtions are calculated based on
+///          outward pointing normals. This is not the case in FenicsX.
+///          Therefore transformation +1 resp. -1 is necessary.
+/// Determination: Orientation of facet-normal on reference cell is stored
+///                within basix. Correction required, as during contra-varinat
+///                Piola mapping basis func- tions stay normal to element edges
+///                but can change their orientation with respect to the cell
+///                (inward or outwad pointing).This change is indetified
+///                by the sign of the determinant of the Jacobian of the
+///                mapping.
+/// @param a             The patch-local index of a cell (a>1!)
+/// @param noutward_ea   True if normal of facet Ea points outward
+/// @param noutward_eam1 True if normal of facet Eam1 points outward
+/// @param detj          Determinant of the Jacobian of the mapping
+/// @param prefactor_dof The prefactors of N_(Ta,Ea) and N_(Ta,Eam1)
+void set_dof_prefactors(int a, bool noutward_ea, bool noutward_eam1,
+                        double detj, std::span<double> prefactor_dof)
+{
+  // Sign of the jacobian
+  double sgn_detj = detj / std::fabs(detj);
+
+  // Set prefactors
+  int index = 2 * a - 2;
+  prefactor_dof[index] = (noutward_eam1) ? sgn_detj : -sgn_detj;
+  prefactor_dof[index + 1] = (noutward_ea) ? sgn_detj : -sgn_detj;
+}
+
 template <typename T, int id_flux_order = -1>
 void calc_fluxtilde_explt(const mesh::Geometry& geometry,
                           PatchFluxCstm<T, id_flux_order>& patch,
@@ -134,9 +163,6 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
   std::array<double, 18> detJ_scratch;
   std::vector<double> storage_detJ(ncells, 0);
   std::vector<double> storage_detJf(ncells + 1, 0);
-
-  // +/- cells
-  std::int32_t cell_plus, cell_minus, cell_plus_eam1, cell_minus_eam1;
 
   // Physical normal
   std::vector<double> storage_normal_phys((ncells + 1) * dim, 0);
@@ -210,19 +236,12 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
     }
 
     /* DOF transformation */
-    // Get local facet ids on cell_i
     std::tie(fctloc_eam1, fctloc_ea) = patch.fctid_local(index + 1);
-
-    // Calculate correction factor due to mapping
-    // (negative detJ reveolves orientation ansatz functions on facet)
-    double sgn_detj = storage_detJ[index] / std::fabs(storage_detJ[index]);
-
-    // Set prefactor of facte DOFs (H(div) flux)
     std::tie(noutward_eam1, noutward_ea)
         = kernel_data.fct_normal_is_outward(fctloc_eam1, fctloc_ea);
 
-    dprefactor_dof[2 * index] = (noutward_eam1) ? sgn_detj : -sgn_detj;
-    dprefactor_dof[2 * index + 1] = (noutward_ea) ? sgn_detj : -sgn_detj;
+    set_dof_prefactors(index + 1, fctloc_ea, fctloc_eam1, storage_detJ[index],
+                       dprefactor_dof);
 
     /* Calculation of physical normals */
     if (a == 1 && patch.type(0) > 0)
@@ -387,7 +406,7 @@ void minimise_flux(const mesh::Geometry& geometry,
   const graph::AdjacencyList<std::int32_t>& flux_dofmap
       = problem_data.fspace_flux_hdiv()->dofmap()->list();
 
-  // Cells on patch// Get cells
+  // Cells on patch
   std::span<const std::int32_t> cells = patch.cells();
   const int ncells = patch.ncells();
 
@@ -414,18 +433,13 @@ void minimise_flux(const mesh::Geometry& geometry,
   // Number of nodes on reference cell
   int nnodes_cell = kernel_data.nnodes_cell();
 
-  // Jacobian J and determinant detJ
-  std::array<double, 9> Jb;
-  dolfinx_adaptivity::mdspan2_t J(Jb.data(), 2, 2);
-  std::array<double, 18> detJ_scratch;
-  std::vector<double> storage_detJ(ncells, 0);
-
-  // Storage cell geometries/ normal orientation and coefficients
+  // Storage cell geometries, normal orientation and coefficients
   const int cstride_geom = 3 * nnodes_cell;
-  std::vector<double> coordinate_dofs_e(3 * nnodes_cell, 0);
+  std::vector<double> coordinate_dofs(ncells * cstride_geom, 0);
 
   std::int8_t fctloc_ea, fctloc_eam1;
   bool noutward_ea, noutward_eam1;
+
   std::vector<double> dprefactor_dof(ncells * 2, 1.0);
   dolfinx_adaptivity::mdspan2_t prefactor_dof(dprefactor_dof.data(), ncells, 2);
 
@@ -437,26 +451,18 @@ void minimise_flux(const mesh::Geometry& geometry,
     std::int32_t c = cells[index];
 
     /* Copy cell coordinates */
+    std::span<double> coordinate_dofs_e(
+        coordinate_dofs.data() + index * cstride_geom, cstride_geom);
     std::span<const std::int32_t> x_dofs = x_dofmap.links(c);
     copy_cell_data<double, 3>(x, x_dofs, coordinate_dofs_e, 3);
 
-    /* Piola mapping */
-    // Reshape geometry infos
-    dolfinx_adaptivity::cmdspan2_t coords(coordinate_dofs_e.data(), nnodes_cell,
-                                          3);
-    // Calculate Jacobi, inverse, and determinant
-    storage_detJ[index] = kernel_data.compute_jacobian(J, detJ_scratch, coords);
-
     /* DOF transformation */
-    // Get local fact ids on cell_i
     std::tie(fctloc_eam1, fctloc_ea) = patch.fctid_local(index + 1);
-
-    // Set prefactor of facte DOFs (H(div) flux)
     std::tie(noutward_eam1, noutward_ea)
         = kernel_data.fct_normal_is_outward(fctloc_eam1, fctloc_ea);
 
-    dprefactor_dof[2 * index] = (noutward_eam1) ? 1.0 : -1.0;
-    dprefactor_dof[2 * index + 1] = (noutward_ea) ? 1.0 : -1.0;
+    set_dof_prefactors(index + 1, noutward_ea, noutward_eam1, 1,
+                       dprefactor_dof);
   }
 
   for (std::size_t i_rhs = 0; i_rhs < problem_data.nlhs(); ++i_rhs)
@@ -468,21 +474,21 @@ void minimise_flux(const mesh::Geometry& geometry,
     // Solution vector (flux, picewise-H(div))
     std::span<T> x_flux_dhdiv = problem_data.flux(i_rhs).x()->mutable_array();
 
+    // Set coefficients (copy solution data into flattend structure)
+    copy_cell_data<T, 1>(cells, flux_dofmap, x_flux_dhdiv, coefficients,
+                         ndofs_flux, 1);
+
     /* Perform minimisation */
     if (i_rhs == 0)
     {
-      // Prepare coefficients
-      copy_cell_data<T, 1>(cells, flux_dofmap, x_flux_dhdiv, coefficients,
-                           ndofs_flux, 1);
-
       // Initialize tangents
       A_patch.setZero();
       L_patch.setZero();
 
       // Assemble tangents
-      assembly_minimisation<T, id_flux_order, true>(
+      assemble_minimisation<T, id_flux_order, true>(
           A_patch, L_patch, cells, patch, kernel_data, prefactor_dof,
-          coefficients, storage_detJ, type_patch);
+          coefficients, coordinate_dofs, type_patch);
 
       // LU-factorization of system matrix
       if constexpr (id_flux_order > 1)

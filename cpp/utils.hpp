@@ -14,6 +14,11 @@ using mdspan3_t = stdex::mdspan<double, stdex::dextents<std::size_t, 3>>;
 using cmdspan3_t = stdex::mdspan<const double, stdex::dextents<std::size_t, 3>>;
 using mdspan4_t = stdex::mdspan<double, stdex::dextents<std::size_t, 4>>;
 using cmdspan4_t = stdex::mdspan<const double, stdex::dextents<std::size_t, 4>>;
+using s_mdspan1_t = stdex::mdspan<double, stdex::dextents<std::size_t, 1>,
+                                  stdex::layout_stride>;
+using s_cmdspan1_t
+    = stdex::mdspan<const double, stdex::dextents<std::size_t, 1>,
+                    stdex::layout_stride>;
 using s_cmdspan2_t
     = stdex::mdspan<const double, stdex::dextents<std::size_t, 2>,
                     stdex::layout_stride>;

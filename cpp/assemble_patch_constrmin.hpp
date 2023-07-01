@@ -5,7 +5,6 @@
 #include "PatchFluxEV.hpp"
 #include "StorageStiffness.hpp"
 #include "eigen3/Eigen/Dense"
-#include "flux_kernels.hpp"
 #include "utils.hpp"
 
 #include <dolfinx/fem/DofMap.h>
@@ -244,63 +243,6 @@ void assemble_vector(
     int index_lhs)
 {
   throw std::runtime_error("assembly_vector: Not implemented!");
-}
-
-template <typename T, int id_flux_order = -1, bool asmbl_systmtrx = true>
-void assembly_minimisation(
-    Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>& A_patch,
-    Eigen::Matrix<T, Eigen::Dynamic, 1>& L_patch,
-    std::span<const std::int32_t> cells, PatchFluxCstm<T, id_flux_order>& patch,
-    KernelData& kernel_data, dolfinx_adaptivity::mdspan2_t prefactors_dof,
-    std::span<T> coefficients, std::vector<double> storage_detJ,
-    const int type_patch)
-{
-  assert(flux_order < 0);
-
-  /* Extract data */
-  // Degree of the RT element
-  const int degree_rt = patch.degree_raviart_thomas();
-
-  /* Initialisation */
-  const int ndofs_nz = 1 + 1.5 * degree_rt + degree_rt * degree_rt;
-  std::vector<T> Te(ndofs_nz * (ndofs_nz + 1), 0);
-
-  /* Calculation and assembly */
-  for (std::size_t a = 1; a < cells.size() + 1; ++a)
-  {
-    int id_a = a - 1;
-
-    // Extract cell-wise flux DOFs
-    std::span<const std::int32_t> fdofs_fct = patch.dofs_flux_fct_local(a);
-    std::span<const std::int32_t> fdofs_cell = patch.dofs_flux_cell_local(a);
-
-    // Evaluate linear- and bilinear form
-    kernel_flux_minimisation<T, id_flux_order, asmbl_systmtrx>(
-        Te, ndofs_nz, kernel_data,
-        {prefactors_dof(id_a, 0), prefactors_dof(id_a, 0)}, storage_detJ[id_a],
-        coefficients, fdofs_fct, fdofs_cell);
-
-    // Assemble linear- and bilinear form
-    if constexpr (id_flux_order == 1)
-    {
-      // Assemble linar form
-      L_patch(0) += Te[0];
-
-      if constexpr (asmbl_systmtrx)
-      {
-        // Assemble bilinear form
-        A_patch(0, 0) += Te[1];
-      }
-    }
-    else if constexpr (id_flux_order == 2)
-    {
-      throw std::runtime_error("assembly_minimisation: Not implemented!");
-    }
-    else
-    {
-      throw std::runtime_error("assembly_minimisation: Not implemented!");
-    }
-  }
 }
 
 } // namespace dolfinx_adaptivity::equilibration

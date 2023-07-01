@@ -120,12 +120,19 @@ public:
   /// Extract shape functions (H(div) flux)
   /// Array with indexes i, j and k: phi_j(x_i)[k] is the
   /// shap-function j at point i within direction k.
-  /// @return Array of shape functions
+  /// @return Array of shape functions (reference cell)
   dolfinx_adaptivity::s_cmdspan3_t shapefunctions_flux() const
   {
     return stdex::submdspan(_flux_fullbasis, 0, stdex::full_extent,
                             stdex::full_extent, stdex::full_extent);
   }
+
+  /// Extract shape functions (H(div) flux)
+  /// Array with indexes i, j and k: phi_j(x_i)[k] is the
+  /// shap-function j at point i within direction k.
+  /// @return Array of shape functions (current cell)
+  dolfinx_adaptivity::s_cmdspan3_t
+  shapefunctions_flux(dolfinx_adaptivity::mdspan2_t J, double detJ);
 
   /* Getter functions (Quadrature) */
 
@@ -167,8 +174,9 @@ protected:
 
   // Tabulated shape-functions (pice-wise H(div) flux)
   std::array<std::size_t, 4> _flux_basis_shape;
-  std::vector<double> _flux_basis_values;
+  std::vector<double> _flux_basis_values, _flux_basis_current_values;
   dolfinx_adaptivity::cmdspan4_t _flux_fullbasis;
+  dolfinx_adaptivity::mdspan4_t _flux_fullbasis_current;
 
   // Tabulated shape-functions (projected flux)
   std::array<std::size_t, 4> _fluxproj_basis_shape;

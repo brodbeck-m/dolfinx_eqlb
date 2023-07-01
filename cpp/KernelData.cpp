@@ -51,12 +51,17 @@ KernelData::KernelData(std::shared_ptr<const mesh::Mesh> mesh,
   _flux_basis_values = std::vector<double>(
       std::reduce(_flux_basis_shape.begin(), _flux_basis_shape.end(), 1,
                   std::multiplies{}));
+  _flux_basis_current_values = std::vector<double>(
+      std::reduce(_flux_basis_shape.begin(), _flux_basis_shape.end(), 1,
+                  std::multiplies{}));
 
   basix_element_fluxpw.tabulate(0, qrule->points_cell(),
                                 {n_qpoints_cell, _gdim}, _flux_basis_values);
 
   _flux_fullbasis = dolfinx_adaptivity::cmdspan4_t(_flux_basis_values.data(),
                                                    _flux_basis_shape);
+  _flux_fullbasis_current = dolfinx_adaptivity::mdspan4_t(
+      _flux_basis_current_values.data(), _flux_basis_shape);
 }
 
 KernelData::KernelData(std::shared_ptr<const mesh::Mesh> mesh,
@@ -155,6 +160,31 @@ void KernelData::physical_fct_normal(std::span<double> normal_phys,
   norm = std::sqrt(norm);
   std::for_each(normal_phys.begin(), normal_phys.end(),
                 [norm](auto& ni) { ni = ni / norm; });
+}
+
+dolfinx_adaptivity::s_cmdspan3_t
+KernelData::shapefunctions_flux(dolfinx_adaptivity::mdspan2_t J, double detJ)
+{
+  // Loop over all evaluation points
+  for (std::size_t i = 0; i < _flux_fullbasis.extent(1); ++i)
+  {
+    // Loop over all basis functions
+    for (std::size_t j = 0; j < _flux_fullbasis.extent(2); ++j)
+    {
+      double inv_detJ = 1.0 / detJ;
+
+      // Evaluate (1/detj) * J * phi^j(x_i)
+      _flux_fullbasis_current(0, i, j, 0)
+          = inv_detJ * J(0, 0) * _flux_fullbasis(0, i, j, 0)
+            + inv_detJ * J(0, 1) * _flux_fullbasis(0, i, j, 1);
+      _flux_fullbasis_current(0, i, j, 1)
+          = inv_detJ * J(1, 0) * _flux_fullbasis(0, i, j, 0)
+            + inv_detJ * J(1, 1) * _flux_fullbasis(0, i, j, 1);
+    }
+  }
+
+  return stdex::submdspan(_flux_fullbasis_current, 0, stdex::full_extent,
+                          stdex::full_extent, stdex::full_extent);
 }
 
 } // namespace dolfinx_adaptivity::equilibration

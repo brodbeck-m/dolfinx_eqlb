@@ -3,9 +3,10 @@
 #include "PatchFluxEV.hpp"
 #include "ProblemDataFluxEV.hpp"
 #include "StorageStiffness.hpp"
-#include "assembly.hpp"
+#include "assemble_patch_constrmin.hpp"
 #include "eigen3/Eigen/Dense"
 #include "eigen3/Eigen/Sparse"
+
 #include <algorithm>
 #include <cmath>
 #include <dolfinx/fem/DofMap.h>

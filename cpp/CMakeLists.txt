@@ -63,8 +63,8 @@ set(
   ProblemDataFluxCstm.hpp
   QuadratureRule.hpp
   StorageStiffness.hpp
-  assembly.hpp
-  flux_kernels.hpp
+  assemble_patch_constrmin.hpp
+  assemble_patch_semiexplt.hpp
   local_solver.hpp
   reconstruction.hpp
   solve_patch_constrmin.hpp
