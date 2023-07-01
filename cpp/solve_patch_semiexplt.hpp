@@ -117,11 +117,11 @@ void copy_cell_data(std::span<const std::int32_t> cells,
 ///                by the sign of the determinant of the Jacobian of the
 ///                mapping.
 /// @param a             The patch-local index of a cell (a>1!)
-/// @param noutward_ea   True if normal of facet Ea points outward
 /// @param noutward_eam1 True if normal of facet Eam1 points outward
+/// @param noutward_ea   True if normal of facet Ea points outward
 /// @param detj          Determinant of the Jacobian of the mapping
 /// @param prefactor_dof The prefactors of N_(Ta,Ea) and N_(Ta,Eam1)
-void set_dof_prefactors(int a, bool noutward_ea, bool noutward_eam1,
+void set_dof_prefactors(int a, bool noutward_eam1, bool noutward_ea,
                         double detj, std::span<double> prefactor_dof)
 {
   // Sign of the jacobian
@@ -236,11 +236,11 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
     }
 
     /* DOF transformation */
-    std::tie(fctloc_eam1, fctloc_ea) = patch.fctid_local(index + 1);
+    std::tie(fctloc_eam1, fctloc_ea) = patch.fctid_local(a);
     std::tie(noutward_eam1, noutward_ea)
         = kernel_data.fct_normal_is_outward(fctloc_eam1, fctloc_ea);
 
-    set_dof_prefactors(index + 1, fctloc_ea, fctloc_eam1, storage_detJ[index],
+    set_dof_prefactors(a, noutward_eam1, noutward_ea, storage_detJ[index],
                        dprefactor_dof);
 
     /* Calculation of physical normals */
@@ -461,7 +461,7 @@ void minimise_flux(const mesh::Geometry& geometry,
     std::tie(noutward_eam1, noutward_ea)
         = kernel_data.fct_normal_is_outward(fctloc_eam1, fctloc_ea);
 
-    set_dof_prefactors(index + 1, noutward_ea, noutward_eam1, 1,
+    set_dof_prefactors(index + 1, noutward_eam1, noutward_ea, 1,
                        dprefactor_dof);
   }
 
