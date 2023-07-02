@@ -472,7 +472,7 @@ void minimise_flux(const mesh::Geometry& geometry,
       // Assemble tangents
       assemble_minimisation<T, id_flux_order, true>(
           A_patch, L_patch, cells, patch, kernel_data, prefactor_dof,
-          coefficients, coordinate_dofs, type_patch);
+          coefficients, ndofs_flux, coordinate_dofs, type_patch);
 
       // LU-factorization of system matrix
       if constexpr (id_flux_order > 1)
@@ -497,7 +497,7 @@ void minimise_flux(const mesh::Geometry& geometry,
     // Solve system
     if constexpr (id_flux_order == 1)
     {
-      u_patch[0] = L_patch[0] / A_patch(0, 0);
+      u_patch(0) = L_patch(0) / A_patch(0, 0);
     }
     else
     {
@@ -509,14 +509,11 @@ void minimise_flux(const mesh::Geometry& geometry,
     {
       int id_a = a - 1;
 
-      // Precfactors on facets of T_a
-      double p_Eam1 = prefactor_dof(id_a, 0), p_Ea = prefactor_dof(id_a, 1);
-
       // Set d_0
-      std::span<const std::int32_t> fct_dofs = patch.dofs_flux_fct_global(a);
+      std::span<const std::int32_t> gdofs_flux = patch.dofs_flux_fct_global(a);
 
-      x_flux_dhdiv[fct_dofs[0]] += p_Eam1 * u_patch[0];
-      x_flux_dhdiv[fct_dofs[ndofs_flux_fct]] -= p_Ea * u_patch[0];
+      x_flux_dhdiv[gdofs_flux[0]] += prefactor_dof(id_a, 0) * u_patch(0);
+      x_flux_dhdiv[gdofs_flux[1]] -= prefactor_dof(id_a, 1) * u_patch(0);
 
       // Set d_E
       if constexpr (id_flux_order > 1)

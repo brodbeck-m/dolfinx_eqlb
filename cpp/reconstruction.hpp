@@ -185,15 +185,15 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data,
                                  kernel_data);
     }
 
-    // // Step 2 : Minimise reconstructed flux
-    // for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
-    // {
-    //   // Create Sub-DOFmap
-    //   patch.create_subdofmap(i_node);
+    // Step 2 : Minimise reconstructed flux
+    for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
+    {
+      // Create Sub-DOFmap
+      patch.create_subdofmap(i_node);
 
-    //   // Solve minimisation on current patch
-    //   minimise_flux(mesh->geometry(), patch, problem_data, kernel_data);
-    // }
+      // Solve minimisation on current patch
+      minimise_flux(mesh->geometry(), patch, problem_data, kernel_data);
+    }
   }
   else
   {

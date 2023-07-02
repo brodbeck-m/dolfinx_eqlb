@@ -35,7 +35,7 @@ void minimisation_kernel(dolfinx_adaptivity::mdspan2_t Te,
                          std::span<const std::int32_t> cell_dofs,
                          dolfinx_adaptivity::cmdspan2_t coordinate_dofs)
 {
-  int index_load = Te.extent(1) - 1;
+  const int index_load = Te.extent(0) - 1;
 
   /* Isoparametric mapping */
   std::array<double, 9> Jb;
@@ -96,7 +96,7 @@ void minimisation_kernel(dolfinx_adaptivity::mdspan2_t Te,
     diff_phi[1] = p_Eam1 * phi(iq, dofl_Eam1, 1) - p_Ea * phi(iq, dofl_Ea, 1);
 
     Te(index_load, 0)
-        += -(diff_phi[0] * sigtilde_q[0] - diff_phi[1] * sigtilde_q[1]) * alpha;
+        += -(diff_phi[0] * sigtilde_q[0] + diff_phi[1] * sigtilde_q[1]) * alpha;
 
     // Coefficient d_0: Bilinear form
     if constexpr (asmbl_systmtrx)
@@ -127,8 +127,8 @@ void assemble_minimisation(
     Eigen::Matrix<T, Eigen::Dynamic, 1>& L_patch,
     std::span<const std::int32_t> cells, PatchFluxCstm<T, id_flux_order>& patch,
     KernelData& kernel_data, dolfinx_adaptivity::mdspan2_t prefactors_dof,
-    std::span<T> coefficients, std::span<double> coordinate_dofs,
-    const int type_patch)
+    std::span<T> coefficients, const int cstride,
+    std::span<double> coordinate_dofs, const int type_patch)
 {
   assert(flux_order < 0);
 
@@ -156,15 +156,18 @@ void assemble_minimisation(
     std::span<const std::int32_t> fdofs_cell = patch.dofs_flux_cell_local(a);
 
     // Element data
-    dolfinx_adaptivity::cmdspan2_t coordinates_elmt(
-        coordinate_dofs.data() + id_a * cstride_geom, nnodes_cell, 3);
     dolfinx_adaptivity::s_mdspan1_t prefactors_elmt
         = stdex::submdspan(prefactors_dof, id_a, stdex::full_extent);
+    std::span<T> coefficients_elmt
+        = coefficients.subspan(id_a * cstride, cstride);
+    dolfinx_adaptivity::cmdspan2_t coordinates_elmt(
+        coordinate_dofs.data() + id_a * cstride_geom, nnodes_cell, 3);
 
     // Evaluate linear- and bilinear form
+    std::fill(dTe.begin(), dTe.end(), 0);
     minimisation_kernel<T, id_flux_order, asmbl_systmtrx>(
-        Te, kernel_data, prefactors_elmt, coefficients, fdofs_fct, fdofs_cell,
-        coordinates_elmt);
+        Te, kernel_data, prefactors_elmt, coefficients_elmt, fdofs_fct,
+        fdofs_cell, coordinates_elmt);
 
     // Assemble linear- and bilinear form
     if constexpr (id_flux_order == 1)
