@@ -1,7 +1,7 @@
 """
 Demo for H(div) conforming equilibration of fluxes
 
-Implementation of a H(div) conforming flux-equilibartion of a 
+Implementation of a H(div) conforming flux-equilibration of a 
 Poisson problem
                       -div(grad(u)) = f .
 
@@ -40,14 +40,15 @@ from dolfinx_eqlb import equilibration, lsolver
 sdisc_eorder = 1
 sdisc_nelmt = 1
 
-# Equilibration
+# Equilibration (type EV or SemiExplt)
+eqlb_type = 'EV'
 eqlb_fluxorder = 1
 
 # Type of manufactured solution
 extsol_type = 1
 
 # Linear algebra
-lgs_solver = "mumps"
+lgs_solver = "cg"
 
 # Convergence study
 convstudy_nref = 9
@@ -277,7 +278,7 @@ def projection_primal(eorder, fluxorder, u_prime, rhs_prime, mult_rhs=False):
 # --- Equilibration ---
 
 
-def setup_equilibration(
+def setup_equilibration_ev(
     W, V_flux, facet_tag, sig_ext, boundid_prime_dir, boundid_prime_vn
 ):
     # Mark boundary facets
@@ -310,6 +311,42 @@ def setup_equilibration(
             list_fcts = facet_tag.indices[facet_tag.values == id_esnt]
             dofs = dfem.locate_dofs_topological((W.sub(0), V_flux), 1, list_fcts)
             bc_esnt_flux.append(dfem.dirichletbc(vD, dofs, W.sub(0)))
+
+    return fct_bcesnt_primal, fct_bcesnt_flux, bc_esnt_flux
+
+def setup_equilibration_semiexplt(
+    V_flux, facet_tag, sig_ext, boundid_prime_dir, boundid_prime_vn
+):
+    # Mark boundary facets
+    fct_bcesnt_primal = np.array([], dtype=np.int32)
+    for id_esnt in boundid_prime_dir:
+        list_fcts = facet_tag.indices[facet_tag.values == id_esnt]
+        fct_bcesnt_primal = np.concatenate((fct_bcesnt_primal, list_fcts))
+
+    if fct_bcesnt_primal.size == 0:
+        fct_bcesnt_primal = []
+
+    fct_bcesnt_flux = np.array([], dtype=np.int32)
+    for id_flux in boundid_prime_vn:
+        list_fcts = facet_tag.indices[facet_tag.values == id_flux]
+        fct_bcesnt_flux = np.concatenate((fct_bcesnt_flux, list_fcts))
+
+    if fct_bcesnt_flux.size == 0:
+        fct_bcesnt_flux = []
+
+    # Set flux-boundaries
+    bc_esnt_flux = []
+
+    if boundid_prime_vn:
+        # Interpolate exact flux
+        vD = dfem.Function(V_flux)
+        vD.interpolate(sig_ext)
+
+        # Set boundary conditions
+        for id_esnt in boundid_prime_vn:
+            list_fcts = facet_tag.indices[facet_tag.values == id_esnt]
+            dofs = dfem.locate_dofs_topological(V_flux, 1, list_fcts)
+            bc_esnt_flux.append(dfem.dirichletbc(vD, dofs))
 
     return fct_bcesnt_primal, fct_bcesnt_flux, bc_esnt_flux
 
@@ -348,6 +385,8 @@ def estimate_error(rhs_prime, u_prime, sig_eqlb):
     return Leta_sig, Leta_osc
 
 # --- Error norms ---
+
+
 def error_L2(diff_u_uh, qorder=None):
     if qorder is None:
         dvol = ufl.dx
@@ -369,11 +408,21 @@ def error_hdiv0(diff_u_uh, qorder=None):
         dvol = ufl.dx(degree=qorder)
     return dfem.form(ufl.inner(ufl.div(diff_u_uh), ufl.div(diff_u_uh)) * dvol)
 
-def calculate_error(uh, u_ex, form_error, degree_raise=2, use_ufl=False):
+def calculate_error(uh, u_ex, form_error, degree_raise=2, use_ufl=False, error_eqlb_flux=False):
     # Create higher order function space
-    degree = uh.function_space.ufl_element().degree() + degree_raise
-    family = uh.function_space.ufl_element().family()
-    mesh = uh.function_space.mesh
+    if error_eqlb_flux:
+        try:
+            degree = uh.ufl_operands[0].function_space.element.basix_element.degree + degree_raise
+            family = 'RT'
+            mesh = uh.ufl_operands[0].function_space.mesh
+        except:
+            degree = uh.function_space.ufl_element().degree() + degree_raise
+            family = uh.function_space.ufl_element().family()
+            mesh = uh.function_space.mesh
+    else:
+        degree = uh.function_space.ufl_element().degree() + degree_raise
+        family = uh.function_space.ufl_element().family()
+        mesh = uh.function_space.mesh
 
     # Initialise quadrature degree
     qdegree = None
@@ -442,10 +491,12 @@ def convergence_rates(i_conv, storage_protocol, uh, sig_proj, sig_eqlb, eta_h_si
 
         # Evaluate errors
         error_sigp_i = calculate_error(sig_proj, sig_ext, error_L2, use_ufl=True)
-        error_sige_i = calculate_error(sig_eqlb, sig_ext, error_hdiv0, use_ufl=True)
+        error_sige_i = calculate_error(sig_eqlb, sig_ext, error_hdiv0, 
+                                       use_ufl=True, error_eqlb_flux=True)
     else:
         error_sigp_i = calculate_error(sig_proj, sig_ext_np, error_L2, use_ufl=False)
-        error_sige_i = calculate_error(sig_eqlb, sig_ext_np, error_hdiv0, use_ufl=False)
+        error_sige_i = calculate_error(sig_eqlb, sig_ext_np, error_hdiv0, 
+                                       use_ufl=False, error_eqlb_flux=True)
 
     # Evaluate estimated error
     error_gu_estm_i = np.sqrt(np.sum(eta_h_sig + eta_h_osc + 2 * np.multiply(np.sqrt(eta_h_sig), np.sqrt(eta_h_osc))))
@@ -605,6 +656,14 @@ elif extsol_type == 7:
 else:
     raise RuntimeError("No such solution option!")
 
+# Initilaise equlibrator
+if eqlb_type == 'EV':
+    Equilibrator = equilibration.EquilibratorEV
+elif eqlb_type == 'SemiExplt':
+    Equilibrator = equilibration.EquilibratorSemiExplt
+else:
+    raise RuntimeError("No such equilibrator option!")
+
 # Initialize storage protocol
 storage_protocol = np.zeros((convstudy_nref + 1, 28))
 storage_protocol[:, 1] = sdisc_eorder
@@ -652,19 +711,26 @@ for i_timing in range(0, timing_nretry):
         # # --- Equilibrate flux
         extime["eqlb_setup"] -= time.perf_counter()
         # Initialize equilibrator
-        equilibrator = equilibration.EquilibratorEV(
-            eqlb_fluxorder, msh, [rhs_proj], [sig_proj]
-        )
+        equilibrator = Equilibrator(eqlb_fluxorder, msh, [rhs_proj], [sig_proj])
 
         # Identify boundaries and set essential flux-bcs
-        fct_bcesnt_primal, fct_bcesnt_flux, bc_esnt_flux = setup_equilibration(
-            equilibrator.V,
-            equilibrator.V_flux,
-            facets,
-            sig_ext,
-            boundid_prime_dir,
-            boundid_prime_vn,
-        )
+        if eqlb_type == 'EV':
+            fct_bcesnt_primal, fct_bcesnt_flux, bc_esnt_flux = setup_equilibration_ev(
+                equilibrator.V,
+                equilibrator.V_flux,
+                facets,
+                sig_ext,
+                boundid_prime_dir,
+                boundid_prime_vn,
+            )
+        else:
+            fct_bcesnt_primal, fct_bcesnt_flux, bc_esnt_flux = setup_equilibration_semiexplt(
+                equilibrator.V_flux,
+                facets,
+                sig_ext,
+                boundid_prime_dir,
+                boundid_prime_vn,
+            )
 
         equilibrator.set_boundary_conditions(
             [fct_bcesnt_primal], [fct_bcesnt_flux], [bc_esnt_flux]
@@ -676,10 +742,12 @@ for i_timing in range(0, timing_nretry):
         equilibrator.equilibrate_fluxes()
         extime["eqlb_solve"] += time.perf_counter()
 
+        flux_function_eqlb = equilibrator.get_recontructed_fluxe(0)
+
         # Estimate error
         # --- Evaluate error ---
         extime["eqlb_error"] -= time.perf_counter()
-        error_sig, error_osc = estimate_error(rhs_prime, u_prime, equilibrator.list_flux[0])
+        error_sig, error_osc = estimate_error(rhs_prime, u_prime, flux_function_eqlb)
         extime["eqlb_error"] += time.perf_counter()
 
         # Export solution to paraview (only in first repetition)
@@ -691,7 +759,6 @@ for i_timing in range(0, timing_nretry):
             # Set function names
             u_prime.name = "u_prime"
             sig_proj.name = "sig_proj"
-            equilibrator.list_flux[0].name = "sig_eqlb"
             vD.name = 'sig_ext'
 
             # Name output file
@@ -705,14 +772,28 @@ for i_timing in range(0, timing_nretry):
                 + ".xdmf"
             )
 
-            
-
             # Write to xdmf
             outfile = dolfinx.io.XDMFFile(MPI.COMM_WORLD, outname, "w")
             outfile.write_mesh(msh)
             outfile.write_function(u_prime, 1)
             outfile.write_function(sig_proj, 1)
-            outfile.write_function(equilibrator.list_flux[0], 1)
+            if eqlb_type == 'EV':
+                flux_function_eqlb.name = "sig_eqlb"
+                outfile.write_function(flux_function_eqlb, 1)
+            else:
+                # Interpolate projected flux into RT space
+                flux_function_projected_RT = dfem.Function(equilibrator.V_flux)
+                flux_function_projected_RT.interpolate(sig_proj)
+                total_flux = dfem.Function(equilibrator.V_flux)
+                total_flux.x.array[:] = flux_function_projected_RT.x.array[:] + \
+                                        equilibrator.list_flux[0].x.array[:]
+
+                # Add projected flux to corrector
+                total_flux.name = "sig_eqlb"
+
+                # Write to xdmf
+                outfile.write_function(total_flux, 1)
+
             outfile.write_function(vD, 1)
             outfile.close()
 
@@ -732,7 +813,7 @@ for i_timing in range(0, timing_nretry):
                 storage_protocol,
                 n_elmt,
                 len(u_prime.x.array),
-                len(equilibrator.list_flux[0].x.array),
+                len(equilibrator.list_flux[0].x.array[:]),
             )
 
             # Convergence history
@@ -741,7 +822,7 @@ for i_timing in range(0, timing_nretry):
                 storage_protocol,
                 u_prime,
                 sig_proj,
-                equilibrator.list_flux[0],
+                flux_function_eqlb,
                 error_sig.array,
                 error_osc.array,
                 u_ext_ufl=u_ext_ufl

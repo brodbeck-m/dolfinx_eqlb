@@ -301,7 +301,7 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
       T f_i = x_rhs_proj[cells[0]];
 
       // Set DOFs for cell 1
-      c_ta_ea = -f_i * detJ / 6;
+      c_ta_ea = f_i * detJ / 6;
 
       // Store coefficients and set history values
       std::span<const std::int32_t> gdofs_flux = patch.dofs_flux_fct_global(1);
@@ -355,7 +355,7 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
       // Set DOFs for cell
       // Positive jump as it is calculated with n_(Ta,Ea)=-n_(Tap1,Ea)!
       c_ta_eam1 = jump_i * 0.5 * detJ_Eam1 - c_tam1_eam1;
-      c_ta_ea = -f_i * (detJ / 6) - c_ta_eam1;
+      c_ta_ea = f_i * (detJ / 6) - c_ta_eam1;
 
       // Store coefficients and set history values
       std::span<const std::int32_t> gdofs_flux = patch.dofs_flux_fct_global(a);
