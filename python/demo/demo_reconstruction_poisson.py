@@ -13,12 +13,19 @@ is enforced.
 
 Different problem setups:
 1.) u_ext = sin(2*pi * x) * sin(2*pi * y), Dirichlet-BC on [1,2,3,4]
+    (homog. dirichlet, no neumann)
 2.) u_ext = sin(2*pi * x) * sin(2*pi * y), Dirichlet-BC on [1,2]
+    (homog. dirichlet, inhomog. neumann)
 3.) u_ext = sin(2*pi * x) * cos(2*pi * y), Dirichlet-BC on [1,2,3,4]
+    (inhomog. dirichlet, no neumann)
 4.) u_ext = sin(2*pi * x) * cos(2*pi * y), Dirichlet-BC on [1,3]
+    (inhomog. dirichlet, homog. neumann)
 5.) u_ext = sin(2*pi * x) * cos(2*pi * y), Dirichlet-BC on [2,4]
+    (inhomog. dirichlet, inhomog. neumann)
 6.) u_ext = 0.25 + 0.25 * x^2 + 0.5 * y^2, Dirichlet-BC on [1,2,3,4]
+    (inhomog. dirichlet, no neumann)
 7.) u_ext = 0.25 + 0.25 * x^2 + 0.5 * y^2, Dirichlet-BC on [2,4]
+    (inhomog. dirichlet, inhomog. neumann)
 """
 
 import numpy as np
