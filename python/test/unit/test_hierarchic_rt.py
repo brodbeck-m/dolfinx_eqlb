@@ -30,7 +30,7 @@ def evaluate_dofs_hierarchic_rt(tdim, degree, rt_basix, dofs_basix):
 
         # --- Facet contribution
         # evaluate 1D quadrature rule
-        pnt, wts = basix.make_quadrature(CellType.interval, degree + 1)
+        pnt, wts = basix.make_quadrature(CellType.interval, 2 * degree)
 
         for ifct in range(0, 3):
             # map quadrature points of facet of reference cell
@@ -98,7 +98,7 @@ def evaluate_dofs_hierarchic_rt(tdim, degree, rt_basix, dofs_basix):
 '''Test element of the reference cell'''
 
 @pytest.mark.parametrize("cell", [CellType.triangle])
-@pytest.mark.parametrize("degree", [1, 2])
+@pytest.mark.parametrize("degree", [1, 2, 3, 4, 5])
 @pytest.mark.parametrize("in_ref_cell", [True])
 def test_element_reference(cell, degree, in_ref_cell):
     # get topological dimension
