@@ -95,7 +95,7 @@ def evaluate_dofs_hierarchic_rt(tdim, degree, rt_basix, dofs_basix):
     return dofs_custom
 
 
-'''Test element of the reference cell'''
+'''Test interpolation of (reference) cell'''
 
 @pytest.mark.parametrize("cell", [CellType.triangle])
 @pytest.mark.parametrize("degree", [1, 2, 3, 4, 5])
@@ -129,13 +129,6 @@ def test_element_reference(cell, degree, in_ref_cell):
 
     assert np.allclose(pvalues_basix, pvalues_custom)
 
-
-'''Test element of the mapped cell (contavariant Piola))'''
-
-# @pytest.mark.parametrize("cell", [CellType.triangle])
-# @pytest.mark.parametrize("degree", [1, 2])
-# def test_element_contravar_piola(cell, degree):
-#     pass
 
 if __name__ == '__main__':
     import sys
