@@ -112,9 +112,6 @@ public:
 
     // Local facet IDs
     _localid_fct.resize(2 * (_ncells_max + 1));
-
-    // +/- cells of facet
-    _fct_cellpm.resize(2 * (_ncells_max + 1));
   }
 
   /// Initialization
@@ -231,24 +228,6 @@ public:
         // Offset DOFs projected flux on facet
         offs_fdg_fct = 2 * ii * ndof_fluxdg_fct;
         _offset_list_fluxdg[iip1] = 2 * iip1 * ndof_fluxdg_fct;
-
-        // Store +/- cell of facet
-        if (id_cell_plus == 0)
-        {
-          _fct_cellpm[offs_fct] = ii - 1;
-          _fct_cellpm[offs_fct + 1] = ii;
-
-          cell_puls = cell_im1;
-          cell_minus = cell_i;
-        }
-        else
-        {
-          _fct_cellpm[offs_fct] = ii;
-          _fct_cellpm[offs_fct + 1] = ii - 1;
-
-          cell_puls = cell_i;
-          cell_minus = cell_im1;
-        }
       }
       else
       {
@@ -275,24 +254,6 @@ public:
 
           // Offsets cell_(i-1), flux DOFs facet
           offs_f = _offset_dofmap_fct[ii] + _ndof_flux_fct;
-
-          // Set +/- cells on facte
-          if (id_cell_plus == 0)
-          {
-            _fct_cellpm[offs_fct] = ii;
-            _fct_cellpm[offs_fct + 1] = ii + 1;
-
-            cell_puls = cell_im1;
-            cell_minus = cell_i;
-          }
-          else
-          {
-            _fct_cellpm[offs_fct] = ii + 1;
-            _fct_cellpm[offs_fct + 1] = ii;
-
-            cell_puls = cell_i;
-            cell_minus = cell_im1;
-          }
         }
         else
         {
@@ -304,24 +265,6 @@ public:
           offs_f = _offset_dofmap_fct[ii] + _ndof_flux_fct;
           offs_fhdiv_fct = 0;
           offs_fhdiv_cell = 0;
-
-          // Set +/- cells on facte
-          if (id_cell_plus == 0)
-          {
-            _fct_cellpm[offs_fct] = _ncells - 1;
-            _fct_cellpm[offs_fct + 1] = 0;
-
-            cell_puls = cell_im1;
-            cell_minus = cell_i;
-          }
-          else
-          {
-            _fct_cellpm[offs_fct] = 0;
-            _fct_cellpm[offs_fct + 1] = _ncells - 1;
-
-            cell_puls = cell_i;
-            cell_minus = cell_im1;
-          }
         }
       }
 
@@ -372,31 +315,18 @@ public:
         }
 
         /* Get DOFS of projected flux on fct_i */
-        // TODO - Consider facet orientation (evaluation jump operator)
         if (_degree_elmt_fluxdg > 0)
         {
-          // Determin local facet-id of puls/minus cell
-          std::int32_t id_fct_loc_p, id_fct_loc_m;
-          if (id_cell_plus == 0)
-          {
-            id_fct_loc_p = id_fct_loc_cim1;
-            id_fct_loc_m = id_fct_loc_ci;
-          }
-          else
-          {
-            id_fct_loc_p = id_fct_loc_ci;
-            id_fct_loc_m = id_fct_loc_cim1;
-          }
-
           for (std::int8_t jj = 0; jj < _ndof_fluxdg_fct; ++jj)
           {
             // Precalculations
-            int ldof_cell_p = _entity_dofs_fluxcg[_dim_fct][id_fct_loc_p][jj];
-            int ldof_cell_m = _entity_dofs_fluxcg[_dim_fct][id_fct_loc_m][jj];
+            int ldof_cell_i = _entity_dofs_fluxcg[_dim_fct][id_fct_loc_ci][jj];
+            int ldof_cell_im1
+                = _entity_dofs_fluxcg[_dim_fct][id_fct_loc_cim1][jj];
 
             int offs_fdg = offs_fdg_fct + _ndof_fluxdg_fct;
-            _list_fctdofs_fluxdg[offs_fdg_fct] = ldof_cell_p;
-            _list_fctdofs_fluxdg[offs_fdg] = ldof_cell_m;
+            _list_fctdofs_fluxdg[offs_fdg_fct] = ldof_cell_i;
+            _list_fctdofs_fluxdg[offs_fdg] = ldof_cell_im1;
 
             // Increment offset
             offs_fdg_fct += 1;
@@ -436,12 +366,6 @@ public:
       int offs_fct = 2 * _nfcts - 2;
       _localid_fct[offs_fct] = id_fct_loc;
       _localid_fct[offs_fct + 1] = id_fct_loc;
-
-      // Correct storage of +/- cells
-      _fct_cellpm[0] = 0;
-      _fct_cellpm[1] = 0;
-      _fct_cellpm[offs_fct] = _ncells - 1;
-      _fct_cellpm[offs_fct + 1] = _ncells - 1;
 
       // Initialize offsets
       std::int32_t offs_fhdiv_fct = (2 * _ncells - 1) * _ndof_flux_fct;
@@ -581,13 +505,6 @@ public:
     // for (auto id : _localid_fct)
     // {
     //   std::cout << unsigned(id) << " ";
-    // }
-    // std::cout << "\n";
-
-    // std::cout << "cell+-: " << std::endl;
-    // for (auto cell : _fct_cellpm)
-    // {
-    //   std::cout << _cells[cell] << " ";
     // }
     // std::cout << "\n";
   }
@@ -755,16 +672,6 @@ public:
     }
 
     return {_localid_fct[2 * fctim1 + 1], _localid_fct[2 * fcti]};
-  }
-
-  /// Get patach-local id of + and - cell on facet
-  /// @param fct_i Patch-local facet-id
-  /// @return Patch-local cell id of + and - cell
-  std::pair<std::int32_t, std::int32_t> cellpm(int fct_i)
-  {
-    int fcti = fctid_patch_to_data(fct_i);
-
-    return {_fct_cellpm[2 * fcti] + 1, _fct_cellpm[2 * fcti + 1] + 1};
   }
 
   /* Getter functions (DOFmap) */
@@ -954,9 +861,6 @@ protected:
 
   // Local facet IDs (fct_a: [id_fct_Ta, id_fct_Tap1])
   std::vector<std::int8_t> _localid_fct;
-
-  // +/- cells adjacent to fct (patch local ids)
-  std::vector<std::int32_t> _fct_cellpm;
 };
 
 } // namespace dolfinx_adaptivity::equilibration
