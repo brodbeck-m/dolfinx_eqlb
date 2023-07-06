@@ -163,6 +163,11 @@ def create_hierarchic_rt(cell: CellType, degree: int, discontinuous: bool):
         x[tdim][0] = points_cell
         M[tdim][0] = mat
 
+        # set Sobolev space
+        space = SobolevSpace.L2
+    else:
+        space = SobolevSpace.HDiv
+
     return basix.create_custom_element(cell, [tdim], wcoeffs, x, M, n_derivatives, 
-                                       MapType.contravariantPiola, SobolevSpace.HDiv,
+                                       MapType.contravariantPiola, space,
                                        discontinuous, degree - 1, degree)

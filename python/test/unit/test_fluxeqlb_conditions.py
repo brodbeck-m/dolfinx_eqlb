@@ -12,7 +12,7 @@ import ufl
 from dolfinx_eqlb import equilibration
 
 ''' Utility functions '''
-def solve_equilibration(degree, n_elmt=5):
+def solve_equilibration(degree, eqlb_type, n_elmt=5):
     # --- Solve primal problem
     # create mesh
     domain = dmesh.create_rectangle(MPI.COMM_WORLD, [np.array([0, 0]), np.array([2, 2])], [n_elmt, n_elmt],
@@ -62,7 +62,13 @@ def solve_equilibration(degree, n_elmt=5):
 
     # --- Equilibrate flux
     # setup and solve equilibration
-    equilibrator = equilibration.EquilibratorSemiExplt(degree, domain, [f], [sig_proj])
+    if eqlb_type == "EV":
+        equilibrator = equilibration.EquilibratorEV(degree, domain, [f], [sig_proj])
+    elif eqlb_type == "SemiExplt":
+        equilibrator = equilibration.EquilibratorSemiExplt(degree, domain, [f], [sig_proj])
+    else:
+        raise ValueError("Unknown equilibration type")
+    
     equilibrator.set_boundary_conditions([boundary_facets], [[]], [[]])
     equilibrator.equilibrate_fluxes()
 
@@ -70,7 +76,7 @@ def solve_equilibration(degree, n_elmt=5):
     sig_proj_rt = dfem.Function(equilibrator.V_flux)
     sig_proj_rt.interpolate(sig_proj)
 
-    return uh, sig_proj_rt, equilibrator.list_flux[0]
+    return uh, f, sig_proj_rt, equilibrator.list_flux[0]
     
 
 def isoparametric_mapping_triangle(domain, dphi_geom, cell_id):
@@ -83,14 +89,115 @@ def isoparametric_mapping_triangle(domain, dphi_geom, cell_id):
 
     return J_q, detj
 
-''' Test divergence condition: div(sigma) = f '''
 
+def sig_to_drt(sig, degree):
+    # extract mesh
+    domain = sig.function_space.mesh
+
+    # create DRT space
+    P_drt = basix.create_element(basix.ElementFamily.RT, basix.CellType.triangle, 
+                                 degree, basix.LagrangeVariant.equispaced, True)
+    V_drt = dfem.FunctionSpace(domain, basix.ufl_wrapper.BasixElement(P_drt))
+    sig_drt = dfem.Function(V_drt)
+
+    # interpolate sigma to DRT space
+    sig_drt.interpolate(sig)
+
+    return sig_drt
+
+
+def evaluate_fe_functions(shp_fkt, dofs):
+    # initialisation
+    values = np.zeros((shp_fkt.shape[0], shp_fkt.shape[2]))
+
+    # loop over all points
+    for p in range(0, shp_fkt.shape[0]):
+        # loop over all basis functions
+        for i in range(0, shp_fkt.shape[1]):
+            # loop over all dimensions
+            for d in range(0, shp_fkt.shape[2]):
+                values[p, d] += shp_fkt[p, i, d] * dofs[i]
+
+    return values
+
+
+def evalute_div_rt(dphi, detj, dofs):
+    # initialisation
+    values = np.zeros((dphi.shape[1]))
+
+    # loop over all points
+    for p in range(0, dphi.shape[1]):
+        # loop over all basis functions
+        for i in range(0, dphi.shape[2]):
+            values[p] += dphi[0, p, i, 0] * dofs[i] + dphi[1, p, i, 1] * dofs[i]
+
+    return values / detj
+
+''' Test divergence condition: div(sigma) = f '''
+@pytest.mark.parametrize("eqlb_type", ["EV", "SemiExplt"])
+@pytest.mark.parametrize("degree", [1])
+def test_div_condition(degree, eqlb_type):
+    # --- Solve equilibration
+    uh, f_proj, sig_proj_rt, sig_eq = solve_equilibration(degree, eqlb_type, n_elmt=5)
+
+    # calculate reconstructed flux
+    if eqlb_type == "EV":
+        # interpolate sig_eq into DRT space (easy interpolation!)
+        sig_eq_drt = sig_to_drt(sig_eq, degree)
+
+        x_sig_eq = sig_eq_drt.x.array[:]
+        dofmap_sig = sig_eq_drt.function_space.dofmap.list
+    elif eqlb_type == "SemiExplt":
+        x_sig_eq = sig_eq.x.array[:] + sig_proj_rt.x.array[:]
+        dofmap_sig = sig_eq.function_space.dofmap.list
+    else:
+        raise ValueError("Unknown equilibration type")
+
+    # extract relevant data
+    domain = uh.function_space.mesh
+    n_cells = domain.topology.index_map(2).size_local
+
+    dofmap_f = f_proj.function_space.dofmap.list
+
+    # --- Check divergence condition
+    # points for checking divergence condition
+    points = basix.create_lattice(basix.CellType.triangle, degree + 1, 
+                                  basix.LatticeType.equispaced, True)
+
+    # tabulate shape functions of geometry element
+    c_element = basix.create_element(basix.ElementFamily.P, 
+                                     basix.CellType.triangle, 1, 
+                                     basix.LagrangeVariant.gll_warped)
+    dphi_geom = c_element.tabulate(1, np.array([[0, 0]]))[1:2 + 1, 0, :, 0]
+
+    # tabulate shape function derivatives of flux element
+    dphi_sig = sig_eq.function_space.element.basix_element.tabulate(1, points)[1:2 + 1, :, :, :]
+
+    # tabulate shape functions of projected RHS
+    phi_f = f_proj.function_space.element.basix_element.tabulate(1, points)[0, :, :, :]
+
+    # loop over cells
+    for c in range(0, n_cells):
+        # evaluate jacobi matrix
+        J_q, detj = isoparametric_mapping_triangle(domain, dphi_geom, c)
+
+        # extract dofs on current cell
+        dofs_flux = x_sig_eq[dofmap_sig.links(c)]
+        dofs_f = f_proj.x.array[dofmap_f.links(c)]
+
+        # evaluate divergence
+        div_sig = evalute_div_rt(dphi_sig, detj, dofs_flux)
+
+        # evaluate RHS
+        rhs = evaluate_fe_functions(phi_f, dofs_f)
+
+        assert(np.allclose(div_sig, rhs))
 
 ''' Test jump condition on facet-normal fluxes '''
 @pytest.mark.parametrize("degree", [1])
 def test_jump_condition(degree):
     # --- Solve equilibration
-    uh, sig_proj_rt, sig_eq = solve_equilibration(degree, n_elmt=5)
+    uh, f_proj, sig_proj_rt, sig_eq = solve_equilibration(degree, "SemiExplt", n_elmt=5)
 
     # calculate reconstructed flux
     x_sig_rt = sig_proj_rt.x.array[:] + sig_eq.x.array[:]
