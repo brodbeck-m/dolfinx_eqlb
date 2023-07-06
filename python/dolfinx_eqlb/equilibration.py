@@ -2,35 +2,85 @@
 import numpy as np
 import typing
 
-
+import basix
 import dolfinx.fem as dfem
 import dolfinx.mesh as dmesh
 from dolfinx.fem.bcs import DirichletBCMetaClass
 import ufl
 
-from dolfinx_eqlb.cpp import reconstruct_fluxes
+from dolfinx_eqlb.e_raviart_thomas import create_hierarchic_rt
+from dolfinx_eqlb.cpp import reconstruct_fluxes_minimisation, reconstruct_fluxes_semiexplt
 
-# --- Equilibartion of fluxes ---
+# --- Equilibration of fluxes ---
 
-
-class EquilibratorEV():
-    def __init__(self, degree_flux: int, msh: dmesh.Mesh,
-                 list_rhs: typing.List[typing.Any],
-                 list_proj_flux: typing.List[dfem.function.Function]):
+class FluxEquilibrator():
+    def __init__(self, degree_flux: int, n_eqlbs: int):
         # Order of reconstructed flux
         self.degree_flux = degree_flux
 
         # Number of reconstructed fluxes
-        self.n_fluxes = len(list_rhs)
-
-        if (len(list_proj_flux) != self.n_fluxes):
-            raise RuntimeError('Missmatching inputs!')
+        self.n_fluxes = n_eqlbs
 
         # Identification boundary-facets
         self.list_bfct_prime = None
         self.list_bfct_flux = None
 
-        # --- Storage of variational problem (equilibartion) ---
+        # --- Storage of reconstructed fluxes ---
+        # Function space
+        self.V_flux = None
+
+        # Function
+        self.list_flux = []
+        self.list_flux_cpp = []
+
+        # Boundary conditions
+        self.list_bcs_flux = None
+
+    def set_mesh_connectivities(self, msh: dmesh.Mesh):
+        msh.topology.create_connectivity(0, 1)
+        msh.topology.create_connectivity(0, 2)
+        msh.topology.create_connectivity(1, 0)
+        msh.topology.create_connectivity(1, 2)
+        msh.topology.create_connectivity(2, 0)
+        msh.topology.create_connectivity(2, 1)
+
+    def setup_patch_problem(self, msh: dmesh.Mesh, list_rhs: typing.List[typing.Any],
+                            list_proj_flux: typing.List[dfem.function.Function]):
+        raise NotImplementedError
+
+    def update_patch_problem(self, msh: dmesh.Mesh, list_rhs: typing.List[typing.Any],
+                             list_proj_flux: typing.List[dfem.function.Function]):
+        raise NotImplementedError
+
+    def set_boundary_conditions(self, list_bfct_prime: typing.List[np.ndarray] = [],
+                                list_bfct_flux: typing.List[np.ndarray] = [],
+                                list_bcs_flux: typing.List[typing.List[DirichletBCMetaClass]] = [[]]):
+        # Check input data
+        if (self.n_fluxes != len(list_bfct_prime) |
+            self.n_fluxes != len(list_bfct_flux) |
+                self.n_fluxes != len(list_bcs_flux)):
+            raise RuntimeError('Missmatching inputs!')
+
+        # Set inputs
+        self.list_bfct_prime = list_bfct_prime
+        self.list_bfct_flux = list_bfct_flux
+
+        self.list_bcs_flux = list_bcs_flux
+
+    def equilibrate_fluxes(self):
+        raise NotImplementedError
+
+    def get_recontructed_fluxe(self, subproblem: int):
+        raise NotImplementedError
+
+class EquilibratorEV(FluxEquilibrator):
+    def __init__(self, degree_flux: int, msh: dmesh.Mesh,
+                 list_rhs: typing.List[typing.Any],
+                 list_proj_flux: typing.List[dfem.function.Function]):
+        # Constructor of base class
+        super().__init__(degree_flux, len(list_rhs))
+
+        # --- Storage of variational problem (equilibration) ---
         # --- Function spaces
         # Mixed problem
         self.V = None
@@ -38,16 +88,9 @@ class EquilibratorEV():
         # Hat functions
         self.V_hat = None
 
-        # H(div) fluxes
-        self.V_flux = None
-
         # --- Functions
         # Hat function
         self.hat_function = None
-
-        # H(div) fluxes
-        self.list_flux = []
-        self.list_flux_cpp = []
 
         # --- Equation system
         # Bilinear form
@@ -59,20 +102,18 @@ class EquilibratorEV():
         # Linear form
         self.list_form_l = []
 
-        # Boundary conditions
-        self.list_bcs_flux = None
-
         # --- Problem setup ---
+        # Check input
+        if (len(list_proj_flux) != self.n_fluxes):
+            raise RuntimeError('Missmatching inputs!')
+
+        # Call setup routine
         self.setup_patch_problem(msh, list_rhs, list_proj_flux)
 
     def setup_patch_problem(self, msh: dmesh.Mesh, list_rhs: typing.List[typing.Any],
                             list_proj_flux: typing.List[dfem.function.Function]):
         # Initialize connectivities
-        msh.topology.create_connectivity(0, 1)
-        msh.topology.create_connectivity(0, 2)
-        msh.topology.create_connectivity(1, 2)
-        msh.topology.create_connectivity(2, 0)
-        msh.topology.create_connectivity(2, 1)
+        super().set_mesh_connectivities(msh)
 
         # --- Create function-spaces
         # Definition of finite elements
@@ -114,21 +155,63 @@ class EquilibratorEV():
                  ufl.inner(ufl.grad(self.hat_function), -list_proj_flux[ii]) * q) * ufl.dx
             self.list_form_l.append(dfem.form(l))
 
-    def set_boundary_conditions(self, list_bfct_prime: typing.List[np.ndarray] = [],
-                                list_bfct_flux: typing.List[np.ndarray] = [],
-                                list_bcs_flux: typing.List[typing.List[DirichletBCMetaClass]] = [[]]):
-        # Check input data
-        if (self.n_fluxes != len(list_bfct_prime) |
-            self.n_fluxes != len(list_bfct_flux) |
-                self.n_fluxes != len(list_bcs_flux)):
+    def equilibrate_fluxes(self):
+        reconstruct_fluxes_minimisation(self.form_a, self.form_lpen, self.list_form_l, self.list_bfct_prime,
+                                        self.list_bfct_flux, self.list_bcs_flux, self.list_flux_cpp)
+
+    def get_recontructed_fluxe(self, subproblem: int):
+        return self.list_flux[subproblem]
+
+
+class EquilibratorSemiExplt(FluxEquilibrator):
+    def __init__(self, degree_flux: int, msh: dmesh.Mesh,
+                 list_rhs: typing.List[typing.Any],
+                 list_proj_flux: typing.List[dfem.function.Function]):
+        # Constructor of base class
+        super().__init__(degree_flux, len(list_rhs))
+
+        # Store list of projected fluxes and RHS
+        self.list_proj_flux = list_proj_flux
+        self.list_rhs = list_rhs
+
+        self.list_proj_flux_cpp = []
+        self.list_rhs_cpp = []
+
+        # Problem setup
+        if (len(list_proj_flux) != self.n_fluxes):
             raise RuntimeError('Missmatching inputs!')
 
-        # Set inputs
-        self.list_bfct_prime = list_bfct_prime
-        self.list_bfct_flux = list_bfct_flux
+        self.setup_patch_problem(msh, list_rhs, list_proj_flux)
 
-        self.list_bcs_flux = list_bcs_flux
+    def setup_patch_problem(self, msh: dmesh.Mesh, list_rhs: typing.List[typing.Any],
+                            list_proj_flux: typing.List[dfem.function.Function]):
+        # Initialize connectivities
+        super().set_mesh_connectivities(msh)
+
+        # --- Create solution function
+        # Definition of finite elements
+        P_flux = create_hierarchic_rt(basix.CellType.triangle, self.degree_flux, True)
+
+        # Function spaces
+        self.V_flux = dfem.FunctionSpace(msh, basix.ufl_wrapper.BasixElement(P_flux))
+
+        # Create variational problems and H(div) conforming fluxes
+        for ii in range(0, self.n_fluxes):
+            # Create flux-functions
+            flux = dfem.Function(self.V_flux)
+            self.list_flux.append(flux)
+
+            # Add cpp objects to separated list
+            self.list_flux_cpp.append(flux._cpp_object)
+            self.list_proj_flux_cpp.append(list_proj_flux[ii]._cpp_object)
+            self.list_rhs_cpp.append(list_rhs[ii]._cpp_object)
 
     def equilibrate_fluxes(self):
-        reconstruct_fluxes(self.form_a, self.form_lpen, self.list_form_l, self.list_bfct_prime,
-                           self.list_bfct_flux, self.list_bcs_flux, self.list_flux_cpp)
+        reconstruct_fluxes_semiexplt(self.list_flux_cpp, self.list_proj_flux_cpp, 
+                                     self.list_rhs_cpp, self.list_bfct_prime,
+                                     self.list_bfct_flux, self.list_bcs_flux)
+
+    def get_recontructed_fluxe(self, subproblem: int):
+        return self.list_flux[subproblem] + self.list_proj_flux[subproblem]
+
+

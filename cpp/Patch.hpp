@@ -157,7 +157,7 @@ protected:
   /// @return         Cell-local id of fct_i in cell_i,
   /// @return         Cell-local id of fct_i in cell_(i-1),
   /// @return         Next facet on patch
-  std::tuple<std::int8_t, std::int8_t, std::int32_t>
+  std::tuple<std::int8_t, std::int8_t, std::int8_t, std::int32_t>
   fcti_to_celli(int id_l, int c_fct, std::int32_t fct_i, std::int32_t cell_i);
 
   /// Determine local facet-id on cell
@@ -202,7 +202,7 @@ protected:
 
   // The connectivities
   std::shared_ptr<const graph::AdjacencyList<std::int32_t>> _node_to_cell,
-      _node_to_fct, _fct_to_cell, _cell_to_fct, _cell_to_node;
+      _node_to_fct, _fct_to_node, _fct_to_cell, _cell_to_fct, _cell_to_node;
 
   // Dimensions
   const int _dim, _dim_fct;

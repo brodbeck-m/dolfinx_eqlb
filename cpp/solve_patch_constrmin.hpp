@@ -1,11 +1,12 @@
 #pragma once
 
 #include "PatchFluxEV.hpp"
-#include "ProblemDataFlux.hpp"
+#include "ProblemDataFluxEV.hpp"
 #include "StorageStiffness.hpp"
-#include "assembly.hpp"
+#include "assemble_patch_constrmin.hpp"
 #include "eigen3/Eigen/Dense"
 #include "eigen3/Eigen/Sparse"
+
 #include <algorithm>
 #include <cmath>
 #include <dolfinx/fem/DofMap.h>
@@ -59,7 +60,7 @@ void equilibrate_flux_constrmin(
                              const std::span<const std::uint32_t>&,
                              std::int32_t, int)>& dof_transform_to_transpose,
     std::span<const std::uint32_t> cell_info, fem::FEkernel<T> auto kernel_a,
-    fem::FEkernel<T> auto kernel_lpen, ProblemDataFlux<T>& problem_data,
+    fem::FEkernel<T> auto kernel_lpen, ProblemDataFluxEV<T>& problem_data,
     StorageStiffness<T>& storage_stiffness)
 {
   /* Initialize Patch-LGS */
@@ -145,11 +146,11 @@ void equilibrate_flux_constrmin(
       L_patch.setZero();
 
       // Assemble tangents
-      impl::assemble_tangents(
-          A_patch, L_patch, cells, coordinate_dofs, cstride_geom, patch,
-          dof_transform, dof_transform_to_transpose, cell_info, kernel_a,
-          kernel_lpen, kernel_l, constants_l, coefficients_l, cstride_l,
-          bmarkers, bvalues, storage_stiffness, i_lhs);
+      assemble_tangents(A_patch, L_patch, cells, coordinate_dofs, cstride_geom,
+                        patch, dof_transform, dof_transform_to_transpose,
+                        cell_info, kernel_a, kernel_lpen, kernel_l, constants_l,
+                        coefficients_l, cstride_l, bmarkers, bvalues,
+                        storage_stiffness, i_lhs);
 
       // LU-factorization of system matrix
       solver.compute(A_patch);

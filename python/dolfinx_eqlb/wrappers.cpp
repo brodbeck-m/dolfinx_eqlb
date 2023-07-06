@@ -59,7 +59,7 @@ PYBIND11_MODULE(cpp, m)
 
   // Equilibartion of vector-valued quantity
   m.def(
-      "reconstruct_fluxes",
+      "reconstruct_fluxes_minimisation",
       [](const dolfinx::fem::Form<PetscScalar>& a,
          const dolfinx::fem::Form<PetscScalar>& l_pen,
          const std::vector<
@@ -71,14 +71,36 @@ PYBIND11_MODULE(cpp, m)
          std::vector<std::shared_ptr<dolfinx::fem::Function<PetscScalar>>>&
              flux_hdiv)
       {
-        equilibration::reconstruct_fluxes<PetscScalar>(
+        equilibration::reconstruct_fluxes_ev<PetscScalar>(
             a, l_pen, l, fct_esntbound_prime, fct_esntbound_flux, bcs1,
             flux_hdiv);
       },
       py::arg("a"), py::arg("l_pen"), py::arg("l"),
       py::arg("fct_esntbound_prime"), py::arg("fct_esntbound_prime"),
       py::arg("bcs"), py::arg("flux_hdiv"),
-      "Local equilibartion of H(div) conforming fluxes.");
-  //   m.def("reconstruct_flux_patch",
-  //         &equilibration::reconstruct_fluxes<PetscScalar>);
+      "Local equilibration of H(div) conforming fluxes, solving patch-wise "
+      "constrained minimisation problems.");
+
+  m.def(
+      "reconstruct_fluxes_semiexplt",
+      [](std::vector<std::shared_ptr<dolfinx::fem::Function<PetscScalar>>>&
+             flux_hdiv,
+         std::vector<std::shared_ptr<dolfinx::fem::Function<PetscScalar>>>&
+             flux_dg,
+         std::vector<std::shared_ptr<dolfinx::fem::Function<PetscScalar>>>&
+             rhs_dg,
+         const std::vector<std::vector<std::int32_t>>& fct_esntbound_prime,
+         const std::vector<std::vector<std::int32_t>>& fct_esntbound_flux,
+         const std::vector<std::vector<std::shared_ptr<
+             const dolfinx::fem::DirichletBC<PetscScalar>>>>& bcs)
+      {
+        equilibration::reconstruct_fluxes_cstm<PetscScalar>(
+            flux_hdiv, flux_dg, rhs_dg, fct_esntbound_prime, fct_esntbound_flux,
+            bcs);
+      },
+      py::arg("flux_hdiv"), py::arg("flux_dg"), py::arg("rhs_dg"),
+      py::arg("fct_esntbound_prime"), py::arg("fct_esntbound_prime"),
+      py::arg("bcs"),
+      "Local equilibration of H(div) conforming fluxes, solving patch-wise "
+      "constrained minimisation problems within a semi-explicit approach.");
 }

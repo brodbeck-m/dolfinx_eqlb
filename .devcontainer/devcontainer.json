@@ -20,9 +20,13 @@
 		"ms-python.python",
 		"ms-python.vscode-pylance",
 		"ms-vscode.cpptools",
+		"ms-vscode.cpptools-extension-pack",
+		"ms-vscode.cpptools-themes",
 		"twxs.cmake",
 		"vscode.cmake-tools",
 		"gruntfuggly.todo-tree",
+		"streetsidesoftware.code-spell-checker",
+		"streetsidesoftware.code-spell-checker-british-english",
 		"github.copilot"
 	]
 }

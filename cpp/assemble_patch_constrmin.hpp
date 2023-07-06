@@ -1,18 +1,21 @@
 #pragma once
 
+#include "KernelData.hpp"
+#include "PatchFluxCstm.hpp"
 #include "PatchFluxEV.hpp"
-#include "ProblemDataFlux.hpp"
 #include "StorageStiffness.hpp"
 #include "eigen3/Eigen/Dense"
-#include "eigen3/Eigen/Sparse"
-#include <algorithm>
-#include <cmath>
+#include "utils.hpp"
+
 #include <dolfinx/fem/DofMap.h>
 #include <dolfinx/fem/Form.h>
 #include <dolfinx/fem/Function.h>
 #include <dolfinx/fem/assembler.h>
 #include <dolfinx/fem/utils.h>
 #include <dolfinx/graph/AdjacencyList.h>
+
+#include <algorithm>
+#include <cmath>
 #include <functional>
 #include <iostream>
 #include <iterator>
@@ -21,7 +24,7 @@
 
 using namespace dolfinx;
 
-namespace dolfinx_adaptivity::equilibration::impl
+namespace dolfinx_adaptivity::equilibration
 {
 template <typename T>
 void apply_lifting(std::span<T> Ae, std::vector<T>& Le,
@@ -199,7 +202,7 @@ void assemble_tangents(
       }
     }
 
-    // Add penalyt terms
+    // Add penalty terms
     if (type_patch < 2)
     {
       // Required counters
@@ -242,4 +245,4 @@ void assemble_vector(
   throw std::runtime_error("assembly_vector: Not implemented!");
 }
 
-} // namespace dolfinx_adaptivity::equilibration::impl
+} // namespace dolfinx_adaptivity::equilibration
