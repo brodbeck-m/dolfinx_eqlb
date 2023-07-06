@@ -54,19 +54,27 @@ include(GNUInstallDirs)
 
 set(
   HEADERS_EQLB
+  KernelData.hpp
   Patch.hpp
   PatchFluxEV.hpp
+  PatchFluxCstm.hpp
   ProblemData.hpp
-  ProblemDataFlux.hpp
+  ProblemDataFluxEV.hpp
+  ProblemDataFluxCstm.hpp
+  QuadratureRule.hpp
   StorageStiffness.hpp
-  assembly.hpp
+  assemble_patch_constrmin.hpp
+  assemble_patch_semiexplt.hpp
   local_solver.hpp
   reconstruction.hpp
   solve_patch_constrmin.hpp
+  solve_patch_semiexplt.hpp
+  utils.hpp
 )
 
 target_sources(
   dolfinx_eqlb
+  PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/KernelData.cpp
   PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Patch.cpp
   PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/PatchFluxEV.cpp
 )
