@@ -20,13 +20,13 @@ using namespace dolfinx;
 
 namespace dolfinx_adaptivity::equilibration
 {
-template <typename T, int id_flux_order = -1>
+template <typename T, int flux_order = 3>
 class PatchFluxCstm : public Patch
 {
 public:
   /// Initialization
   ///
-  /// Storage is designed for the maximum patch size occuring within
+  /// Storage is designed for the maximum patch size occurring within
   /// the current mesh. (Cell-IDs start at 1, facet-IDs at 0!)
   ///
   /// @param nnodes_proc             Numbe rof nodes on current processor
@@ -68,7 +68,7 @@ public:
     // Number of DOFs (projected flux)
     _ndof_fluxdg = _function_space_fluxdg->element()->space_dimension();
 
-    if constexpr (id_flux_order == 1)
+    if constexpr (flux_order == 1)
     {
       _ndof_fluxdg_fct = 1;
     }
@@ -99,7 +99,7 @@ public:
     _offset_dofmap_cell.resize(_ncells_max + 1, 0);
 
     // DOFs of projected flux on facets
-    if constexpr (id_flux_order == 1)
+    if constexpr (flux_order == 1)
     {
       _list_fctdofs_fluxdg.resize(4 * (_ncells_max + 1), 0);
       _offset_list_fluxdg.resize(_ncells_max + 2, 0);
@@ -165,7 +165,7 @@ public:
     const int ndof_fct = _fct_per_cell * _ndof_flux_fct;
     int ndof_fluxdg_fct;
 
-    if constexpr (id_flux_order == 1)
+    if constexpr (flux_order == 1)
     {
       ndof_fluxdg_fct = _ndof_fluxdg_fct * bs_fluxdg;
     }
@@ -326,7 +326,7 @@ public:
       }
 
       // Extract DOFmaps
-      if constexpr (id_flux_order == 1)
+      if constexpr (flux_order == 1)
       {
         /* Get DOFS of H(div) flux on fct_i */
         // Precalculations
@@ -450,7 +450,7 @@ public:
       _offset_dofmap_fct[_nfcts] = 2 * _nfcts * _ndof_flux_fct;
       _offset_list_fluxdg[_nfcts] = 2 * _nfcts * ndof_fluxdg_fct;
 
-      if constexpr (id_flux_order == 1)
+      if constexpr (flux_order == 1)
       {
         /* Get DOFS of H(div) flux on fct_i */
         // Precalculations

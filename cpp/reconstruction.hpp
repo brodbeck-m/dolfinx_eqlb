@@ -127,7 +127,7 @@ void reconstruct_fluxes_patch(const fem::Form<T>& a, const fem::Form<T>& l_pen,
   }
 }
 
-template <typename T, int id_flux_order = -1>
+template <typename T, int flux_order = 3>
 void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data,
                               graph::AdjacencyList<std::int8_t>& fct_type)
 {
@@ -157,7 +157,7 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data,
       basix_element_fluxdg.lagrange_variant(), is_dg);
 
   /* Execute equilibration */
-  if constexpr (id_flux_order == 1)
+  if constexpr (flux_order == 1)
   {
     // Initialise patch
     PatchFluxCstm<T, 1> patch = PatchFluxCstm<T, 1>(
@@ -192,13 +192,13 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data,
       patch.create_subdofmap(i_node);
 
       // Solve minimisation on current patch
-      minimise_flux(mesh->geometry(), patch, problem_data, kernel_data);
+      minimise_flux<T, 1>(mesh->geometry(), patch, problem_data, kernel_data);
     }
   }
   else
   {
     // Initialise patch
-    PatchFluxCstm<T, 3> patch = PatchFluxCstm<T, 3>(
+    PatchFluxCstm<T, flux_order> patch = PatchFluxCstm<T, flux_order>(
         n_nodes, mesh, fct_type, problem_data.fspace_flux_hdiv(),
         problem_data.fspace_flux_dg(), problem_data.fspace_rhs_dg(),
         basix_element_fluxcg);
@@ -389,10 +389,15 @@ void reconstruct_fluxes_cstm(
     // Perform equilibration
     reconstruct_fluxes_patch<T, 1>(problem_data, fct_type);
   }
-  else
+  else if (order_flux == 2)
   {
     // Perform equilibration
     reconstruct_fluxes_patch<T, 2>(problem_data, fct_type);
+  }
+  else
+  {
+    // Perform equilibration
+    reconstruct_fluxes_patch<T>(problem_data, fct_type);
   }
 }
 

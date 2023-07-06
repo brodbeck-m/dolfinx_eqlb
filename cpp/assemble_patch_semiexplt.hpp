@@ -26,7 +26,7 @@ using namespace dolfinx;
 
 namespace dolfinx_adaptivity::equilibration
 {
-template <typename T, int id_flux_order = -1, bool asmbl_systmtrx = true>
+template <typename T, int flux_order = 3, bool asmbl_systmtrx = true>
 void minimisation_kernel(dolfinx_adaptivity::mdspan2_t Te,
                          KernelData& kernel_data,
                          dolfinx_adaptivity::s_mdspan1_t prefactors_elmt,
@@ -70,7 +70,7 @@ void minimisation_kernel(dolfinx_adaptivity::mdspan2_t Te,
     double alpha = quadrature_weights[iq] * std::fabs(detJ);
 
     // Interpolate sigma_tilde
-    if constexpr (id_flux_order == 1)
+    if constexpr (flux_order == 1)
     {
       sigtilde_q[0] = coefficients[0] * phi(iq, 0, 0)
                       + coefficients[1] * phi(iq, 1, 0)
@@ -107,25 +107,25 @@ void minimisation_kernel(dolfinx_adaptivity::mdspan2_t Te,
 
     // Coefficients d^l_Eam1 and d^l_Ea
     // Interactions with d_0 are also calculated here
-    if constexpr (id_flux_order > 1)
+    if constexpr (flux_order > 1)
     {
       throw std::runtime_error("Minimisation only implemented for RT0");
     }
 
     // Coefficients d^r_Ta
     // Interactions with d_0 and d^l_E are also calculated here
-    if constexpr (id_flux_order > 2)
+    if constexpr (flux_order > 2)
     {
       throw std::runtime_error("Minimisation only implemented for RT0");
     }
   }
 }
 
-template <typename T, int id_flux_order = -1, bool asmbl_systmtrx = true>
+template <typename T, int flux_order = 3, bool asmbl_systmtrx = true>
 void assemble_minimisation(
     Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>& A_patch,
     Eigen::Matrix<T, Eigen::Dynamic, 1>& L_patch,
-    std::span<const std::int32_t> cells, PatchFluxCstm<T, id_flux_order>& patch,
+    std::span<const std::int32_t> cells, PatchFluxCstm<T, flux_order>& patch,
     KernelData& kernel_data, dolfinx_adaptivity::mdspan2_t prefactors_dof,
     std::span<T> coefficients, const int cstride,
     std::span<double> coordinate_dofs, const int type_patch)
@@ -165,12 +165,12 @@ void assemble_minimisation(
 
     // Evaluate linear- and bilinear form
     std::fill(dTe.begin(), dTe.end(), 0);
-    minimisation_kernel<T, id_flux_order, asmbl_systmtrx>(
+    minimisation_kernel<T, flux_order, asmbl_systmtrx>(
         Te, kernel_data, prefactors_elmt, coefficients_elmt, fdofs_fct,
         fdofs_cell, coordinates_elmt);
 
     // Assemble linear- and bilinear form
-    if constexpr (id_flux_order == 1)
+    if constexpr (flux_order == 1)
     {
       // Assemble linar form
       L_patch(0) += Te(1, 0);
@@ -181,7 +181,7 @@ void assemble_minimisation(
         A_patch(0, 0) += Te(0, 0);
       }
     }
-    else if constexpr (id_flux_order == 2)
+    else if constexpr (flux_order == 2)
     {
       throw std::runtime_error("assembly_minimisation: Not implemented!");
     }
