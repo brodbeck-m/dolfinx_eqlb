@@ -8,6 +8,7 @@ import dolfinx.mesh as dmesh
 from dolfinx.fem.bcs import DirichletBCMetaClass
 import ufl
 
+from dolfinx_eqlb.e_raviart_thomas import create_hierarchic_rt
 from dolfinx_eqlb.cpp import reconstruct_fluxes_minimisation, reconstruct_fluxes_semiexplt
 
 # --- Equilibration of fluxes ---
@@ -189,8 +190,7 @@ class EquilibratorSemiExplt(FluxEquilibrator):
 
         # --- Create solution function
         # Definition of finite elements
-        P_flux = basix.create_element(basix.ElementFamily.RT, basix.CellType.triangle, 
-                                     self.degree_flux, basix.LagrangeVariant.equispaced, True)
+        P_flux = create_hierarchic_rt(basix.CellType.triangle, self.degree_flux, True)
 
         # Function spaces
         self.V_flux = dfem.FunctionSpace(msh, basix.ufl_wrapper.BasixElement(P_flux))

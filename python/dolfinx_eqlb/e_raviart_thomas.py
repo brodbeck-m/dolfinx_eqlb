@@ -128,6 +128,41 @@ def create_hierarchic_rt(cell: CellType, degree: int, discontinuous: bool):
     else:
         raise NotImplementedError("Raviart-Thomas on tetrahedra not implemented")
     
+    # make element discontinous
+    if discontinuous:
+        # number of DOFs/ qpoint facet
+        nfct_cell = len(x[tdim - 1])
+        ndofs_fct = degree
+        nqpoints_fct = x[tdim - 1][0].shape[0]
+
+        ndofs_cell = (degree**2) - degree
+        nqpoints_cell = x[tdim][0].shape[0]
+
+        # reinitialize data on cell
+        nqpoints = nfct_cell * nqpoints_fct + nqpoints_cell
+        ndofs = nfct_cell * ndofs_fct + ndofs_cell
+        points_cell = np.zeros((nqpoints, tdim))
+        mat = np.zeros((ndofs, tdim, nqpoints, 1 + n_derivatives * tdim))
+
+        # move data from facets
+        for i in range(0, nfct_cell):
+            # move quadrature points
+            points_cell[i * nqpoints_fct : (i + 1) * nqpoints_fct, :] = x[tdim - 1][i][:, :]
+            x[tdim - 1][i] = np.zeros((0, tdim))
+
+            # move weight factors
+            mat[i * ndofs_fct : (i + 1) * ndofs_fct, :, i * nqpoints_fct : (i + 1) * nqpoints_fct, :] = M[tdim - 1][i][:, :, :, :]
+            M[tdim - 1][i] = np.zeros((0, tdim, 0, 1 + n_derivatives * tdim))
+
+
+        # copy data from cell
+        points_cell[nfct_cell * nqpoints_fct:, :] = x[tdim][0][:, :]
+        mat[nfct_cell * ndofs_fct:, :, nfct_cell * nqpoints_fct: , :] = M[tdim][0][:, :, :, :]
+
+        # reset interpolation operator
+        x[tdim][0] = points_cell
+        M[tdim][0] = mat
+
     return basix.create_custom_element(cell, [tdim], wcoeffs, x, M, n_derivatives, 
                                        MapType.contravariantPiola, SobolevSpace.HDiv,
                                        discontinuous, degree - 1, degree)

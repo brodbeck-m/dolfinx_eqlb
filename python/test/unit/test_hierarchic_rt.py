@@ -99,8 +99,9 @@ def evaluate_dofs_hierarchic_rt(tdim, degree, rt_basix, dofs_basix):
 
 @pytest.mark.parametrize("cell", [CellType.triangle])
 @pytest.mark.parametrize("degree", [1, 2, 3, 4, 5])
+@pytest.mark.parametrize("discontinous", [False, True])
 @pytest.mark.parametrize("in_ref_cell", [True])
-def test_element_reference(cell, degree, in_ref_cell):
+def test_element_reference(cell, degree, discontinous, in_ref_cell):
     # get topological dimension
     if cell == CellType.triangle:
         tdim = 2
@@ -113,7 +114,7 @@ def test_element_reference(cell, degree, in_ref_cell):
     dofs_basix = 2 * (np.random.rand(rt_basix.dim) + 0.1)
 
     # create custom element
-    rt_custom = create_hierarchic_rt(cell, degree, False)
+    rt_custom = create_hierarchic_rt(cell, degree, discontinous)
 
     if in_ref_cell:
         dofs_custom = evaluate_dofs_hierarchic_rt(tdim, degree, rt_basix, dofs_basix)
