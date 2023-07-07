@@ -46,27 +46,60 @@ KernelData::KernelData(std::shared_ptr<const mesh::Mesh> mesh,
 
   _fct_normal_out = basix::cell::facet_orientations(basix_cell);
 
-  // Tabulate shape functions of pice-wise H(div) flux space
+  // Number of quadrature points
   std::size_t n_qpoints_cell = _quadrature_rule->npoints_cell();
+  std::size_t n_qpoints_fct = _quadrature_rule->npoints_fct();
 
-  _flux_basis_shape = basix_element_fluxpw.tabulate_shape(0, n_qpoints_cell);
-  _flux_basis_values = std::vector<double>(
-      std::reduce(_flux_basis_shape.begin(), _flux_basis_shape.end(), 1,
-                  std::multiplies{}));
-  _flux_basis_current_values = std::vector<double>(
-      std::reduce(_flux_basis_shape.begin(), _flux_basis_shape.end(), 1,
-                  std::multiplies{}));
+  // Tabulate shape functions of pice-wise H(div) flux space
+  std::array<std::size_t, 4> flux_basis_shape
+      = basix_element_fluxpw.tabulate_shape(0, n_qpoints_cell);
+
+  _flux_basis_values = std::vector<double>(std::reduce(
+      flux_basis_shape.begin(), flux_basis_shape.end(), 1, std::multiplies{}));
+  _flux_basis_current_values = std::vector<double>(std::reduce(
+      flux_basis_shape.begin(), flux_basis_shape.end(), 1, std::multiplies{}));
 
   basix_element_fluxpw.tabulate(0, _quadrature_rule->points_cell(),
                                 {n_qpoints_cell, _gdim}, _flux_basis_values);
 
   _flux_fullbasis = dolfinx_adaptivity::cmdspan4_t(_flux_basis_values.data(),
-                                                   _flux_basis_shape);
+                                                   flux_basis_shape);
   _flux_fullbasis_current = dolfinx_adaptivity::mdspan4_t(
-      _flux_basis_current_values.data(), _flux_basis_shape);
+      _flux_basis_current_values.data(), flux_basis_shape);
 
   // Tabulate shape functions of right-hand side space
   // (Assumption: Same order for projected flux and RHS)
+  if (basix_element_rhs.degree() > 1)
+  {
+    std::array<std::size_t, 4> rhs_basis_shape_cell
+        = basix_element_rhs.tabulate_shape(1, n_qpoints_cell);
+    std::array<std::size_t, 4> rhs_basis_shape_fct
+        = basix_element_rhs.tabulate_shape(0, n_qpoints_fct);
+
+    _rhs_basis_cell_values = std::vector<double>(
+        std::reduce(rhs_basis_shape_cell.begin(), rhs_basis_shape_cell.end(), 1,
+                    std::multiplies{}));
+    _rhs_basis_current_values = std::vector<double>(
+        std::reduce(rhs_basis_shape_cell.begin(), rhs_basis_shape_cell.end(), 1,
+                    std::multiplies{}));
+
+    _rhs_basis_fct_values = std::vector<double>(
+        std::reduce(rhs_basis_shape_fct.begin(), rhs_basis_shape_fct.end(), 1,
+                    std::multiplies{}));
+
+    basix_element_rhs.tabulate(1, _quadrature_rule->points_cell(),
+                               {n_qpoints_cell, _gdim}, _rhs_basis_cell_values);
+    basix_element_rhs.tabulate(0, _quadrature_rule->points_fct(),
+                               {n_qpoints_fct, _gdim}, _rhs_basis_fct_values);
+
+    _rhs_cell_fullbasis = dolfinx_adaptivity::cmdspan4_t(
+        _rhs_basis_cell_values.data(), rhs_basis_shape_cell);
+    _rhs_fct_fullbasis = dolfinx_adaptivity::cmdspan4_t(
+        _rhs_basis_fct_values.data(), rhs_basis_shape_fct);
+
+    _rhs_fullbasis_current = dolfinx_adaptivity::mdspan4_t(
+        _rhs_basis_current_values.data(), rhs_basis_shape_cell);
+  }
 }
 
 double KernelData::compute_jacobian(dolfinx_adaptivity::mdspan2_t J,

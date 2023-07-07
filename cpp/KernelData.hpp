@@ -106,7 +106,7 @@ public:
 
   /// Extract shape functions (H(div) flux)
   /// Array with indexes i, j and k: phi_j(x_i)[k] is the
-  /// shap-function j at point i within direction k.
+  /// shape-function j at point i within direction k.
   /// @return Array of shape functions (reference cell)
   dolfinx_adaptivity::s_cmdspan3_t shapefunctions_flux() const
   {
@@ -114,27 +114,72 @@ public:
                             stdex::full_extent, stdex::full_extent);
   }
 
-  /// Extract shape functions (H(div) flux)
+  /// Extract mapped shape functions (H(div) flux)
   /// Array with indexes i, j and k: phi_j(x_i)[k] is the
-  /// shap-function j at point i within direction k.
+  /// shape-function j at point i within direction k.
+  /// @param J     The Jacobian
+  /// @param detJ  The determinant of the Jacobian
   /// @return Array of shape functions (current cell)
   dolfinx_adaptivity::s_cmdspan3_t
   shapefunctions_flux(dolfinx_adaptivity::mdspan2_t J, double detJ);
+
+  /// Extract shape functions on cell (RHS, projected flux)
+  /// Array with indexes i, j and k:
+  /// phi_k(x_j) is the shape-function k at point j while k determins
+  /// if function or the derivative is returned.
+  /// @return Array of shape functions (reference cell)
+  dolfinx_adaptivity::cmdspan3_t shapefunctions_cell_rhs() const
+  {
+    return stdex::submdspan(_rhs_cell_fullbasis, stdex::full_extent,
+                            stdex::full_extent, stdex::full_extent, 0);
+  }
+
+  /// Extract mapped shape functions on cell (RHS, projected flux)
+  /// Array with indexes i, j and k:
+  /// phi_k(x_j) is the shape-function k at point j while k determins
+  /// if function or the derivative is returned.
+  /// @param J     The Jacobian
+  /// @param detJ  The determinant of the Jacobian
+  /// @return Array of shape functions (current cell)
+  dolfinx_adaptivity::cmdspan3_t
+  shapefunctions_cell_rhs(dolfinx_adaptivity::mdspan2_t J, double detJ);
+
+  /// Extract shape functions on facet (RHS, projected flux)
+  /// Array with indexes i, j: phi_j(x_i) is the shape-function j
+  /// at point i.
+  /// @return Array of shape functions (current cell)
+  dolfinx_adaptivity::cmdspan2_t shapefunctions_fct_rhs(int fct_id)
+  {
+    // Offset of shpfkt for current facet
+    const int nqpoints = _quadrature_rule->npoints_per_fct();
+    const int obgn = fct_id * nqpoints;
+    const int oend = obgn + nqpoints + 1;
+
+    return stdex::submdspan(_rhs_fct_fullbasis, 0,
+                            std::pair{obgn, (std::size_t)oend},
+                            stdex::full_extent, 0);
+  }
 
   /* Getter functions (Quadrature) */
 
   /// Extract quadrature weights on cell
   /// @return The quadrature weights
-  const std::vector<double>& quadrature_weights_cell() const
+  std::span<const double> quadrature_weights_cell() const
   {
     return _quadrature_rule->weights_cell();
   }
 
   /// Extract quadrature weights on facet
+  /// @param fct_id The cell-local facet id
   /// @return The quadrature weights
-  const std::vector<double>& quadrature_weights_facet() const
+  std::span<const double> quadrature_weights_facet(int fct_id)
   {
-    return _quadrature_rule->weights_fct();
+    // Offset of weights for current facet
+    const int nqpoints = _quadrature_rule->npoints_per_fct();
+    const int offset = fct_id * nqpoints;
+
+    return std::span<const double>(
+        _quadrature_rule->weights_fct().data() + offset, nqpoints);
   }
 
 protected:
@@ -160,18 +205,15 @@ protected:
   std::vector<double> _g_basis_values;
 
   // Tabulated shape-functions (pice-wise H(div) flux)
-  std::array<std::size_t, 4> _flux_basis_shape;
   std::vector<double> _flux_basis_values, _flux_basis_current_values;
   dolfinx_adaptivity::cmdspan4_t _flux_fullbasis;
   dolfinx_adaptivity::mdspan4_t _flux_fullbasis_current;
 
-  // Tabulated shape-functions (projected flux)
-  std::array<std::size_t, 4> _fluxproj_basis_shape;
-  std::vector<double> _fluxproj_basis_values;
-
-  // Tabulated shape-functions (projected RHS)
-  std::array<std::size_t, 4> _rhsproj_basis_shape;
-  std::vector<double> _rhsproj_basis_values;
+  // Tabulated shape-functions (projected flux, RHS)
+  std::vector<double> _rhs_basis_cell_values, _rhs_basis_fct_values,
+      _rhs_basis_current_values;
+  dolfinx_adaptivity::cmdspan4_t _rhs_cell_fullbasis, _rhs_fct_fullbasis;
+  dolfinx_adaptivity::mdspan4_t _rhs_fullbasis_current;
 };
 
 } // namespace dolfinx_adaptivity::equilibration

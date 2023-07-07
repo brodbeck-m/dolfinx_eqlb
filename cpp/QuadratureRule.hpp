@@ -61,7 +61,7 @@ public:
                                              degree);
 
     // Set number of quadrature points
-    _npoints_fct = qrule_fct[1].size();
+    _npoints_per_fct = qrule_fct[1].size();
 
     // Extract quadrature points/ weights
     const std::vector<double>& q_points = qrule_fct.front();
@@ -70,9 +70,12 @@ public:
     // Map facet quadrature points to reference cell
     if (b_cell_type == basix::cell::type::triangle)
     {
+      // Overall number of quadrature points on facets
+      _npoints_fct = _npoints_per_fct * 3;
+
       // Initialise storage
-      _points_fct.resize(_npoints_fct * 6);
-      _weights_fct.resize(_npoints_fct * 3);
+      _points_fct.resize(_npoints_fct * 2);
+      _weights_fct.resize(_npoints_fct);
 
       // Set reference direction
       std::array<double, 2> ref_dir = {0.0, 0.0};
@@ -82,7 +85,7 @@ public:
       for (std::size_t f = 0; f < 3; ++f)
       {
         // Set offset for storage
-        int offset = f * _npoints_fct;
+        int offset = f * _npoints_per_fct;
 
         // Set transformation informations
         if (f == 0)
@@ -112,7 +115,7 @@ public:
             = std::sqrt(ref_dir[0] * ref_dir[0] + ref_dir[1] * ref_dir[1]);
 
         // Loop over all quadrature points
-        for (std::size_t i = 0; i < _npoints_fct; ++i)
+        for (std::size_t i = 0; i < _npoints_per_fct; ++i)
         {
           // Map quadrature points to reference cell
           int id = 2 * offset + i;
@@ -142,9 +145,13 @@ public:
   /// @return The number of quadrature points
   std::size_t npoints_cell() const { return _npoints_cell; }
 
-  /// Return the number of quadrature points on facet
-  /// @return The number of quadrature points
+  /// Return the number of quadrature points on all facet
+  /// @return The overall number of quadrature points
   std::size_t npoints_fct() const { return _npoints_fct; }
+
+  /// Return the number of quadrature points on one facet
+  /// @return The number of quadrature points
+  std::size_t npoints_per_fct() const { return _npoints_per_fct; }
 
   /// Return the quadrature points (flattend structure) for cell integrals
   /// @return The quadrature points
@@ -181,7 +188,7 @@ private:
   std::vector<double> _points_cell, _weights_cell;
 
   // Quadrature points ans weights (facet)
-  std::size_t _npoints_fct;
+  std::size_t _npoints_per_fct, _npoints_fct;
   std::vector<double> _points_fct, _weights_fct;
 };
 } // namespace dolfinx_adaptivity::equilibration
