@@ -55,7 +55,7 @@ public:
     basix::cell::type b_fct_type
         = basix::cell::sub_entity_type(b_cell_type, _dim_fct, 0);
 
-    // Calculate quadrature points and weights
+    // Calculate quadrature points and weights (_dim -1)
     std::array<std::vector<double>, 2> qrule_fct
         = basix::quadrature::make_quadrature(quadrature_type, b_fct_type,
                                              degree);
@@ -64,8 +64,71 @@ public:
     _npoints_fct = qrule_fct[1].size();
 
     // Extract quadrature points/ weights
-    _points_fct = qrule_fct.front();
-    _weights_fct = qrule_fct.back();
+    const std::vector<double>& q_points = qrule_fct.front();
+    const std::vector<double>& q_weights = qrule_fct.back();
+
+    // Map facet quadrature points to reference cell
+    if (b_cell_type == basix::cell::type::triangle)
+    {
+      // Initialise storage
+      _points_fct.resize(_npoints_fct * 6);
+      _weights_fct.resize(_npoints_fct * 3);
+
+      // Set reference direction
+      std::array<double, 2> ref_dir = {0.0, 0.0};
+      std::array<double, 2> ref_pos = {0.0, 0.0};
+
+      // Loop over all facets
+      for (std::size_t f = 0; f < 3; ++f)
+      {
+        // Set offset for storage
+        int offset = f * _npoints_fct;
+
+        // Set transformation informations
+        if (f == 0)
+        {
+          ref_dir[0] = -1.0;
+          ref_dir[1] = 1.0;
+          ref_pos[0] = 1.0;
+          ref_pos[1] = 0.0;
+        }
+        else if (f == 1)
+        {
+          ref_dir[0] = 0.0;
+          ref_dir[1] = 1.0;
+          ref_pos[0] = 0.0;
+          ref_pos[1] = 0.0;
+        }
+        else if (f == 2)
+        {
+          ref_dir[0] = 1.0;
+          ref_dir[1] = 0.0;
+          ref_pos[0] = 0.0;
+          ref_pos[1] = 0.0;
+        }
+
+        // Length of facet
+        double length_fct
+            = std::sqrt(ref_dir[0] * ref_dir[0] + ref_dir[1] * ref_dir[1]);
+
+        // Loop over all quadrature points
+        for (std::size_t i = 0; i < _npoints_fct; ++i)
+        {
+          // Map quadrature points to reference cell
+          int id = 2 * offset + i;
+          _points_fct[id] = ref_pos[0] + ref_dir[0] * q_points[i];
+          _points_fct[id + 1] = ref_pos[1] + ref_dir[1] * q_points[i];
+
+          // Set quadrature weights
+          _weights_fct[offset] = q_weights[i] * length_fct;
+        }
+      }
+    }
+    else
+    {
+      throw std::runtime_error(
+          "Semi-explicit equilibration only supported on triangles");
+    }
   }
 
   /* Setter functions */
