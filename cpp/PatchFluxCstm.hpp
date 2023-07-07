@@ -20,7 +20,7 @@ using namespace dolfinx;
 
 namespace dolfinx_adaptivity::equilibration
 {
-template <typename T, int flux_order = 3>
+template <typename T, int id_flux_order = 3>
 class PatchFluxCstm : public Patch
 {
 public:
@@ -34,14 +34,14 @@ public:
   /// @param bfct_type               List with type of all boundary facets
   /// @param function_space_fluxhdiv Function space of H(div) flux
   /// @param function_space_fluxdg   Function space of projected flux
-  /// @param function_space_rhsdg    Function space of projected RHS
   /// @param basix_element_fluxdg    BasiX element of projected flux
+  ///                                (continuous version for required
+  ///                                entity_closure_dofs)
   PatchFluxCstm(
       int nnodes_proc, std::shared_ptr<const mesh::Mesh> mesh,
       graph::AdjacencyList<std::int8_t>& bfct_type,
       const std::shared_ptr<const fem::FunctionSpace> function_space_fluxhdiv,
       const std::shared_ptr<const fem::FunctionSpace> function_space_fluxdg,
-      const std::shared_ptr<const fem::FunctionSpace> function_space_rhsdg,
       const basix::FiniteElement& basix_element_fluxdg)
       : Patch(nnodes_proc, mesh, bfct_type),
         _degree_elmt_fluxhdiv(
@@ -49,10 +49,9 @@ public:
         _degree_elmt_fluxdg(basix_element_fluxdg.degree()),
         _function_space_fluxhdiv(function_space_fluxhdiv),
         _function_space_fluxdg(function_space_fluxdg),
-        _function_space_rhsdg(function_space_rhsdg),
         _entity_dofs_fluxcg(basix_element_fluxdg.entity_closure_dofs())
   {
-    assert(flux_order < 0);
+    assert(id_flux_order < 0);
 
     /* Counter DOFs */
     // Number of DOFs (H(div) flux)
@@ -68,7 +67,7 @@ public:
     // Number of DOFs (projected flux)
     _ndof_fluxdg = _function_space_fluxdg->element()->space_dimension();
 
-    if constexpr (flux_order == 1)
+    if constexpr (id_flux_order == 1)
     {
       _ndof_fluxdg_fct = 1;
     }
@@ -99,7 +98,7 @@ public:
     _offset_dofmap_cell.resize(_ncells_max + 1, 0);
 
     // DOFs of projected flux on facets
-    if constexpr (flux_order == 1)
+    if constexpr (id_flux_order == 1)
     {
       _list_fctdofs_fluxdg.resize(4 * (_ncells_max + 1), 0);
       _offset_list_fluxdg.resize(_ncells_max + 2, 0);
@@ -112,29 +111,6 @@ public:
 
     // Local facet IDs
     _localid_fct.resize(2 * (_ncells_max + 1));
-  }
-
-  /// Initialization
-  ///
-  /// Storage is designed for the maximum patch size occuring within
-  /// the current mesh.
-  ///
-  /// @param nnodes_proc             Numbe rof nodes on current processor
-  /// @param mesh                    The current mesh
-  /// @param bfct_type               List with type of all boundary facets
-  /// @param function_space_fluxhdiv Function space of H(div) flux
-  /// @param function_space_fluxdg   Function space of projected flux
-  /// @param basix_element_fluxhdiv  BasiX element of H(div) flux
-  /// @param basix_element_fluxdg    BasiX element of projected flux (cg!)
-  PatchFluxCstm(
-      int nnodes_proc, std::shared_ptr<const mesh::Mesh> mesh,
-      graph::AdjacencyList<std::int8_t>& bfct_type,
-      std::shared_ptr<const fem::FunctionSpace> function_space_fluxhdiv,
-      std::shared_ptr<const fem::FunctionSpace> function_space_fluxdg,
-      const basix::FiniteElement& basix_element_fluxdg)
-      : PatchFluxCstm(nnodes_proc, mesh, bfct_type, function_space_fluxhdiv,
-                      function_space_fluxdg, nullptr, basix_element_fluxdg)
-  {
   }
 
   /// Construction of a sub-DOFmap on each patch
@@ -162,7 +138,7 @@ public:
     const int ndof_fct = _fct_per_cell * _ndof_flux_fct;
     int ndof_fluxdg_fct;
 
-    if constexpr (flux_order == 1)
+    if constexpr (id_flux_order == 1)
     {
       ndof_fluxdg_fct = _ndof_fluxdg_fct * bs_fluxdg;
     }
@@ -269,7 +245,7 @@ public:
       }
 
       // Extract DOFmaps
-      if constexpr (flux_order == 1)
+      if constexpr (id_flux_order == 1)
       {
         /* Get DOFS of H(div) flux on fct_i */
         // Precalculations
@@ -374,7 +350,7 @@ public:
       _offset_dofmap_fct[_nfcts] = 2 * _nfcts * _ndof_flux_fct;
       _offset_list_fluxdg[_nfcts] = 2 * _nfcts * ndof_fluxdg_fct;
 
-      if constexpr (flux_order == 1)
+      if constexpr (id_flux_order == 1)
       {
         /* Get DOFS of H(div) flux on fct_i */
         // Precalculations
@@ -840,7 +816,7 @@ protected:
 
   // The function space
   std::shared_ptr<const fem::FunctionSpace> _function_space_fluxhdiv,
-      _function_space_fluxdg, _function_space_rhsdg;
+      _function_space_fluxdg;
 
   // Connectivity between entities and cell local DOFs
   const std::vector<std::vector<std::vector<int>>>& _entity_dofs_fluxcg;

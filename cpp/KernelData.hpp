@@ -28,31 +28,18 @@ namespace dolfinx_adaptivity::equilibration
 class KernelData
 {
 public:
-  /// Kenel data basic constructor
+  /// Kernel data basic constructor
   ///
-  /// Generates data required for isoparametric mapping between refernce and
+  /// Generates data required for isoparametric mapping between reference and
   /// actual element and tabulates flux element.
   ///
-  /// @param mesh  The mesh
-  /// @param qrule The quadrature rule
-  KernelData(std::shared_ptr<const mesh::Mesh> mesh,
-             std::shared_ptr<const QuadratureRule> qrule,
-             const basix::FiniteElement& basix_element_fluxpw);
-
-  /// Kenel data constructor
-  ///
-  /// Generates data required for isoparametric mapping between refernce and
-  /// actual element and tabulates flux element, projected fluxes and projected
-  /// RHS.
-  ///
-  /// @param mesh             The mesh
-  /// @param qrule            The quadrature rule
-  /// @param degree_flux_proj The element degree of the projected flux
-  /// @param degree_rhs_proj  The element degree of the projected RHS
+  /// @param mesh                 The mesh
+  /// @param basix_element_fluxpw The basix-element for the H(div) flux
+  /// @param basix_element_rhs    The basix-element for RHS and projected flux
   KernelData(std::shared_ptr<const mesh::Mesh> mesh,
              std::shared_ptr<const QuadratureRule> qrule,
              const basix::FiniteElement& basix_element_fluxpw,
-             int degree_flux_proj, int degree_rhs_proj);
+             const basix::FiniteElement& basix_element_rhs);
 
   /// Compute isogeometric mapping for a given cell
   /// @param J            The Jacobian

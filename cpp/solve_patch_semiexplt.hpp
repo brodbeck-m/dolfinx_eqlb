@@ -133,13 +133,13 @@ void set_dof_prefactors(int a, bool noutward_eam1, bool noutward_ea,
   prefactor_dof[index + 1] = (noutward_ea) ? sgn_detj : -sgn_detj;
 }
 
-template <typename T, int flux_order = 3>
+template <typename T, int id_flux_order = 3>
 void calc_fluxtilde_explt(const mesh::Geometry& geometry,
-                          PatchFluxCstm<T, flux_order>& patch,
+                          PatchFluxCstm<T, id_flux_order>& patch,
                           ProblemDataFluxCstm<T>& problem_data,
                           KernelData& kernel_data)
 {
-  assert(flux_order < 0);
+  assert(id_flux_order < 0);
 
   /* Geometry data */
   const int dim = 2;
@@ -368,13 +368,13 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
   }
 }
 
-template <typename T, int flux_order = 3>
+template <typename T, int id_flux_order = 3>
 void minimise_flux(const mesh::Geometry& geometry,
-                   PatchFluxCstm<T, flux_order>& patch,
+                   PatchFluxCstm<T, id_flux_order>& patch,
                    ProblemDataFluxCstm<T>& problem_data,
                    KernelData& kernel_data)
 {
-  assert(flux_order < 0);
+  assert(id_flux_order < 0);
 
   /* Geometry data */
   const int dim = 2;
@@ -470,12 +470,12 @@ void minimise_flux(const mesh::Geometry& geometry,
       L_patch.setZero();
 
       // Assemble tangents
-      assemble_minimisation<T, flux_order, true>(
+      assemble_minimisation<T, id_flux_order, true>(
           A_patch, L_patch, cells, patch, kernel_data, prefactor_dof,
           coefficients, ndofs_flux, coordinate_dofs, type_patch);
 
       // LU-factorization of system matrix
-      if constexpr (flux_order > 1)
+      if constexpr (id_flux_order > 1)
       {
         solver.compute(A_patch);
       }
@@ -495,7 +495,7 @@ void minimise_flux(const mesh::Geometry& geometry,
     }
 
     // Solve system
-    if constexpr (flux_order == 1)
+    if constexpr (id_flux_order == 1)
     {
       u_patch(0) = L_patch(0) / A_patch(0, 0);
     }
@@ -516,13 +516,13 @@ void minimise_flux(const mesh::Geometry& geometry,
       x_flux_dhdiv[gdofs_flux[1]] -= prefactor_dof(id_a, 1) * u_patch(0);
 
       // Set d_E
-      if constexpr (flux_order > 1)
+      if constexpr (id_flux_order > 1)
       {
         throw std::runtime_error("Not Implemented!");
       }
 
       // Set d_T
-      if constexpr (flux_order > 2)
+      if constexpr (id_flux_order > 2)
       {
         throw std::runtime_error("Not Implemented!");
       }

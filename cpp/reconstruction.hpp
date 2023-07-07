@@ -127,11 +127,11 @@ void reconstruct_fluxes_patch(const fem::Form<T>& a, const fem::Form<T>& l_pen,
   }
 }
 
-template <typename T, int flux_order = 3>
+template <typename T, int id_flux_order = 3>
 void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data,
                               graph::AdjacencyList<std::int8_t>& fct_type)
 {
-  assert(flux_order < 0);
+  assert(id_flux_order < 0);
 
   /* Geometry */
   // Extract mesh
@@ -147,70 +147,58 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data,
   // Number of elements on processor
   int n_cells = mesh->topology().index_map(dim)->size_local();
 
-  // BasiX element CG-element (same order as projected flux)
-  const basix::FiniteElement& basix_element_fluxdg
-      = problem_data.fspace_flux_dg()->element()->basix_element();
-  bool is_dg = (basix_element_fluxdg.degree() == 0) ? true : false;
+  /* Basix elements */
+  // Basix element of pice-wise H(div) flux
+  const basix::FiniteElement& basix_element_fluxhdiv
+      = problem_data.fspace_flux_hdiv()->element()->basix_element();
 
-  basix::FiniteElement basix_element_fluxcg = basix::element::create_lagrange(
-      basix_element_fluxdg.cell_type(), basix_element_fluxdg.degree(),
-      basix_element_fluxdg.lagrange_variant(), is_dg);
+  // Basix element of projected flux/ RHS
+  const basix::FiniteElement& basix_element_rhs
+      = problem_data.fspace_flux_dg()->element()->basix_element();
+  bool is_dg = (basix_element_rhs.degree() == 0) ? true : false;
+
+  basix::FiniteElement basix_element_rhscg = basix::element::create_lagrange(
+      basix_element_rhs.cell_type(), basix_element_rhs.degree(),
+      basix_element_rhs.lagrange_variant(), is_dg);
 
   /* Execute equilibration */
-  if constexpr (flux_order == 1)
+  // Initialise patch
+  PatchFluxCstm<T, id_flux_order> patch = PatchFluxCstm<T, id_flux_order>(
+      n_nodes, mesh, fct_type, problem_data.fspace_flux_hdiv(),
+      problem_data.fspace_flux_dg(), basix_element_rhscg);
+
+  // Set quadrature rule
+  const int degree_flux = basix_element_fluxhdiv.degree();
+  const int quadrature_degree = (degree_flux == 1) ? 2 : 2 * degree_flux + 1;
+
+  QuadratureRule quadrature_rule
+      = QuadratureRule(mesh->topology().cell_type(), quadrature_degree);
+
+  // Initialize KernelData
+  KernelData kernel_data
+      = KernelData(mesh, std::make_shared<QuadratureRule>(quadrature_rule),
+                   basix_element_fluxhdiv, basix_element_rhs);
+
+  // Step 1: Explicite calculation of sigma_tilde
+  for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
   {
-    // Initialise patch
-    PatchFluxCstm<T, 1> patch = PatchFluxCstm<T, 1>(
-        n_nodes, mesh, fct_type, problem_data.fspace_flux_hdiv(),
-        problem_data.fspace_flux_dg(), basix_element_fluxcg);
+    // Create Sub-DOFmap
+    patch.create_subdofmap(i_node);
 
-    // Set quadrature rule
-    // Use quadrature_degree = 2 as phi_i*phi_j has to be integrated exactly
-    QuadratureRule quadrature_rule
-        = QuadratureRule(mesh->topology().cell_type(), 2);
-
-    // Initialize KernelData
-    KernelData kernel_data = KernelData(
-        mesh, std::make_shared<QuadratureRule>(quadrature_rule),
-        problem_data.fspace_flux_hdiv()->element()->basix_element());
-
-    // Step 1: Explicite calculation of sigma_tilde
-    for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
-    {
-      // Create Sub-DOFmap
-      patch.create_subdofmap(i_node);
-
-      // Calculate coefficients per patch
-      calc_fluxtilde_explt<T, 1>(mesh->geometry(), patch, problem_data,
-                                 kernel_data);
-    }
-
-    // Step 2 : Minimise reconstructed flux
-    for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
-    {
-      // Create Sub-DOFmap
-      patch.create_subdofmap(i_node);
-
-      // Solve minimisation on current patch
-      minimise_flux<T, 1>(mesh->geometry(), patch, problem_data, kernel_data);
-    }
+    // Calculate coefficients per patch
+    calc_fluxtilde_explt<T, id_flux_order>(mesh->geometry(), patch,
+                                           problem_data, kernel_data);
   }
-  else
+
+  // Step 2 : Minimise reconstructed flux
+  for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
   {
-    // Initialise patch
-    PatchFluxCstm<T, flux_order> patch = PatchFluxCstm<T, flux_order>(
-        n_nodes, mesh, fct_type, problem_data.fspace_flux_hdiv(),
-        problem_data.fspace_flux_dg(), problem_data.fspace_rhs_dg(),
-        basix_element_fluxcg);
+    // Create Sub-DOFmap
+    patch.create_subdofmap(i_node);
 
-    // Initialise coefficients
-
-    // Run equilibration
-    for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
-    {
-      // Create Sub-DOFmap
-      patch.create_subdofmap(i_node);
-    }
+    // Solve minimisation on current patch
+    minimise_flux<T, id_flux_order>(mesh->geometry(), patch, problem_data,
+                                    kernel_data);
   }
 }
 
