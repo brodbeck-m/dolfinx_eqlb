@@ -133,6 +133,36 @@ void set_dof_prefactors(int a, bool noutward_eam1, bool noutward_ea,
   prefactor_dof[index + 1] = (noutward_ea) ? sgn_detj : -sgn_detj;
 }
 
+void store_mapping_data(const int cell_id, std::span<double> storage_J,
+                        std::span<double> storage_K,
+                        dolfinx_adaptivity::mdspan2_t J,
+                        dolfinx_adaptivity::mdspan2_t K)
+{
+  // Set offset
+  const int offset = 4 * cell_id;
+
+  // Store J
+  storage_J[offset] = J(0, 0);
+  storage_J[offset + 1] = J(0, 1);
+  storage_J[offset + 2] = J(1, 0);
+  storage_J[offset + 3] = J(1, 1);
+
+  // Store K
+  storage_K[offset] = K(0, 0);
+  storage_K[offset + 1] = K(0, 1);
+  storage_K[offset + 2] = K(1, 0);
+  storage_K[offset + 3] = K(1, 1);
+}
+
+dolfinx_adaptivity::cmdspan2_t extract_mapping_data(const int cell_id,
+                                                    std::span<double> storage)
+{
+  // Set offset
+  const int offset = 4 * cell_id;
+
+  return dolfinx_adaptivity::cmdspan2_t(storage.data() + offset, 2, 2);
+}
+
 template <typename T, int id_flux_order = 3>
 void calc_fluxtilde_explt(const mesh::Geometry& geometry,
                           PatchFluxCstm<T, id_flux_order>& patch,
@@ -161,8 +191,20 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
   std::array<double, 9> Kb;
   dolfinx_adaptivity::mdspan2_t K(Kb.data(), 2, 2);
   std::array<double, 18> detJ_scratch;
+
   std::vector<double> storage_detJ(ncells, 0);
   std::vector<double> storage_detJf(ncells + 1, 0);
+  std::vector<double> storage_J, storage_K;
+
+  // Initialise storage for J and K
+  // (not required for lowest order case)
+  if constexpr (id_flux_order > 1)
+  {
+    storage_J.resize(ncells * 4);
+    storage_K.resize(ncells * 4);
+
+    std::cout << "Initialise storage for J and K" << std::endl;
+  }
 
   // Physical normal
   std::vector<double> storage_normal_phys((ncells + 1) * dim, 0);
@@ -173,7 +215,8 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
   // DOFs flux (cell-wise H(div))
   T c_ta_ea, c_ta_eam1, c_tam1_eam1;
 
-  // Storage cell geometries/ normal orientation
+  /* Storage cell geometries/ normal orientation */
+  // Initialisations
   const int cstride_geom = 3 * nnodes_cell;
   std::vector<double> coordinate_dofs(ncells * cstride_geom, 0);
 
@@ -182,7 +225,7 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
   std::vector<double> dprefactor_dof(ncells * 2, 1.0);
   dolfinx_adaptivity::mdspan2_t prefactor_dof(dprefactor_dof.data(), ncells, 2);
 
-  bool eval_normal_am1 = false;
+  // Evaluate quantities on all cells
   for (std::size_t index = 0; index < ncells; ++index)
   {
     // Index using patch nomenclature
@@ -205,6 +248,12 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
     // Calculate Jacobi, inverse, and determinant
     storage_detJ[index]
         = kernel_data.compute_jacobian(J, K, detJ_scratch, coords);
+
+    // Storage of Jacobian and its inverse
+    if (id_flux_order > 1)
+    {
+      store_mapping_data(index, storage_J, storage_K, J, K);
+    }
 
     // Calculate determinant of facet jacobian
     if (a == 1 && patch.type(0) > 0)
@@ -271,6 +320,7 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
     }
   }
 
+  /* Evaluate DOFs of sigma_tilde (for each flux separately) */
   for (std::size_t i_rhs = 0; i_rhs < problem_data.nlhs(); ++i_rhs)
   {
     /* Extract data */
@@ -294,21 +344,30 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
     {
       loop_end = ncells + 1;
 
-      // Isoparametric mappring for cell
-      const double detJ = std::fabs(storage_detJ[0]);
+      if constexpr (id_flux_order == 1)
+      {
+        // Isoparametric mapping for cell
+        const double detJ = std::fabs(storage_detJ[0]);
 
-      // Extract RHS value on current cell
-      T f_i = x_rhs_proj[cells[0]];
+        // Extract RHS value on current cell
+        T f_i = x_rhs_proj[cells[0]];
 
-      // Set DOFs for cell 1
-      c_ta_ea = f_i * detJ / 6;
+        // Set DOFs for cell 1
+        c_ta_ea = f_i * detJ / 6;
 
-      // Store coefficients and set history values
-      std::span<const std::int32_t> gdofs_flux = patch.dofs_flux_fct_global(1);
-
-      x_flux_dhdiv[gdofs_flux[1]] += prefactor_dof(0, 1) * c_ta_ea;
+        // Store coefficients and set history values
+        std::span<const std::int32_t> gdofs_flux
+            = patch.dofs_flux_fct_global(1);
+        x_flux_dhdiv[gdofs_flux[1]] += prefactor_dof(0, 1) * c_ta_ea;
+      }
+      else
+      {
+        throw std::runtime_error(
+            "Equilibration: Higher order fluxes not supported!");
+      }
 
       c_tam1_eam1 = c_ta_ea;
+      throw std::runtime_error("End Debug");
     }
     else if (type_patch == 1)
     {
@@ -337,31 +396,40 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
       std::span<double> normal_phys(storage_normal_phys.data() + id_a * dim,
                                     dim);
 
-      // Extract RHS value
-      T f_i = x_rhs_proj[c];
+      if constexpr (id_flux_order == 1)
+      {
+        // Extract RHS value
+        T f_i = x_rhs_proj[c];
 
-      // Extract gradients (+/- side) on facet E_am1
-      std::span<const std::int32_t> dofs_projflux_fct
-          = patch.dofs_projflux_fct(a - 1);
+        // Extract gradients (+/- side) on facet E_am1
+        std::span<const std::int32_t> dofs_projflux_fct
+            = patch.dofs_projflux_fct(a - 1);
 
-      jump_proj_flux[0] = x_flux_proj[dofs_projflux_fct[0]]
-                          - x_flux_proj[dofs_projflux_fct[2]];
-      jump_proj_flux[1] = x_flux_proj[dofs_projflux_fct[1]]
-                          - x_flux_proj[dofs_projflux_fct[3]];
+        jump_proj_flux[0] = x_flux_proj[dofs_projflux_fct[0]]
+                            - x_flux_proj[dofs_projflux_fct[2]];
+        jump_proj_flux[1] = x_flux_proj[dofs_projflux_fct[1]]
+                            - x_flux_proj[dofs_projflux_fct[3]];
 
-      double jump_i = jump_proj_flux[0] * normal_phys[0]
-                      + jump_proj_flux[1] * normal_phys[1];
+        double jump_i = jump_proj_flux[0] * normal_phys[0]
+                        + jump_proj_flux[1] * normal_phys[1];
 
-      // Set DOFs for cell
-      // Positive jump as it is calculated with n_(Ta,Ea)=-n_(Tap1,Ea)!
-      c_ta_eam1 = jump_i * 0.5 * detJ_Eam1 - c_tam1_eam1;
-      c_ta_ea = f_i * (detJ / 6) - c_ta_eam1;
+        // Set DOFs for cell
+        // Positive jump as it is calculated with n_(Ta,Ea)=-n_(Tap1,Ea)!
+        c_ta_eam1 = jump_i * 0.5 * detJ_Eam1 - c_tam1_eam1;
+        c_ta_ea = f_i * (detJ / 6) - c_ta_eam1;
 
-      // Store coefficients and set history values
-      std::span<const std::int32_t> gdofs_flux = patch.dofs_flux_fct_global(a);
+        // Store coefficients and set history values
+        std::span<const std::int32_t> gdofs_flux
+            = patch.dofs_flux_fct_global(a);
 
-      x_flux_dhdiv[gdofs_flux[0]] += prefactor_dof(id_a, 0) * c_ta_eam1;
-      x_flux_dhdiv[gdofs_flux[1]] += prefactor_dof(id_a, 1) * c_ta_ea;
+        x_flux_dhdiv[gdofs_flux[0]] += prefactor_dof(id_a, 0) * c_ta_eam1;
+        x_flux_dhdiv[gdofs_flux[1]] += prefactor_dof(id_a, 1) * c_ta_ea;
+      }
+      else
+      {
+        throw std::runtime_error(
+            "Equilibration: Higher order fluxes not supported!");
+      }
 
       c_tam1_eam1 = c_ta_ea;
     }
@@ -417,7 +485,8 @@ void minimise_flux(const mesh::Geometry& geometry,
   // Number of nodes on reference cell
   int nnodes_cell = kernel_data.nnodes_cell();
 
-  // Storage cell geometries, normal orientation and coefficients
+  /* Storage cell geometries and DOF prefactors*/
+  // Initialisations
   const int cstride_geom = 3 * nnodes_cell;
   std::vector<double> coordinate_dofs(ncells * cstride_geom, 0);
 
@@ -429,6 +498,7 @@ void minimise_flux(const mesh::Geometry& geometry,
 
   std::vector<T> coefficients(ncells * ndofs_flux, 0);
 
+  // Evaluate quantities on all cells
   for (std::size_t index = 0; index < ncells; ++index)
   {
     // Get current cell
@@ -449,6 +519,7 @@ void minimise_flux(const mesh::Geometry& geometry,
                        dprefactor_dof);
   }
 
+  /* Perform minimisation */
   for (std::size_t i_rhs = 0; i_rhs < problem_data.nlhs(); ++i_rhs)
   {
     /* Extract data */
