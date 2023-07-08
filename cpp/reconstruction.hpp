@@ -152,13 +152,18 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data,
   const basix::FiniteElement& basix_element_fluxhdiv
       = problem_data.fspace_flux_hdiv()->element()->basix_element();
 
+  const int degree_flux_hdiv = basix_element_fluxhdiv.degree();
+
   // Basix element of projected flux/ RHS
   const basix::FiniteElement& basix_element_rhs
       = problem_data.fspace_flux_dg()->element()->basix_element();
-  bool is_dg = (basix_element_rhs.degree() == 0) ? true : false;
+
+  const int degree_rhs = basix_element_rhs.degree();
+
+  bool is_dg = (degree_rhs == 0) ? true : false;
 
   basix::FiniteElement basix_element_rhscg = basix::element::create_lagrange(
-      basix_element_rhs.cell_type(), basix_element_rhs.degree(),
+      basix_element_rhs.cell_type(), degree_rhs,
       basix_element_rhs.lagrange_variant(), is_dg);
 
   /* Execute equilibration */
@@ -168,13 +173,14 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data,
       problem_data.fspace_flux_dg(), basix_element_rhscg);
 
   // Set quadrature rule
-  const int degree_flux = basix_element_fluxhdiv.degree();
-  const int quadrature_degree = (degree_flux == 1) ? 2 : 2 * degree_flux + 1;
+  const int quadrature_degree
+      = (degree_flux_hdiv == 1) ? 2 : 2 * degree_flux_hdiv + 1;
 
   QuadratureRule quadrature_rule
       = QuadratureRule(mesh->topology().cell_type(), quadrature_degree);
 
   // Initialize KernelData
+  std::cout << "Initialize KernelData" << std::endl;
   KernelData kernel_data
       = KernelData(mesh, std::make_shared<QuadratureRule>(quadrature_rule),
                    basix_element_fluxhdiv, basix_element_rhs);
@@ -344,7 +350,7 @@ void reconstruct_fluxes_cstm(
     const std::vector<std::vector<std::shared_ptr<const fem::DirichletBC<T>>>>&
         bcs_flux)
 {
-  // Check input
+  // Check input sizes
   int n_rhs = rhs_dg.size();
   int n_fbp = fct_esntbound_prime.size();
   int n_fbf = fct_esntbound_flux.size();
@@ -358,9 +364,25 @@ void reconstruct_fluxes_cstm(
     throw std::runtime_error("Equilibration: Input sizes does not match");
   }
 
-  // Flux order
+  // Check degree of H(div) flux, projected flux and RHS
   const int order_flux
       = flux_hdiv[0]->function_space()->element()->basix_element().degree();
+  const int degree_flux_dg
+      = flux_dg[0]->function_space()->element()->basix_element().degree();
+  const int degree_rhs
+      = rhs_dg[0]->function_space()->element()->basix_element().degree();
+
+  if (degree_rhs != (order_flux - 1) || degree_flux_dg > degree_rhs)
+  {
+    throw std::runtime_error(
+        "Equilibration: Wrong polynomial degree of the projected RHS");
+  }
+
+  if (degree_flux_dg != degree_rhs)
+  {
+    throw std::runtime_error(
+        "Equilibration: Degrees of projected flux and RHS have to match");
+  }
 
   /* Facet coloring */
   graph::AdjacencyList<std::int8_t> fct_type
