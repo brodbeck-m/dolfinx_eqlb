@@ -367,7 +367,6 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
       }
 
       c_tam1_eam1 = c_ta_ea;
-      throw std::runtime_error("End Debug");
     }
     else if (type_patch == 1)
     {
