@@ -69,7 +69,7 @@ KernelData::KernelData(std::shared_ptr<const mesh::Mesh> mesh,
 
   // Tabulate shape functions of right-hand side space
   // (Assumption: Same order for projected flux and RHS)
-  if (basix_element_rhs.degree() > 1)
+  if (basix_element_rhs.degree() > 0)
   {
     std::array<std::size_t, 4> rhs_basis_shape_cell
         = basix_element_rhs.tabulate_shape(1, n_qpoints_cell);
@@ -99,6 +99,16 @@ KernelData::KernelData(std::shared_ptr<const mesh::Mesh> mesh,
 
     _rhs_fullbasis_current = dolfinx_adaptivity::mdspan4_t(
         _rhs_basis_current_values.data(), rhs_basis_shape_cell);
+
+    // Move shape functions from reference to current
+    // (Lagrangian elements --> no mapping required)
+    for (std::size_t i = 0; i < _rhs_cell_fullbasis.extent(1); ++i)
+    {
+      for (std::size_t j = 0; j < _rhs_cell_fullbasis.extent(2); ++j)
+      {
+        _rhs_fullbasis_current(0, i, j, 0) = _rhs_cell_fullbasis(0, i, j, 0);
+      }
+    }
   }
 }
 
@@ -210,6 +220,29 @@ KernelData::shapefunctions_flux(dolfinx_adaptivity::mdspan2_t J, double detJ)
 
   return stdex::submdspan(_flux_fullbasis_current, 0, stdex::full_extent,
                           stdex::full_extent, stdex::full_extent);
+}
+
+dolfinx_adaptivity::s_cmdspan3_t
+KernelData::shapefunctions_cell_rhs(dolfinx_adaptivity::mdspan2_t K)
+{
+  // Loop over all evaluation points
+  for (std::size_t i = 0; i < _rhs_cell_fullbasis.extent(1); ++i)
+  {
+    // Loop over all basis functions
+    for (std::size_t j = 0; j < _rhs_cell_fullbasis.extent(2); ++j)
+    {
+      // Evaluate (J^-1)^T * phi^j(x_i)
+      _rhs_fullbasis_current(1, i, j, 0)
+          = K(0, 0) * _rhs_cell_fullbasis(1, i, j, 0)
+            + K(1, 0) * _rhs_cell_fullbasis(2, i, j, 0);
+      _rhs_fullbasis_current(2, i, j, 0)
+          = K(0, 1) * _rhs_cell_fullbasis(1, i, j, 0)
+            + K(1, 1) * _rhs_cell_fullbasis(2, i, j, 0);
+    }
+  }
+
+  return stdex::submdspan(_flux_fullbasis_current, stdex::full_extent,
+                          stdex::full_extent, stdex::full_extent, 0);
 }
 
 } // namespace dolfinx_adaptivity::equilibration

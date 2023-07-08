@@ -110,20 +110,16 @@ public:
           ref_pos[1] = 0.0;
         }
 
-        // Length of facet
-        double length_fct
-            = std::sqrt(ref_dir[0] * ref_dir[0] + ref_dir[1] * ref_dir[1]);
-
         // Loop over all quadrature points
         for (std::size_t i = 0; i < _npoints_per_fct; ++i)
         {
           // Map quadrature points to reference cell
-          int id = 2 * offset + i;
+          int id = 2 * (offset + i);
           _points_fct[id] = ref_pos[0] + ref_dir[0] * q_points[i];
           _points_fct[id + 1] = ref_pos[1] + ref_dir[1] * q_points[i];
 
           // Set quadrature weights
-          _weights_fct[offset] = q_weights[i] * length_fct;
+          _weights_fct[offset] = q_weights[i];
         }
       }
     }
