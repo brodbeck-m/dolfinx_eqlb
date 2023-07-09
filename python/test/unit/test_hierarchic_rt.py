@@ -37,12 +37,15 @@ def evaluate_dofs_hierarchic_rt(tdim, degree, rt_basix, dofs_basix):
             if ifct == 0:
                 normal = [-1, -1]
                 pnt_fct = np.array([[1 - p[0], p[0]] for p in pnt])
+                s = pnt[:, 0] * np.sqrt(2)
             elif ifct == 1:
                 normal = [-1, 0]
                 pnt_fct = np.array([[0, p[0]] for p in pnt])
+                s = pnt[:, 0] * np.sqrt(1)
             else:
                 normal = [0, 1]
                 pnt_fct = np.array([[p[0], 0] for p in pnt])
+                s = pnt[:, 0] * np.sqrt(1)
 
             # evaluate reference function
             shp_fkt = rt_basix.tabulate(0, pnt_fct)
@@ -53,7 +56,7 @@ def evaluate_dofs_hierarchic_rt(tdim, degree, rt_basix, dofs_basix):
             # evaluate DOFs on fct_i
             for i in range(0, degree):
                 # c_TE = int_E f * n * s^i ds
-                dofs_custom[degree * ifct + i] = np.dot(normal_moment * pnt[:, 0]**i, wts)
+                dofs_custom[degree * ifct + i] = np.dot(normal_moment * (s[:] ** i), wts)
 
         # --- Cell contribution
         if degree > 1:

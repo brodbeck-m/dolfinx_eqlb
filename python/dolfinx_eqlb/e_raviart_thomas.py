@@ -78,10 +78,13 @@ def create_hierarchic_rt(cell: CellType, degree: int, discontinuous: bool):
         for normal in [[-1, -1], [-1, 0], [0, 1]]:
             mat = np.zeros((degree, 2, len(wts), 1 + n_derivatives * tdim))
 
+            # scale s on real length of edge
+            s = pnt[:, 0] * np.sqrt(normal[0] ** 2 + normal[1] ** 2)
+
             for j in range(0, degree):
                 # lambda = int_E f * n * s^j ds
-                mat[j, 0, :, 0] = normal[0] * (pnt[:, 0]**j) * wts[:]
-                mat[j, 1, :, 0] = normal[1] * (pnt[:, 0]**j) * wts[:]
+                mat[j, 0, :, 0] = normal[0] * (s[:] ** j) * wts[:]
+                mat[j, 1, :, 0] = normal[1] * (s[:] ** j) * wts[:]
 
             M[1].append(mat)
 
