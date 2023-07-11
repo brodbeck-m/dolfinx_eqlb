@@ -75,11 +75,13 @@ public:
 
       // Initialise storage
       _points_fct.resize(_npoints_fct * 2);
+      _sloc_fct.resize(_npoints_fct);
       _weights_fct.resize(_npoints_fct);
 
       // Set reference direction
       std::array<double, 2> ref_dir = {0.0, 0.0};
       std::array<double, 2> ref_pos = {0.0, 0.0};
+      double ref_length = 1.0;
 
       // Loop over all facets
       for (std::size_t f = 0; f < 3; ++f)
@@ -94,6 +96,7 @@ public:
           ref_dir[1] = 1.0;
           ref_pos[0] = 1.0;
           ref_pos[1] = 0.0;
+          ref_length = std::sqrt(2.0);
         }
         else if (f == 1)
         {
@@ -114,12 +117,16 @@ public:
         for (std::size_t i = 0; i < _npoints_per_fct; ++i)
         {
           // Map quadrature points to reference cell
-          int id = 2 * (offset + i);
-          _points_fct[id] = ref_pos[0] + ref_dir[0] * q_points[i];
-          _points_fct[id + 1] = ref_pos[1] + ref_dir[1] * q_points[i];
+          int id = offset + i;
+          int idb = 2 * id;
+          _points_fct[idb] = ref_pos[0] + ref_dir[0] * q_points[i];
+          _points_fct[idb + 1] = ref_pos[1] + ref_dir[1] * q_points[i];
+
+          // Set local coordinates
+          _sloc_fct[id] = q_points[i] * ref_length;
 
           // Set quadrature weights
-          _weights_fct[offset] = q_weights[i];
+          _weights_fct[id] = q_weights[i];
         }
       }
     }
@@ -157,6 +164,10 @@ public:
   /// @return The quadrature points
   const std::vector<double>& points_fct() const { return _points_fct; }
 
+  /// Return the quadrature points (1D) for facet integrals
+  /// @return The 1D quadrature points scaled by edge length
+  const std::vector<double>& s_fct() const { return _sloc_fct; }
+
   /// Return quadrature weights for cell-integrals
   /// @return The quadrature weights
   const std::vector<double>& weights_cell() const { return _weights_cell; }
@@ -166,7 +177,7 @@ public:
   const std::vector<double>& weights_fct() const { return _weights_fct; }
 
 private:
-  /* Variabe definitions */
+  /* Variable definitions */
   // Spacial dimension
   int _dim, _dim_fct;
 
@@ -185,6 +196,6 @@ private:
 
   // Quadrature points ans weights (facet)
   std::size_t _npoints_per_fct, _npoints_fct;
-  std::vector<double> _points_fct, _weights_fct;
+  std::vector<double> _points_fct, _sloc_fct, _weights_fct;
 };
 } // namespace dolfinx_adaptivity::equilibration
