@@ -67,6 +67,9 @@ public:
     // Number of DOFs (projected flux)
     _ndof_fluxdg = _function_space_fluxdg->element()->space_dimension();
 
+    // Number of DOFs (projected RHS)
+    _ndof_rhsdg = _ndof_fluxdg / _dim;
+
     if constexpr (id_flux_order == 1)
     {
       _ndof_fluxdg_fct = 1;
@@ -374,7 +377,7 @@ public:
       }
       else
       {
-        /* Get DOFS of H(div) flux on fct_i */
+        /* Get DOFs of H(div) flux on fct_i */
         for (std::int8_t jj = 0; jj < _ndof_flux_fct; ++jj)
         {
           // Precalculations
@@ -390,7 +393,7 @@ public:
           offs_fhdiv_fct += 1;
         }
 
-        // Get DOFS of projected flux on fct_i
+        // Get DOFs of projected flux on fct_i
         if (_degree_elmt_fluxdg > 0)
         {
           for (std::int8_t jj = 0; jj < _ndof_fluxdg_fct; ++jj)
@@ -467,7 +470,7 @@ public:
 
     // std::cout << "Global DOFs flux (projected) facet:" << std::endl;
     // std::cout << "n_fcts: " << _nfcts << std::endl;
-    // for (std::int8_t i = 0; i < _nfcts; ++i)
+    // for (std::int8_t i = 0; i < _nfcts + 1; ++i)
     // {
     //   auto dofs_cell = dofs_projflux_fct(i);
     //   for (auto dof : dofs_cell)
@@ -536,12 +539,11 @@ public:
   /// Following the convention, T_a is adjacent to E_am1 and E_a!
   ///
   /// @param fct_i  Patch-local id of facet E_a (a>=0)
+  ///               (inner patches: a=0 <-> a=nfcts)
   /// @param cell_i Patch-local id of cell T_a (a>0)
   /// @return Local facte id
   std::int8_t fctid_local(int fct_i, int cell_i)
   {
-    assert(cell_i > 0);
-
     int ifct, offst;
 
     if (_type[0] == 0)
@@ -554,7 +556,7 @@ public:
         {
           offst = 1;
         }
-        else if (cell_i == _ncells)
+        else if (cell_i == _ncells || cell_i == 0)
         {
           offst = 0;
         }
@@ -583,6 +585,11 @@ public:
     }
     else
     {
+      if (cell_i < 1)
+      {
+        throw std::runtime_error("No such cell on patch!");
+      }
+
       ifct = fct_i;
 
       if (fct_i == 0)
@@ -662,6 +669,21 @@ public:
 
   /// @return Number of flux-DOFs on cell
   int ndofs_flux_cell() { return _ndof_flux_cell; }
+
+  /// @return Number of divergence-dept. flux-DOFs on cell
+  int ndofs_flux_cell_div() { return _ndof_flux_div_cell; }
+
+  /// @return Number of additional flux-DOFs on cell
+  int ndofs_flux_cell_add() { return _ndof_flux_add_cell; }
+
+  /// @return Number of RHS-DOFs on cell
+  int ndofs_rhs_cell() { return _ndof_rhsdg; }
+
+  /// @return Number of projected-flux-DOFs on cell
+  int ndofs_fluxdg_cell() { return _ndof_fluxdg; }
+
+  /// @return Number of projected-flux-DOFs on facet
+  int ndofs_fluxdg_fct() { return _ndof_fluxdg_fct; }
 
   /// Extract global facet-DOFs (H(div) flux)
   /// @param cell_i Patch-local cell-id
