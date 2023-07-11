@@ -39,7 +39,8 @@ public:
   KernelData(std::shared_ptr<const mesh::Mesh> mesh,
              std::shared_ptr<const QuadratureRule> qrule,
              const basix::FiniteElement& basix_element_fluxpw,
-             const basix::FiniteElement& basix_element_rhs);
+             const basix::FiniteElement& basix_element_rhs,
+             const basix::FiniteElement& basix_element_hat);
 
   /// Compute isogeometric mapping for a given cell
   /// @param J            The Jacobian
@@ -141,13 +142,13 @@ public:
   /// @param K     The inverse Jacobian
   /// @return Array of shape functions (current cell)
   dolfinx_adaptivity::s_cmdspan3_t
-  shapefunctions_cell_rhs(dolfinx_adaptivity::mdspan2_t K);
+  shapefunctions_cell_rhs(dolfinx_adaptivity::cmdspan2_t K);
 
   /// Extract shape functions on facet (RHS, projected flux)
   /// Array with indexes i, j: phi_j(x_i) is the shape-function j
   /// at point i.
   /// @return Array of shape functions (current cell)
-  dolfinx_adaptivity::s_cmdspan2_t shapefunctions_fct_rhs(int fct_id)
+  dolfinx_adaptivity::s_cmdspan2_t shapefunctions_fct_rhs(std::int8_t fct_id)
   {
     // Offset of shpfkt for current facet
     const int nqpoints = _quadrature_rule->npoints_per_fct();
@@ -158,7 +159,40 @@ public:
                             stdex::full_extent, 0);
   }
 
+  /// Extract shape functions on cell (hat-function)
+  /// Array with indexes i and j: phi_k(x_j) is the shape-function k
+  /// at point j
+  /// @return Array of shape functions (reference cell)
+  dolfinx_adaptivity::s_cmdspan2_t shapefunctions_cell_hat() const
+  {
+    return stdex::submdspan(_hat_cell_fullbasis, 0, stdex::full_extent,
+                            stdex::full_extent, 0);
+  }
+
+  /// Extract shape functions on facet (hat-function)
+  /// Array with indexes i, j: phi_j(x_i) is the shape-function j
+  /// at point i.
+  /// @return Array of shape functions (reference cell)
+  dolfinx_adaptivity::s_cmdspan2_t shapefunctions_fct_hat(std::int8_t fct_id)
+  {
+    // Offset of shpfkt for current facet
+    const int nqpoints = _quadrature_rule->npoints_per_fct();
+    std::size_t obgn = fct_id * nqpoints;
+    std::size_t oend = obgn + nqpoints + 1;
+
+    return stdex::submdspan(_hat_fct_fullbasis, 0, std::pair{obgn, oend},
+                            stdex::full_extent, 0);
+  }
+
   /* Getter functions (Quadrature) */
+
+  // Extract number of quadrature points on cell
+  /// @return Number of quadrature points
+  int nqpoints_cell() const { return _quadrature_rule->npoints_cell(); }
+
+  // Extract number of quadrature points per facet
+  /// @return Number of quadrature points
+  int nqpoints_facet() const { return _quadrature_rule->npoints_per_fct(); }
 
   /// Extract quadrature points on cell
   /// @return The quadrature points
@@ -176,7 +210,7 @@ public:
   /// Extract quadrature points on facet
   /// @param fct_id The cell-local facet id
   /// @return The quadrature points
-  dolfinx_adaptivity::cmdspan2_t quadrature_points_facet(int fct_id)
+  dolfinx_adaptivity::cmdspan2_t quadrature_points_facet(std::int8_t fct_id)
   {
     // Offset of points for current facet
     const int nqpoints = _quadrature_rule->npoints_per_fct();
@@ -185,6 +219,18 @@ public:
     return dolfinx_adaptivity::cmdspan2_t(
         _quadrature_rule->points_fct().data() + offset, (std::size_t)nqpoints,
         (std::size_t)_gdim);
+  }
+
+  /// Extract 1D quadrature points on facet
+  /// @param fct_id The cell-local facet id
+  /// @return The 1D quadrature points scaled by edge length
+  std::span<const double> quadrature_points_1D_facet(std::int8_t fct_id)
+  {
+    // Offset of points for current facet
+    const int nqpoints = _quadrature_rule->npoints_per_fct();
+    const int offset = fct_id * nqpoints;
+
+    return std::span(_quadrature_rule->s_fct().data() + offset, nqpoints);
   }
 
   /// Extract quadrature weights on cell
@@ -197,7 +243,7 @@ public:
   /// Extract quadrature weights on facet
   /// @param fct_id The cell-local facet id
   /// @return The quadrature weights
-  std::span<const double> quadrature_weights_facet(int fct_id)
+  std::span<const double> quadrature_weights_facet(std::int8_t fct_id)
   {
     // Offset of weights for current facet
     const int nqpoints = _quadrature_rule->npoints_per_fct();
@@ -206,6 +252,8 @@ public:
     return std::span<const double>(
         _quadrature_rule->weights_fct().data() + offset, nqpoints);
   }
+
+  /* Evaluate hat-function */
 
 protected:
   /* Variable definitions */
@@ -239,6 +287,10 @@ protected:
       _rhs_basis_current_values;
   dolfinx_adaptivity::cmdspan4_t _rhs_cell_fullbasis, _rhs_fct_fullbasis;
   dolfinx_adaptivity::mdspan4_t _rhs_fullbasis_current;
+
+  // Tabulated shape-functions (hat-function)
+  std::vector<double> _hat_basis_cell_values, _hat_basis_fct_values;
+  dolfinx_adaptivity::cmdspan4_t _hat_cell_fullbasis, _hat_fct_fullbasis;
 };
 
 } // namespace dolfinx_adaptivity::equilibration

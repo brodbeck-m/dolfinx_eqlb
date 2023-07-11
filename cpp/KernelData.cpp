@@ -8,7 +8,8 @@ namespace dolfinx_adaptivity::equilibration
 KernelData::KernelData(std::shared_ptr<const mesh::Mesh> mesh,
                        std::shared_ptr<const QuadratureRule> qrule,
                        const basix::FiniteElement& basix_element_fluxpw,
-                       const basix::FiniteElement& basix_element_rhs)
+                       const basix::FiniteElement& basix_element_rhs,
+                       const basix::FiniteElement& basix_element_hat)
     : _quadrature_rule(qrule)
 {
   const mesh::Topology& topology = mesh->topology();
@@ -109,6 +110,30 @@ KernelData::KernelData(std::shared_ptr<const mesh::Mesh> mesh,
         _rhs_fullbasis_current(0, i, j, 0) = _rhs_cell_fullbasis(0, i, j, 0);
       }
     }
+
+    // Tabulate hat function
+    std::array<std::size_t, 4> hat_basis_shape_cell
+        = basix_element_hat.tabulate_shape(0, n_qpoints_cell);
+    std::array<std::size_t, 4> hat_basis_shape_fct
+        = basix_element_hat.tabulate_shape(0, n_qpoints_fct);
+
+    _hat_basis_cell_values = std::vector<double>(
+        std::reduce(hat_basis_shape_cell.begin(), hat_basis_shape_cell.end(), 1,
+                    std::multiplies{}));
+
+    _hat_basis_fct_values = std::vector<double>(
+        std::reduce(hat_basis_shape_fct.begin(), hat_basis_shape_fct.end(), 1,
+                    std::multiplies{}));
+
+    basix_element_hat.tabulate(0, _quadrature_rule->points_cell(),
+                               {n_qpoints_cell, _gdim}, _hat_basis_cell_values);
+    basix_element_hat.tabulate(0, _quadrature_rule->points_fct(),
+                               {n_qpoints_fct, _gdim}, _hat_basis_fct_values);
+
+    _hat_cell_fullbasis = dolfinx_adaptivity::cmdspan4_t(
+        _hat_basis_cell_values.data(), hat_basis_shape_cell);
+    _hat_fct_fullbasis = dolfinx_adaptivity::cmdspan4_t(
+        _hat_basis_fct_values.data(), hat_basis_shape_fct);
   }
 }
 
@@ -223,7 +248,7 @@ KernelData::shapefunctions_flux(dolfinx_adaptivity::mdspan2_t J, double detJ)
 }
 
 dolfinx_adaptivity::s_cmdspan3_t
-KernelData::shapefunctions_cell_rhs(dolfinx_adaptivity::mdspan2_t K)
+KernelData::shapefunctions_cell_rhs(dolfinx_adaptivity::cmdspan2_t K)
 {
   // Loop over all evaluation points
   for (std::size_t i = 0; i < _rhs_cell_fullbasis.extent(1); ++i)
