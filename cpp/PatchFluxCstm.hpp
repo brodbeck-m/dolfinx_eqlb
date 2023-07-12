@@ -29,7 +29,7 @@ public:
   /// Storage is designed for the maximum patch size occurring within
   /// the current mesh. (Cell-IDs start at 1, facet-IDs at 0!)
   ///
-  /// @param nnodes_proc             Numbe rof nodes on current processor
+  /// @param nnodes_proc             Number of nodes on current processor
   /// @param mesh                    The current mesh
   /// @param bfct_type               List with type of all boundary facets
   /// @param function_space_fluxhdiv Function space of H(div) flux
