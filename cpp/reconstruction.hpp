@@ -166,6 +166,11 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data,
       basix_element_rhs.cell_type(), degree_rhs,
       basix_element_rhs.lagrange_variant(), is_dg);
 
+  // Basix element of hat-function
+  basix::FiniteElement basix_element_hat = basix::element::create_lagrange(
+      basix_element_rhs.cell_type(), 1, basix_element_rhs.lagrange_variant(),
+      false);
+
   /* Execute equilibration */
   // Initialise patch
   PatchFluxCstm<T, id_flux_order> patch = PatchFluxCstm<T, id_flux_order>(
@@ -180,13 +185,13 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data,
       = QuadratureRule(mesh->topology().cell_type(), quadrature_degree);
 
   // Initialize KernelData
-  std::cout << "Initialize KernelData" << std::endl;
-  KernelData kernel_data
-      = KernelData(mesh, std::make_shared<QuadratureRule>(quadrature_rule),
-                   basix_element_fluxhdiv, basix_element_rhs);
+  KernelData kernel_data = KernelData(
+      mesh, std::make_shared<QuadratureRule>(quadrature_rule),
+      basix_element_fluxhdiv, basix_element_rhs, basix_element_hat);
 
   // Step 1: Explicite calculation of sigma_tilde
-  for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
+  // for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
+  for (std::size_t i_node = 176; i_node < 177; ++i_node)
   {
     // Create Sub-DOFmap
     patch.create_subdofmap(i_node);
@@ -197,15 +202,15 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data,
   }
 
   // Step 2 : Minimise reconstructed flux
-  for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
-  {
-    // Create Sub-DOFmap
-    patch.create_subdofmap(i_node);
+  // for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
+  // {
+  //   // Create Sub-DOFmap
+  //   patch.create_subdofmap(i_node);
 
-    // Solve minimisation on current patch
-    minimise_flux<T, id_flux_order>(mesh->geometry(), patch, problem_data,
-                                    kernel_data);
-  }
+  //   // Solve minimisation on current patch
+  //   minimise_flux<T, id_flux_order>(mesh->geometry(), patch, problem_data,
+  //                                   kernel_data);
+  // }
 }
 
 /// Mark facets of entire mesh (internal, neumann, dirichlet)

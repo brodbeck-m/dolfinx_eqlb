@@ -139,7 +139,7 @@ public:
   /// Array with indexes i, j and k:
   /// phi_k(x_j) is the shape-function k at point j while k determins
   /// if function or the derivative is returned.
-  /// @param K     The inverse Jacobian
+  /// @param K The inverse Jacobian
   /// @return Array of shape functions (current cell)
   dolfinx_adaptivity::s_cmdspan3_t
   shapefunctions_cell_rhs(dolfinx_adaptivity::cmdspan2_t K);

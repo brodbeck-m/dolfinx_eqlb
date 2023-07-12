@@ -29,34 +29,34 @@ namespace dolfinx_adaptivity::equilibration
 {
 /// Copy cell data from global storage into flattened array (per cell)
 /// @param data_global The global data storage
-/// @param data_dofs   The DOFs on current cell
+/// @param dofs_cell   The DOFs on current cell
 /// @param data_cell   The flattened storage of current cell
 /// @param bs_data     Block size of data
 template <typename T, int _bs_data = 1>
 void copy_cell_data(std::span<const T> data_global,
-                    std::span<const std::int32_t> data_dofs,
+                    std::span<const std::int32_t> dofs_cell,
                     std::span<T> data_cell, const int bs_data)
 {
-  for (std::size_t j = 0; j < data_dofs.size(); ++j)
+  for (std::size_t j = 0; j < dofs_cell.size(); ++j)
   {
     if constexpr (_bs_data == 1)
     {
-      std::copy_n(std::next(data_global.begin(), data_dofs[j]), 1,
+      std::copy_n(std::next(data_global.begin(), dofs_cell[j]), 1,
                   std::next(data_cell.begin(), j));
     }
     else if constexpr (_bs_data == 2)
     {
-      std::copy_n(std::next(data_global.begin(), 2 * data_dofs[j]), 2,
+      std::copy_n(std::next(data_global.begin(), 2 * dofs_cell[j]), 2,
                   std::next(data_cell.begin(), 2 * j));
     }
     else if constexpr (_bs_data == 3)
     {
-      std::copy_n(std::next(data_global.begin(), 3 * data_dofs[j]), 3,
+      std::copy_n(std::next(data_global.begin(), 3 * dofs_cell[j]), 3,
                   std::next(data_cell.begin(), 3 * j));
     }
     else
     {
-      std::copy_n(std::next(data_global.begin(), bs_data * data_dofs[j]),
+      std::copy_n(std::next(data_global.begin(), bs_data * dofs_cell[j]),
                   bs_data, std::next(data_cell.begin(), bs_data * j));
     }
   }
@@ -133,25 +133,16 @@ void set_dof_prefactors(int a, bool noutward_eam1, bool noutward_ea,
   prefactor_dof[index + 1] = (noutward_ea) ? sgn_detj : -sgn_detj;
 }
 
-void store_mapping_data(const int cell_id, std::span<double> storage_J,
-                        std::span<double> storage_K,
-                        dolfinx_adaptivity::mdspan2_t J,
-                        dolfinx_adaptivity::mdspan2_t K)
+void store_mapping_data(const int cell_id, std::span<double> storage,
+                        dolfinx_adaptivity::mdspan2_t matrix)
 {
   // Set offset
   const int offset = 4 * cell_id;
 
-  // Store J
-  storage_J[offset] = J(0, 0);
-  storage_J[offset + 1] = J(0, 1);
-  storage_J[offset + 2] = J(1, 0);
-  storage_J[offset + 3] = J(1, 1);
-
-  // Store K
-  storage_K[offset] = K(0, 0);
-  storage_K[offset + 1] = K(0, 1);
-  storage_K[offset + 2] = K(1, 0);
-  storage_K[offset + 3] = K(1, 1);
+  storage[offset] = matrix(0, 0);
+  storage[offset + 1] = matrix(0, 1);
+  storage[offset + 2] = matrix(1, 0);
+  storage[offset + 3] = matrix(1, 1);
 }
 
 dolfinx_adaptivity::cmdspan2_t extract_mapping_data(const int cell_id,
@@ -176,15 +167,22 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
   const graph::AdjacencyList<std::int32_t>& x_dofmap = geometry.dofmap();
   std::span<const double> x = geometry.x();
 
-  /* Extract patch data */
-  // Elements on patch
+  /* Extract Data */
+  // Cells on patch
   std::span<const std::int32_t> cells = patch.cells();
   int ncells = patch.ncells();
 
-  /* Initialize solution process */
-  // Number of nodes on reference cell
+  // Geometry of cells
   int nnodes_cell = kernel_data.nnodes_cell();
 
+  // Number of DOFs
+  const int degree_flux_rt = patch.degree_raviart_thomas();
+  const int ndofs_flux_fct = patch.ndofs_flux_fct();
+  const int ndofs_flux_cell_div = patch.ndofs_flux_cell_div();
+  const int ndofs_projflux = patch.ndofs_fluxdg_cell();
+  const int ndofs_projflux_fct = patch.ndofs_fluxdg_fct();
+
+  /* Initialise solution process */
   // Jacobian J, inverse K and determinant detJ
   std::array<double, 9> Jb;
   dolfinx_adaptivity::mdspan2_t J(Jb.data(), 2, 2);
@@ -192,28 +190,44 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
   dolfinx_adaptivity::mdspan2_t K(Kb.data(), 2, 2);
   std::array<double, 18> detJ_scratch;
 
+  // Coefficient arrays for RHS/ projected flux
+  std::vector<double> coefficients_f, coefficients_G;
+
+  // Jump within projected flux
+  std::array<double, 2> diff_proj_flux;
+  std::vector<double> jump_proj_flux_Eam1;
+
+  // DOFs flux (cell-wise H(div))
+  T c_ta_ea, c_ta_eam1, c_tam1_eam1;
+  std::vector<T> c_ta_div;
+  std::vector<T> cj_ta_ea;
+
+  /* Initialise storage */
+  // Jacobian J, inverse K and determinant detJ
   std::vector<double> storage_detJ(ncells, 0);
   std::vector<double> storage_detJf(ncells + 1, 0);
-  std::vector<double> storage_J, storage_K;
-
-  // Initialise storage for J and K
-  // (not required for lowest order case)
-  if constexpr (id_flux_order > 1)
-  {
-    storage_J.resize(ncells * 4);
-    storage_K.resize(ncells * 4);
-
-    std::cout << "Initialise storage for J and K" << std::endl;
-  }
+  std::vector<double> storage_K;
 
   // Physical normal
   std::vector<double> storage_normal_phys((ncells + 1) * dim, 0);
 
-  // Jump within projected flux
-  std::array<double, 2> jump_proj_flux;
+  // Initialise storage only required for higher order cases
+  if constexpr (id_flux_order > 1)
+  {
+    // Inverse of the Jocobian
+    storage_K.resize(ncells * 4);
 
-  // DOFs flux (cell-wise H(div))
-  T c_ta_ea, c_ta_eam1, c_tam1_eam1;
+    // Cell-DOFs of RHS and projected flux
+    coefficients_f.resize(patch.ndofs_rhs_cell());
+    coefficients_G.resize(patch.ndofs_fluxdg_cell());
+
+    // Storage of DOFs
+    c_ta_div.resize(ndofs_flux_cell_div);
+    cj_ta_ea.resize(ndofs_flux_fct - 1);
+
+    // Storage of jump per integration point (facet)
+    jump_proj_flux_Eam1.resize(kernel_data.nqpoints_facet(), 0);
+  }
 
   /* Storage cell geometries/ normal orientation */
   // Initialisations
@@ -252,7 +266,7 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
     // Storage of Jacobian and its inverse
     if (id_flux_order > 1)
     {
-      store_mapping_data(index, storage_J, storage_K, J, K);
+      store_mapping_data(index, storage_K, K);
     }
 
     // Calculate determinant of facet jacobian
@@ -331,105 +345,313 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
     std::span<T> x_flux_dhdiv = problem_data.flux(i_rhs).x()->mutable_array();
 
     // Projected primal flux
+    const graph::AdjacencyList<std::int32_t>& fluxdg_dofmap
+        = problem_data.fspace_flux_dg()->dofmap()->list();
     std::span<const T> x_flux_proj
         = problem_data.projected_flux(i_rhs).x()->array();
 
     // Projected RHS
+    const graph::AdjacencyList<std::int32_t>& rhs_dofmap
+        = problem_data.fspace_flux_dg()->dofmap()->list();
     std::span<const T> x_rhs_proj
         = problem_data.projected_rhs(i_rhs).x()->array();
 
     /* Calculate sigma_tilde */
-    int loop_end;
-    if (type_patch == 0 | type_patch == 2)
-    {
-      loop_end = ncells + 1;
-
-      if constexpr (id_flux_order == 1)
-      {
-        // Isoparametric mapping for cell
-        const double detJ = std::fabs(storage_detJ[0]);
-
-        // Extract RHS value on current cell
-        T f_i = x_rhs_proj[cells[0]];
-
-        // Set DOFs for cell 1
-        c_ta_ea = f_i * detJ / 6;
-
-        // Store coefficients and set history values
-        std::span<const std::int32_t> gdofs_flux
-            = patch.dofs_flux_fct_global(1);
-        x_flux_dhdiv[gdofs_flux[1]] += prefactor_dof(0, 1) * c_ta_ea;
-      }
-      else
-      {
-        throw std::runtime_error(
-            "Equilibration: Higher order fluxes not supported!");
-      }
-
-      c_tam1_eam1 = c_ta_ea;
-    }
-    else if (type_patch == 1)
-    {
-      loop_end = ncells;
-      throw std::runtime_error("Equilibration: Neumann BCs not supported!");
-    }
-    else
-    {
-      loop_end = ncells + 1;
-      throw std::runtime_error("Equilibration: Neumann BCs not supported!");
-    }
-
-    for (std::size_t a = 2; a < loop_end; ++a)
+    for (std::size_t a = 1; a < ncells + 1; ++a)
     {
       // Set id for accessing storage
       int id_a = a - 1;
 
       // Global cell id
-      std::int32_t c = cells[id_a];
+      std::int32_t c_a = cells[id_a];
 
+      // Cell-local id of patch-central node
+      std::int8_t node_i_Ta = patch.inode_local(a);
+
+      /* Extract required data */
       // Isoparametric mapping
       const double detJ = std::fabs(storage_detJ[id_a]);
       const double detJ_Eam1 = storage_detJf[a - 1];
+      const double detJ_Ea = storage_detJf[a];
 
-      // Extract physical normal E_am1
-      std::span<double> normal_phys(storage_normal_phys.data() + id_a * dim,
-                                    dim);
+      // Coefficient arrays
+      if constexpr (id_flux_order > 1)
+      {
+        // Projected Flux
+        copy_cell_data<T, 2>(x_flux_proj, fluxdg_dofmap.links(c_a),
+                             coefficients_G, 2);
 
+        // Projected RHS
+        copy_cell_data<T, 1>(x_rhs_proj, rhs_dofmap.links(c_a), coefficients_f,
+                             1);
+      }
+
+      /* DOFs from facet integrals */
       if constexpr (id_flux_order == 1)
       {
-        // Extract RHS value
-        T f_i = x_rhs_proj[c];
+        // Extract facet normal
+        std::span<double> normal_Eam1(storage_normal_phys.data() + id_a * dim,
+                                      dim);
 
         // Extract gradients (+/- side) on facet E_am1
         std::span<const std::int32_t> dofs_projflux_fct
             = patch.dofs_projflux_fct(a - 1);
 
-        jump_proj_flux[0] = x_flux_proj[dofs_projflux_fct[0]]
+        // Evaluate jump
+        diff_proj_flux[0] = x_flux_proj[dofs_projflux_fct[0]]
                             - x_flux_proj[dofs_projflux_fct[2]];
-        jump_proj_flux[1] = x_flux_proj[dofs_projflux_fct[1]]
+        diff_proj_flux[1] = x_flux_proj[dofs_projflux_fct[1]]
                             - x_flux_proj[dofs_projflux_fct[3]];
 
-        double jump_i = jump_proj_flux[0] * normal_phys[0]
-                        + jump_proj_flux[1] * normal_phys[1];
+        double jump_i = diff_proj_flux[0] * normal_Eam1[0]
+                        + diff_proj_flux[1] * normal_Eam1[1];
 
-        // Set DOFs for cell
+        // Set DOF
         // Positive jump as it is calculated with n_(Ta,Ea)=-n_(Tap1,Ea)!
         c_ta_eam1 = jump_i * 0.5 * detJ_Eam1 - c_tam1_eam1;
-        c_ta_ea = f_i * (detJ / 6) - c_ta_eam1;
+      }
+      else
+      {
+        // Extract facet normal
+        std::span<double> normal_Ea(storage_normal_phys.data() + a * dim, dim);
 
-        // Store coefficients and set history values
+        // Local facet ids
+        std::int8_t fl_TaEam1, fl_TaEa;
+        std::tie(fl_TaEam1, fl_TaEa) = patch.fctid_local(a);
+        std::int8_t fl_Tap1Ea = patch.fctid_local(a, a + 1);
+
+        // DOFs (cell local) projected flux on facet Ea
+        std::span<const std::int32_t> dofs_Ea = patch.dofs_projflux_fct(a);
+
+        // 1D quadrature points on facet Ea
+        std::span<const double> qpoints_Ea
+            = kernel_data.quadrature_points_1D_facet(fl_TaEa);
+
+        // Quadrature weights
+        // (detJ_E not with respect to referece element --> unmapped weights!)
+        std::span<const double> weights_fct
+            = kernel_data.quadrature_weights_facet(0);
+
+        // Shape functions RHS
+        dolfinx_adaptivity::s_cmdspan2_t shp_TaEa
+            = kernel_data.shapefunctions_fct_rhs(fl_TaEa);
+        dolfinx_adaptivity::s_cmdspan2_t shp_Tap1Ea
+            = kernel_data.shapefunctions_fct_rhs(fl_Tap1Ea);
+
+        // Shape-functions hat-function
+        dolfinx_adaptivity::s_cmdspan2_t hat_TaEam1
+            = kernel_data.shapefunctions_fct_hat(fl_TaEam1);
+        dolfinx_adaptivity::s_cmdspan2_t hat_TaEa
+            = kernel_data.shapefunctions_fct_hat(fl_TaEa);
+
+        // Quadrature loop
+        c_ta_eam1 = -c_tam1_eam1;
+        std::fill(cj_ta_ea.begin(), cj_ta_ea.end(), 0.0);
+
+        for (std::size_t n = 0; n < kernel_data.nqpoints_facet(); ++n)
+        {
+          // Global index of Tap1
+          std::int32_t c_ap1 = (a < ncells) ? cells[id_a + 1] : cells[0];
+
+          // Evaluate jump at quadrature point
+          for (std::size_t i = 0; i < ndofs_projflux_fct; ++i)
+          {
+            // Local and global IDs of first DOF on facet
+            int s_Tap1 = dofs_Ea[i];
+            int s_Ta = dofs_Ea[i + ndofs_projflux_fct];
+
+            // Evaluate jump
+            // jump = (flux_proj_Tap1 - flux_proj_Ta)
+            diff_proj_flux[0] = coefficients_G[s_Tap1] * shp_Tap1Ea(i, s_Tap1)
+                                - coefficients_G[s_Ta] * shp_TaEa(i, s_Ta);
+            diff_proj_flux[1]
+                = coefficients_G[s_Tap1 + 1] * shp_Tap1Ea(i, s_Tap1)
+                  - coefficients_G[s_Ta + 1] * shp_TaEa(i, s_Ta);
+          }
+
+          // Multiply jump with normal Ea(Tap1)
+          double jump_proj_flux_Ea = diff_proj_flux[0] * normal_Ea[0]
+                                     + diff_proj_flux[1] * normal_Ea[1];
+
+          // Evaluate facet DOFs
+          double aux = hat_TaEam1(n, node_i_Ta) * weights_fct[n];
+
+          c_ta_eam1 += jump_proj_flux_Eam1[n] * aux * detJ_Eam1;
+
+          if constexpr (id_flux_order == 2)
+          {
+            cj_ta_ea[0] = jump_proj_flux_Ea * aux * qpoints_Ea[n] * detJ_Ea;
+          }
+          else
+          {
+            double aux2 = jump_proj_flux_Ea * aux * detJ_Ea;
+            for (std::size_t j = 1; j < ndofs_flux_fct; ++j)
+            {
+              cj_ta_ea[j] = aux2 * std::pow(qpoints_Ea[n], j);
+            }
+          }
+
+          // Store jump
+          jump_proj_flux_Eam1[n] = jump_proj_flux_Ea;
+        }
+      }
+
+      // Treatment of facet 0
+      if (a == 1)
+      {
+        if (type_patch == 0 | type_patch == 2)
+        {
+          // Set c_ta_eam1 to zero
+          c_ta_eam1 = 0.0;
+        }
+        else if (type_patch == 1)
+        {
+          throw std::runtime_error("Equilibration: Neumann BCs not supported!");
+        }
+        else
+        {
+          throw std::runtime_error("Equilibration: Neumann BCs not supported!");
+        }
+      }
+
+      /* DOFs from cell integrals */
+      if constexpr (id_flux_order == 1)
+      {
+        // Extract RHS value
+        T f_i = x_rhs_proj[c_a];
+
+        // Set second DOF
+        c_ta_ea = f_i * (detJ / 6) - c_ta_eam1;
+      }
+      else
+      {
+        // Isoparametric mapping
+        dolfinx_adaptivity::cmdspan2_t K
+            = extract_mapping_data(id_a, storage_K);
+
+        // Quadrature points and weights
+        dolfinx_adaptivity::cmdspan2_t qpoints
+            = kernel_data.quadrature_points_cell();
+        std::span<const double> weights = kernel_data.quadrature_weights_cell();
+
+        // Shape-functions RHS
+        dolfinx_adaptivity::s_cmdspan3_t shp_rhs
+            = kernel_data.shapefunctions_cell_rhs(K);
+
+        // Shape-functions hat-function
+        dolfinx_adaptivity::s_cmdspan2_t shp_hat
+            = kernel_data.shapefunctions_cell_hat();
+
+        // Quadrature loop
+        c_ta_ea = -c_ta_eam1;
+        std::fill(c_ta_div.begin(), c_ta_div.end(), 0.0);
+
+        for (std::size_t n = 0; n < kernel_data.nqpoints_cell(); ++n)
+        {
+          // Interpolation
+          double f = 0.0, div_g = 0.0;
+          for (std::size_t i = 0; i < ndofs_projflux_fct; ++i)
+          {
+            // RHS
+            f += coefficients_G[i] * shp_rhs(0, n, i);
+
+            // Divergence of projected flux
+            const int offs = 2 * i;
+            div_g += coefficients_G[offs] * shp_rhs(1, n, i)
+                     + coefficients_G[offs + 1] * shp_rhs(2, n, i);
+          }
+
+          // Auxiliary data
+          const double aux
+              = (f + div_g) * shp_hat(n, node_i_Ta) * weights[n] * detJ;
+
+          // Evaluate facet DOF
+          c_ta_ea += aux;
+
+          // Evaluate cell DOFs
+          if constexpr (id_flux_order == 2)
+          {
+            c_ta_div[0] += aux * qpoints(n, 1);
+            c_ta_div[1] += aux * qpoints(n, 0);
+          }
+          else
+          {
+            int count = 0;
+            const int degree = degree_flux_rt + 1;
+
+            for (std::size_t l = 0; l < degree; ++l)
+            {
+              for (std::size_t m = 0; m < degree - l; m++)
+              {
+                if ((l + m) > 0)
+                {
+                  // Calculate DOF
+                  c_ta_div[count] += aux * std::pow(qpoints(n, 0), l)
+                                     * std::pow(qpoints(n, 1), m);
+
+                  // Increment counter
+                  count += 1;
+                }
+              }
+            }
+          }
+        }
+      }
+
+      // Store DOFs to global solution vector
+      if constexpr (id_flux_order == 1)
+      {
+        // Extract global DOF ids
         std::span<const std::int32_t> gdofs_flux
             = patch.dofs_flux_fct_global(a);
 
+        // Set DOF values
         x_flux_dhdiv[gdofs_flux[0]] += prefactor_dof(id_a, 0) * c_ta_eam1;
         x_flux_dhdiv[gdofs_flux[1]] += prefactor_dof(id_a, 1) * c_ta_ea;
       }
       else
       {
-        throw std::runtime_error(
-            "Equilibration: Higher order fluxes not supported!");
+        // Global DOF ids
+        std::span<const std::int32_t> gdofs_fct = patch.dofs_flux_fct_global(a);
+        std::span<const std::int32_t> gdofs_cell
+            = patch.dofs_flux_cell_global(a);
+
+        if constexpr (id_flux_order == 2)
+        {
+          // Set DOF values facet Eam1
+          x_flux_dhdiv[gdofs_fct[0]] += prefactor_dof(id_a, 0) * c_ta_eam1;
+
+          // Set DOF values facet Ea
+          x_flux_dhdiv[gdofs_fct[2]] += prefactor_dof(id_a, 1) * c_ta_ea;
+          x_flux_dhdiv[gdofs_fct[3]] += prefactor_dof(id_a, 1) * cj_ta_ea[0];
+
+          // Set DOFs on cell
+          x_flux_dhdiv[gdofs_cell[0]] += c_ta_div[0];
+          x_flux_dhdiv[gdofs_cell[1]] += c_ta_div[1];
+        }
+        else
+        {
+          // Set zero-order DOFs on facets
+          x_flux_dhdiv[gdofs_fct[0]] += prefactor_dof(id_a, 0) * c_ta_eam1;
+          x_flux_dhdiv[gdofs_fct[ndofs_flux_fct]]
+              += prefactor_dof(id_a, 1) * c_ta_ea;
+
+          // Set higher-order DOFs on facets
+          for (std::size_t i = 1; i < ndofs_flux_fct; ++i)
+          {
+            // DOFs on facet Ea
+            x_flux_dhdiv[gdofs_fct[i]] += prefactor_dof(id_a, 1) * cj_ta_ea[i];
+          }
+
+          // Set divergence DOFs on cell
+          for (std::size_t i = 0; i < ndofs_flux_cell_div; ++i)
+          {
+            x_flux_dhdiv[gdofs_cell[i]] += c_ta_div[i];
+          }
+        }
       }
 
+      // Update c_tam1_eam1
       c_tam1_eam1 = c_ta_ea;
     }
   }

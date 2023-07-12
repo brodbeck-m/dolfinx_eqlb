@@ -252,12 +252,20 @@ def solve_poisson_primal(solver, L, u_prime):
     u_prime.x.scatter_forward()
 
 
-def projection_primal(eorder, fluxorder, u_prime, rhs_prime, mult_rhs=False):
+def projection_primal(eorder, fluxorder, u_prime, rhs_prime, eqlb_type, mult_rhs=False):
+    # Set flux order
+    if eqlb_type == 'EV':
+        fproj_order = eorder - 1
+    elif eqlb_type == 'SemiExplt':
+        fproj_order = fluxorder - 1
+    else:
+        raise ValueError('Unknown equilibrium type')
+
     # Create DG-space for projected flux
     msh = u_prime.function_space.mesh
 
     # Create function spaces
-    V_flux_proj = dfem.FunctionSpace(msh, ufl.VectorElement("DG", msh.ufl_cell(), eorder - 1))
+    V_flux_proj = dfem.FunctionSpace(msh, ufl.VectorElement("DG", msh.ufl_cell(), fproj_order))
     V_rhs_proj = dfem.FunctionSpace(msh, ufl.FiniteElement("DG", msh.ufl_cell(), fluxorder - 1))
 
     if mult_rhs:
@@ -271,10 +279,6 @@ def projection_primal(eorder, fluxorder, u_prime, rhs_prime, mult_rhs=False):
 
         return sig_proj, list_proj[2]
     else:
-        # Create function spaces
-        V_flux_proj = dfem.FunctionSpace(msh, ufl.VectorElement("DG", msh.ufl_cell(), eorder - 1))
-        V_rhs_proj = dfem.FunctionSpace(msh, ufl.FiniteElement("DG", msh.ufl_cell(), fluxorder - 1))
-
         # Projection
         sig_proj = lsolver.local_projector(V_flux_proj, [-ufl.grad(u_prime)])
         rhs_proj = lsolver.local_projector(V_rhs_proj, [rhs_prime])
@@ -711,7 +715,7 @@ for i_timing in range(0, timing_nretry):
         # Project fluxes into DG-space
         extime["prime_project"] -= time.perf_counter()
         sig_proj, rhs_proj = projection_primal(
-            sdisc_eorder, eqlb_fluxorder, u_prime, rhs_prime, mult_rhs=False
+            sdisc_eorder, eqlb_fluxorder, u_prime, rhs_prime, eqlb_type, mult_rhs=False
         )
         extime["prime_project"] += time.perf_counter()
 
