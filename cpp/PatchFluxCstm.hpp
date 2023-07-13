@@ -552,7 +552,9 @@ public:
       {
         ifct = _ncells - 1;
 
-        if (cell_i == 1)
+        // Allows labeling cell 1 as cell _ncells + 1
+        // and labeling cell _ncells as cell 0
+        if (cell_i == 1 || cell_i == _ncells + 1)
         {
           offst = 1;
         }
@@ -603,17 +605,17 @@ public:
           throw std::runtime_error("Cell not adjacent to facet");
         }
       }
-      if (fct_i == (_ncells + 1))
-      {
-        if (cell_i == fct_i - 1)
-        {
-          offst = 0;
-        }
-        else
-        {
-          throw std::runtime_error("Cell not adjacent to facet");
-        }
-      }
+      // if (fct_i == (_ncells + 1))
+      // {
+      //   if (cell_i == fct_i - 1)
+      //   {
+      //     offst = 0;
+      //   }
+      //   else
+      //   {
+      //     throw std::runtime_error("Cell not adjacent to facet");
+      //   }
+      // }
       else
       {
         if (cell_i == fct_i)

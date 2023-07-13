@@ -357,6 +357,8 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
         = problem_data.projected_rhs(i_rhs).x()->array();
 
     /* Calculate sigma_tilde */
+    c_tam1_eam1 = 0.0;
+
     for (std::size_t a = 1; a < ncells + 1; ++a)
     {
       // Set id for accessing storage
@@ -420,8 +422,19 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
         std::tie(fl_TaEam1, fl_TaEa) = patch.fctid_local(a);
         std::int8_t fl_Tap1Ea = patch.fctid_local(a, a + 1);
 
+        std::cout << "Curren cell: a=" << a << std::endl;
+        // std::cout << "Local id central node: " << int(node_i_Ta) <<
+        // std::endl; std::cout << "Local fct-ids Ta (Eam1, Ea): " <<
+        // int(fl_TaEam1) << ", "
+        //           << int(fl_TaEa) << std::endl;
+        // std::cout << "Local fct-ids Tap1 (Ea): " << int(fl_Tap1Ea) <<
+        // std::endl;
+
         // DOFs (cell local) projected flux on facet Ea
         std::span<const std::int32_t> dofs_Ea = patch.dofs_projflux_fct(a);
+
+        // std::cout << "Dofs Ea: " << dofs_Ea[0] << ", " << dofs_Ea[1] << ", "
+        //           << dofs_Ea[2] << ", " << dofs_Ea[3] << std::endl;
 
         // 1D quadrature points on facet Ea
         std::span<const double> qpoints_Ea
@@ -454,19 +467,36 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
           std::int32_t c_ap1 = (a < ncells) ? cells[id_a + 1] : cells[0];
 
           // Evaluate jump at quadrature point
-          for (std::size_t i = 0; i < ndofs_projflux_fct; ++i)
+          if (type_patch > 0 && a == ncells)
           {
-            // Local and global IDs of first DOF on facet
-            int s_Tap1 = dofs_Ea[i];
-            int s_Ta = dofs_Ea[i + ndofs_projflux_fct];
+            for (std::size_t i = 0; i < ndofs_projflux_fct; ++i)
+            {
+              // Local and global IDs of first DOF on facet
+              int s_Tap1 = dofs_Ea[i];
+              int s_Ta = dofs_Ea[i + ndofs_projflux_fct];
 
-            // Evaluate jump
-            // jump = (flux_proj_Tap1 - flux_proj_Ta)
-            diff_proj_flux[0] = coefficients_G[s_Tap1] * shp_Tap1Ea(i, s_Tap1)
-                                - coefficients_G[s_Ta] * shp_TaEa(i, s_Ta);
-            diff_proj_flux[1]
-                = coefficients_G[s_Tap1 + 1] * shp_Tap1Ea(i, s_Tap1)
-                  - coefficients_G[s_Ta + 1] * shp_TaEa(i, s_Ta);
+              // Evaluate jump
+              // jump = flux_proj_Ta on boundary!
+              diff_proj_flux[0] = coefficients_G[s_Ta] * shp_TaEa(i, s_Ta);
+              diff_proj_flux[1] = coefficients_G[s_Ta + 1] * shp_TaEa(i, s_Ta);
+            }
+          }
+          else
+          {
+            for (std::size_t i = 0; i < ndofs_projflux_fct; ++i)
+            {
+              // Local and global IDs of first DOF on facet
+              int s_Tap1 = dofs_Ea[i];
+              int s_Ta = dofs_Ea[i + ndofs_projflux_fct];
+
+              // Evaluate jump
+              // jump = (flux_proj_Tap1 - flux_proj_Ta)
+              diff_proj_flux[0] = coefficients_G[s_Tap1] * shp_Tap1Ea(i, s_Tap1)
+                                  - coefficients_G[s_Ta] * shp_TaEa(i, s_Ta);
+              diff_proj_flux[1]
+                  = coefficients_G[s_Tap1 + 1] * shp_Tap1Ea(i, s_Tap1)
+                    - coefficients_G[s_Ta + 1] * shp_TaEa(i, s_Ta);
+            }
           }
 
           // Multiply jump with normal Ea(Tap1)
@@ -478,18 +508,18 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
 
           c_ta_eam1 += jump_proj_flux_Eam1[n] * aux * detJ_Eam1;
 
-          if constexpr (id_flux_order == 2)
-          {
-            cj_ta_ea[0] = jump_proj_flux_Ea * aux * qpoints_Ea[n] * detJ_Ea;
-          }
-          else
-          {
-            double aux2 = jump_proj_flux_Ea * aux * detJ_Ea;
-            for (std::size_t j = 1; j < ndofs_flux_fct; ++j)
-            {
-              cj_ta_ea[j] = aux2 * std::pow(qpoints_Ea[n], j);
-            }
-          }
+          // if constexpr (id_flux_order == 2)
+          // {
+          //   cj_ta_ea[0] = jump_proj_flux_Ea * aux * qpoints_Ea[n] * detJ_Ea;
+          // }
+          // else
+          // {
+          //   double aux2 = jump_proj_flux_Ea * aux * detJ_Ea;
+          //   for (std::size_t j = 1; j < ndofs_flux_fct; ++j)
+          //   {
+          //     cj_ta_ea[j] = aux2 * std::pow(qpoints_Ea[n], j);
+          //   }
+          // }
 
           // Store jump
           jump_proj_flux_Eam1[n] = jump_proj_flux_Ea;
@@ -569,32 +599,32 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
           c_ta_ea += aux;
 
           // Evaluate cell DOFs
-          if constexpr (id_flux_order == 2)
-          {
-            c_ta_div[0] += aux * qpoints(n, 1);
-            c_ta_div[1] += aux * qpoints(n, 0);
-          }
-          else
-          {
-            int count = 0;
-            const int degree = degree_flux_rt + 1;
+          // if constexpr (id_flux_order == 2)
+          // {
+          //   c_ta_div[0] += aux * qpoints(n, 1);
+          //   c_ta_div[1] += aux * qpoints(n, 0);
+          // }
+          // else
+          // {
+          //   int count = 0;
+          //   const int degree = degree_flux_rt + 1;
 
-            for (std::size_t l = 0; l < degree; ++l)
-            {
-              for (std::size_t m = 0; m < degree - l; m++)
-              {
-                if ((l + m) > 0)
-                {
-                  // Calculate DOF
-                  c_ta_div[count] += aux * std::pow(qpoints(n, 0), l)
-                                     * std::pow(qpoints(n, 1), m);
+          //   for (std::size_t l = 0; l < degree; ++l)
+          //   {
+          //     for (std::size_t m = 0; m < degree - l; m++)
+          //     {
+          //       if ((l + m) > 0)
+          //       {
+          //         // Calculate DOF
+          //         c_ta_div[count] += aux * std::pow(qpoints(n, 0), l)
+          //                            * std::pow(qpoints(n, 1), m);
 
-                  // Increment counter
-                  count += 1;
-                }
-              }
-            }
-          }
+          //         // Increment counter
+          //         count += 1;
+          //       }
+          //     }
+          //   }
+          // }
         }
       }
 
