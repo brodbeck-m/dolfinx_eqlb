@@ -266,7 +266,7 @@ KernelData::shapefunctions_cell_rhs(dolfinx_adaptivity::cmdspan2_t K)
     }
   }
 
-  return stdex::submdspan(_flux_fullbasis_current, stdex::full_extent,
+  return stdex::submdspan(_rhs_fullbasis_current, stdex::full_extent,
                           stdex::full_extent, stdex::full_extent, 0);
 }
 

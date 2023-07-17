@@ -182,6 +182,7 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
   const int ndofs_flux_cell_div = patch.ndofs_flux_cell_div();
   const int ndofs_projflux = patch.ndofs_fluxdg_cell();
   const int ndofs_projflux_fct = patch.ndofs_fluxdg_fct();
+  const int ndofs_rhs = patch.ndofs_rhs_cell();
 
   /* Initialise solution process */
   // Jacobian J, inverse K and determinant detJ
@@ -366,13 +367,6 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
     {
       copy_cell_data<T, 2>(x_flux_proj, fluxdg_dofmap.links(cells[0]),
                            coefficients_G_Tap1, 2);
-
-      std::cout << "Coefficients_G_Tap1: " << std::endl;
-      for (auto e : coefficients_G_Tap1)
-      {
-        std::cout << e << std::endl;
-      }
-      std::cout << "\n" << std::endl;
     }
 
     /* Calculate sigma_tilde */
@@ -428,9 +422,8 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
                         + diff_proj_flux[1] * normal_Eam1[1];
 
         // Set DOF
-        // Positive jump as it is calculated with n_(Ta,Ea)=-n_(Tap1,Ea)!
-        // c_ta_eam1 = jump_i * 0.5 * detJ_Eam1 - c_tam1_eam1;
-        c_ta_eam1 = jump_i * 0.5 * detJ_Eam1;
+        // (Positive jump as it is calculated with n_(Ta,Ea)=-n_(Tap1,Ea))
+        c_ta_eam1 = jump_i * 0.5 * detJ_Eam1 - c_tam1_eam1;
       }
       else
       {
@@ -444,6 +437,9 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
 
         // DOFs (cell local) projected flux on facet Ea
         std::span<const std::int32_t> dofs_Ea = patch.dofs_projflux_fct(a);
+
+        // Number of quadrature points
+        const int nqpoints = kernel_data.nqpoints_facet();
 
         // 1D quadrature points on facet Ea
         std::span<const double> qpoints_Ea
@@ -467,11 +463,10 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
             = kernel_data.shapefunctions_fct_hat(fl_TaEa);
 
         // Quadrature loop
-        // c_ta_eam1 = -c_tam1_eam1;
-        c_ta_eam1 = 0.0;
+        c_ta_eam1 = -c_tam1_eam1;
         std::fill(cj_ta_ea.begin(), cj_ta_ea.end(), 0.0);
 
-        for (std::size_t n = 0; n < kernel_data.nqpoints_facet(); ++n)
+        for (std::size_t n = 0; n < nqpoints; ++n)
         {
           // Global index of Tap1
           std::int32_t c_ap1 = (a < ncells) ? cells[id_a + 1] : cells[0];
@@ -567,9 +562,6 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
         }
       }
 
-      std::cout << "Result cell a=" << a << std::endl;
-      std::cout << "c_ta_eam1: " << c_ta_eam1 << std::endl;
-
       /* DOFs from cell integrals */
       if constexpr (id_flux_order == 1)
       {
@@ -586,6 +578,7 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
             = extract_mapping_data(id_a, storage_K);
 
         // Quadrature points and weights
+        const int nqpoints = kernel_data.nqpoints_cell();
         dolfinx_adaptivity::cmdspan2_t qpoints
             = kernel_data.quadrature_points_cell();
         std::span<const double> weights = kernel_data.quadrature_weights_cell();
@@ -602,11 +595,12 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
         c_ta_ea = -c_ta_eam1;
         std::fill(c_ta_div.begin(), c_ta_div.end(), 0.0);
 
-        for (std::size_t n = 0; n < kernel_data.nqpoints_cell(); ++n)
+        for (std::size_t n = 0; n < nqpoints; ++n)
         {
           // Interpolation
-          double f = 0.0, div_g = 0.0;
-          for (std::size_t i = 0; i < ndofs_projflux_fct; ++i)
+          double f = 0.0;
+          double div_g = 0.0;
+          for (std::size_t i = 0; i < ndofs_rhs; ++i)
           {
             // RHS
             f += coefficients_f[i] * shp_rhs(0, n, i);
@@ -658,6 +652,10 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
           // }
         }
       }
+
+      std::cout << "Result cell a=" << a << std::endl;
+      std::cout << "c_ta_eam1: " << c_ta_eam1 << std::endl;
+      std::cout << "c_ta_ea: " << c_ta_ea << std::endl;
 
       // Store DOFs to global solution vector
       if constexpr (id_flux_order == 1)

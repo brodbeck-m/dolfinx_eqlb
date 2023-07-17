@@ -126,7 +126,7 @@ public:
 
   /// Extract shape functions on cell (RHS, projected flux)
   /// Array with indexes i, j and k:
-  /// phi_k(x_j) is the shape-function k at point j while k determins
+  /// phi_k(x_j) is the shape-function k at point j while i determins
   /// if function or the derivative is returned.
   /// @return Array of shape functions (reference cell)
   dolfinx_adaptivity::s_cmdspan3_t shapefunctions_cell_rhs() const
