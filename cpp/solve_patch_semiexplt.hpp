@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <cmath>
 #include <functional>
+#include <ios>
 #include <iostream>
 #include <iterator>
 #include <span>
@@ -191,7 +192,7 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
   std::array<double, 18> detJ_scratch;
 
   // Coefficient arrays for RHS/ projected flux
-  std::vector<double> coefficients_f, coefficients_G;
+  std::vector<double> coefficients_f, coefficients_G_Tap1, coefficients_G_Ta;
 
   // Jump within projected flux
   std::array<double, 2> diff_proj_flux;
@@ -219,7 +220,11 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
 
     // Cell-DOFs of RHS and projected flux
     coefficients_f.resize(patch.ndofs_rhs_cell());
-    coefficients_G.resize(patch.ndofs_fluxdg_cell());
+    coefficients_G_Tap1.resize(patch.ndofs_fluxdg_cell());
+    coefficients_G_Ta.resize(patch.ndofs_fluxdg_cell());
+
+    std::cout << "Size coefficient storage: " << patch.ndofs_fluxdg_cell()
+              << ", " << patch.ndofs_rhs_cell() << std::endl;
 
     // Storage of DOFs
     c_ta_div.resize(ndofs_flux_cell_div);
@@ -356,6 +361,20 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
     std::span<const T> x_rhs_proj
         = problem_data.projected_rhs(i_rhs).x()->array();
 
+    // Initialise coefficients_G
+    if constexpr (id_flux_order > 1)
+    {
+      copy_cell_data<T, 2>(x_flux_proj, fluxdg_dofmap.links(cells[0]),
+                           coefficients_G_Tap1, 2);
+
+      std::cout << "Coefficients_G_Tap1: " << std::endl;
+      for (auto e : coefficients_G_Tap1)
+      {
+        std::cout << e << std::endl;
+      }
+      std::cout << "\n" << std::endl;
+    }
+
     /* Calculate sigma_tilde */
     c_tam1_eam1 = 0.0;
 
@@ -366,6 +385,7 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
 
       // Global cell id
       std::int32_t c_a = cells[id_a];
+      std::cout << "Global cell-ID: " << c_a << std::endl;
 
       // Cell-local id of patch-central node
       std::int8_t node_i_Ta = patch.inode_local(a);
@@ -380,8 +400,7 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
       if constexpr (id_flux_order > 1)
       {
         // Projected Flux
-        copy_cell_data<T, 2>(x_flux_proj, fluxdg_dofmap.links(c_a),
-                             coefficients_G, 2);
+        std::swap(coefficients_G_Ta, coefficients_G_Tap1);
 
         // Projected RHS
         copy_cell_data<T, 1>(x_rhs_proj, rhs_dofmap.links(c_a), coefficients_f,
@@ -410,7 +429,8 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
 
         // Set DOF
         // Positive jump as it is calculated with n_(Ta,Ea)=-n_(Tap1,Ea)!
-        c_ta_eam1 = jump_i * 0.5 * detJ_Eam1 - c_tam1_eam1;
+        // c_ta_eam1 = jump_i * 0.5 * detJ_Eam1 - c_tam1_eam1;
+        c_ta_eam1 = jump_i * 0.5 * detJ_Eam1;
       }
       else
       {
@@ -422,19 +442,8 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
         std::tie(fl_TaEam1, fl_TaEa) = patch.fctid_local(a);
         std::int8_t fl_Tap1Ea = patch.fctid_local(a, a + 1);
 
-        std::cout << "Curren cell: a=" << a << std::endl;
-        // std::cout << "Local id central node: " << int(node_i_Ta) <<
-        // std::endl; std::cout << "Local fct-ids Ta (Eam1, Ea): " <<
-        // int(fl_TaEam1) << ", "
-        //           << int(fl_TaEa) << std::endl;
-        // std::cout << "Local fct-ids Tap1 (Ea): " << int(fl_Tap1Ea) <<
-        // std::endl;
-
         // DOFs (cell local) projected flux on facet Ea
         std::span<const std::int32_t> dofs_Ea = patch.dofs_projflux_fct(a);
-
-        // std::cout << "Dofs Ea: " << dofs_Ea[0] << ", " << dofs_Ea[1] << ", "
-        //           << dofs_Ea[2] << ", " << dofs_Ea[3] << std::endl;
 
         // 1D quadrature points on facet Ea
         std::span<const double> qpoints_Ea
@@ -458,7 +467,8 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
             = kernel_data.shapefunctions_fct_hat(fl_TaEa);
 
         // Quadrature loop
-        c_ta_eam1 = -c_tam1_eam1;
+        // c_ta_eam1 = -c_tam1_eam1;
+        c_ta_eam1 = 0.0;
         std::fill(cj_ta_ea.begin(), cj_ta_ea.end(), 0.0);
 
         for (std::size_t n = 0; n < kernel_data.nqpoints_facet(); ++n)
@@ -467,6 +477,8 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
           std::int32_t c_ap1 = (a < ncells) ? cells[id_a + 1] : cells[0];
 
           // Evaluate jump at quadrature point
+          std::fill(diff_proj_flux.begin(), diff_proj_flux.end(), 0.0);
+
           if (type_patch > 0 && a == ncells)
           {
             for (std::size_t i = 0; i < ndofs_projflux_fct; ++i)
@@ -477,25 +489,35 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
 
               // Evaluate jump
               // jump = flux_proj_Ta on boundary!
-              diff_proj_flux[0] = coefficients_G[s_Ta] * shp_TaEa(i, s_Ta);
-              diff_proj_flux[1] = coefficients_G[s_Ta + 1] * shp_TaEa(i, s_Ta);
+              diff_proj_flux[0] = coefficients_G_Ta[s_Ta] * shp_TaEa(n, s_Ta);
+              diff_proj_flux[1]
+                  = coefficients_G_Ta[s_Ta + 1] * shp_TaEa(n, s_Ta);
             }
           }
           else
           {
+            // Copa data from element Tap1
+            std::int32_t c_ap1 = patch.cell(a + 1);
+            copy_cell_data<T, 2>(x_flux_proj, fluxdg_dofmap.links(c_ap1),
+                                 coefficients_G_Tap1, 2);
+
+            // Interpolate jump
             for (std::size_t i = 0; i < ndofs_projflux_fct; ++i)
             {
               // Local and global IDs of first DOF on facet
-              int s_Tap1 = dofs_Ea[i];
-              int s_Ta = dofs_Ea[i + ndofs_projflux_fct];
+              int id_Tap1 = dofs_Ea[i];
+              int id_Ta = dofs_Ea[i + ndofs_projflux_fct];
+              int offs_Tap1 = 2 * id_Tap1;
+              int offs_Ta = 2 * id_Ta;
 
               // Evaluate jump
               // jump = (flux_proj_Tap1 - flux_proj_Ta)
-              diff_proj_flux[0] = coefficients_G[s_Tap1] * shp_Tap1Ea(i, s_Tap1)
-                                  - coefficients_G[s_Ta] * shp_TaEa(i, s_Ta);
+              diff_proj_flux[0]
+                  += coefficients_G_Tap1[offs_Tap1] * shp_Tap1Ea(n, id_Tap1)
+                     - coefficients_G_Ta[offs_Ta] * shp_TaEa(n, id_Ta);
               diff_proj_flux[1]
-                  = coefficients_G[s_Tap1 + 1] * shp_Tap1Ea(i, s_Tap1)
-                    - coefficients_G[s_Ta + 1] * shp_TaEa(i, s_Ta);
+                  += coefficients_G_Tap1[offs_Tap1 + 1] * shp_Tap1Ea(n, id_Tap1)
+                     - coefficients_G_Ta[offs_Ta + 1] * shp_TaEa(n, id_Ta);
             }
           }
 
@@ -504,6 +526,7 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
                                      + diff_proj_flux[1] * normal_Ea[1];
 
           // Evaluate facet DOFs
+          // (Positive jump, as calculated with n_(Ta,Ea)=-n_(Tap1,Ea))
           double aux = hat_TaEam1(n, node_i_Ta) * weights_fct[n];
 
           c_ta_eam1 += jump_proj_flux_Eam1[n] * aux * detJ_Eam1;
@@ -544,6 +567,9 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
         }
       }
 
+      std::cout << "Result cell a=" << a << std::endl;
+      std::cout << "c_ta_eam1: " << c_ta_eam1 << std::endl;
+
       /* DOFs from cell integrals */
       if constexpr (id_flux_order == 1)
       {
@@ -583,12 +609,12 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
           for (std::size_t i = 0; i < ndofs_projflux_fct; ++i)
           {
             // RHS
-            f += coefficients_G[i] * shp_rhs(0, n, i);
+            f += coefficients_f[i] * shp_rhs(0, n, i);
 
             // Divergence of projected flux
             const int offs = 2 * i;
-            div_g += coefficients_G[offs] * shp_rhs(1, n, i)
-                     + coefficients_G[offs + 1] * shp_rhs(2, n, i);
+            div_g += coefficients_G_Ta[offs] * shp_rhs(1, n, i)
+                     + coefficients_G_Ta[offs + 1] * shp_rhs(2, n, i);
           }
 
           // Auxiliary data
@@ -597,6 +623,11 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
 
           // Evaluate facet DOF
           c_ta_ea += aux;
+
+          // std::cout << "Cell, GP: a=" << a << "i_GP=" << n << std::endl;
+          // std::cout << "f: " << f << std::endl;
+          // std::cout << "weight, detJ: " << weights[n] << ", " << detJ
+          //           << std::endl;
 
           // Evaluate cell DOFs
           // if constexpr (id_flux_order == 2)

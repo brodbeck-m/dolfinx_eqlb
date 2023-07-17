@@ -496,13 +496,33 @@ public:
   /* Setter functions */
 
   /* Getter functions (Geometry) */
-  /// Return processor-local cell id
+  /// Return processor-local cell id. For inner patches a=0 resp. a=ncells+1
+  /// point to last resp. first cell on patch.
   /// @param cell_i Patch-local cell id
   /// @return cell
   std::int32_t cell(int cell_i)
   {
-    int celli = cellid_patch_to_data(cell_i);
-    return _cells[celli];
+    if (_type[0] != 0)
+    {
+      int celli = cellid_patch_to_data(cell_i);
+      return _cells[celli];
+    }
+    else
+    {
+      if (cell_i == 0)
+      {
+        return _cells[_ncells - 1];
+      }
+      else if (cell_i == _ncells + 1)
+      {
+        return _cells[0];
+      }
+      else
+      {
+        int celli = cellid_patch_to_data(cell_i);
+        return _cells[celli];
+      }
+    }
   }
 
   /// Return processor-local facet id
