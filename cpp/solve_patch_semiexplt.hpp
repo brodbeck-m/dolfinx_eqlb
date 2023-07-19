@@ -224,9 +224,6 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
     coefficients_G_Tap1.resize(patch.ndofs_fluxdg_cell());
     coefficients_G_Ta.resize(patch.ndofs_fluxdg_cell());
 
-    std::cout << "Size coefficient storage: " << patch.ndofs_fluxdg_cell()
-              << ", " << patch.ndofs_rhs_cell() << std::endl;
-
     // Storage of DOFs
     c_ta_div.resize(ndofs_flux_cell_div);
     cj_ta_ea.resize(ndofs_flux_fct - 1);
@@ -379,7 +376,6 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
 
       // Global cell id
       std::int32_t c_a = cells[id_a];
-      std::cout << "Global cell-ID: " << c_a << std::endl;
 
       // Cell-local id of patch-central node
       std::int8_t node_i_Ta = patch.inode_local(a);
@@ -471,7 +467,7 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
           // Global index of Tap1
           std::int32_t c_ap1 = (a < ncells) ? cells[id_a + 1] : cells[0];
 
-          // Evaluate jump at quadrature point
+          // Interpolate jump at quadrature point
           std::fill(diff_proj_flux.begin(), diff_proj_flux.end(), 0.0);
 
           if (type_patch > 0 && a == ncells)
@@ -522,22 +518,24 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
 
           // Evaluate facet DOFs
           // (Positive jump, as calculated with n_(Ta,Ea)=-n_(Tap1,Ea))
-          double aux = hat_TaEam1(n, node_i_Ta) * weights_fct[n];
 
-          c_ta_eam1 += jump_proj_flux_Eam1[n] * aux * detJ_Eam1;
+          c_ta_eam1 += jump_proj_flux_Eam1[n] * hat_TaEam1(n, node_i_Ta)
+                       * detJ_Eam1 * weights_fct[n];
 
-          // if constexpr (id_flux_order == 2)
-          // {
-          //   cj_ta_ea[0] = jump_proj_flux_Ea * aux * qpoints_Ea[n] * detJ_Ea;
-          // }
-          // else
-          // {
-          //   double aux2 = jump_proj_flux_Ea * aux * detJ_Ea;
-          //   for (std::size_t j = 1; j < ndofs_flux_fct; ++j)
-          //   {
-          //     cj_ta_ea[j] = aux2 * std::pow(qpoints_Ea[n], j);
-          //   }
-          // }
+          if constexpr (id_flux_order == 2)
+          {
+            cj_ta_ea[0] += jump_proj_flux_Ea * hat_TaEa(n, node_i_Ta)
+                           * qpoints_Ea[n] * detJ_Ea * weights_fct[n];
+          }
+          else
+          {
+            double aux = jump_proj_flux_Ea * hat_TaEa(n, node_i_Ta) * detJ_Ea
+                         * weights_fct[n];
+            for (std::size_t j = 1; j < ndofs_flux_fct; ++j)
+            {
+              cj_ta_ea[j - 1] += aux * std::pow(qpoints_Ea[n], j);
+            }
+          }
 
           // Store jump
           jump_proj_flux_Eam1[n] = jump_proj_flux_Ea;
@@ -618,44 +616,41 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
           // Evaluate facet DOF
           c_ta_ea += aux;
 
-          // std::cout << "Cell, GP: a=" << a << "i_GP=" << n << std::endl;
-          // std::cout << "f: " << f << std::endl;
-          // std::cout << "weight, detJ: " << weights[n] << ", " << detJ
-          //           << std::endl;
-
           // Evaluate cell DOFs
-          // if constexpr (id_flux_order == 2)
-          // {
-          //   c_ta_div[0] += aux * qpoints(n, 1);
-          //   c_ta_div[1] += aux * qpoints(n, 0);
-          // }
-          // else
-          // {
-          //   int count = 0;
-          //   const int degree = degree_flux_rt + 1;
+          if constexpr (id_flux_order == 2)
+          {
+            c_ta_div[0] += aux * qpoints(n, 1);
+            c_ta_div[1] += aux * qpoints(n, 0);
+          }
+          else
+          {
+            int count = 0;
+            const int degree = degree_flux_rt + 1;
 
-          //   for (std::size_t l = 0; l < degree; ++l)
-          //   {
-          //     for (std::size_t m = 0; m < degree - l; m++)
-          //     {
-          //       if ((l + m) > 0)
-          //       {
-          //         // Calculate DOF
-          //         c_ta_div[count] += aux * std::pow(qpoints(n, 0), l)
-          //                            * std::pow(qpoints(n, 1), m);
+            for (std::size_t l = 0; l < degree; ++l)
+            {
+              for (std::size_t m = 0; m < degree - l; m++)
+              {
+                if ((l + m) > 0)
+                {
+                  // Calculate DOF
+                  c_ta_div[count] += aux * std::pow(qpoints(n, 0), l)
+                                     * std::pow(qpoints(n, 1), m);
 
-          //         // Increment counter
-          //         count += 1;
-          //       }
-          //     }
-          //   }
-          // }
+                  // Increment counter
+                  count += 1;
+                }
+              }
+            }
+          }
         }
       }
 
-      std::cout << "Result cell a=" << a << std::endl;
-      std::cout << "c_ta_eam1: " << c_ta_eam1 << std::endl;
-      std::cout << "c_ta_ea: " << c_ta_ea << std::endl;
+      // std::cout << "Results cell (local, global): " << a << ", " << c_a
+      //           << std::endl;
+      // std::cout << "c_ta_eam1=" << c_ta_eam1 << std::endl;
+      // std::cout << "c_ta_ea=" << c_ta_ea << std::endl;
+      // std::cout << "cj_ta_ea=" << cj_ta_ea[0] << std::endl;
 
       // Store DOFs to global solution vector
       if constexpr (id_flux_order == 1)
@@ -696,10 +691,12 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
               += prefactor_dof(id_a, 1) * c_ta_ea;
 
           // Set higher-order DOFs on facets
-          for (std::size_t i = 1; i < ndofs_flux_fct; ++i)
+          for (std::size_t i = 0; i < ndofs_flux_fct - 1; ++i)
           {
+            const int offs = gdofs_fct[ndofs_flux_fct + i];
+
             // DOFs on facet Ea
-            x_flux_dhdiv[gdofs_fct[i]] += prefactor_dof(id_a, 1) * cj_ta_ea[i];
+            x_flux_dhdiv[offs] += prefactor_dof(id_a, 1) * cj_ta_ea[i];
           }
 
           // Set divergence DOFs on cell

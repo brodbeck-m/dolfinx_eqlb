@@ -123,7 +123,7 @@ public:
           _points_fct[idb + 1] = ref_pos[1] + ref_dir[1] * q_points[i];
 
           // Set local coordinates
-          _sloc_fct[id] = q_points[i] * ref_length;
+          _sloc_fct[id] = q_points[i];
 
           // Set quadrature weights
           _weights_fct[id] = q_weights[i];

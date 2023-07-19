@@ -190,8 +190,7 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data,
       basix_element_fluxhdiv, basix_element_rhs, basix_element_hat);
 
   // Step 1: Explicite calculation of sigma_tilde
-  // for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
-  for (std::size_t i_node = 106; i_node < 107; ++i_node)
+  for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
   {
     // Create Sub-DOFmap
     patch.create_subdofmap(i_node);

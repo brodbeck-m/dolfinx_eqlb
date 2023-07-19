@@ -14,11 +14,19 @@
 				"path": "/bin/bash"
 			}
 		},
-		"python.defaultInterpreterPath": "/usr/bin/python3"
+		"python.defaultInterpreterPath": "/usr/bin/python3",
+		"[python]": {
+			"editor.defaultFormatter": "ms-python.black-formatter",
+			"editor.formatOnSave": true,
+			"editor.codeActionsOnSave": [
+				"source.organizeImports"
+			]
+	}
 	},
 	"extensions": [
 		"ms-python.python",
 		"ms-python.vscode-pylance",
+		"ms-python.black-formatter",
 		"ms-vscode.cpptools",
 		"ms-vscode.cpptools-extension-pack",
 		"ms-vscode.cpptools-themes",
