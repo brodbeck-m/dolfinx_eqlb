@@ -21,7 +21,10 @@
 			"editor.codeActionsOnSave": [
 				"source.organizeImports"
 			]
-	}
+		
+	},
+	"[cpp]": {
+		"editor.formatOnSave": true,
 	},
 	"extensions": [
 		"ms-python.python",

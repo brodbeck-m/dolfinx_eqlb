@@ -70,20 +70,13 @@ public:
     // Number of DOFs (projected RHS)
     _ndof_rhsdg = _ndof_fluxdg / _dim;
 
-    if constexpr (id_flux_order == 1)
+    if (_degree_elmt_fluxdg == 0)
     {
       _ndof_fluxdg_fct = 1;
     }
     else
     {
-      if (_degree_elmt_fluxdg == 0)
-      {
-        _ndof_fluxdg_fct = 1;
-      }
-      else
-      {
-        _ndof_fluxdg_fct = _entity_dofs_fluxcg[_dim_fct][0].size();
-      }
+      _ndof_fluxdg_fct = _entity_dofs_fluxcg[_dim_fct][0].size();
     }
 
     /* Reserve storage */
@@ -101,16 +94,8 @@ public:
     _offset_dofmap_cell.resize(_ncells_max + 1, 0);
 
     // DOFs of projected flux on facets
-    if constexpr (id_flux_order == 1)
-    {
-      _list_fctdofs_fluxdg.resize(4 * (_ncells_max + 1), 0);
-      _offset_list_fluxdg.resize(_ncells_max + 2, 0);
-    }
-    else
-    {
-      _list_fctdofs_fluxdg.resize(2 * (_ncells_max + 1) * _ndof_fluxdg_fct, 0);
-      _offset_list_fluxdg.resize(_ncells_max + 2, 0);
-    }
+    _list_fctdofs_fluxdg.resize(2 * (_ncells_max + 1) * _ndof_fluxdg_fct, 0);
+    _offset_list_fluxdg.resize(_ncells_max + 2, 0);
 
     // Local facet IDs
     _localid_fct.resize(2 * (_ncells_max + 1));
@@ -139,16 +124,7 @@ public:
     const int bs_fluxdg = _function_space_fluxdg->dofmap()->bs();
 
     const int ndof_fct = _fct_per_cell * _ndof_flux_fct;
-    int ndof_fluxdg_fct;
-
-    if constexpr (id_flux_order == 1)
-    {
-      ndof_fluxdg_fct = _ndof_fluxdg_fct * bs_fluxdg;
-    }
-    else
-    {
-      ndof_fluxdg_fct = _ndof_fluxdg_fct;
-    }
+    const int ndof_fluxdg_fct = _ndof_fluxdg_fct;
 
     /* Create DOFmap on patch */
     // Initialisation
@@ -263,14 +239,9 @@ public:
         _dofsnz_glob_fct[offs_fhdiv_fct] = cell_i * _ndof_flux + ldof_cell_i;
         _dofsnz_glob_fct[offs_f] = cell_im1 * _ndof_flux + ldof_cell_im1;
 
-        /* Get DOFS of projected flux on fct_i */
-        int gdof_cell_i = cell_i * _ndof_fluxdg;
-        int gdof_cell_im1 = cell_im1 * _ndof_fluxdg;
-
-        _list_fctdofs_fluxdg[offs_fdg_fct] = gdof_cell_i;
-        _list_fctdofs_fluxdg[offs_fdg_fct + 1] = gdof_cell_i + 1;
-        _list_fctdofs_fluxdg[offs_fdg_fct + 2] = gdof_cell_im1;
-        _list_fctdofs_fluxdg[offs_fdg_fct + 3] = gdof_cell_im1 + 1;
+        /* Get DOFs of projected flux on fct_i */
+        _list_fctdofs_fluxdg[offs_fdg_fct] = 0;
+        _list_fctdofs_fluxdg[offs_fdg_fct + 1] = 0;
       }
       else
       {
@@ -310,6 +281,12 @@ public:
             // Increment offset
             offs_fdg_fct += 1;
           }
+        }
+        else
+        {
+          // Store DOFs
+          _list_fctdofs_fluxdg[offs_fdg_fct] = 0;
+          _list_fctdofs_fluxdg[offs_fdg_fct + 1] = 0;
         }
 
         /* Get cell-wise DOFs on cell_i */
@@ -366,14 +343,8 @@ public:
         _dofsnz_glob_fct[offs_fhdiv_fct] = cell_i * _ndof_flux + ldof_cell_i;
 
         /* Get DOFS of projected flux on fct_i */
-        // Precalculations
-        int gdof_cell_i = cell_i * _ndof_fluxdg;
-
-        // Add global DOFs
-        _list_fctdofs_fluxdg[offs_fdg_fct] = gdof_cell_i;
-        _list_fctdofs_fluxdg[offs_fdg_fct + 1] = gdof_cell_i + 1;
-        _list_fctdofs_fluxdg[offs_fdg_fct + 2] = gdof_cell_i;
-        _list_fctdofs_fluxdg[offs_fdg_fct + 3] = gdof_cell_i + 1;
+        _list_fctdofs_fluxdg[offs_fdg_fct] = 0;
+        _list_fctdofs_fluxdg[offs_fdg_fct + 1] = 0;
       }
       else
       {
@@ -408,6 +379,11 @@ public:
             // Increment offset
             offs_fdg_fct += 1;
           }
+        }
+        else
+        {
+          _list_fctdofs_fluxdg[offs_fdg_fct] = 0;
+          _list_fctdofs_fluxdg[offs_fdg_fct + 1] = 0;
         }
       }
 

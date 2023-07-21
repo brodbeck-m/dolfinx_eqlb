@@ -193,11 +193,13 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
   std::array<double, 18> detJ_scratch;
 
   // Coefficient arrays for RHS/ projected flux
-  std::vector<double> coefficients_f, coefficients_G_Tap1, coefficients_G_Ta;
+  std::vector<double> coefficients_f(ndofs_rhs, 0),
+      coefficients_G_Tap1(ndofs_projflux, 0),
+      coefficients_G_Ta(ndofs_projflux, 0);
 
   // Jump within projected flux
   std::array<double, 2> diff_proj_flux;
-  std::vector<double> jump_proj_flux_Eam1;
+  std::vector<double> jump_proj_flux_Eam1(1, 0);
 
   // DOFs flux (cell-wise H(div))
   T c_ta_ea, c_ta_eam1, c_tam1_eam1;
@@ -219,11 +221,6 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
     // Inverse of the Jocobian
     storage_K.resize(ncells * 4);
 
-    // Cell-DOFs of RHS and projected flux
-    coefficients_f.resize(patch.ndofs_rhs_cell());
-    coefficients_G_Tap1.resize(patch.ndofs_fluxdg_cell());
-    coefficients_G_Ta.resize(patch.ndofs_fluxdg_cell());
-
     // Storage of DOFs
     c_ta_div.resize(ndofs_flux_cell_div);
     cj_ta_ea.resize(ndofs_flux_fct - 1);
@@ -242,7 +239,6 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
   std::vector<double> dprefactor_dof(ncells * 2, 1.0);
   dolfinx_adaptivity::mdspan2_t prefactor_dof(dprefactor_dof.data(), ncells, 2);
 
-  // Evaluate quantities on all cells
   for (std::size_t index = 0; index < ncells; ++index)
   {
     // Index using patch nomenclature
@@ -360,11 +356,8 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
         = problem_data.projected_rhs(i_rhs).x()->array();
 
     // Initialise coefficients_G
-    if constexpr (id_flux_order > 1)
-    {
-      copy_cell_data<T, 2>(x_flux_proj, fluxdg_dofmap.links(cells[0]),
-                           coefficients_G_Tap1, 2);
-    }
+    copy_cell_data<T, 2>(x_flux_proj, fluxdg_dofmap.links(cells[0]),
+                         coefficients_G_Tap1, 2);
 
     /* Calculate sigma_tilde */
     c_tam1_eam1 = 0.0;
@@ -387,44 +380,49 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
       const double detJ_Ea = storage_detJf[a];
 
       // Coefficient arrays
-      if constexpr (id_flux_order > 1)
-      {
-        // Projected Flux
-        std::swap(coefficients_G_Ta, coefficients_G_Tap1);
+      std::swap(coefficients_G_Ta, coefficients_G_Tap1);
 
-        // Projected RHS
-        copy_cell_data<T, 1>(x_rhs_proj, rhs_dofmap.links(c_a), coefficients_f,
-                             1);
-      }
+      copy_cell_data<T, 2>(x_flux_proj, fluxdg_dofmap.links(patch.cell(a + 1)),
+                           coefficients_G_Tap1, 2);
+      copy_cell_data<T, 1>(x_rhs_proj, rhs_dofmap.links(c_a), coefficients_f,
+                           1);
 
       /* DOFs from facet integrals */
       if constexpr (id_flux_order == 1)
       {
         // Extract facet normal
-        std::span<double> normal_Eam1(storage_normal_phys.data() + id_a * dim,
-                                      dim);
+        std::span<double> normal_Ea(storage_normal_phys.data() + a * 2, 2);
 
         // Extract gradients (+/- side) on facet E_am1
         std::span<const std::int32_t> dofs_projflux_fct
             = patch.dofs_projflux_fct(a - 1);
 
-        // Evaluate jump
-        diff_proj_flux[0] = x_flux_proj[dofs_projflux_fct[0]]
-                            - x_flux_proj[dofs_projflux_fct[2]];
-        diff_proj_flux[1] = x_flux_proj[dofs_projflux_fct[1]]
-                            - x_flux_proj[dofs_projflux_fct[3]];
+        // Evaluate jump (facet Ea)
+        if (type_patch > 0 && a == ncells)
+        {
+          diff_proj_flux[0] = coefficients_G_Ta[0];
+          diff_proj_flux[1] = coefficients_G_Ta[1];
+        }
+        else
+        {
+          diff_proj_flux[0] = coefficients_G_Tap1[0] - coefficients_G_Ta[0];
+          diff_proj_flux[1] = coefficients_G_Tap1[1] - coefficients_G_Ta[1];
+        }
 
-        double jump_i = diff_proj_flux[0] * normal_Eam1[0]
-                        + diff_proj_flux[1] * normal_Eam1[1];
+        double jump_proj_flux_Ea = diff_proj_flux[0] * normal_Ea[0]
+                                   + diff_proj_flux[1] * normal_Ea[1];
 
         // Set DOF
         // (Positive jump as it is calculated with n_(Ta,Ea)=-n_(Tap1,Ea))
-        c_ta_eam1 = jump_i * 0.5 * detJ_Eam1 - c_tam1_eam1;
+        c_ta_eam1 = jump_proj_flux_Eam1[0] * 0.5 * detJ_Eam1 - c_tam1_eam1;
+
+        // Store calculated jump
+        jump_proj_flux_Eam1[0] = jump_proj_flux_Ea;
       }
       else
       {
         // Extract facet normal
-        std::span<double> normal_Ea(storage_normal_phys.data() + a * dim, dim);
+        std::span<double> normal_Ea(storage_normal_phys.data() + a * 2, 2);
 
         // Local facet ids
         std::int8_t fl_TaEam1, fl_TaEa;
@@ -487,11 +485,6 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
           }
           else
           {
-            // Copa data from element Tap1
-            std::int32_t c_ap1 = patch.cell(a + 1);
-            copy_cell_data<T, 2>(x_flux_proj, fluxdg_dofmap.links(c_ap1),
-                                 coefficients_G_Tap1, 2);
-
             // Interpolate jump
             for (std::size_t i = 0; i < ndofs_projflux_fct; ++i)
             {
@@ -563,11 +556,8 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
       /* DOFs from cell integrals */
       if constexpr (id_flux_order == 1)
       {
-        // Extract RHS value
-        T f_i = x_rhs_proj[c_a];
-
-        // Set second DOF
-        c_ta_ea = f_i * (detJ / 6) - c_ta_eam1;
+        // Set DOF on facet Ea
+        c_ta_ea = coefficients_f[0] * (detJ / 6) - c_ta_eam1;
       }
       else
       {
@@ -652,7 +642,7 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
       // std::cout << "c_ta_ea=" << c_ta_ea << std::endl;
       // std::cout << "cj_ta_ea=" << cj_ta_ea[0] << std::endl;
 
-      // Store DOFs to global solution vector
+      /* Store DOFs to global solution vector */
       if constexpr (id_flux_order == 1)
       {
         // Extract global DOF ids

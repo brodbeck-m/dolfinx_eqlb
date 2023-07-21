@@ -14,7 +14,20 @@ from dolfinx_eqlb import equilibration
 """ Utility functions """
 
 
-def solve_equilibration(degree, eqlb_type, n_elmt=5):
+def solve_equilibration(pdegree, eqlb_type, fdegree=None, rhsdegree=None, n_elmt=5):
+    # --- Check input
+    if fdegree is None:
+        fdegree = pdegree
+    else:
+        if fdegree < pdegree:
+            raise ValueError("Degree of reconstructed flux to small!")
+
+    if rhsdegree is None:
+        rhsdegree = fdegree - 1
+    else:
+        if rhsdegree > fdegree - 1:
+            raise ValueError("Degree of RHS to large!")
+
     # --- Solve primal problem
     # create mesh
     domain = dmesh.create_rectangle(
@@ -30,12 +43,21 @@ def solve_equilibration(degree, eqlb_type, n_elmt=5):
     boundary_facets = dmesh.exterior_facet_indices(domain.topology)
 
     # set function space
-    V_cg = dfem.FunctionSpace(domain, ("CG", degree))
+    V_cg = dfem.FunctionSpace(domain, ("CG", pdegree))
 
     # set source term
-    V_dg = dfem.FunctionSpace(domain, ("DG", degree - 1))
-    f = dfem.Function(V_dg)
-    f.x.array[:] = 2 * (np.random.rand(V_dg.dofmap.index_map.size_local) + 0.1)
+    V_rhs = dfem.FunctionSpace(domain, ("DG", fdegree - 1))
+    f = dfem.Function(V_rhs)
+
+    if rhsdegree < fdegree - 1:
+        V_data = dfem.FunctionSpace(domain, ("DG", rhsdegree))
+        f_data = dfem.Function(V_data)
+        f_data.x.array[:] = 2 * (
+            np.random.rand(V_data.dofmap.index_map.size_local) + 0.1
+        )
+        f.interpolate(f_data)
+    else:
+        f.x.array[:] = 2 * (np.random.rand(V_rhs.dofmap.index_map.size_local) + 0.1)
 
     # set weak forms
     u = ufl.TrialFunction(V_cg)
@@ -59,7 +81,7 @@ def solve_equilibration(degree, eqlb_type, n_elmt=5):
 
     # --- Project flux
     # set function space for flux
-    V_flux_proj = dfem.VectorFunctionSpace(domain, ("DG", degree - 1))
+    V_flux_proj = dfem.VectorFunctionSpace(domain, ("DG", fdegree - 1))
 
     # set weak forms
     u = ufl.TrialFunction(V_flux_proj)
@@ -77,10 +99,10 @@ def solve_equilibration(degree, eqlb_type, n_elmt=5):
     # --- Equilibrate flux
     # setup and solve equilibration
     if eqlb_type == "EV":
-        equilibrator = equilibration.EquilibratorEV(degree, domain, [f], [sig_proj])
+        equilibrator = equilibration.EquilibratorEV(fdegree, domain, [f], [sig_proj])
     elif eqlb_type == "SemiExplt":
         equilibrator = equilibration.EquilibratorSemiExplt(
-            degree, domain, [f], [sig_proj]
+            fdegree, domain, [f], [sig_proj]
         )
     else:
         raise ValueError("Unknown equilibration type")
@@ -223,7 +245,9 @@ def test_div_condition(degree, eqlb_type):
 @pytest.mark.parametrize("degree", [1])
 def test_jump_condition(degree):
     # --- Solve equilibration
-    uh, f_proj, sig_proj, sig_eq = solve_equilibration(degree, "SemiExplt", n_elmt=5)
+    uh, f_proj, sig_proj, sig_eq = solve_equilibration(
+        degree, "SemiExplt", n_elmt=5
+    )
 
     # interpolate functions into DRT-space
     fkt_drt = fkt_to_drt([sig_proj, sig_eq], degree)
