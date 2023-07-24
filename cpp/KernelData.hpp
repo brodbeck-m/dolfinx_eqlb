@@ -253,16 +253,38 @@ public:
         _quadrature_rule->weights_fct().data() + offset, nqpoints);
   }
 
-  /* Evaluate hat-function */
+  /* Getter functions (Quadrature) */
+  /// Extract interpolation matrix on facet for single DOF
+  /// Indices of M: spacial dimension x points
+  /// @param fct_id The cell-local facet id
+  /// @param dof_id The facet-local DOF id
+  /// @return The interpolation matrix M
+  dolfinx_adaptivity::cmdspan2_t interpl_matrix_facte(std::int8_t fct_id,
+                                                      std::int8_t dof_id)
+  {
+    return stdex::submdspan(_M_fct, (std::size_t)fct_id, (std::size_t)dof_id,
+                            stdex::full_extent, stdex::full_extent);
+  }
 
 protected:
+  /// Tabulate shape functions of piecewise H(div) flux
+  /// @param basix_element_fluxpw The basix-element for the H(div) flux
+  void tabulate_flux_basis(const basix::FiniteElement& basix_element_fluxpw);
+
+  /// Tabulate shape functions of RHS and projected flux
+  /// @param basix_element_rhs The basix-element for RHS and projected flux
+  void tabulate_rhs_basis(const basix::FiniteElement& basix_element_rhs);
+
+  /// Tabulate shape functions of hat-function
+  /// @param basix_element_hat The basix-element for the hat-function
+  void tabulate_hat_basis(const basix::FiniteElement& basix_element_hat);
+
   /* Variable definitions */
   // Dimensions
-  std::uint32_t _gdim;
-  std::uint32_t _tdim;
+  std::uint32_t _gdim, _tdim;
 
   // Description mesh element
-  int _num_coordinate_dofs;
+  std::size_t _num_coordinate_dofs, _nfcts_per_cell;
   bool _is_affine;
 
   // Facet normals (reference element)
@@ -272,6 +294,11 @@ protected:
 
   // Quadrature rule
   std::shared_ptr<const QuadratureRule> _quadrature_rule;
+
+  // Interpolation data
+  std::size_t _nipoints_per_fct, _nipoints_fct;
+  std::vector<double> _ipoints_fct, _data_M_fct;
+  dolfinx_adaptivity::mdspan4_t _M_fct; // Indices: facet, dof, gdim, points
 
   // Tabulated shape-functions (geometry)
   std::array<std::size_t, 4> _g_basis_shape;
