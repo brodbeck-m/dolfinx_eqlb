@@ -23,7 +23,7 @@
 			]
 		
 	},
-	"[cpp]": {
+		"[cpp]": {
 		"editor.formatOnSave": true,
 	},
 	"extensions": [

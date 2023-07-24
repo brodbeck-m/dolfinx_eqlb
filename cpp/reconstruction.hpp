@@ -401,7 +401,7 @@ void reconstruct_fluxes_cstm(
   if (order_flux == 1)
   {
     // Perform equilibration
-    reconstruct_fluxes_patch<T>(problem_data, fct_type);
+    reconstruct_fluxes_patch<T, 1>(problem_data, fct_type);
   }
   else if (order_flux == 2)
   {
