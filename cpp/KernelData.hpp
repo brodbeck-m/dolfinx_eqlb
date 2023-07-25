@@ -25,6 +25,7 @@ using namespace dolfinx;
 
 namespace dolfinx_adaptivity::equilibration
 {
+template <typename T>
 class KernelData
 {
 public:
@@ -67,6 +68,20 @@ public:
   /// @param fct_id The cell-local facet id
   void physical_fct_normal(std::span<double> normal_phys,
                            dolfinx_adaptivity::mdspan2_t K, std::int8_t fct_id);
+
+  /// Pull back of flux-data from current to reference cell
+  /// @param flux_ref The flux data on reference cell
+  /// @param flux_cur The flux data on current cell
+  /// @param J        The Jacobian
+  /// @param detJ     The determinant of the Jacobian
+  /// @param K        The inverse of the Jacobian
+  void pull_back_flux(dolfinx_adaptivity::s_mdspan2_t flux_ref,
+                      dolfinx_adaptivity::s_cmdspan2_t flux_cur,
+                      dolfinx_adaptivity::cmdspan2_t J, double detJ,
+                      dolfinx_adaptivity::cmdspan2_t K)
+  {
+    _pull_back_fluxspace(flux_cur, flux_ref, K, 1.0 / detJ, J);
+  }
 
   /* Setter functions */
 
@@ -318,6 +333,15 @@ protected:
   // Tabulated shape-functions (hat-function)
   std::vector<double> _hat_basis_cell_values, _hat_basis_fct_values;
   dolfinx_adaptivity::cmdspan4_t _hat_cell_fullbasis, _hat_fct_fullbasis;
+
+  // Push-back H(div) data
+  std::function<void(
+      stdex::mdspan<T, stdex::dextents<std::size_t, 2>>&,
+      const stdex::mdspan<const T, stdex::dextents<std::size_t, 2>>&,
+      const stdex::mdspan<const double, stdex::dextents<std::size_t, 2>>&,
+      double,
+      const stdex::mdspan<const double, stdex::dextents<std::size_t, 2>>&)>
+      _pull_back_fluxspace;
 };
 
 } // namespace dolfinx_adaptivity::equilibration

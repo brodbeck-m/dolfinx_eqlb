@@ -2,14 +2,14 @@
 #include "QuadratureRule.hpp"
 
 using namespace dolfinx;
+using namespace dolfinx_adaptivity::equilibration;
 
-namespace dolfinx_adaptivity::equilibration
-{
-KernelData::KernelData(std::shared_ptr<const mesh::Mesh> mesh,
-                       std::shared_ptr<const QuadratureRule> qrule,
-                       const basix::FiniteElement& basix_element_fluxpw,
-                       const basix::FiniteElement& basix_element_rhs,
-                       const basix::FiniteElement& basix_element_hat)
+template <typename T>
+KernelData<T>::KernelData(std::shared_ptr<const mesh::Mesh> mesh,
+                          std::shared_ptr<const QuadratureRule> qrule,
+                          const basix::FiniteElement& basix_element_fluxpw,
+                          const basix::FiniteElement& basix_element_rhs,
+                          const basix::FiniteElement& basix_element_hat)
     : _quadrature_rule(qrule)
 {
   const mesh::Topology& topology = mesh->topology();
@@ -128,10 +128,19 @@ KernelData::KernelData(std::shared_ptr<const mesh::Mesh> mesh,
 
   // Tabulate hat-function
   tabulate_hat_basis(basix_element_hat);
+
+  /* H(div)-flux: Pull back into reference */
+  using V_t = stdex::mdspan<T, stdex::dextents<std::size_t, 2>>;
+  using v_t = stdex::mdspan<const T, stdex::dextents<std::size_t, 2>>;
+  using J_t = stdex::mdspan<const double, stdex::dextents<std::size_t, 2>>;
+  using K_t = stdex::mdspan<const double, stdex::dextents<std::size_t, 2>>;
+
+  _pull_back_fluxspace = basix_element_fluxpw.map_fn<V_t, v_t, K_t, J_t>();
 }
 
 /* Tabulation of shape-functions */
-void KernelData::tabulate_flux_basis(
+template <typename T>
+void KernelData<T>::tabulate_flux_basis(
     const basix::FiniteElement& basix_element_fluxpw)
 {
   // Number of surface quadrature points
@@ -158,7 +167,8 @@ void KernelData::tabulate_flux_basis(
       _flux_basis_current_values.data(), flux_basis_shape);
 }
 
-void KernelData::tabulate_rhs_basis(
+template <typename T>
+void KernelData<T>::tabulate_rhs_basis(
     const basix::FiniteElement& basix_element_rhs)
 {
   // Number of surface quadrature points
@@ -207,7 +217,8 @@ void KernelData::tabulate_rhs_basis(
   }
 }
 
-void KernelData::tabulate_hat_basis(
+template <typename T>
+void KernelData<T>::tabulate_hat_basis(
     const basix::FiniteElement& basix_element_hat)
 {
   // Number of surface quadrature points
@@ -242,10 +253,11 @@ void KernelData::tabulate_hat_basis(
 }
 
 /* Compute isoparametric mapping */
-double KernelData::compute_jacobian(dolfinx_adaptivity::mdspan2_t J,
-                                    dolfinx_adaptivity::mdspan2_t K,
-                                    std::span<double> detJ_scratch,
-                                    dolfinx_adaptivity::cmdspan2_t coords)
+template <typename T>
+double KernelData<T>::compute_jacobian(dolfinx_adaptivity::mdspan2_t J,
+                                       dolfinx_adaptivity::mdspan2_t K,
+                                       std::span<double> detJ_scratch,
+                                       dolfinx_adaptivity::cmdspan2_t coords)
 {
   // Reshape basis functions (geometry)
   dolfinx_adaptivity::cmdspan4_t full_basis(_g_basis_values.data(),
@@ -272,9 +284,10 @@ double KernelData::compute_jacobian(dolfinx_adaptivity::mdspan2_t J,
   return fem::CoordinateElement::compute_jacobian_determinant(J, detJ_scratch);
 }
 
-double KernelData::compute_jacobian(dolfinx_adaptivity::mdspan2_t J,
-                                    std::span<double> detJ_scratch,
-                                    dolfinx_adaptivity::cmdspan2_t coords)
+template <typename T>
+double KernelData<T>::compute_jacobian(dolfinx_adaptivity::mdspan2_t J,
+                                       std::span<double> detJ_scratch,
+                                       dolfinx_adaptivity::cmdspan2_t coords)
 {
   // Reshape basis functions (geometry)
   dolfinx_adaptivity::cmdspan4_t full_basis(_g_basis_values.data(),
@@ -299,9 +312,10 @@ double KernelData::compute_jacobian(dolfinx_adaptivity::mdspan2_t J,
   return fem::CoordinateElement::compute_jacobian_determinant(J, detJ_scratch);
 }
 
-void KernelData::physical_fct_normal(std::span<double> normal_phys,
-                                     dolfinx_adaptivity::mdspan2_t K,
-                                     std::int8_t fct_id)
+template <typename T>
+void KernelData<T>::physical_fct_normal(std::span<double> normal_phys,
+                                        dolfinx_adaptivity::mdspan2_t K,
+                                        std::int8_t fct_id)
 {
   // Set physical normal to zero
   std::fill(normal_phys.begin(), normal_phys.end(), 0);
@@ -328,8 +342,9 @@ void KernelData::physical_fct_normal(std::span<double> normal_phys,
 }
 
 /* Push-forward of shape-functions */
+template <typename T>
 dolfinx_adaptivity::s_cmdspan3_t
-KernelData::shapefunctions_flux(dolfinx_adaptivity::mdspan2_t J, double detJ)
+KernelData<T>::shapefunctions_flux(dolfinx_adaptivity::mdspan2_t J, double detJ)
 {
   // Loop over all evaluation points
   for (std::size_t i = 0; i < _flux_fullbasis.extent(1); ++i)
@@ -353,8 +368,9 @@ KernelData::shapefunctions_flux(dolfinx_adaptivity::mdspan2_t J, double detJ)
                           stdex::full_extent, stdex::full_extent);
 }
 
+template <typename T>
 dolfinx_adaptivity::s_cmdspan3_t
-KernelData::shapefunctions_cell_rhs(dolfinx_adaptivity::cmdspan2_t K)
+KernelData<T>::shapefunctions_cell_rhs(dolfinx_adaptivity::cmdspan2_t K)
 {
   // Loop over all evaluation points
   for (std::size_t i = 0; i < _rhs_cell_fullbasis.extent(1); ++i)
@@ -376,4 +392,7 @@ KernelData::shapefunctions_cell_rhs(dolfinx_adaptivity::cmdspan2_t K)
                           stdex::full_extent, stdex::full_extent, 0);
 }
 
-} // namespace dolfinx_adaptivity::equilibration
+// ------------------------------------------------------------------------------
+template class dolfinx_adaptivity::equilibration::KernelData<float>;
+template class dolfinx_adaptivity::equilibration::KernelData<double>;
+// ------------------------------------------------------------------------------

@@ -159,7 +159,7 @@ template <typename T, int id_flux_order = 3>
 void calc_fluxtilde_explt(const mesh::Geometry& geometry,
                           PatchFluxCstm<T, id_flux_order>& patch,
                           ProblemDataFluxCstm<T>& problem_data,
-                          KernelData& kernel_data)
+                          KernelData<T>& kernel_data)
 {
   assert(id_flux_order < 0);
 
@@ -554,87 +554,88 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
       }
 
       /* DOFs from cell integrals */
-      if constexpr (id_flux_order == 1)
-      {
-        // Set DOF on facet Ea
-        c_ta_ea = coefficients_f[0] * (detJ / 6) - c_ta_eam1;
-      }
-      else
-      {
-        // Isoparametric mapping
-        dolfinx_adaptivity::cmdspan2_t K
-            = extract_mapping_data(id_a, storage_K);
+      // if constexpr (id_flux_order == 1)
+      // {
+      //   // Set DOF on facet Ea
+      //   c_ta_ea = coefficients_f[0] * (detJ / 6) - c_ta_eam1;
+      // }
+      // else
+      // {
+      //   // Isoparametric mapping
+      //   dolfinx_adaptivity::cmdspan2_t K
+      //       = extract_mapping_data(id_a, storage_K);
 
-        // Quadrature points and weights
-        const int nqpoints = kernel_data.nqpoints_cell();
-        dolfinx_adaptivity::cmdspan2_t qpoints
-            = kernel_data.quadrature_points_cell();
-        std::span<const double> weights = kernel_data.quadrature_weights_cell();
+      //   // Quadrature points and weights
+      //   const int nqpoints = kernel_data.nqpoints_cell();
+      //   dolfinx_adaptivity::cmdspan2_t qpoints
+      //       = kernel_data.quadrature_points_cell();
+      //   std::span<const double> weights =
+      //   kernel_data.quadrature_weights_cell();
 
-        // Shape-functions RHS
-        dolfinx_adaptivity::s_cmdspan3_t shp_rhs
-            = kernel_data.shapefunctions_cell_rhs(K);
+      //   // Shape-functions RHS
+      //   dolfinx_adaptivity::s_cmdspan3_t shp_rhs
+      //       = kernel_data.shapefunctions_cell_rhs(K);
 
-        // Shape-functions hat-function
-        dolfinx_adaptivity::s_cmdspan2_t shp_hat
-            = kernel_data.shapefunctions_cell_hat();
+      //   // Shape-functions hat-function
+      //   dolfinx_adaptivity::s_cmdspan2_t shp_hat
+      //       = kernel_data.shapefunctions_cell_hat();
 
-        // Quadrature loop
-        c_ta_ea = -c_ta_eam1;
-        std::fill(c_ta_div.begin(), c_ta_div.end(), 0.0);
+      //   // Quadrature loop
+      //   c_ta_ea = -c_ta_eam1;
+      //   std::fill(c_ta_div.begin(), c_ta_div.end(), 0.0);
 
-        for (std::size_t n = 0; n < nqpoints; ++n)
-        {
-          // Interpolation
-          double f = 0.0;
-          double div_g = 0.0;
-          for (std::size_t i = 0; i < ndofs_rhs; ++i)
-          {
-            // RHS
-            f += coefficients_f[i] * shp_rhs(0, n, i);
+      //   for (std::size_t n = 0; n < nqpoints; ++n)
+      //   {
+      //     // Interpolation
+      //     double f = 0.0;
+      //     double div_g = 0.0;
+      //     for (std::size_t i = 0; i < ndofs_rhs; ++i)
+      //     {
+      //       // RHS
+      //       f += coefficients_f[i] * shp_rhs(0, n, i);
 
-            // Divergence of projected flux
-            const int offs = 2 * i;
-            div_g += coefficients_G_Ta[offs] * shp_rhs(1, n, i)
-                     + coefficients_G_Ta[offs + 1] * shp_rhs(2, n, i);
-          }
+      //       // Divergence of projected flux
+      //       const int offs = 2 * i;
+      //       div_g += coefficients_G_Ta[offs] * shp_rhs(1, n, i)
+      //                + coefficients_G_Ta[offs + 1] * shp_rhs(2, n, i);
+      //     }
 
-          // Auxiliary data
-          const double aux
-              = (f + div_g) * shp_hat(n, node_i_Ta) * weights[n] * detJ;
+      //     // Auxiliary data
+      //     const double aux
+      //         = (f + div_g) * shp_hat(n, node_i_Ta) * weights[n] * detJ;
 
-          // Evaluate facet DOF
-          c_ta_ea += aux;
+      //     // Evaluate facet DOF
+      //     c_ta_ea += aux;
 
-          // Evaluate cell DOFs
-          if constexpr (id_flux_order == 2)
-          {
-            c_ta_div[0] += aux * qpoints(n, 1);
-            c_ta_div[1] += aux * qpoints(n, 0);
-          }
-          else
-          {
-            int count = 0;
-            const int degree = degree_flux_rt + 1;
+      //     // Evaluate cell DOFs
+      //     if constexpr (id_flux_order == 2)
+      //     {
+      //       c_ta_div[0] += aux * qpoints(n, 1);
+      //       c_ta_div[1] += aux * qpoints(n, 0);
+      //     }
+      //     else
+      //     {
+      //       int count = 0;
+      //       const int degree = degree_flux_rt + 1;
 
-            for (std::size_t l = 0; l < degree; ++l)
-            {
-              for (std::size_t m = 0; m < degree - l; m++)
-              {
-                if ((l + m) > 0)
-                {
-                  // Calculate DOF
-                  c_ta_div[count] += aux * std::pow(qpoints(n, 0), l)
-                                     * std::pow(qpoints(n, 1), m);
+      //       for (std::size_t l = 0; l < degree; ++l)
+      //       {
+      //         for (std::size_t m = 0; m < degree - l; m++)
+      //         {
+      //           if ((l + m) > 0)
+      //           {
+      //             // Calculate DOF
+      //             c_ta_div[count] += aux * std::pow(qpoints(n, 0), l)
+      //                                * std::pow(qpoints(n, 1), m);
 
-                  // Increment counter
-                  count += 1;
-                }
-              }
-            }
-          }
-        }
-      }
+      //             // Increment counter
+      //             count += 1;
+      //           }
+      //         }
+      //       }
+      //     }
+      //   }
+      // }
 
       // std::cout << "Results cell (local, global): " << a << ", " << c_a
       //           << std::endl;
@@ -707,7 +708,7 @@ template <typename T, int id_flux_order = 3>
 void minimise_flux(const mesh::Geometry& geometry,
                    PatchFluxCstm<T, id_flux_order>& patch,
                    ProblemDataFluxCstm<T>& problem_data,
-                   KernelData& kernel_data)
+                   KernelData<T>& kernel_data)
 {
   assert(id_flux_order < 0);
 

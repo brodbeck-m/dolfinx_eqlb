@@ -28,7 +28,7 @@ namespace dolfinx_adaptivity::equilibration
 {
 template <typename T, int id_flux_order = 3, bool asmbl_systmtrx = true>
 void minimisation_kernel(dolfinx_adaptivity::mdspan2_t Te,
-                         KernelData& kernel_data,
+                         KernelData<T>& kernel_data,
                          dolfinx_adaptivity::s_mdspan1_t prefactors_elmt,
                          std::span<T> coefficients,
                          std::span<const std::int32_t> fct_dofs,
@@ -126,7 +126,7 @@ void assemble_minimisation(
     Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>& A_patch,
     Eigen::Matrix<T, Eigen::Dynamic, 1>& L_patch,
     std::span<const std::int32_t> cells, PatchFluxCstm<T, id_flux_order>& patch,
-    KernelData& kernel_data, dolfinx_adaptivity::mdspan2_t prefactors_dof,
+    KernelData<T>& kernel_data, dolfinx_adaptivity::mdspan2_t prefactors_dof,
     std::span<T> coefficients, const int cstride,
     std::span<double> coordinate_dofs, const int type_patch)
 {
