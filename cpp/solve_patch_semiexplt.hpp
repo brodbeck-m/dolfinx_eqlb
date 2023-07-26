@@ -28,6 +28,9 @@ using namespace dolfinx;
 
 namespace dolfinx_adaptivity::equilibration
 {
+
+namespace stdex = std::experimental;
+
 /// Copy cell data from global storage into flattened array (per cell)
 /// @param data_global The global data storage
 /// @param dofs_cell   The DOFs on current cell
@@ -193,13 +196,26 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
   std::array<double, 18> detJ_scratch;
 
   // Coefficient arrays for RHS/ projected flux
-  std::vector<double> coefficients_f(ndofs_rhs, 0),
+  std::vector<T> coefficients_f(ndofs_rhs, 0),
       coefficients_G_Tap1(ndofs_projflux, 0),
       coefficients_G_Ta(ndofs_projflux, 0);
 
   // Jump within projected flux
-  std::array<double, 2> diff_proj_flux;
-  std::vector<double> jump_proj_flux_Eam1(1, 0);
+  std::array<T, 2> diff_proj_flux;
+  std::vector<T> jump_proj_flux_Eam1(1, 0);
+
+  const int nipoints_facet = kernel_data.nipoints_facet();
+  const int size_jump = dim * nipoints_facet;
+  std::vector<T> data_jG_Eam1(size_jump, 0);
+  std::vector<T> data_jGhat(2 * size_jump, 0),
+      data_jGhat_mapped(2 * size_jump, 0);
+
+  dolfinx_adaptivity::mdspan_t<T, 2> jG_Eam1(data_jG_Eam1.data(),
+                                             nipoints_facet, dim);
+  dolfinx_adaptivity::mdspan_t<T, 2> jGhat(data_jGhat.data(), nipoints_facet,
+                                           dim);
+  dolfinx_adaptivity::mdspan_t<T, 2> jGhat_mapped(data_jGhat_mapped.data(),
+                                                  nipoints_facet, dim);
 
   // DOFs flux (cell-wise H(div))
   T c_ta_ea, c_ta_eam1, c_tam1_eam1;
@@ -210,7 +226,7 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
   // Jacobian J, inverse K and determinant detJ
   std::vector<double> storage_detJ(ncells, 0);
   std::vector<double> storage_detJf(ncells + 1, 0);
-  std::vector<double> storage_K;
+  std::vector<double> storage_K, storage_J;
 
   // Physical normal
   std::vector<double> storage_normal_phys((ncells + 1) * dim, 0);
@@ -219,14 +235,12 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
   if constexpr (id_flux_order > 1)
   {
     // Inverse of the Jocobian
+    storage_J.resize(ncells * 4);
     storage_K.resize(ncells * 4);
 
     // Storage of DOFs
     c_ta_div.resize(ndofs_flux_cell_div);
     cj_ta_ea.resize(ndofs_flux_fct - 1);
-
-    // Storage of jump per integration point (facet)
-    jump_proj_flux_Eam1.resize(kernel_data.nqpoints_facet(), 0);
   }
 
   /* Storage cell geometries/ normal orientation */
@@ -266,6 +280,7 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
     if (id_flux_order > 1)
     {
       store_mapping_data(index, storage_K, K);
+      store_mapping_data(index, storage_J, J);
     }
 
     // Calculate determinant of facet jacobian
@@ -421,8 +436,11 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
       }
       else
       {
-        // Extract facet normal
-        std::span<double> normal_Ea(storage_normal_phys.data() + a * 2, 2);
+        // Extract mapping data
+        dolfinx_adaptivity::cmdspan2_t J
+            = extract_mapping_data(id_a, storage_J);
+        dolfinx_adaptivity::cmdspan2_t K
+            = extract_mapping_data(id_a, storage_K);
 
         // Local facet ids
         std::int8_t fl_TaEam1, fl_TaEa;
@@ -432,17 +450,9 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
         // DOFs (cell local) projected flux on facet Ea
         std::span<const std::int32_t> dofs_Ea = patch.dofs_projflux_fct(a);
 
-        // Number of quadrature points
-        const int nqpoints = kernel_data.nqpoints_facet();
-
-        // 1D quadrature points on facet Ea
-        std::span<const double> qpoints_Ea
-            = kernel_data.quadrature_points_1D_facet(fl_TaEa);
-
-        // Quadrature weights
-        // (detJ_E not with respect to referece element --> unmapped weights!)
-        std::span<const double> weights_fct
-            = kernel_data.quadrature_weights_facet(0);
+        // Interpolation data
+        dolfinx_adaptivity::mdspan_t<const double, 4> M
+            = kernel_data.interpl_matrix_facte();
 
         // Shape functions RHS
         dolfinx_adaptivity::s_cmdspan2_t shp_TaEa
@@ -460,7 +470,7 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
         c_ta_eam1 = -c_tam1_eam1;
         std::fill(cj_ta_ea.begin(), cj_ta_ea.end(), 0.0);
 
-        for (std::size_t n = 0; n < nqpoints; ++n)
+        for (std::size_t n = 0; n < nipoints_facet; ++n)
         {
           // Global index of Tap1
           std::int32_t c_ap1 = (a < ncells) ? cells[id_a + 1] : cells[0];
@@ -505,33 +515,38 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
             }
           }
 
-          // Multiply jump with normal Ea(Tap1)
-          double jump_proj_flux_Ea = diff_proj_flux[0] * normal_Ea[0]
-                                     + diff_proj_flux[1] * normal_Ea[1];
+          // Multiply jump with hat-function
+          jGhat(0, 0) = -jG_Eam1(n, 0) * shp_Tap1Ea(n, node_i_Ta);
+          jGhat(0, 1) = -jG_Eam1(n, 1) * shp_Tap1Ea(n, node_i_Ta);
+          jGhat(1, 0) = -diff_proj_flux[0] * shp_TaEa(n, node_i_Ta);
+          jGhat(1, 1) = -diff_proj_flux[1] * shp_TaEa(n, node_i_Ta);
+
+          // Pull back jump
+          kernel_data.pull_back_flux(jGhat_mapped, jGhat, J, storage_detJ[id_a],
+                                     K);
 
           // Evaluate facet DOFs
           // (Positive jump, as calculated with n_(Ta,Ea)=-n_(Tap1,Ea))
-
-          c_ta_eam1 += jump_proj_flux_Eam1[n] * hat_TaEam1(n, node_i_Ta)
-                       * detJ_Eam1 * weights_fct[n];
+          c_ta_eam1 += M(fl_TaEam1, 0, 0, n) * jGhat_mapped(0, 0)
+                       + M(fl_TaEam1, 0, 1, n) * jGhat_mapped(0, 1);
 
           if constexpr (id_flux_order == 2)
           {
-            cj_ta_ea[0] += jump_proj_flux_Ea * hat_TaEa(n, node_i_Ta)
-                           * qpoints_Ea[n] * detJ_Ea * weights_fct[n];
+            cj_ta_ea[0] += M(fl_TaEa, 1, 0, n) * jGhat_mapped(1, 0)
+                           + M(fl_TaEa, 1, 1, n) * jGhat_mapped(1, 1);
           }
           else
           {
-            double aux = jump_proj_flux_Ea * hat_TaEa(n, node_i_Ta) * detJ_Ea
-                         * weights_fct[n];
             for (std::size_t j = 1; j < ndofs_flux_fct; ++j)
             {
-              cj_ta_ea[j - 1] += aux * std::pow(qpoints_Ea[n], j);
+              cj_ta_ea[j - 1] += M(fl_TaEa, j, 0, n) * jGhat_mapped(1, 0)
+                                 + M(fl_TaEa, j, 1, n) * jGhat_mapped(1, 1);
             }
           }
 
           // Store jump
-          jump_proj_flux_Eam1[n] = jump_proj_flux_Ea;
+          jG_Eam1(n, 0) = diff_proj_flux[0];
+          jG_Eam1(n, 1) = diff_proj_flux[1];
         }
       }
 

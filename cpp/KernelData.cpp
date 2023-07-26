@@ -88,7 +88,8 @@ KernelData<T>::KernelData(std::shared_ptr<const mesh::Mesh> mesh,
 
   std::array<std::size_t, 4> M_shape
       = {_nfcts_per_cell, ndofs_fct, _gdim, _nipoints_per_fct};
-  _M_fct = dolfinx_adaptivity::mdspan4_t(_data_M_fct.data(), M_shape);
+  _M_fct = dolfinx_adaptivity::cmdspan4_t(_data_M_fct.data(), M_shape);
+  dolfinx_adaptivity::mdspan4_t M_fct(_data_M_fct.data(), M_shape);
 
   // Copy interpolation points (on facets)
   std::copy_n(X.begin(), _nipoints_fct * _gdim, _ipoints_fct.begin());
@@ -112,7 +113,7 @@ KernelData<T>::KernelData(std::shared_ptr<const mesh::Mesh> mesh,
         // Copy interpolation coefficients
         for (std::size_t l = 0; l < _nipoints_per_fct; ++l)
         {
-          _M_fct(j, k, i, l) = M(id_dof, offs_pnt + offs_drvt * l);
+          M_fct(j, k, i, l) = M(id_dof, offs_pnt + offs_drvt * l);
         }
       }
     }
@@ -130,10 +131,10 @@ KernelData<T>::KernelData(std::shared_ptr<const mesh::Mesh> mesh,
   tabulate_hat_basis(basix_element_hat);
 
   /* H(div)-flux: Pull back into reference */
-  using V_t = stdex::mdspan<T, stdex::dextents<std::size_t, 2>>;
-  using v_t = stdex::mdspan<const T, stdex::dextents<std::size_t, 2>>;
-  using J_t = stdex::mdspan<const double, stdex::dextents<std::size_t, 2>>;
-  using K_t = stdex::mdspan<const double, stdex::dextents<std::size_t, 2>>;
+  using V_t = dolfinx_adaptivity::mdspan_t<T, 2>;
+  using v_t = dolfinx_adaptivity::mdspan_t<const T, 2>;
+  using J_t = dolfinx_adaptivity::mdspan_t<const double, 2>;
+  using K_t = dolfinx_adaptivity::mdspan_t<const double, 2>;
 
   _pull_back_fluxspace = basix_element_fluxpw.map_fn<V_t, v_t, K_t, J_t>();
 }

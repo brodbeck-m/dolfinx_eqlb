@@ -31,4 +31,11 @@ using s_cmdspan4_t
     = stdex::mdspan<const double, stdex::dextents<std::size_t, 4>,
                     stdex::layout_stride>;
 
+template <typename T, std::size_t d>
+using mdspan_t = stdex::mdspan<T, stdex::dextents<std::size_t, d>>;
+
+template <typename T, std::size_t d>
+using smdspan_t
+    = stdex::mdspan<T, stdex::dextents<std::size_t, d>, stdex::layout_stride>;
+
 } // namespace dolfinx_adaptivity

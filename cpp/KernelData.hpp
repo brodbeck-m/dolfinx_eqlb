@@ -75,12 +75,13 @@ public:
   /// @param J        The Jacobian
   /// @param detJ     The determinant of the Jacobian
   /// @param K        The inverse of the Jacobian
-  void pull_back_flux(dolfinx_adaptivity::s_mdspan2_t flux_ref,
-                      dolfinx_adaptivity::s_cmdspan2_t flux_cur,
-                      dolfinx_adaptivity::cmdspan2_t J, double detJ,
-                      dolfinx_adaptivity::cmdspan2_t K)
+  void pull_back_flux(dolfinx_adaptivity::mdspan_t<T, 2> flux_ref,
+                      dolfinx_adaptivity::mdspan_t<const T, 2> flux_cur,
+                      dolfinx_adaptivity::mdspan_t<const double, 2> J,
+                      double detJ,
+                      dolfinx_adaptivity::mdspan_t<const double, 2> K)
   {
-    _pull_back_fluxspace(flux_cur, flux_ref, K, 1.0 / detJ, J);
+    _pull_back_fluxspace(flux_ref, flux_cur, K, 1.0 / detJ, J);
   }
 
   /* Setter functions */
@@ -268,8 +269,28 @@ public:
         _quadrature_rule->weights_fct().data() + offset, nqpoints);
   }
 
-  /* Getter functions (Quadrature) */
+  /* Getter functions (Interpolation) */
+  // Extract number of interpolation points per facet
+  /// @return Number of interpolation points
+  int nipoints_facet() const { return _nipoints_per_fct; }
+
   /// Extract interpolation matrix on facet for single DOF
+  /// Indices of M: nfct x ndofs x spacial dimension x points
+  /// @param fct_id The cell-local facet id
+  /// @return The interpolation matrix M
+  dolfinx_adaptivity::cmdspan4_t interpl_matrix_facte() { return _M_fct; }
+
+  /// Extract interpolation matrix on facet for single DOF
+  /// Indices of M: ndofs x spacial dimension x points
+  /// @param fct_id The cell-local facet id
+  /// @return The interpolation matrix M
+  dolfinx_adaptivity::cmdspan3_t interpl_matrix_facte(std::int8_t fct_id)
+  {
+    return stdex::submdspan(_M_fct, (std::size_t)fct_id, stdex::full_extent,
+                            stdex::full_extent, stdex::full_extent);
+  }
+
+  /// Extract interpolation matrix on facet
   /// Indices of M: spacial dimension x points
   /// @param fct_id The cell-local facet id
   /// @param dof_id The facet-local DOF id
@@ -313,7 +334,7 @@ protected:
   // Interpolation data
   std::size_t _nipoints_per_fct, _nipoints_fct;
   std::vector<double> _ipoints_fct, _data_M_fct;
-  dolfinx_adaptivity::mdspan4_t _M_fct; // Indices: facet, dof, gdim, points
+  dolfinx_adaptivity::cmdspan4_t _M_fct; // Indices: facet, dof, gdim, points
 
   // Tabulated shape-functions (geometry)
   std::array<std::size_t, 4> _g_basis_shape;
@@ -335,12 +356,11 @@ protected:
   dolfinx_adaptivity::cmdspan4_t _hat_cell_fullbasis, _hat_fct_fullbasis;
 
   // Push-back H(div) data
-  std::function<void(
-      stdex::mdspan<T, stdex::dextents<std::size_t, 2>>&,
-      const stdex::mdspan<const T, stdex::dextents<std::size_t, 2>>&,
-      const stdex::mdspan<const double, stdex::dextents<std::size_t, 2>>&,
-      double,
-      const stdex::mdspan<const double, stdex::dextents<std::size_t, 2>>&)>
+  std::function<void(dolfinx_adaptivity::mdspan_t<T, 2>&,
+                     const dolfinx_adaptivity::mdspan_t<const T, 2>&,
+                     const dolfinx_adaptivity::mdspan_t<const double, 2>&,
+                     double,
+                     const dolfinx_adaptivity::mdspan_t<const double, 2>&)>
       _pull_back_fluxspace;
 };
 
