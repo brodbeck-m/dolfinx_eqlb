@@ -167,9 +167,8 @@ public:
   dolfinx_adaptivity::s_cmdspan2_t shapefunctions_fct_rhs(std::int8_t fct_id)
   {
     // Offset of shpfkt for current facet
-    const int nqpoints = _quadrature_rule->npoints_per_fct();
-    std::size_t obgn = fct_id * nqpoints;
-    std::size_t oend = obgn + nqpoints;
+    std::size_t obgn = fct_id * _nipoints_per_fct;
+    std::size_t oend = obgn + _nipoints_per_fct;
 
     return stdex::submdspan(_rhs_fct_fullbasis, 0, std::pair{obgn, oend},
                             stdex::full_extent, 0);
@@ -192,9 +191,8 @@ public:
   dolfinx_adaptivity::s_cmdspan2_t shapefunctions_fct_hat(std::int8_t fct_id)
   {
     // Offset of shpfkt for current facet
-    const int nqpoints = _quadrature_rule->npoints_per_fct();
-    std::size_t obgn = fct_id * nqpoints;
-    std::size_t oend = obgn + nqpoints;
+    std::size_t obgn = fct_id * _nipoints_per_fct;
+    std::size_t oend = obgn + _nipoints_per_fct;
 
     return stdex::submdspan(_hat_fct_fullbasis, 0, std::pair{obgn, oend},
                             stdex::full_extent, 0);
