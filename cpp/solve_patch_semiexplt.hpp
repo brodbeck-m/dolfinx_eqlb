@@ -164,8 +164,6 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
                           ProblemDataFluxCstm<T>& problem_data,
                           KernelData<T>& kernel_data)
 {
-  assert(id_flux_order < 0);
-
   /* Geometry data */
   const int dim = 2;
   const graph::AdjacencyList<std::int32_t>& x_dofmap = geometry.dofmap();
@@ -518,35 +516,18 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
           // Multiply jump with hat-function
           jGhat(0, 0) = -jG_Eam1(n, 0) * hat_TaEam1(n, node_i_Ta);
           jGhat(0, 1) = -jG_Eam1(n, 1) * hat_TaEam1(n, node_i_Ta);
-          jGhat(1, 0) = -diff_proj_flux[0] * hat_TaEa(n, node_i_Ta);
-          jGhat(1, 1) = -diff_proj_flux[1] * hat_TaEa(n, node_i_Ta);
+          jGhat(1, 0) = diff_proj_flux[0] * hat_TaEa(n, node_i_Ta);
+          jGhat(1, 1) = diff_proj_flux[1] * hat_TaEa(n, node_i_Ta);
 
           // Pull back jump
           kernel_data.pull_back_flux(jGhat_mapped, jGhat, J, storage_detJ[id_a],
                                      K);
-
-          // std::cout << "jGhat_0, jGhat_1, jGhat_mapped_0, jGhat_mapped_1: "
-          //           << jGhat(0, 0) << ", " << jGhat(0, 1) << ", "
-          //           << jGhat_mapped(0, 0) << ", " << jGhat_mapped(0, 1)
-          //           << std::endl;
-
-          // std::cout << "K_00, K_01, K_10, K_11, detJ: " << K(0, 0) << ", "
-          //           << K(0, 1) << ", " << K(1, 0) << ", " << K(1, 1) << ", "
-          //           << storage_detJ[id_a] << std::endl;
 
           // Evaluate facet DOFs
           // (Positive jump, as calculated with n_(Ta,Ea)=-n_(Tap1,Ea))
           T aux = M(fl_TaEam1, 0, 0, n) * jGhat_mapped(0, 0)
                   + M(fl_TaEam1, 0, 1, n) * jGhat_mapped(0, 1);
           c_ta_eam1 += prefactor_dof(id_a, 0) * aux;
-
-          // std::cout << "a, M_0, M_1, jGhat_0, jGhat_1, fid_Eam1, prefact: "
-          // << a
-          //           << ", " << M(fl_TaEam1, 0, 0, n) << ", "
-          //           << M(fl_TaEam1, 0, 1, n) << ", " << jGhat_mapped(0, 0)
-          //           << ", " << jGhat_mapped(0, 1) << ", " <<
-          //           unsigned(fl_TaEam1)
-          //           << ", " << prefactor_dof(id_a, 0) << std::endl;
 
           if constexpr (id_flux_order == 2)
           {
@@ -634,7 +615,7 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
 
           // Auxiliary data
           const double aux
-              = (f + div_g) * shp_hat(n, node_i_Ta) * weights[n] * detJ;
+              = (f - div_g) * shp_hat(n, node_i_Ta) * weights[n] * detJ;
 
           // Evaluate facet DOF
           c_ta_ea += aux;
@@ -668,12 +649,6 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
           }
         }
       }
-
-      // std::cout << "Results cell (local, global): " << a << ", " << c_a
-      //           << std::endl;
-      // std::cout << "c_ta_eam1=" << c_ta_eam1 << std::endl;
-      // std::cout << "c_ta_ea=" << c_ta_ea << std::endl;
-      // std::cout << "cj_ta_ea=" << cj_ta_ea[0] << std::endl;
 
       /* Store DOFs to global solution vector */
       if constexpr (id_flux_order == 1)
@@ -714,12 +689,12 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
               += prefactor_dof(id_a, 1) * c_ta_ea;
 
           // Set higher-order DOFs on facets
-          for (std::size_t i = 0; i < ndofs_flux_fct - 1; ++i)
+          for (std::size_t i = 1; i < ndofs_flux_fct; ++i)
           {
             const int offs = gdofs_fct[ndofs_flux_fct + i];
 
             // DOFs on facet Ea
-            x_flux_dhdiv[offs] += cj_ta_ea[i];
+            x_flux_dhdiv[offs] += cj_ta_ea[i - 1];
           }
 
           // Set divergence DOFs on cell

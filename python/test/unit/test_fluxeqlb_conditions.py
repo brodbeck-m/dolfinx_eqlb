@@ -14,14 +14,8 @@ from dolfinx_eqlb import equilibration
 """ Utility functions """
 
 
-def solve_equilibration(pdegree, eqlb_type, fdegree=None, rhsdegree=None, n_elmt=5):
+def solve_equilibration(pdegree, fdegree, eqlb_type, rhsdegree=None, n_elmt=5):
     # --- Check input
-    if fdegree is None:
-        fdegree = pdegree
-    else:
-        if fdegree < pdegree:
-            raise ValueError("Degree of reconstructed flux to small!")
-
     if rhsdegree is None:
         rhsdegree = fdegree - 1
     else:
@@ -184,8 +178,17 @@ def evalute_div_rt(dphi, detj, dofs):
 @pytest.mark.parametrize("eqlb_type", ["EV", "SemiExplt"])
 @pytest.mark.parametrize("degree", [1])
 def test_div_condition(degree, eqlb_type):
+    if degree > 1:
+        pdegree = degree - 1
+        fdegree = degree
+    else:
+        pdegree = degree
+        fdegree = degree
+
     # --- Solve equilibration
-    uh, f_proj, sig_proj, sig_eq = solve_equilibration(degree, eqlb_type, n_elmt=5)
+    uh, f_proj, sig_proj, sig_eq = solve_equilibration(
+        pdegree, fdegree, eqlb_type, n_elmt=5
+    )
 
     # interpolate sig_eq and sig_proj into (basix) DRT-space
     list_fkt = fkt_to_drt([sig_eq, sig_proj], degree)
@@ -242,86 +245,92 @@ def test_div_condition(degree, eqlb_type):
 """ Test jump condition on facet-normal fluxes """
 
 
-@pytest.mark.parametrize("degree", [1])
-def test_jump_condition(degree):
+@pytest.mark.parametrize("degree_flux", [1, 2, 3])
+def test_jump_condition(degree_flux):
     # --- Solve equilibration
-    uh, f_proj, sig_proj, sig_eq = solve_equilibration(
-        degree, "SemiExplt", n_elmt=5
-    )
+    for degree_prime in range(1, degree_flux + 1):
+        for degree_rhs in range(0, degree_flux):
+            uh, f_proj, sig_proj, sig_eq = solve_equilibration(
+                degree_prime, degree_flux, "SemiExplt", rhsdegree=degree_rhs, n_elmt=5
+            )
 
-    # interpolate functions into DRT-space
-    fkt_drt = fkt_to_drt([sig_proj, sig_eq], degree)
-    sig_proj_rt = fkt_drt[0]
-    sig_eq_rt = fkt_drt[1]
+            # interpolate functions into DRT-space
+            fkt_drt = fkt_to_drt([sig_proj, sig_eq], degree_flux)
+            sig_proj_rt = fkt_drt[0]
+            sig_eq_rt = fkt_drt[1]
 
-    # calculate reconstructed flux (use default RT-space)
-    x_sig_rt = sig_proj_rt.x.array[:] + sig_eq_rt.x.array[:]
+            # calculate reconstructed flux (use default RT-space)
+            x_sig_rt = sig_proj_rt.x.array[:] + sig_eq_rt.x.array[:]
 
-    # extract relevant data
-    domain = uh.function_space.mesh
-    dofmap_sigrt = sig_proj_rt.function_space.dofmap.list
-    dofs_per_fct = degree
+            # extract relevant data
+            domain = uh.function_space.mesh
+            dofmap_sigrt = sig_proj_rt.function_space.dofmap.list
+            dofs_per_fct = degree_flux
 
-    # --- Determine sign of detj per cell
-    # tabulate shape functions of geometry element
-    c_element = basix.create_element(
-        basix.ElementFamily.P,
-        basix.CellType.triangle,
-        1,
-        basix.LagrangeVariant.gll_warped,
-    )
-    dphi_geom = c_element.tabulate(1, np.array([[0, 0]]))[1 : 2 + 1, 0, :, 0]
+            # --- Determine sign of detj per cell
+            # tabulate shape functions of geometry element
+            c_element = basix.create_element(
+                basix.ElementFamily.P,
+                basix.CellType.triangle,
+                1,
+                basix.LagrangeVariant.gll_warped,
+            )
+            dphi_geom = c_element.tabulate(1, np.array([[0, 0]]))[1 : 2 + 1, 0, :, 0]
 
-    # determine sign of detj per cell
-    n_cells = domain.topology.index_map(2).size_local
-    sign_detj = np.zeros(n_cells, dtype=np.float64)
+            # determine sign of detj per cell
+            n_cells = domain.topology.index_map(2).size_local
+            sign_detj = np.zeros(n_cells, dtype=np.float64)
 
-    for c in range(0, n_cells):
-        # evaluate detj
-        J_q, detj = isoparametric_mapping_triangle(domain, dphi_geom, c)
+            for c in range(0, n_cells):
+                # evaluate detj
+                J_q, detj = isoparametric_mapping_triangle(domain, dphi_geom, c)
 
-        # determine sign of detj
-        sign_detj[c] = np.sign(detj)
+                # determine sign of detj
+                sign_detj[c] = np.sign(detj)
 
-    # --- Check jump condition on all facets
-    # create connectivity facet -> cell
-    fct_to_cell = domain.topology.connectivity(1, 2)
-    cell_to_fct = domain.topology.connectivity(2, 1)
+            # --- Check jump condition on all facets
+            # create connectivity facet -> cell
+            fct_to_cell = domain.topology.connectivity(1, 2)
+            cell_to_fct = domain.topology.connectivity(2, 1)
 
-    # check jump condition on all facets
-    n_fcts = domain.topology.index_map(1).size_local
+            # check jump condition on all facets
+            n_fcts = domain.topology.index_map(1).size_local
 
-    for f in range(0, n_fcts):
-        # get cells adjacet to f
-        cells = fct_to_cell.links(f)
+            for f in range(0, n_fcts):
+                # get cells adjacet to f
+                cells = fct_to_cell.links(f)
 
-        if len(cells) > 1:
-            # signs of cell jacobis
-            sign_plus = sign_detj[cells[0]]
-            sign_minus = sign_detj[cells[1]]
+                if len(cells) > 1:
+                    # signs of cell jacobis
+                    sign_plus = sign_detj[cells[0]]
+                    sign_minus = sign_detj[cells[1]]
 
-            # local facet id of cell
-            if_plus = np.where(cell_to_fct.links(cells[0]) == f)[0][0]
-            if_minus = np.where(cell_to_fct.links(cells[1]) == f)[0][0]
+                    # local facet id of cell
+                    if_plus = np.where(cell_to_fct.links(cells[0]) == f)[0][0]
+                    if_minus = np.where(cell_to_fct.links(cells[1]) == f)[0][0]
 
-            for i in range(0, degree):
-                # local dof id of facet-normal flux
-                dof_plus = dofmap_sigrt.links(cells[0])[if_plus * dofs_per_fct + i]
-                dof_minus = dofmap_sigrt.links(cells[1])[if_minus * dofs_per_fct + i]
+                    for i in range(0, dofs_per_fct):
+                        # local dof id of facet-normal flux
+                        dof_plus = dofmap_sigrt.links(cells[0])[
+                            if_plus * dofs_per_fct + i
+                        ]
+                        dof_minus = dofmap_sigrt.links(cells[1])[
+                            if_minus * dofs_per_fct + i
+                        ]
 
-                # calculate outward flux
-                if if_plus == 1:
-                    flux_plus = x_sig_rt[dof_plus] * sign_plus
-                else:
-                    flux_plus = x_sig_rt[dof_plus] * (-sign_plus)
+                        # calculate outward flux
+                        if if_plus == 1:
+                            flux_plus = x_sig_rt[dof_plus] * sign_plus
+                        else:
+                            flux_plus = x_sig_rt[dof_plus] * (-sign_plus)
 
-                if if_minus == 1:
-                    flux_minus = x_sig_rt[dof_minus] * sign_minus
-                else:
-                    flux_minus = x_sig_rt[dof_minus] * (-sign_minus)
+                        if if_minus == 1:
+                            flux_minus = x_sig_rt[dof_minus] * sign_minus
+                        else:
+                            flux_minus = x_sig_rt[dof_minus] * (-sign_minus)
 
-                # check continuity of facet-normal flux
-                assert np.isclose(flux_plus + flux_minus, 0)
+                        # check continuity of facet-normal flux
+                        assert np.isclose(flux_plus + flux_minus, 0)
 
 
 if __name__ == "__main__":
