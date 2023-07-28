@@ -363,88 +363,80 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
                            1);
 
       /* DOFs from facet integrals */
-      // TODO - Reimplement O1 based on M and restructure!
-      if constexpr (id_flux_order == 1)
+      // Local facet ids
+      std::int8_t fl_TaEam1, fl_TaEa;
+      std::tie(fl_TaEam1, fl_TaEa) = patch.fctid_local(a);
+      std::int8_t fl_Tap1Ea = patch.fctid_local(a, a + 1);
+
+      // DOFs (cell local) projected flux on facet Ea
+      std::span<const std::int32_t> dofs_Ea = patch.dofs_projflux_fct(a);
+
+      // Shape functions RHS
+      dolfinx_adaptivity::s_cmdspan2_t shp_TaEa
+          = kernel_data.shapefunctions_fct_rhs(fl_TaEa);
+      dolfinx_adaptivity::s_cmdspan2_t shp_Tap1Ea
+          = kernel_data.shapefunctions_fct_rhs(fl_Tap1Ea);
+
+      // Shape-functions hat-function
+      dolfinx_adaptivity::s_cmdspan2_t hat_TaEam1
+          = kernel_data.shapefunctions_fct_hat(fl_TaEam1);
+      dolfinx_adaptivity::s_cmdspan2_t hat_TaEa
+          = kernel_data.shapefunctions_fct_hat(fl_TaEa);
+
+      // Quadrature loop
+      c_ta_eam1 = -c_tam1_eam1;
+      std::fill(cj_ta_ea.begin(), cj_ta_ea.end(), 0.0);
+
+      for (std::size_t n = 0; n < nipoints_facet; ++n)
       {
-        // TODO - Reimplement based on interpolation matrix
-        throw std::runtime_error("TODO - Reimplement O1 based on M_mapped!");
-      }
-      else
-      {
-        // Local facet ids
-        std::int8_t fl_TaEam1, fl_TaEa;
-        std::tie(fl_TaEam1, fl_TaEa) = patch.fctid_local(a);
-        std::int8_t fl_Tap1Ea = patch.fctid_local(a, a + 1);
+        // Global index of Tap1
+        std::int32_t c_ap1 = (a < ncells) ? cells[id_a + 1] : cells[0];
 
-        // DOFs (cell local) projected flux on facet Ea
-        std::span<const std::int32_t> dofs_Ea = patch.dofs_projflux_fct(a);
+        // Interpolate jump at quadrature point
+        std::fill(jG_Ea.begin(), jG_Ea.end(), 0.0);
 
-        // Shape functions RHS
-        dolfinx_adaptivity::s_cmdspan2_t shp_TaEa
-            = kernel_data.shapefunctions_fct_rhs(fl_TaEa);
-        dolfinx_adaptivity::s_cmdspan2_t shp_Tap1Ea
-            = kernel_data.shapefunctions_fct_rhs(fl_Tap1Ea);
-
-        // Shape-functions hat-function
-        dolfinx_adaptivity::s_cmdspan2_t hat_TaEam1
-            = kernel_data.shapefunctions_fct_hat(fl_TaEam1);
-        dolfinx_adaptivity::s_cmdspan2_t hat_TaEa
-            = kernel_data.shapefunctions_fct_hat(fl_TaEa);
-
-        // Quadrature loop
-        c_ta_eam1 = -c_tam1_eam1;
-        std::fill(cj_ta_ea.begin(), cj_ta_ea.end(), 0.0);
-
-        for (std::size_t n = 0; n < nipoints_facet; ++n)
+        if (type_patch > 0 && a == ncells)
         {
-          // Global index of Tap1
-          std::int32_t c_ap1 = (a < ncells) ? cells[id_a + 1] : cells[0];
-
-          // Interpolate jump at quadrature point
-          std::fill(jG_Ea.begin(), jG_Ea.end(), 0.0);
-
-          if (type_patch > 0 && a == ncells)
+          for (std::size_t i = 0; i < ndofs_projflux_fct; ++i)
           {
-            for (std::size_t i = 0; i < ndofs_projflux_fct; ++i)
-            {
-              // Local and global IDs of first DOF on facet
-              int s_Tap1 = dofs_Ea[i];
-              int s_Ta = dofs_Ea[i + ndofs_projflux_fct];
+            // Local and global IDs of first DOF on facet
+            int s_Tap1 = dofs_Ea[i];
+            int s_Ta = dofs_Ea[i + ndofs_projflux_fct];
 
-              // Evaluate jump
-              // jump = flux_proj_Ta on boundary!
-              jG_Ea[0] = coefficients_G_Ta[s_Ta] * shp_TaEa(n, s_Ta);
-              jG_Ea[1] = coefficients_G_Ta[s_Ta + 1] * shp_TaEa(n, s_Ta);
-            }
+            // Evaluate jump
+            // jump = flux_proj_Ta on boundary!
+            jG_Ea[0] = coefficients_G_Ta[s_Ta] * shp_TaEa(n, s_Ta);
+            jG_Ea[1] = coefficients_G_Ta[s_Ta + 1] * shp_TaEa(n, s_Ta);
           }
-          else
+        }
+        else
+        {
+          // Interpolate jump
+          for (std::size_t i = 0; i < ndofs_projflux_fct; ++i)
           {
-            // Interpolate jump
-            for (std::size_t i = 0; i < ndofs_projflux_fct; ++i)
-            {
-              // Local and global IDs of first DOF on facet
-              int id_Tap1 = dofs_Ea[i];
-              int id_Ta = dofs_Ea[i + ndofs_projflux_fct];
-              int offs_Tap1 = 2 * id_Tap1;
-              int offs_Ta = 2 * id_Ta;
+            // Local and global IDs of first DOF on facet
+            int id_Tap1 = dofs_Ea[i];
+            int id_Ta = dofs_Ea[i + ndofs_projflux_fct];
+            int offs_Tap1 = 2 * id_Tap1;
+            int offs_Ta = 2 * id_Ta;
 
-              // Evaluate jump
-              // jump = (flux_proj_Tap1 - flux_proj_Ta)
-              jG_Ea[0]
-                  += coefficients_G_Tap1[offs_Tap1] * shp_Tap1Ea(n, id_Tap1)
-                     - coefficients_G_Ta[offs_Ta] * shp_TaEa(n, id_Ta);
-              jG_Ea[1]
-                  += coefficients_G_Tap1[offs_Tap1 + 1] * shp_Tap1Ea(n, id_Tap1)
-                     - coefficients_G_Ta[offs_Ta + 1] * shp_TaEa(n, id_Ta);
-            }
+            // Evaluate jump
+            // jump = (flux_proj_Tap1 - flux_proj_Ta)
+            jG_Ea[0] += coefficients_G_Tap1[offs_Tap1] * shp_Tap1Ea(n, id_Tap1)
+                        - coefficients_G_Ta[offs_Ta] * shp_TaEa(n, id_Ta);
+            jG_Ea[1]
+                += coefficients_G_Tap1[offs_Tap1 + 1] * shp_Tap1Ea(n, id_Tap1)
+                   - coefficients_G_Ta[offs_Ta + 1] * shp_TaEa(n, id_Ta);
           }
+        }
 
-          // Evaluate facet DOFs
-          // (Positive jump, as calculated with n_(Ta,Ea)=-n_(Tap1,Ea))
-          T aux = M_mapped(id_a, 0, 0, n) * jG_Eam1(n, 0)
-                  + M_mapped(id_a, 0, 1, n) * jG_Eam1(n, 1);
-          c_ta_eam1 -= prefactor_dof(id_a, 0) * hat_TaEam1(n, node_i_Ta) * aux;
+        // Evaluate facet DOFs
+        T aux = M_mapped(id_a, 0, 0, n) * jG_Eam1(n, 0)
+                + M_mapped(id_a, 0, 1, n) * jG_Eam1(n, 1);
+        c_ta_eam1 -= prefactor_dof(id_a, 0) * hat_TaEam1(n, node_i_Ta) * aux;
 
+        if constexpr (id_flux_order > 1)
+        {
           if constexpr (id_flux_order == 2)
           {
             T MjG = M_mapped(id_a, 1, 0, n) * jG_Ea[0]
@@ -464,11 +456,11 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
                                  + M_mapped(id_a, j, 1, n) * jGha_Ea[1];
             }
           }
-
-          // Store jump
-          jG_Eam1(n, 0) = jG_Ea[0];
-          jG_Eam1(n, 1) = jG_Ea[1];
         }
+
+        // Store jump
+        jG_Eam1(n, 0) = jG_Ea[0];
+        jG_Eam1(n, 1) = jG_Ea[1];
       }
 
       // Treatment of facet 0
