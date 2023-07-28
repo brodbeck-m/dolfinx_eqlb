@@ -221,16 +221,9 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
   dolfinx_adaptivity::mdspan_t<T, 2> jG_Eam1(data_jG_Eam1.data(),
                                              nipoints_facet, dim);
 
-  // Facet DOFs H(div)-flux
-  std::vector<T> cta_e(2 * ndofs_flux_fct, 0);
-
-  // Cell DOFs H(div)-flux
-  std::vector<T> cta_div(ndofs_flux_cell_div, 0);
-
   // History array for c_tam1_eam1
   T c_ta_ea, c_ta_eam1, c_tam1_eam1;
-  std::vector<T> c_ta_div(ndofs_flux_cell_div, 0);
-  std::vector<T> cj_ta_ea(ndofs_flux_fct - 1, 0);
+  std::vector<T> c_ta_div, cj_ta_ea;
 
   /* Initialise storage */
   // Jacobian J, inverse K and determinant detJ
@@ -242,6 +235,10 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
   {
     // Inverse of the Jacobian
     storage_K.resize(ncells * 4);
+
+    // Storage of DOFs
+    c_ta_div.resize(ndofs_flux_cell_div);
+    cj_ta_ea.resize(ndofs_flux_fct - 1);
   }
 
   /* Storage cell geometries/ normal orientation */
