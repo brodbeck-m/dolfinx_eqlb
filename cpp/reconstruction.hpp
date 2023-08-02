@@ -39,7 +39,7 @@ using namespace dolfinx;
 
 namespace dolfinx_adaptivity::equilibration
 {
-/// Execute calculation of patch constributions to flux
+/// Execute calculation of patch contributions to flux
 ///
 /// @param a              The bilinear forms to assemble
 /// @param l_pen          Penalisation terms to assemble
