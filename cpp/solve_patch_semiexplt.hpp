@@ -352,7 +352,8 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
 
       /* Extract required data */
       // Isoparametric mapping
-      const double detJ = std::fabs(storage_detJ[id_a]);
+      const double detJ = storage_detJ[id_a];
+      const double sign_detJ = (detJ > 0.0) ? 1.0 : -1.0;
 
       // Coefficient arrays
       std::swap(coefficients_G_Ta, coefficients_G_Tap1);
@@ -485,7 +486,7 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
       if constexpr (id_flux_order == 1)
       {
         // Set DOF on facet Ea
-        c_ta_ea = coefficients_f[0] * (detJ / 6) - c_ta_eam1;
+        c_ta_ea = coefficients_f[0] * (std::fabs(detJ) / 6) - c_ta_eam1;
       }
       else
       {
@@ -532,7 +533,7 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
               = (f - div_g) * shp_hat(n, node_i_Ta) * weights[n] * detJ;
 
           // Evaluate facet DOF
-          c_ta_ea += aux;
+          c_ta_ea += aux * sign_detJ;
 
           // Evaluate cell DOFs
           if constexpr (id_flux_order == 2)
