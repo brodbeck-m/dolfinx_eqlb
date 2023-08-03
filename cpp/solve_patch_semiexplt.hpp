@@ -668,8 +668,7 @@ void minimise_flux(const mesh::Geometry& geometry,
   u_patch.resize(size_psystem);
 
   // Local solver
-  Eigen::PartialPivLU<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic>>
-      solver;
+  Eigen::LLT<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic>> solver;
 
   /* Initialize solution process */
   // Number of nodes on reference cell
@@ -735,7 +734,7 @@ void minimise_flux(const mesh::Geometry& geometry,
           A_patch, L_patch, cells, patch, kernel_data, prefactor_dof,
           coefficients, ndofs_flux, coordinate_dofs, type_patch);
 
-      // LU-factorization of system matrix
+      // Factorization of system matrix
       if constexpr (id_flux_order > 1)
       {
         solver.compute(A_patch);
@@ -776,17 +775,17 @@ void minimise_flux(const mesh::Geometry& geometry,
       x_flux_dhdiv[gdofs_flux[0]] += prefactor_dof(id_a, 0) * u_patch(0);
       x_flux_dhdiv[gdofs_flux[1]] -= prefactor_dof(id_a, 1) * u_patch(0);
 
-      // Set d_E
-      if constexpr (id_flux_order > 1)
-      {
-        throw std::runtime_error("Not Implemented!");
-      }
+      // // Set d_E
+      // if constexpr (id_flux_order > 1)
+      // {
+      //   throw std::runtime_error("Not Implemented!");
+      // }
 
-      // Set d_T
-      if constexpr (id_flux_order > 2)
-      {
-        throw std::runtime_error("Not Implemented!");
-      }
+      // // Set d_T
+      // if constexpr (id_flux_order > 2)
+      // {
+      //   throw std::runtime_error("Not Implemented!");
+      // }
     }
   }
 }

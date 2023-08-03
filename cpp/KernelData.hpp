@@ -137,8 +137,20 @@ public:
   /// @param J     The Jacobian
   /// @param detJ  The determinant of the Jacobian
   /// @return Array of shape functions (current cell)
-  dolfinx_adaptivity::s_cmdspan3_t
-  shapefunctions_flux(dolfinx_adaptivity::mdspan2_t J, double detJ);
+  dolfinx_adaptivity::smdspan_t<double, 3>
+  shapefunctions_flux(dolfinx_adaptivity::mdspan2_t J, double detJ)
+  {
+    // Map shape functions
+    contravariant_piola_mapping(
+        stdex::submdspan(_flux_fullbasis_current, 0, stdex::full_extent,
+                         stdex::full_extent, stdex::full_extent),
+        stdex::submdspan(_flux_fullbasis, 0, stdex::full_extent,
+                         stdex::full_extent, stdex::full_extent),
+        J, detJ);
+
+    return stdex::submdspan(_flux_fullbasis_current, 0, stdex::full_extent,
+                            stdex::full_extent, stdex::full_extent);
+  }
 
   /// Extract shape functions on cell (RHS, projected flux)
   /// Array with indexes i, j and k:
@@ -312,6 +324,17 @@ protected:
   /// Tabulate shape functions of hat-function
   /// @param basix_element_hat The basix-element for the hat-function
   void tabulate_hat_basis(const basix::FiniteElement& basix_element_hat);
+
+  /// Contravariant Piola mapping
+  /// Shape of the basis: points x dofs x spacial dimension
+  /// @param phi_cur The current basis function values
+  /// @param phi_ref The reference basis function values
+  /// @param J    The Jacobian matrix
+  /// @param detJ The determinant of the Jacobian matrix
+  void contravariant_piola_mapping(
+      dolfinx_adaptivity::smdspan_t<double, 3> phi_cur,
+      dolfinx_adaptivity::smdspan_t<const double, 3> phi_ref,
+      dolfinx_adaptivity::mdspan2_t J, double detJ);
 
   /* Variable definitions */
   // Dimensions

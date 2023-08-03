@@ -253,6 +253,30 @@ void KernelData<T>::tabulate_hat_basis(
       _hat_basis_fct_values.data(), hat_basis_shape_fct);
 }
 
+/* Mapping routines */
+template <typename T>
+void KernelData<T>::contravariant_piola_mapping(
+    dolfinx_adaptivity::smdspan_t<double, 3> phi_cur,
+    dolfinx_adaptivity::smdspan_t<const double, 3> phi_ref,
+    dolfinx_adaptivity::mdspan2_t J, double detJ)
+{
+  // Loop over all evaluation points
+  for (std::size_t i = 0; i < phi_ref.extent(0); ++i)
+  {
+    // Loop over all basis functions
+    for (std::size_t j = 0; j < phi_ref.extent(1); ++j)
+    {
+      double inv_detJ = 1.0 / detJ;
+
+      // Evaluate (1/detj) * J * phi^j(x_i)
+      phi_cur(i, j, 0) = inv_detJ * J(0, 0) * phi_ref(i, j, 0)
+                         + inv_detJ * J(0, 1) * phi_ref(i, j, 1);
+      phi_cur(i, j, 1) = inv_detJ * J(1, 0) * phi_ref(i, j, 0)
+                         + inv_detJ * J(1, 1) * phi_ref(i, j, 1);
+    }
+  }
+}
+
 /* Compute isoparametric mapping */
 template <typename T>
 double KernelData<T>::compute_jacobian(dolfinx_adaptivity::mdspan2_t J,
@@ -343,32 +367,6 @@ void KernelData<T>::physical_fct_normal(std::span<double> normal_phys,
 }
 
 /* Push-forward of shape-functions */
-template <typename T>
-dolfinx_adaptivity::s_cmdspan3_t
-KernelData<T>::shapefunctions_flux(dolfinx_adaptivity::mdspan2_t J, double detJ)
-{
-  // Loop over all evaluation points
-  for (std::size_t i = 0; i < _flux_fullbasis.extent(1); ++i)
-  {
-    // Loop over all basis functions
-    for (std::size_t j = 0; j < _flux_fullbasis.extent(2); ++j)
-    {
-      double inv_detJ = 1.0 / detJ;
-
-      // Evaluate (1/detj) * J * phi^j(x_i)
-      _flux_fullbasis_current(0, i, j, 0)
-          = inv_detJ * J(0, 0) * _flux_fullbasis(0, i, j, 0)
-            + inv_detJ * J(0, 1) * _flux_fullbasis(0, i, j, 1);
-      _flux_fullbasis_current(0, i, j, 1)
-          = inv_detJ * J(1, 0) * _flux_fullbasis(0, i, j, 0)
-            + inv_detJ * J(1, 1) * _flux_fullbasis(0, i, j, 1);
-    }
-  }
-
-  return stdex::submdspan(_flux_fullbasis_current, 0, stdex::full_extent,
-                          stdex::full_extent, stdex::full_extent);
-}
-
 template <typename T>
 dolfinx_adaptivity::s_cmdspan3_t
 KernelData<T>::shapefunctions_cell_rhs(dolfinx_adaptivity::cmdspan2_t K)

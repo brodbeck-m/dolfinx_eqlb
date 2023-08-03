@@ -201,15 +201,15 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data,
   }
 
   // Step 2 : Minimise reconstructed flux
-  // for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
-  // {
-  //   // Create Sub-DOFmap
-  //   patch.create_subdofmap(i_node);
+  for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
+  {
+    // Create Sub-DOFmap
+    patch.create_subdofmap(i_node);
 
-  //   // Solve minimisation on current patch
-  //   minimise_flux<T, id_flux_order>(mesh->geometry(), patch, problem_data,
-  //                                   kernel_data);
-  // }
+    // Solve minimisation on current patch
+    minimise_flux<T, id_flux_order>(mesh->geometry(), patch, problem_data,
+                                    kernel_data);
+  }
 }
 
 /// Mark facets of entire mesh (internal, neumann, dirichlet)
