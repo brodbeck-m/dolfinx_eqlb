@@ -27,13 +27,17 @@ using namespace dolfinx;
 namespace dolfinx_adaptivity::equilibration
 {
 template <typename T, int id_flux_order = 3, bool asmbl_systmtrx = true>
-void minimisation_kernel(
-    dolfinx_adaptivity::mdspan2_t Te, KernelData<T>& kernel_data,
-    std::span<T> coefficients, std::span<const std::int32_t> dofl_cell,
-    dolfinx_adaptivity::smdspan_t<double, 1> prefactors_cell,
-    const int ndofs_per_fct, dolfinx_adaptivity::cmdspan2_t coordinate_dofs)
+void minimisation_kernel(dolfinx_adaptivity::mdspan2_t Te,
+                         KernelData<T>& kernel_data, std::span<T> coefficients,
+                         dolfinx_adaptivity::smdspan_t<std::int32_t, 2> dofmap,
+                         const int fluxdofs_per_fct,
+                         dolfinx_adaptivity::cmdspan2_t coordinate_dofs)
 {
   const int index_load = Te.extent(0) - 1;
+
+  /* Initialise storage of cell prefactors */
+  std::int32_t prefactor_eam1 = dofmap(3, 0);
+  std::int32_t prefactor_ea = dofmap(3, 0);
 
   /* Isoparametric mapping */
   std::array<double, 9> Jb;
@@ -41,13 +45,6 @@ void minimisation_kernel(
   std::array<double, 18> detJ_scratch;
 
   double detJ = kernel_data.compute_jacobian(J, detJ_scratch, coordinate_dofs);
-
-  /* Calculate prefactors */
-  if (detJ < 0)
-  {
-    prefactors_cell(0) = -prefactors_cell(0);
-    prefactors_cell(1) = -prefactors_cell(1);
-  }
 
   /* Extract shape functions and quadrature data */
   dolfinx_adaptivity::smdspan_t<double, 3> phi
@@ -60,28 +57,43 @@ void minimisation_kernel(
   // Interpolated solution from step 1
   std::array<T, 2> sigtilde_q;
 
-  // Number of additional coefficients
-  const int size_dolf = dofl_cell.size();
+  // Number of non-zero DOFs on cell
+  const int ndofs_per_cell = dofmap.extent(1);
 
-  // Set array with prefactors
-  std::vector<double> list_prefactors(size_dolf, 1.0);
-
-  if constexpr (id_flux_order > 1)
+  // Set prefactors
+  if constexpr (asmbl_systmtrx)
   {
-    if constexpr (id_flux_order == 2)
+    // Correct prefactors based on sign of detJ
+    if (detJ < 0)
     {
-      list_prefactors[2] = prefactors_cell(0);
-      list_prefactors[3] = prefactors_cell(1);
+      prefactor_eam1 = -prefactor_eam1;
+      prefactor_ea = -prefactor_ea;
     }
-    else
+
+    // Move prefactors to storage
+    if constexpr (id_flux_order > 1)
     {
-      for (std::size_t i = 2; i < ndofs_per_fct + 1; ++i)
+      if constexpr (id_flux_order == 2)
       {
-        list_prefactors[i] = prefactors_cell(0);
-        list_prefactors[i + ndofs_per_fct - 1] = prefactors_cell(1);
+        dofmap(3, 2) = prefactor_eam1;
+        dofmap(3, 3) = prefactor_ea;
+      }
+      else
+      {
+        const int offs_e = fluxdofs_per_fct - 1;
+
+        for (std::size_t i = 2; i < fluxdofs_per_fct + 1; ++i)
+        {
+          dofmap(3, i) = prefactor_eam1;
+          dofmap(3, i + offs_e) = prefactor_ea;
+        }
       }
     }
   }
+
+  // Manipulate prefactors
+  dofmap(3, 0) = 1;
+  dofmap(3, 1) = 1;
 
   /* Assemble tangents */
   for (std::size_t iq = 0; iq < quadrature_weights.size(); ++iq)
@@ -109,52 +121,60 @@ void minimisation_kernel(
     }
 
     // Manipulate shape function for coefficient d_0
-    phi(iq, dofl_cell[1], 0) = prefactors_cell(0) * phi(iq, dofl_cell[0], 0)
-                               - prefactors_cell(1) * phi(iq, dofl_cell[1], 0);
-    phi(iq, dofl_cell[1], 1) = prefactors_cell(0) * phi(iq, dofl_cell[0], 1)
-                               - prefactors_cell(1) * phi(iq, dofl_cell[1], 1);
+    phi(iq, dofmap(0, 1), 0) = dofmap(3, 0) * phi(iq, dofmap(0, 0), 0)
+                               - dofmap(3, 1) * phi(iq, dofmap(0, 1), 0);
+    phi(iq, dofmap(0, 1), 1) = dofmap(3, 0) * phi(iq, dofmap(0, 0), 1)
+                               - dofmap(3, 1) * phi(iq, dofmap(0, 1), 1);
 
     // Assemble linear- and bilinear form
-    for (std::size_t i = 0; i < size_dolf - 1; ++i)
+    for (std::size_t i = 0; i < ndofs_per_cell - 1; ++i)
     {
       // Auxilary variables
       std::size_t ip1 = i + 1;
-      double pialpha = list_prefactors[ip1] * alpha;
+      double pialpha = dofmap(3, ip1) * alpha;
 
       // Linear form
-      Te(index_load, i) -= (phi(iq, dofl_cell[ip1], 0) * sigtilde_q[0]
-                            + phi(iq, dofl_cell[ip1], 1) * sigtilde_q[1])
+      Te(index_load, i) -= (phi(iq, dofmap(0, ip1), 0) * sigtilde_q[0]
+                            + phi(iq, dofmap(0, ip1), 1) * sigtilde_q[1])
                            * pialpha;
 
       if constexpr (asmbl_systmtrx)
       {
-        for (std::size_t j = i; j < size_dolf - 1; ++j)
+        for (std::size_t j = i; j < ndofs_per_cell - 1; ++j)
         {
           // Auxiliary variables
           std::size_t jp1 = j + 1;
-          double sp = phi(iq, dofl_cell[ip1], 0) * phi(iq, dofl_cell[jp1], 0)
-                      + phi(iq, dofl_cell[ip1], 1) * phi(iq, dofl_cell[jp1], 1);
+          double sp = phi(iq, dofmap(0, ip1), 0) * phi(iq, dofmap(0, jp1), 0)
+                      + phi(iq, dofmap(0, ip1), 1) * phi(iq, dofmap(0, jp1), 1);
 
           // Bilinear form
-          Te(ip1, j) += sp * list_prefactors[jp1] * pialpha;
+          Te(ip1, j) += sp * dofmap(3, ip1) * pialpha;
         }
       }
     }
   }
+
+  // Undo manipulation of prefactors
+  dofmap(3, 0) = prefactor_eam1;
+  dofmap(3, 1) = prefactor_ea;
 }
 
 template <typename T, int id_flux_order = 3, bool asmbl_systmtrx = true>
 void assemble_minimisation(
     Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>& A_patch,
     Eigen::Matrix<T, Eigen::Dynamic, 1>& L_patch,
-    std::span<const std::int32_t> cells, PatchFluxCstm<T, id_flux_order>& patch,
-    KernelData<T>& kernel_data, dolfinx_adaptivity::mdspan2_t prefactors_dof,
-    std::span<T> coefficients, const int cstride,
-    std::span<double> coordinate_dofs, const int type_patch)
+    PatchFluxCstm<T, id_flux_order>& patch, KernelData<T>& kernel_data,
+    dolfinx_adaptivity::mdspan_t<std::int32_t, 3> dofmap_patch,
+    std::span<T> coefficients, std::span<double> coordinate_dofs,
+    const int type_patch)
 {
   assert(id_flux_order < 0);
 
   /* Extract data */
+  // Number of elements/facets on patch
+  const int ncells = patch.ncells();
+  const int nfcts = patch.nfcts();
+
   // Node of base element
   int nnodes_cell = kernel_data.nnodes_cell();
   const int cstride_geom = 3 * nnodes_cell;
@@ -162,8 +182,10 @@ void assemble_minimisation(
   // Degree of the RT element
   const int degree_rt = patch.degree_raviart_thomas();
 
-  // DOFs per facet
+  // DOF counters
+  const int ndofs = patch.ndofs_flux();
   const int ndofs_per_fct = degree_rt + 1;
+  const int ndofs_cell_div = patch.ndofs_flux_cell_div();
   const int ndofs_cell_add = patch.ndofs_flux_cell_add();
 
   /* Initialisation */
@@ -172,67 +194,137 @@ void assemble_minimisation(
   std::vector<T> dTe(ndofs_nz * (ndofs_nz + 1), 0);
   dolfinx_adaptivity::mdspan2_t Te(dTe.data(), ndofs_nz + 1, ndofs_nz);
 
-  // DOF vector cell
-  const int ndofs_add = 2 * (ndofs_per_fct - 1) + ndofs_cell_add;
-  std::vector<std::int32_t> dofl_cell(2 + ndofs_add);
-
   /* Calculation and assembly */
-  for (std::size_t a = 1; a < cells.size() + 1; ++a)
+  for (std::size_t a = 1; a < ncells + 1; ++a)
   {
     int id_a = a - 1;
 
-    // Extract cell-wise flux DOFs
-    std::span<const std::int32_t> fdofs_fct = patch.dofs_flux_fct_local(a);
-
-    // Element data
-    dolfinx_adaptivity::smdspan_t<double, 1> prefactors_cell
-        = stdex::submdspan(prefactors_dof, id_a, stdex::full_extent);
-    std::span<T> coefficients_elmt
-        = coefficients.subspan(id_a * cstride, cstride);
+    // Cell coordinates
     dolfinx_adaptivity::cmdspan2_t coordinates_elmt(
         coordinate_dofs.data() + id_a * cstride_geom, nnodes_cell, 3);
 
-    // Pack (local) DOF vector on cell (except d_0!)
-    dofl_cell[0] = fdofs_fct[0];
-    dofl_cell[1] = fdofs_fct[ndofs_per_fct];
+    // DOFmap on cell
+    dolfinx_adaptivity::smdspan_t<std::int32_t, 2> dofmap_cell
+        = stdex::submdspan(dofmap_patch, stdex::full_extent, id_a,
+                           stdex::full_extent);
 
-    if constexpr (id_flux_order == 2)
+    // DOFs on cell (equilibration step 1)
+    std::span<T> coefficients_elmt = coefficients.subspan(id_a * ndofs, ndofs);
+
+    // Pack (cell-local and patch-wise) DOF vector on cell
+    if constexpr (asmbl_systmtrx)
     {
-      // Set facet DOFs
-      dofl_cell[2] = fdofs_fct[1];
-      dofl_cell[3] = fdofs_fct[ndofs_per_fct + 1];
-    }
-    else
-    {
-      // Set facet DOFs and prefactors
-      for (std::size_t i = 2; i < ndofs_per_fct + 1; ++i)
+      // DOFs on facets
+      std::span<const std::int32_t> fdofs_fct_local
+          = patch.dofs_flux_fct_local(a);
+      std::span<const std::int32_t> fdofs_fct_global
+          = patch.dofs_flux_fct_global(a);
+
+      // Cell-local DOFs of zero-order facet moments
+      dofmap_cell(0, 0) = fdofs_fct_local[0];
+      dofmap_cell(0, 1) = fdofs_fct_local[ndofs_per_fct];
+
+      // Patch-local DOFs of zero-order facet moments
+      dofmap_cell(1, 0) = 0;
+      dofmap_cell(1, 1) = 0;
+
+      // Global DOFs of zero-order facet moments
+      dofmap_cell(2, 0) = fdofs_fct_global[0];
+      dofmap_cell(2, 1) = fdofs_fct_global[ndofs_per_fct];
+
+      if constexpr (id_flux_order == 2)
       {
-        // Index
-        std::int32_t iea = i + ndofs_per_fct - 1;
+        int iea = ndofs_per_fct + 1;
 
-        // DOFs
-        dofl_cell[i] = fdofs_fct[i - 1];
-        dofl_cell[iea] = fdofs_fct[iea];
+        // Cell-local DOFs of first-order facet moments
+        dofmap_cell(0, 2) = fdofs_fct_local[1];
+        dofmap_cell(0, 3) = fdofs_fct_local[iea];
+
+        // Patch-local DOFs of first-order facet moments
+        if ((type_patch == 0) && (a == ncells))
+        {
+          dofmap_cell(1, 2) = a;
+          dofmap_cell(1, 3) = 1;
+        }
+        else
+        {
+          dofmap_cell(1, 2) = a;
+          dofmap_cell(1, 3) = 1 + a;
+        }
+
+        // Global DOFs of zero-order facet moments
+        dofmap_cell(2, 2) = fdofs_fct_global[1];
+        dofmap_cell(2, 3) = fdofs_fct_global[iea];
       }
-
-      // Set cell DOFs
-      if (a == 1)
+      else
       {
-        const int ndofs_cell_div = patch.ndofs_flux_cell_div();
-        const int ndofs_cell_add = patch.ndofs_flux_cell_add();
-        std::span<const std::int32_t> fdofs_cell
+        // Set facet DOFs
+        const int offs_e = ndofs_per_fct - 1;
+        int offs_ea, offs_eam1;
+
+        if ((type_patch == 0) && (a == ncells))
+        {
+          offs_eam1 = (a - 1) * (ndofs_per_fct - 1) - 1;
+          offs_ea = -1;
+        }
+        else
+        {
+          offs_eam1 = (a - 1) * (ndofs_per_fct - 1) - 1;
+          offs_ea = offs_eam1 + offs_e;
+        }
+
+        for (std::size_t i = 2; i < ndofs_per_fct + 1; ++i)
+        {
+          int ieam1 = i - 1;
+          int iea = i + offs_e;
+
+          // Cell-local DOFs of higher-order facet moments
+          dofmap_cell(0, i) = fdofs_fct_local[ieam1];
+          dofmap_cell(0, iea) = fdofs_fct_local[iea];
+
+          // Patch-local DOFs of first-order facet moments
+          dofmap_cell(1, i) = offs_eam1 + i;
+          dofmap_cell(1, iea) = offs_ea + i;
+
+          // Global DOFs of first-order facet moments
+          dofmap_cell(2, i) = fdofs_fct_global[ieam1];
+          dofmap_cell(2, iea) = fdofs_fct_global[iea];
+        }
+
+        // Set cell DOFs
+        std::span<const std::int32_t> fdofs_cell_local
+            = patch.dofs_flux_cell_local(a);
+        std::span<const std::int32_t> fdofs_cell_global
             = patch.dofs_flux_cell_local(a);
 
-        std::copy_n(fdofs_cell.begin() + ndofs_cell_div, ndofs_cell_add,
-                    dofl_cell.begin() + 2 * ndofs_per_fct);
+        const int offs_ta
+            = 1 + nfcts * ndofs_per_fct + (a - 1) * ndofs_cell_add;
+
+        for (std::size_t i = 0; i < ndofs_cell_add; ++i)
+        {
+          int offs_dmp1 = 2 * ndofs_per_fct + i;
+          int offs_dmp2 = ndofs_cell_div + i;
+
+          // Cell-local DOFs of higher-order facet moments
+          dofmap_cell(0, offs_dmp1) = fdofs_fct_local[offs_dmp2];
+
+          // Patch-local DOFs of first-order facet moments
+          dofmap_cell(1, offs_dmp1) = offs_ta + i;
+
+          // Global DOFs of first-order facet moments
+          dofmap_cell(2, offs_dmp1) = fdofs_fct_global[offs_dmp1];
+
+          // Initialise prefactors
+          dofmap_cell(3, offs_dmp1) = 1;
+        }
       }
     }
 
     // Evaluate linear- and bilinear form
     std::fill(dTe.begin(), dTe.end(), 0);
     minimisation_kernel<T, id_flux_order, asmbl_systmtrx>(
-        Te, kernel_data, coefficients_elmt, dofl_cell, prefactors_cell,
-        ndofs_per_fct, coordinates_elmt);
+        Te, kernel_data, coefficients_elmt, dofmap_cell, ndofs_per_fct,
+        coordinates_elmt);
 
     // Assemble linear- and bilinear form
     if constexpr (id_flux_order == 1)

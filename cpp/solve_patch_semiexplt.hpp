@@ -644,6 +644,7 @@ void minimise_flux(const mesh::Geometry& geometry,
   const int degree_rt = patch.degree_raviart_thomas();
   const int ndofs_flux = patch.ndofs_flux();
   const int ndofs_flux_fct = patch.ndofs_flux_fct();
+  const int ndofs_flux_cell_add = patch.ndofs_flux_cell_add();
 
   const graph::AdjacencyList<std::int32_t>& flux_dofmap
       = problem_data.fspace_flux_hdiv()->dofmap()->list();
@@ -654,6 +655,10 @@ void minimise_flux(const mesh::Geometry& geometry,
 
   // Facets on patch
   const int nfcts = patch.nfcts();
+
+  // DOFs per cell on patch
+  const int ndofs_cell_local = 2 * ndofs_flux_fct + ndofs_flux_cell_add;
+  const int ndofs_cell_patch = ndofs_cell_local - 1;
 
   /* Initialize Patch-LGS */
   // Patch arrays
@@ -674,7 +679,15 @@ void minimise_flux(const mesh::Geometry& geometry,
   // Number of nodes on reference cell
   int nnodes_cell = kernel_data.nnodes_cell();
 
-  /* Storage cell geometries and DOF prefactors*/
+  // Storage DOFmap
+  // mdspan: (dof_local, dof_patch, dof_global, prefactor) x cell x
+  // dofs_per_cell
+  std::vector<std::int32_t> ddofmap_patch(4 * ncells * ndofs_cell_local, 0);
+  dolfinx_adaptivity::mdspan_t<std::int32_t, 3> dofmap_patch(
+      ddofmap_patch.data(), 4, (std::size_t)ncells,
+      (std::size_t)ndofs_cell_local);
+
+  /* Storage cell geometries and DOFmap*/
   // Initialisations
   const int cstride_geom = 3 * nnodes_cell;
   std::vector<double> coordinate_dofs(ncells * cstride_geom, 0);
@@ -704,8 +717,8 @@ void minimise_flux(const mesh::Geometry& geometry,
     std::tie(noutward_eam1, noutward_ea)
         = kernel_data.fct_normal_is_outward(fctloc_eam1, fctloc_ea);
 
-    set_dof_prefactors(index + 1, noutward_eam1, noutward_ea, 1,
-                       dprefactor_dof);
+    dofmap_patch(3, index, 0) = (noutward_eam1) ? 1 : -1;
+    dofmap_patch(3, index, 1) = (noutward_ea) ? 1 : -1;
   }
 
   /* Perform minimisation */
@@ -731,8 +744,8 @@ void minimise_flux(const mesh::Geometry& geometry,
 
       // Assemble tangents
       assemble_minimisation<T, id_flux_order, true>(
-          A_patch, L_patch, cells, patch, kernel_data, prefactor_dof,
-          coefficients, ndofs_flux, coordinate_dofs, type_patch);
+          A_patch, L_patch, patch, kernel_data, dofmap_patch, coefficients,
+          coordinate_dofs, type_patch);
 
       // Factorization of system matrix
       if constexpr (id_flux_order > 1)
@@ -750,6 +763,7 @@ void minimise_flux(const mesh::Geometry& geometry,
       else
       {
         // Recreate patch and reassemble entire system
+        // Careful with DOF prefactors!
         throw std::runtime_error("Not Implemented!");
       }
     }
