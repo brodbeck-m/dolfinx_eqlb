@@ -191,6 +191,7 @@ void assemble_minimisation(
   /* Initialisation */
   // Element tangents
   const int ndofs_nz = 1 + 1.5 * degree_rt + degree_rt * degree_rt;
+  const int index_load = ndofs_nz;
   std::vector<T> dTe(ndofs_nz * (ndofs_nz + 1), 0);
   dolfinx_adaptivity::mdspan2_t Te(dTe.data(), ndofs_nz + 1, ndofs_nz);
 
@@ -338,11 +339,24 @@ void assemble_minimisation(
         A_patch(0, 0) += Te(0, 0);
       }
     }
-    else if constexpr (id_flux_order == 2)
-    {
-    }
     else
     {
+      for (std::size_t i = 0; i < ndofs_nz; ++i)
+      {
+        std::int32_t dof_i = dofmap_cell(2, i);
+
+        // Assemble load vector
+        L_patch(dof_i) += Te(index_load, i);
+
+        // Assemble bilinear form
+        if constexpr (asmbl_systmtrx)
+        {
+          for (std::size_t j = 0; j < ndofs_nz; ++j)
+          {
+            A_patch(dof_i, dofmap_cell(2, j)) += Te(i, j);
+          }
+        }
+      }
     }
   }
 }
