@@ -680,8 +680,7 @@ void minimise_flux(const mesh::Geometry& geometry,
   int nnodes_cell = kernel_data.nnodes_cell();
 
   // Storage DOFmap
-  // mdspan: (dof_local, dof_patch, dof_global, prefactor) x cell x
-  // dofs_per_cell
+  // dim: (dof_local, dof_patch, dof_global, prefactor) x cell x dofs_per_cell
   std::vector<std::int32_t> ddofmap_patch(4 * ncells * ndofs_cell_local, 0);
   dolfinx_adaptivity::mdspan_t<std::int32_t, 3> dofmap_patch(
       ddofmap_patch.data(), 4, (std::size_t)ncells,
@@ -694,9 +693,6 @@ void minimise_flux(const mesh::Geometry& geometry,
 
   std::int8_t fctloc_ea, fctloc_eam1;
   bool noutward_ea, noutward_eam1;
-
-  std::vector<double> dprefactor_dof(ncells * 2, 1.0);
-  dolfinx_adaptivity::mdspan2_t prefactor_dof(dprefactor_dof.data(), ncells, 2);
 
   std::vector<T> coefficients(ncells * ndofs_flux, 0);
 
@@ -778,28 +774,40 @@ void minimise_flux(const mesh::Geometry& geometry,
       u_patch = solver.solve(L_patch);
     }
 
-    // Correct flux
+    /* Apply correction onto flux */
+    // Set prefactors due to constructio of H(div) subspace
+    std::vector<T> crr_fct(ndofs_cell_local, 1.0);
+    crr_fct[1] = -1.0;
+
+    if constexpr (id_flux_order > 1)
+    {
+      if constexpr (id_flux_order == 2)
+      {
+        crr_fct[3] = -1.0;
+      }
+      else
+      {
+        for (std::size_t i = ndofs_flux_fct + 1; i < 2 * ndofs_flux_fct; ++i)
+        {
+          crr_fct[i] = -1.0;
+        }
+      }
+    }
+
+    // Move patch-wise solution to global solution vector
     for (std::size_t a = 1; a < ncells + 1; ++a)
     {
       int id_a = a - 1;
 
-      // Set d_0
-      std::span<const std::int32_t> gdofs_flux = patch.dofs_flux_fct_global(a);
+      for (std::size_t i = 0; i < ndofs_cell_local; ++i)
+      {
+        // Overall correction factor (facet orientation and ansatz space)
+        double crr = crr_fct[i] * dofmap_patch(3, id_a, i);
 
-      x_flux_dhdiv[gdofs_flux[0]] += prefactor_dof(id_a, 0) * u_patch(0);
-      x_flux_dhdiv[gdofs_flux[1]] -= prefactor_dof(id_a, 1) * u_patch(0);
-
-      // // Set d_E
-      // if constexpr (id_flux_order > 1)
-      // {
-      //   throw std::runtime_error("Not Implemented!");
-      // }
-
-      // // Set d_T
-      // if constexpr (id_flux_order > 2)
-      // {
-      //   throw std::runtime_error("Not Implemented!");
-      // }
+        // Apply correction
+        x_flux_dhdiv[dofmap_patch(2, id_a, i)]
+            += crr * u_patch(dofmap_patch(1, id_a, i));
+      }
     }
   }
 }
