@@ -37,7 +37,7 @@ void minimisation_kernel(dolfinx_adaptivity::mdspan2_t Te,
 
   /* Initialise storage of cell prefactors */
   std::int32_t prefactor_eam1 = dofmap(3, 0);
-  std::int32_t prefactor_ea = dofmap(3, 0);
+  std::int32_t prefactor_ea = dofmap(3, 1);
 
   /* Isoparametric mapping */
   std::array<double, 9> Jb;
@@ -58,7 +58,7 @@ void minimisation_kernel(dolfinx_adaptivity::mdspan2_t Te,
   std::array<T, 2> sigtilde_q;
 
   // Number of non-zero DOFs on cell
-  const int ndofs_per_cell = dofmap.extent(1);
+  const int nidofs_per_cell = dofmap.extent(1) - 1;
 
   // Set prefactors
   if constexpr (asmbl_systmtrx)
@@ -121,13 +121,13 @@ void minimisation_kernel(dolfinx_adaptivity::mdspan2_t Te,
     }
 
     // Manipulate shape function for coefficient d_0
-    phi(iq, dofmap(0, 1), 0) = dofmap(3, 0) * phi(iq, dofmap(0, 0), 0)
-                               - dofmap(3, 1) * phi(iq, dofmap(0, 1), 0);
-    phi(iq, dofmap(0, 1), 1) = dofmap(3, 0) * phi(iq, dofmap(0, 0), 1)
-                               - dofmap(3, 1) * phi(iq, dofmap(0, 1), 1);
+    phi(iq, dofmap(0, 1), 0) = prefactor_eam1 * phi(iq, dofmap(0, 0), 0)
+                               - prefactor_ea * phi(iq, dofmap(0, 1), 0);
+    phi(iq, dofmap(0, 1), 1) = prefactor_eam1 * phi(iq, dofmap(0, 0), 1)
+                               - prefactor_ea * phi(iq, dofmap(0, 1), 1);
 
     // Assemble linear- and bilinear form
-    for (std::size_t i = 0; i < ndofs_per_cell - 1; ++i)
+    for (std::size_t i = 0; i < nidofs_per_cell; ++i)
     {
       // Auxilary variables
       std::size_t ip1 = i + 1;
@@ -140,7 +140,7 @@ void minimisation_kernel(dolfinx_adaptivity::mdspan2_t Te,
 
       if constexpr (asmbl_systmtrx)
       {
-        for (std::size_t j = i; j < ndofs_per_cell - 1; ++j)
+        for (std::size_t j = i; j < nidofs_per_cell; ++j)
         {
           // Auxiliary variables
           std::size_t jp1 = j + 1;
@@ -148,8 +148,20 @@ void minimisation_kernel(dolfinx_adaptivity::mdspan2_t Te,
                       + phi(iq, dofmap(0, ip1), 1) * phi(iq, dofmap(0, jp1), 1);
 
           // Bilinear form
-          Te(ip1, j) += sp * dofmap(3, ip1) * pialpha;
+          Te(i, j) += sp * dofmap(3, jp1) * pialpha;
         }
+      }
+    }
+  }
+
+  // Set symmetric contributions of element mass-matrix
+  if constexpr (id_flux_order > 1)
+  {
+    for (std::size_t i = 1; i < nidofs_per_cell; ++i)
+    {
+      for (std::size_t j = 0; j < i; ++j)
+      {
+        Te(i, j) = Te(j, i);
       }
     }
   }
@@ -190,7 +202,7 @@ void assemble_minimisation(
 
   /* Initialisation */
   // Element tangents
-  const int ndofs_nz = 1 + 1.5 * degree_rt + degree_rt * degree_rt;
+  const int ndofs_nz = 2 * ndofs_per_fct + ndofs_cell_add - 1;
   const int index_load = ndofs_nz;
   std::vector<T> dTe(ndofs_nz * (ndofs_nz + 1), 0);
   dolfinx_adaptivity::mdspan2_t Te(dTe.data(), ndofs_nz + 1, ndofs_nz);
@@ -233,90 +245,93 @@ void assemble_minimisation(
       dofmap_cell(2, 0) = fdofs_fct_global[0];
       dofmap_cell(2, 1) = fdofs_fct_global[ndofs_per_fct];
 
-      if constexpr (id_flux_order == 2)
+      if constexpr (id_flux_order > 1)
       {
-        int iea = ndofs_per_fct + 1;
-
-        // Cell-local DOFs of first-order facet moments
-        dofmap_cell(0, 2) = fdofs_fct_local[1];
-        dofmap_cell(0, 3) = fdofs_fct_local[iea];
-
-        // Patch-local DOFs of first-order facet moments
-        if ((type_patch == 0) && (a == ncells))
+        if constexpr (id_flux_order == 2)
         {
-          dofmap_cell(1, 2) = a;
-          dofmap_cell(1, 3) = 1;
+          int iea = ndofs_per_fct + 1;
+
+          // Cell-local DOFs of first-order facet moments
+          dofmap_cell(0, 2) = fdofs_fct_local[1];
+          dofmap_cell(0, 3) = fdofs_fct_local[iea];
+
+          // Patch-local DOFs of first-order facet moments
+          if ((type_patch == 0) && (a == ncells))
+          {
+            dofmap_cell(1, 2) = a;
+            dofmap_cell(1, 3) = 1;
+          }
+          else
+          {
+            dofmap_cell(1, 2) = a;
+            dofmap_cell(1, 3) = 1 + a;
+          }
+
+          // Global DOFs of zero-order facet moments
+          dofmap_cell(2, 2) = fdofs_fct_global[1];
+          dofmap_cell(2, 3) = fdofs_fct_global[iea];
         }
         else
         {
-          dofmap_cell(1, 2) = a;
-          dofmap_cell(1, 3) = 1 + a;
-        }
+          // Set facet DOFs
+          const int offs_e = ndofs_per_fct - 1;
+          int offs_ea, offs_eam1;
 
-        // Global DOFs of zero-order facet moments
-        dofmap_cell(2, 2) = fdofs_fct_global[1];
-        dofmap_cell(2, 3) = fdofs_fct_global[iea];
-      }
-      else
-      {
-        // Set facet DOFs
-        const int offs_e = ndofs_per_fct - 1;
-        int offs_ea, offs_eam1;
+          if ((type_patch == 0) && (a == ncells))
+          {
+            offs_eam1 = (a - 1) * (ndofs_per_fct - 1) - 1;
+            offs_ea = -1;
+          }
+          else
+          {
+            offs_eam1 = (a - 1) * (ndofs_per_fct - 1) - 1;
+            offs_ea = offs_eam1 + offs_e;
+          }
 
-        if ((type_patch == 0) && (a == ncells))
-        {
-          offs_eam1 = (a - 1) * (ndofs_per_fct - 1) - 1;
-          offs_ea = -1;
-        }
-        else
-        {
-          offs_eam1 = (a - 1) * (ndofs_per_fct - 1) - 1;
-          offs_ea = offs_eam1 + offs_e;
-        }
+          for (std::size_t i = 2; i < ndofs_per_fct + 1; ++i)
+          {
+            int ieam1 = i - 1;
+            int iea = i + offs_e;
 
-        for (std::size_t i = 2; i < ndofs_per_fct + 1; ++i)
-        {
-          int ieam1 = i - 1;
-          int iea = i + offs_e;
+            // Cell-local DOFs of higher-order facet moments
+            dofmap_cell(0, i) = fdofs_fct_local[ieam1];
+            dofmap_cell(0, iea) = fdofs_fct_local[iea];
 
-          // Cell-local DOFs of higher-order facet moments
-          dofmap_cell(0, i) = fdofs_fct_local[ieam1];
-          dofmap_cell(0, iea) = fdofs_fct_local[iea];
+            // Patch-local DOFs of first-order facet moments
+            dofmap_cell(1, i) = offs_eam1 + i;
+            dofmap_cell(1, iea) = offs_ea + i;
 
-          // Patch-local DOFs of first-order facet moments
-          dofmap_cell(1, i) = offs_eam1 + i;
-          dofmap_cell(1, iea) = offs_ea + i;
+            // Global DOFs of first-order facet moments
+            dofmap_cell(2, i) = fdofs_fct_global[ieam1];
+            dofmap_cell(2, iea) = fdofs_fct_global[iea];
+          }
 
-          // Global DOFs of first-order facet moments
-          dofmap_cell(2, i) = fdofs_fct_global[ieam1];
-          dofmap_cell(2, iea) = fdofs_fct_global[iea];
-        }
+          // Set cell DOFs
+          std::span<const std::int32_t> fdofs_cell_local
+              = patch.dofs_flux_cell_local(a);
+          std::span<const std::int32_t> fdofs_cell_global
+              = patch.dofs_flux_cell_global(a);
 
-        // Set cell DOFs
-        std::span<const std::int32_t> fdofs_cell_local
-            = patch.dofs_flux_cell_local(a);
-        std::span<const std::int32_t> fdofs_cell_global
-            = patch.dofs_flux_cell_local(a);
+          const int offs_ta
+              = nfcts * (ndofs_per_fct - 1) + (a - 1) * ndofs_cell_add + 1;
 
-        const int offs_ta
-            = 1 + nfcts * ndofs_per_fct + (a - 1) * ndofs_cell_add;
+          for (std::size_t i = 0; i < ndofs_cell_add; ++i)
+          {
+            int offs_dmp1 = 2 * ndofs_per_fct + i;
+            int offs_dmp2 = ndofs_cell_div + i;
 
-        for (std::size_t i = 0; i < ndofs_cell_add; ++i)
-        {
-          int offs_dmp1 = 2 * ndofs_per_fct + i;
-          int offs_dmp2 = ndofs_cell_div + i;
+            // Cell-local DOFs of higher-order facet moments
+            dofmap_cell(0, offs_dmp1) = fdofs_cell_local[offs_dmp2];
 
-          // Cell-local DOFs of higher-order facet moments
-          dofmap_cell(0, offs_dmp1) = fdofs_fct_local[offs_dmp2];
+            // Patch-local DOFs of first-order facet moments
+            dofmap_cell(1, offs_dmp1) = offs_ta + i;
 
-          // Patch-local DOFs of first-order facet moments
-          dofmap_cell(1, offs_dmp1) = offs_ta + i;
+            // Global DOFs of first-order facet moments
+            dofmap_cell(2, offs_dmp1) = fdofs_cell_global[offs_dmp2];
 
-          // Global DOFs of first-order facet moments
-          dofmap_cell(2, offs_dmp1) = fdofs_fct_global[offs_dmp1];
-
-          // Initialise prefactors
-          dofmap_cell(3, offs_dmp1) = 1;
+            // Initialise prefactors
+            dofmap_cell(3, offs_dmp1) = 1;
+          }
         }
       }
     }
@@ -343,7 +358,7 @@ void assemble_minimisation(
     {
       for (std::size_t i = 0; i < ndofs_nz; ++i)
       {
-        std::int32_t dof_i = dofmap_cell(2, i);
+        std::int32_t dof_i = dofmap_cell(1, i + 1);
 
         // Assemble load vector
         L_patch(dof_i) += Te(index_load, i);
@@ -353,7 +368,7 @@ void assemble_minimisation(
         {
           for (std::size_t j = 0; j < ndofs_nz; ++j)
           {
-            A_patch(dof_i, dofmap_cell(2, j)) += Te(i, j);
+            A_patch(dof_i, dofmap_cell(1, j + 1)) += Te(i, j);
           }
         }
       }
