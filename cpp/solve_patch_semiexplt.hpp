@@ -630,7 +630,7 @@ template <typename T, int id_flux_order = 3>
 void minimise_flux(const mesh::Geometry& geometry,
                    PatchFluxCstm<T, id_flux_order>& patch,
                    ProblemDataFluxCstm<T>& problem_data,
-                   KernelData<T>& kernel_data)
+                   KernelData<T>& kernel_data, std::span<T> storage_result)
 {
   assert(id_flux_order < 0);
 
@@ -775,7 +775,7 @@ void minimise_flux(const mesh::Geometry& geometry,
     }
 
     /* Apply correction onto flux */
-    // Set prefactors due to constructio of H(div) subspace
+    // Set prefactors due to construction of H(div) subspace
     std::vector<T> crr_fct(ndofs_cell_local, 1.0);
     crr_fct[1] = -1.0;
 
@@ -805,7 +805,7 @@ void minimise_flux(const mesh::Geometry& geometry,
         double crr = crr_fct[i] * dofmap_patch(3, id_a, i);
 
         // Apply correction
-        x_flux_dhdiv[dofmap_patch(2, id_a, i)]
+        storage_result[dofmap_patch(2, id_a, i)]
             += crr * u_patch(dofmap_patch(1, id_a, i));
       }
     }

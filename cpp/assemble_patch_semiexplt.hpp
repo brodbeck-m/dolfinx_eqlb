@@ -113,6 +113,11 @@ void minimisation_kernel(dolfinx_adaptivity::mdspan2_t Te,
     }
     else
     {
+      // Set storage to zero
+      sigtilde_q[0] = 0;
+      sigtilde_q[1] = 0;
+
+      // Interpolation
       for (std::size_t i = 0; i < phi.extent(1); ++i)
       {
         sigtilde_q[0] += coefficients[i] * phi(iq, i, 0);
