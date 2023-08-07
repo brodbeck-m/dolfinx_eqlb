@@ -171,7 +171,10 @@ def test_div_condition(degree, eqlb_type):
 
     # --- Solve equilibration
     uh, f_proj, sig_proj, sig_eq = solve_equilibration(
-        pdegree, fdegree, eqlb_type, n_elmt=3
+        pdegree,
+        fdegree,
+        eqlb_type,
+        n_elmt=3,
     )
 
     # --- Extract solution data
@@ -217,7 +220,11 @@ def test_jump_condition(degree_flux):
     for degree_prime in range(1, degree_flux + 1):
         for degree_rhs in range(0, degree_flux):
             uh, f_proj, sig_proj, sig_eq = solve_equilibration(
-                degree_prime, degree_flux, "SemiExplt", rhsdegree=degree_rhs, n_elmt=5
+                degree_prime,
+                degree_flux,
+                "SemiExplt",
+                rhsdegree=degree_rhs,
+                n_elmt=5,
             )
 
             # interpolate functions into DRT-space
