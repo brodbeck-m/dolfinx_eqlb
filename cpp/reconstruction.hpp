@@ -41,8 +41,16 @@ namespace dolfinx_adaptivity::equilibration
 {
 /// Execute calculation of patch contributions to flux
 ///
+/// Equilibration procedure is based on the solution of patch-wise constrained
+/// minimisation problems as described in [1]
+///
+/// [1] Ern, A. & Vohralík, M.: Polynomial-Degree-Robust A Posteriori
+///     Estimates in a Unified Setting for Conforming, Nonconforming,
+///     Discontinuous Galerkin, and Mixed Discretizations, 2015
+///
+/// @tparam T The scalar type
 /// @param a              The bilinear forms to assemble
-/// @param l_pen          Penalisation terms to assemble
+/// @param l_pen          Penalization terms to assemble
 /// @param problem_data   Linear forms and problem dependent input data
 /// @param fct_type       Lookup-table for facet-types
 /// @param flux_dg        Function that holds the projected fluxes
@@ -127,6 +135,18 @@ void reconstruct_fluxes_patch(const fem::Form<T>& a, const fem::Form<T>& l_pen,
   }
 }
 
+/// Execute calculation of patch contributions to flux
+/// Equilibration procedure is based on an explicitly calculated flux and an
+/// unconstrained minimisation problem on an patch-wise divergence-free H(div)
+/// space (see [1]).
+///
+/// [1] Bertrand, F.; Carstensen, C.; Gräßle, B. & Tran, N. T.:
+///     Stabilization-free HHO a posteriori error control, 2022
+///
+/// @tparam T             The scalar type
+/// @tparam id_flux_order The flux order (1->RT1, 2->RT2, 3->general)
+/// @param problem_data   The problem data
+/// @param fct_type       Lookup-table for facet-types
 template <typename T, int id_flux_order = 3>
 void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data,
                               graph::AdjacencyList<std::int8_t>& fct_type)

@@ -26,6 +26,17 @@ using namespace dolfinx;
 
 namespace dolfinx_adaptivity::equilibration
 {
+/// Integration kernel for system matrix/load vector per patch element
+/// @tparam T              The scalar type
+/// @tparam id_flux_order  The flux order (1->RT1, 2->RT2, 3->general)
+/// @tparam asmbl_systmtrx Flag if entire tangent or only load vector is
+///                        assembled
+/// @param Te               The element tangent
+/// @param kernel_data      The kernel data
+/// @param coefficients     Cell DOFs on flux (after step 1)
+/// @param dofmap           Cell DOFmap
+/// @param fluxdofs_per_fct Number of flux DOFs per facet
+/// @param coordinate_dofs  The coordinate DOFs of current cell
 template <typename T, int id_flux_order = 3, bool asmbl_systmtrx = true>
 void minimisation_kernel(dolfinx_adaptivity::mdspan2_t Te,
                          KernelData<T>& kernel_data, std::span<T> coefficients,
@@ -176,6 +187,29 @@ void minimisation_kernel(dolfinx_adaptivity::mdspan2_t Te,
   dofmap(3, 1) = prefactor_ea;
 }
 
+/// Assemble EQS for unconstrained flux minimisation
+///
+/// Assembles system-matrix and load vector for unconstrained flux minimisation
+/// on patch-wise divergence free H(div) space. Explicit ansatz for such a
+/// space see [1, Lemma 12].
+///
+/// [1] Bertrand, F.; Carstensen, C.; Gräßle, B. & Tran, N. T.:
+///     Stabilization-free HHO a posteriori error control, 2022
+///
+/// @tparam T              The scalar type
+/// @tparam id_flux_order  The flux order (1->RT1, 2->RT2, 3->general)
+/// @tparam asmbl_systmtrx Flag if entire tangent or only load vector is
+///                        assembled
+/// @param A_patch         The patch system matrix (mass matrix)
+/// @param L_patch         The patch load vector
+/// @param patch           The patch
+/// @param kernel_data     The kernel data
+/// @param dofmap_patch    The patch dofmap
+///                        ([dof_local, dof_patch, dof_global,prefactor] x cell
+///                        x dofs_per_cell)
+/// @param coefficients    Flux DOFs on cells
+/// @param coordinate_dofs The coordinates of patch cells
+/// @param type_patch      The patch type
 template <typename T, int id_flux_order = 3, bool asmbl_systmtrx = true>
 void assemble_minimisation(
     Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>& A_patch,

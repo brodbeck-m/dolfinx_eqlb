@@ -110,14 +110,14 @@ void copy_cell_data(std::span<const std::int32_t> cells,
 }
 
 /// Calculate prefactor of vector-values DOFs on facet
-/// General: Explicite formulas assume that RT-Funtions are calculated based on
+/// General: Explicit formulas assume that RT-Functions are calculated based on
 ///          outward pointing normals. This is not the case in FenicsX.
 ///          Therefore transformation +1 resp. -1 is necessary.
 /// Determination: Orientation of facet-normal on reference cell is stored
-///                within basix. Correction required, as during contra-varinat
-///                Piola mapping basis func- tions stay normal to element edges
+///                within basix. Correction required, as during contra-variant
+///                Piola mapping basis functions stay normal to element edges
 ///                but can change their orientation with respect to the cell
-///                (inward or outwad pointing).This change is indetified
+///                (inward or outward pointing).This change is identified
 ///                by the sign of the determinant of the Jacobian of the
 ///                mapping.
 /// @param a             The patch-local index of a cell (a>1!)
@@ -137,6 +137,10 @@ void set_dof_prefactors(int a, bool noutward_eam1, bool noutward_ea,
   prefactor_dof[index + 1] = (noutward_ea) ? sgn_detj : -sgn_detj;
 }
 
+/// Store mapping data (Jacobian or its inverse) in flattened array
+/// @param cell_id The patch-local index of a cell
+/// @param storage The flattened storage
+/// @param matrix  The matrix (J, K) on the current cell
 void store_mapping_data(const int cell_id, std::span<double> storage,
                         dolfinx_adaptivity::mdspan2_t matrix)
 {
@@ -149,6 +153,10 @@ void store_mapping_data(const int cell_id, std::span<double> storage,
   storage[offset + 3] = matrix(1, 1);
 }
 
+/// Extract mapping data (Jacobian or its inverse) from flattened array
+/// @param cell_id The patch-local index of a cell
+/// @param storage The flattened storage
+/// @return        The matrix (J, K) on the current cell
 dolfinx_adaptivity::cmdspan2_t extract_mapping_data(const int cell_id,
                                                     std::span<double> storage)
 {
@@ -158,6 +166,21 @@ dolfinx_adaptivity::cmdspan2_t extract_mapping_data(const int cell_id,
   return dolfinx_adaptivity::cmdspan2_t(storage.data() + offset, 2, 2);
 }
 
+/// Step 1: Calculate fluxes with jump/divergence condition on patch
+///
+/// Calculates sig in pice-wise H(div) that fulfills jump and divergence
+/// condition on patch (see [1, Appendix A, Algorithm 2])
+///
+/// [1] Bertrand, F.; Carstensen, C.; Gräßle, B. & Tran, N. T.:
+///     Stabilization-free HHO a posteriori error control, 2022
+///
+/// @tparam T             The scalar type
+/// @tparam id_flux_order Parameter for flux order (1->RT1, 2->RT2, 3->general)
+/// @param geometry     The geometry
+/// @param patch        The patch
+/// @param problem_data The problem data (Functions of flux, flux_dg, RHS_dg)
+/// @param kernel_data  The kernel data (Quadrature data, tabulated basis
+/// functions)
 template <typename T, int id_flux_order = 3>
 void calc_fluxtilde_explt(const mesh::Geometry& geometry,
                           PatchFluxCstm<T, id_flux_order>& patch,
@@ -626,6 +649,20 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
   }
 }
 
+// Step 2: Minimise flux on patch-wise ansatz space
+///
+/// Minimises the in step 1 calculated flux in an patch-wise, divergence-free
+/// H(div) space. Explicite ansatz for such a space see [1, Lemma 12].
+///
+/// [1] Bertrand, F.; Carstensen, C.; Gräßle, B. & Tran, N. T.:
+///     Stabilization-free HHO a posteriori error control, 2022
+///
+/// @tparam T             The scalar type
+/// @tparam id_flux_order The flux order (1->RT1, 2->RT2, 3->general)
+/// @param geometry     The geometry
+/// @param patch        The patch
+/// @param problem_data The problem data
+/// @param kernel_data  The kernel data
 template <typename T, int id_flux_order = 3>
 void minimise_flux(const mesh::Geometry& geometry,
                    PatchFluxCstm<T, id_flux_order>& patch,
