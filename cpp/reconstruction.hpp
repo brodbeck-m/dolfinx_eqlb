@@ -201,11 +201,6 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data,
   }
 
   // Step 2 : Minimise reconstructed flux
-  const int32_t n_dofs_flux
-      = problem_data.fspace_flux_hdiv()->dofmap()->index_map->size_local()
-        + problem_data.fspace_flux_hdiv()->dofmap()->index_map->num_ghosts();
-  std::vector<T> flux_min(n_dofs_flux, 0.0);
-
   for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
   {
     // Create Sub-DOFmap
@@ -213,15 +208,22 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data,
 
     // Solve minimisation on current patch
     minimise_flux<T, id_flux_order>(mesh->geometry(), patch, problem_data,
-                                    kernel_data, flux_min);
+                                    kernel_data);
   }
 
   // Step 3: Combine results step 1 and 2
-  std::span<T> x_flux_dhdiv = problem_data.flux(0).x()->mutable_array();
-
-  for (std::size_t i = 0; i < x_flux_dhdiv.size(); ++i)
+  for (std::size_t i_rhs = 0; i_rhs < problem_data.nrhs(); ++i_rhs)
   {
-    x_flux_dhdiv[i] += flux_min[i];
+    // DOFs H(div) flux
+    std::span<T> x_flux_dhdiv = problem_data.flux(i_rhs).x()->mutable_array();
+
+    // Result minimisation
+    std::span<const T> x_minimisation = problem_data.x_minimisation(i_rhs);
+
+    for (std::size_t i = 0; i < x_minimisation.size(); ++i)
+    {
+      x_flux_dhdiv[i] += x_minimisation[i];
+    }
   }
 }
 
@@ -408,7 +410,7 @@ void reconstruct_fluxes_cstm(
 
   /* Initialize essential boundary conditions for reconstructed flux */
   ProblemDataFluxCstm<T> problem_data
-      = ProblemDataFluxCstm<T>(flux_hdiv, flux_dg, rhs_dg, bcs_flux);
+      = ProblemDataFluxCstm<T>(flux_hdiv, flux_dg, rhs_dg);
 
   /* Call equilibration */
   if (order_flux == 1)

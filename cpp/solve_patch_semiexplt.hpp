@@ -311,7 +311,7 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
   }
 
   /* Evaluate DOFs of sigma_tilde (for each flux separately) */
-  for (std::size_t i_rhs = 0; i_rhs < problem_data.nlhs(); ++i_rhs)
+  for (std::size_t i_rhs = 0; i_rhs < problem_data.nrhs(); ++i_rhs)
   {
     /* Extract data */
     // Patch type
@@ -630,7 +630,7 @@ template <typename T, int id_flux_order = 3>
 void minimise_flux(const mesh::Geometry& geometry,
                    PatchFluxCstm<T, id_flux_order>& patch,
                    ProblemDataFluxCstm<T>& problem_data,
-                   KernelData<T>& kernel_data, std::span<T> storage_result)
+                   KernelData<T>& kernel_data)
 {
   assert(id_flux_order < 0);
 
@@ -718,14 +718,17 @@ void minimise_flux(const mesh::Geometry& geometry,
   }
 
   /* Perform minimisation */
-  for (std::size_t i_rhs = 0; i_rhs < problem_data.nlhs(); ++i_rhs)
+  for (std::size_t i_rhs = 0; i_rhs < problem_data.nrhs(); ++i_rhs)
   {
     /* Extract data */
     // Patch type
     const int type_patch = patch.type(i_rhs);
 
     // Solution vector (flux, picewise-H(div))
-    std::span<T> x_flux_dhdiv = problem_data.flux(i_rhs).x()->mutable_array();
+    std::span<const T> x_flux_dhdiv = problem_data.flux(i_rhs).x()->array();
+
+    // Stoarge result minimisation
+    std::span<T> x_minimisation = problem_data.x_minimisation(i_rhs);
 
     // Set coefficients (copy solution data into flattend structure)
     copy_cell_data<T, 1>(cells, flux_dofmap, x_flux_dhdiv, coefficients,
@@ -795,6 +798,8 @@ void minimise_flux(const mesh::Geometry& geometry,
     }
 
     // Move patch-wise solution to global solution vector
+    T crr = 1.0;
+
     for (std::size_t a = 1; a < ncells + 1; ++a)
     {
       int id_a = a - 1;
@@ -802,10 +807,10 @@ void minimise_flux(const mesh::Geometry& geometry,
       for (std::size_t i = 0; i < ndofs_cell_local; ++i)
       {
         // Overall correction factor (facet orientation and ansatz space)
-        T crr = crr_fct[i] * dofmap_patch(3, id_a, i);
+        crr = crr_fct[i] * dofmap_patch(3, id_a, i);
 
         // Apply correction
-        storage_result[dofmap_patch(2, id_a, i)]
+        x_minimisation[dofmap_patch(2, id_a, i)]
             += crr * u_patch(dofmap_patch(1, id_a, i));
       }
     }
