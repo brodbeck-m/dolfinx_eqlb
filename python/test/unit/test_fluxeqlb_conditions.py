@@ -9,7 +9,7 @@ import dolfinx.mesh as dmesh
 import dolfinx.fem as dfem
 import ufl
 
-from dolfinx_eqlb import equilibration
+from dolfinx_eqlb import equilibration, lsolver
 
 """ Utility functions """
 
@@ -107,17 +107,6 @@ def solve_equilibration(pdegree, fdegree, eqlb_type, rhsdegree=None, n_elmt=5):
     return uh, f, sig_proj, equilibrator.list_flux[0]
 
 
-def isoparametric_mapping_triangle(domain, dphi_geom, cell_id):
-    # geometry data for current cell
-    geometry = np.zeros((3, 2), dtype=np.float64)
-    geometry[:] = domain.geometry.x[domain.geometry.dofmap.links(cell_id), :2]
-
-    J_q = np.dot(geometry.T, dphi_geom.T)
-    detj = np.linalg.det(J_q)
-
-    return J_q, detj
-
-
 def fkt_to_drt(list_fkt, degree):
     # extract mesh
     domain = list_fkt[0].function_space.mesh
@@ -144,39 +133,34 @@ def fkt_to_drt(list_fkt, degree):
     return list_fkt_drt
 
 
-def evaluate_fe_functions(shp_fkt, dofs):
-    # initialisation
-    values = np.zeros((shp_fkt.shape[0], shp_fkt.shape[2]))
+def isoparametric_mapping_triangle(domain, dphi_geom, cell_id):
+    # geometry data for current cell
+    geometry = np.zeros((3, 2), dtype=np.float64)
+    geometry[:] = domain.geometry.x[domain.geometry.dofmap.links(cell_id), :2]
 
-    # loop over all points
-    for p in range(0, shp_fkt.shape[0]):
-        # loop over all basis functions
-        for i in range(0, shp_fkt.shape[1]):
-            # loop over all dimensions
-            for d in range(0, shp_fkt.shape[2]):
-                values[p, d] += shp_fkt[p, i, d] * dofs[i]
+    J_q = np.dot(geometry.T, dphi_geom.T)
+    detj = np.linalg.det(J_q)
 
-    return values
+    return J_q, detj
 
 
-def evalute_div_rt(dphi, detj, dofs):
-    # initialisation
-    values = np.zeros((dphi.shape[1]))
+def points_on_triangle(v, n):
+    """
+    Give n random points uniformly on a triangle.
 
-    # loop over all points
-    for p in range(0, dphi.shape[1]):
-        # loop over all basis functions
-        for i in range(0, dphi.shape[2]):
-            values[p] += dphi[0, p, i, 0] * dofs[i] + dphi[1, p, i, 1] * dofs[i]
+    The vertices of the triangle are given by the shape
+    (2, 3) array *v*: one vertex per row.
+    """
+    x = np.sort(np.random.rand(2, n), axis=0)
 
-    return values / detj
+    return np.column_stack([x[0], x[1] - x[0], 1.0 - x[1]]) @ v
 
 
 """ Test divergence condition: div(sigma) = f """
 
 
 @pytest.mark.parametrize("eqlb_type", ["EV", "SemiExplt"])
-@pytest.mark.parametrize("degree", [1])
+@pytest.mark.parametrize("degree", [1, 2, 3, 4])
 def test_div_condition(degree, eqlb_type):
     if degree > 1:
         pdegree = degree - 1
@@ -187,65 +171,47 @@ def test_div_condition(degree, eqlb_type):
 
     # --- Solve equilibration
     uh, f_proj, sig_proj, sig_eq = solve_equilibration(
-        pdegree, fdegree, eqlb_type, n_elmt=5
+        pdegree, fdegree, eqlb_type, n_elmt=3
     )
 
-    # interpolate sig_eq and sig_proj into (basix) DRT-space
-    list_fkt = fkt_to_drt([sig_eq, sig_proj], degree)
-    x_sig_eq = list_fkt[0].x.array[:] + list_fkt[1].x.array[:]
-    dofmap_sig = list_fkt[0].function_space.dofmap.list
-
-    # extract relevant data
+    # --- Extract solution data
+    # the mesh
     domain = uh.function_space.mesh
+
+    # tes geometry DOFmap
+    gdmap = domain.geometry.dofmap
+
+    # number of cells in mesh
     n_cells = domain.topology.index_map(2).size_local
 
-    dofmap_f = f_proj.function_space.dofmap.list
+    # --- Calculate divergence of the equilibrated flux
+    V_div = dfem.FunctionSpace(domain, ("DG", degree - 1))
+    div_sigeq = lsolver.local_projector(V_div, [ufl.div(sig_eq + sig_proj)])[0]
 
     # --- Check divergence condition
     # points for checking divergence condition
-    points = basix.create_lattice(
-        basix.CellType.triangle, degree + 1, basix.LatticeType.equispaced, True
-    )
-
-    # tabulate shape functions of geometry element
-    c_element = basix.create_element(
-        basix.ElementFamily.P,
-        basix.CellType.triangle,
-        1,
-        basix.LagrangeVariant.gll_warped,
-    )
-    dphi_geom = c_element.tabulate(1, np.array([[0, 0]]))[1 : 2 + 1, 0, :, 0]
-
-    # tabulate shape function derivatives of flux element
-    dphi_sig = sig_eq.function_space.element.basix_element.tabulate(1, points)[
-        1 : 2 + 1, :, :, :
-    ]
-
-    # tabulate shape functions of projected RHS
-    phi_f = f_proj.function_space.element.basix_element.tabulate(1, points)[0, :, :, :]
+    n_points = int(0.5 * (degree + 3) * (degree + 4))
+    points_3d = np.zeros((n_points, 3))
 
     # loop over cells
     for c in range(0, n_cells):
-        # evaluate jacobi matrix
-        J_q, detj = isoparametric_mapping_triangle(domain, dphi_geom, c)
+        # points on current element
+        points = points_on_triangle(domain.geometry.x[gdmap.links(c), :2], n_points)
+        points_3d[:, :2] = points
 
-        # extract dofs on current cell
-        dofs_flux = x_sig_eq[dofmap_sig.links(c)]
-        dofs_f = f_proj.x.array[dofmap_f.links(c)]
-
-        # evaluate divergence
-        div_sig = evalute_div_rt(dphi_sig, detj, dofs_flux)
+        # evaluate div(sig_eqlb)
+        val_div_sigeq = div_sigeq.eval(points_3d, n_points * [c])
 
         # evaluate RHS
-        rhs = evaluate_fe_functions(phi_f, dofs_f)
+        val_rhs = f_proj.eval(points_3d, n_points * [c])
 
-        assert np.allclose(div_sig, rhs)
+        assert np.allclose(val_div_sigeq, val_rhs)
 
 
 """ Test jump condition on facet-normal fluxes """
 
 
-@pytest.mark.parametrize("degree_flux", [1, 2, 3])
+@pytest.mark.parametrize("degree_flux", [1, 2, 3, 4])
 def test_jump_condition(degree_flux):
     # --- Solve equilibration
     for degree_prime in range(1, degree_flux + 1):
