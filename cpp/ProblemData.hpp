@@ -38,57 +38,6 @@ class ProblemData
 public:
   /// Initialize storage of data of (multiple) RHS
   ///
-  /// Initializes storage of the boundary-DOF lookup tables, the boundary values
-  /// as well as the actual solution functions for all RHS within a set of
-  /// problems.
-  ///
-  /// @param sol_func List of list solution functions for each problem
-  /// @param bcs      List of list of BCs for each problem
-  ProblemData(std::vector<std::shared_ptr<fem::Function<T>>>& sol_func,
-              const std::vector<
-                  std::vector<std::shared_ptr<const fem::DirichletBC<T>>>>& bcs)
-      : _nlhs(sol_func.size()), _solfunc(sol_func),
-        _offset_bc(sol_func.size() + 1, 0)
-  {
-    // Extract function space on which BCs are set
-    const std::shared_ptr<const fem::FunctionSpace> function_space
-        = sol_func[0]->function_space();
-
-    /* Set boundary conditions */
-    // Check if boundary conditions are set
-    bool id_no_bcs = bcs.empty();
-
-    /* Initialize constants */
-    std::int32_t size_bc = 0;
-
-    for (std::size_t i = 0; i < _nlhs; ++i)
-    {
-      // Get size
-      std::int32_t size_bc_i = 0;
-
-      if (!id_no_bcs)
-      {
-        size_bc_i = size_boundary(function_space, bcs[i].empty());
-      }
-
-      // Increment overall size
-      size_bc += size_bc_i;
-
-      // Set offset
-      _offset_bc[i + 1] = size_bc;
-    }
-
-    // Resize storage and set values
-    if (!id_no_bcs)
-    {
-      _bdof_marker.resize(size_bc, false);
-      _bdof_values.resize(size_bc, 0.0);
-      set_data_boundary(bcs, function_space);
-    }
-  }
-
-  /// Initialize storage of data of (multiple) RHS
-  ///
   /// Initializes storage of all forms, constants, the boundary-DOF lookup
   /// tables, the boundary values as well as the actual solution functions
   /// for all RHS within a set of problems.

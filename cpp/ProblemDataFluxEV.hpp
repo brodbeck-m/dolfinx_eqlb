@@ -27,29 +27,12 @@ class ProblemDataFluxEV : public ProblemData<T>
 public:
   /// Initialize storage of data for equilibration of (multiple) fluxes
   ///
-  /// Initializes storage of the boundary-DOF lookup tables, the boundary values
-  /// as well as the actual solution functions for all RHS within a set of
-  /// problems.
-  ///
-  /// @param fluxes   List of list of flux functions for each sub-problem
-  /// @param bcs_flux List of list of BCs for each equilibarted flux
-  ProblemDataFluxEV(
-      std::vector<std::shared_ptr<fem::Function<T>>>& fluxes,
-      const std::vector<
-          std::vector<std::shared_ptr<const fem::DirichletBC<T>>>>& bcs_flux)
-      : ProblemData<T>(fluxes, bcs_flux), _begin_hat(fluxes.size(), 0),
-        _begin_fluxdg(fluxes.size(), 0)
-  {
-  }
-
-  /// Initialize storage of data for equilibration of (multiple) fluxes
-  ///
   /// Initializes storage of all forms, constants, the boundary-DOF lookup
   /// tables, the boundary values as well as the actual solution functions
   /// for all RHS within a set of problems.
   ///
   /// @param fluxes   List of list of flux functions for each sub-problem
-  /// @param bcs_flux List of list of BCs for each equilibarted flux
+  /// @param bcs_flux List of list of BCs for each equilibrated flux
   /// @param l        List of all RHS (ufl)
   ProblemDataFluxEV(
       std::vector<std::shared_ptr<fem::Function<T>>>& fluxes,
