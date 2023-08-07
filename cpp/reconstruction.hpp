@@ -39,10 +39,18 @@ using namespace dolfinx;
 
 namespace dolfinx_adaptivity::equilibration
 {
-/// Execute calculation of patch constributions to flux
+/// Calculation of patch contributions to flux
 ///
+/// Equilibration procedure is based on the solution of patch-wise constrained
+/// minimisation problems as described in [1]
+///
+/// [1] Ern, A. & Vohralík, M.: Polynomial-Degree-Robust A Posteriori
+///     Estimates in a Unified Setting for Conforming, Nonconforming,
+///     Discontinuous Galerkin, and Mixed Discretizations, 2015
+///
+/// @tparam T The scalar type
 /// @param a              The bilinear forms to assemble
-/// @param l_pen          Penalisation terms to assemble
+/// @param l_pen          Penalization terms to assemble
 /// @param problem_data   Linear forms and problem dependent input data
 /// @param fct_type       Lookup-table for facet-types
 /// @param flux_dg        Function that holds the projected fluxes
@@ -127,11 +135,23 @@ void reconstruct_fluxes_patch(const fem::Form<T>& a, const fem::Form<T>& l_pen,
   }
 }
 
-template <typename T, int id_flux_order = -1>
+/// Calculation of patch contributions to flux
+/// Equilibration procedure is based on an explicitly calculated flux and an
+/// unconstrained minimisation problem on an patch-wise divergence-free H(div)
+/// space (see [1]).
+///
+/// [1] Bertrand, F.; Carstensen, C.; Gräßle, B. & Tran, N. T.:
+///     Stabilization-free HHO a posteriori error control, 2022
+///
+/// @tparam T             The scalar type
+/// @tparam id_flux_order The flux order (1->RT1, 2->RT2, 3->general)
+/// @param problem_data   The problem data
+/// @param fct_type       Lookup-table for facet-types
+template <typename T, int id_flux_order = 3>
 void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data,
                               graph::AdjacencyList<std::int8_t>& fct_type)
 {
-  assert(flux_order < 0);
+  assert(id_flux_order < 0);
 
   /* Geometry */
   // Extract mesh
@@ -147,69 +167,82 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data,
   // Number of elements on processor
   int n_cells = mesh->topology().index_map(dim)->size_local();
 
-  // BasiX element CG-element (same order as projected flux)
-  const basix::FiniteElement& basix_element_fluxdg
-      = problem_data.fspace_flux_dg()->element()->basix_element();
-  bool is_dg = (basix_element_fluxdg.degree() == 0) ? true : false;
+  /* Basix elements */
+  // Basix element of pice-wise H(div) flux
+  const basix::FiniteElement& basix_element_fluxhdiv
+      = problem_data.fspace_flux_hdiv()->element()->basix_element();
 
-  basix::FiniteElement basix_element_fluxcg = basix::element::create_lagrange(
-      basix_element_fluxdg.cell_type(), basix_element_fluxdg.degree(),
-      basix_element_fluxdg.lagrange_variant(), is_dg);
+  const int degree_flux_hdiv = basix_element_fluxhdiv.degree();
+
+  // Basix element of projected flux/ RHS
+  const basix::FiniteElement& basix_element_rhs
+      = problem_data.fspace_flux_dg()->element()->basix_element();
+
+  const int degree_rhs = basix_element_rhs.degree();
+
+  bool is_dg = (degree_rhs == 0) ? true : false;
+
+  basix::FiniteElement basix_element_rhscg = basix::element::create_lagrange(
+      basix_element_rhs.cell_type(), degree_rhs,
+      basix_element_rhs.lagrange_variant(), is_dg);
+
+  // Basix element of hat-function
+  basix::FiniteElement basix_element_hat = basix::element::create_lagrange(
+      basix_element_rhs.cell_type(), 1, basix_element_rhs.lagrange_variant(),
+      false);
 
   /* Execute equilibration */
-  if constexpr (id_flux_order == 1)
+  // Initialise patch
+  PatchFluxCstm<T, id_flux_order> patch = PatchFluxCstm<T, id_flux_order>(
+      n_nodes, mesh, fct_type, problem_data.fspace_flux_hdiv(),
+      problem_data.fspace_flux_dg(), basix_element_rhscg);
+
+  // Set quadrature rule
+  const int quadrature_degree
+      = (degree_flux_hdiv == 1) ? 2 : 2 * degree_flux_hdiv + 1;
+
+  QuadratureRule quadrature_rule
+      = QuadratureRule(mesh->topology().cell_type(), quadrature_degree);
+
+  // Initialize KernelData
+  KernelData<T> kernel_data = KernelData<T>(
+      mesh, std::make_shared<QuadratureRule>(quadrature_rule),
+      basix_element_fluxhdiv, basix_element_rhs, basix_element_hat);
+
+  // Step 1: Explicite calculation of sigma_tilde
+  for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
   {
-    // Initialise patch
-    PatchFluxCstm<T, 1> patch = PatchFluxCstm<T, 1>(
-        n_nodes, mesh, fct_type, problem_data.fspace_flux_hdiv(),
-        problem_data.fspace_flux_dg(), basix_element_fluxcg);
+    // Create Sub-DOFmap
+    patch.create_subdofmap(i_node);
 
-    // Set quadrature rule
-    // Use quadrature_degree = 2 as phi_i*phi_j has to be integrated exactly
-    QuadratureRule quadrature_rule
-        = QuadratureRule(mesh->topology().cell_type(), 2);
-
-    // Initialize KernelData
-    KernelData kernel_data = KernelData(
-        mesh, std::make_shared<QuadratureRule>(quadrature_rule),
-        problem_data.fspace_flux_hdiv()->element()->basix_element());
-
-    // Step 1: Explicite calculation of sigma_tilde
-    for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
-    {
-      // Create Sub-DOFmap
-      patch.create_subdofmap(i_node);
-
-      // Calculate coefficients per patch
-      calc_fluxtilde_explt<T, 1>(mesh->geometry(), patch, problem_data,
-                                 kernel_data);
-    }
-
-    // Step 2 : Minimise reconstructed flux
-    for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
-    {
-      // Create Sub-DOFmap
-      patch.create_subdofmap(i_node);
-
-      // Solve minimisation on current patch
-      minimise_flux(mesh->geometry(), patch, problem_data, kernel_data);
-    }
+    // Calculate coefficients per patch
+    calc_fluxtilde_explt<T, id_flux_order>(mesh->geometry(), patch,
+                                           problem_data, kernel_data);
   }
-  else
+
+  // Step 2 : Minimise reconstructed flux
+  for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
   {
-    // Initialise patch
-    PatchFluxCstm<T, 3> patch = PatchFluxCstm<T, 3>(
-        n_nodes, mesh, fct_type, problem_data.fspace_flux_hdiv(),
-        problem_data.fspace_flux_dg(), problem_data.fspace_rhs_dg(),
-        basix_element_fluxcg);
+    // Create Sub-DOFmap
+    patch.create_subdofmap(i_node);
 
-    // Initialise coefficients
+    // Solve minimisation on current patch
+    minimise_flux<T, id_flux_order>(mesh->geometry(), patch, problem_data,
+                                    kernel_data);
+  }
 
-    // Run equilibration
-    for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
+  // Step 3: Combine results step 1 and 2
+  for (std::size_t i_rhs = 0; i_rhs < problem_data.nrhs(); ++i_rhs)
+  {
+    // DOFs H(div) flux
+    std::span<T> x_flux_dhdiv = problem_data.flux(i_rhs).x()->mutable_array();
+
+    // Result minimisation
+    std::span<const T> x_minimisation = problem_data.x_minimisation(i_rhs);
+
+    for (std::size_t i = 0; i < x_minimisation.size(); ++i)
     {
-      // Create Sub-DOFmap
-      patch.create_subdofmap(i_node);
+      x_flux_dhdiv[i] += x_minimisation[i];
     }
   }
 }
@@ -346,6 +379,17 @@ void reconstruct_fluxes_ev(
   reconstruct_fluxes_patch<T>(a, l_pen, problem_data, fct_type);
 }
 
+/// Execute flux calculation based on H(div) conforming equilibration
+///
+/// Equilibration based on semi-explicit formulas and small, unconstrained
+/// minimisation problems.
+///
+/// @param flux_hdiv           Function that holds the reconstructed flux
+/// @param flux_dg             Function that holds the projected primal flux
+/// @param rhs_dg              Function that holds the projected rhs
+/// @param fct_esntbound_prime Facets of essential BCs of primal problem
+/// @param fct_esntbound_flux  Facets of essential BCs on flux field
+/// @param bcs_flux            Essential boundary conditions for the flux
 template <typename T>
 void reconstruct_fluxes_cstm(
     std::vector<std::shared_ptr<fem::Function<T>>>& flux_hdiv,
@@ -356,7 +400,7 @@ void reconstruct_fluxes_cstm(
     const std::vector<std::vector<std::shared_ptr<const fem::DirichletBC<T>>>>&
         bcs_flux)
 {
-  // Check input
+  // Check input sizes
   int n_rhs = rhs_dg.size();
   int n_fbp = fct_esntbound_prime.size();
   int n_fbf = fct_esntbound_flux.size();
@@ -370,9 +414,25 @@ void reconstruct_fluxes_cstm(
     throw std::runtime_error("Equilibration: Input sizes does not match");
   }
 
-  // Flux order
+  // Check degree of H(div) flux, projected flux and RHS
   const int order_flux
       = flux_hdiv[0]->function_space()->element()->basix_element().degree();
+  const int degree_flux_dg
+      = flux_dg[0]->function_space()->element()->basix_element().degree();
+  const int degree_rhs
+      = rhs_dg[0]->function_space()->element()->basix_element().degree();
+
+  if (degree_rhs != (order_flux - 1) || degree_flux_dg > degree_rhs)
+  {
+    throw std::runtime_error(
+        "Equilibration: Wrong polynomial degree of the projected RHS");
+  }
+
+  if (degree_flux_dg != degree_rhs)
+  {
+    throw std::runtime_error(
+        "Equilibration: Degrees of projected flux and RHS have to match");
+  }
 
   /* Facet coloring */
   graph::AdjacencyList<std::int8_t> fct_type
@@ -381,7 +441,7 @@ void reconstruct_fluxes_cstm(
 
   /* Initialize essential boundary conditions for reconstructed flux */
   ProblemDataFluxCstm<T> problem_data
-      = ProblemDataFluxCstm<T>(flux_hdiv, flux_dg, rhs_dg, bcs_flux);
+      = ProblemDataFluxCstm<T>(flux_hdiv, flux_dg, rhs_dg);
 
   /* Call equilibration */
   if (order_flux == 1)
@@ -389,10 +449,15 @@ void reconstruct_fluxes_cstm(
     // Perform equilibration
     reconstruct_fluxes_patch<T, 1>(problem_data, fct_type);
   }
-  else
+  else if (order_flux == 2)
   {
     // Perform equilibration
     reconstruct_fluxes_patch<T, 2>(problem_data, fct_type);
+  }
+  else
+  {
+    // Perform equilibration
+    reconstruct_fluxes_patch<T>(problem_data, fct_type);
   }
 }
 

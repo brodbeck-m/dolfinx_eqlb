@@ -34,6 +34,7 @@ from mpi4py import MPI
 import petsc4py
 from petsc4py import PETSc
 
+import basix
 import dolfinx
 import dolfinx.fem as dfem
 import dolfinx.mesh as dmesh
@@ -44,12 +45,12 @@ from dolfinx_eqlb import equilibration, lsolver
 
 # --- Input parameters
 # Spacial discretisation
-sdisc_eorder = 1
+sdisc_eorder = 2
 sdisc_nelmt = 1
 
 # Equilibration (type EV or SemiExplt)
-eqlb_type = 'EV'
-eqlb_fluxorder = 1
+eqlb_type = "SemiExplt"
+eqlb_fluxorder = 3
 
 # Type of manufactured solution
 extsol_type = 1
@@ -62,7 +63,7 @@ convstudy_nref = 9
 convstudy_reffct = 2
 
 # Timing
-timing_nretry = 3
+timing_nretry = 1
 
 # --- Manufactured solution ---
 # Primal problem (trigonometric): Homogenous boundary conditions
@@ -252,17 +253,31 @@ def solve_poisson_primal(solver, L, u_prime):
     u_prime.x.scatter_forward()
 
 
-def projection_primal(eorder, fluxorder, u_prime, rhs_prime, mult_rhs=False):
+def projection_primal(eorder, fluxorder, u_prime, rhs_prime, eqlb_type, mult_rhs=False):
+    # Set flux order
+    if eqlb_type == "EV":
+        fproj_order = eorder - 1
+    elif eqlb_type == "SemiExplt":
+        fproj_order = fluxorder - 1
+    else:
+        raise ValueError("Unknown equilibrium type")
+
     # Create DG-space for projected flux
     msh = u_prime.function_space.mesh
 
     # Create function spaces
-    V_flux_proj = dfem.FunctionSpace(msh, ufl.VectorElement("DG", msh.ufl_cell(), eorder - 1))
-    V_rhs_proj = dfem.FunctionSpace(msh, ufl.FiniteElement("DG", msh.ufl_cell(), fluxorder - 1))
+    V_flux_proj = dfem.FunctionSpace(
+        msh, ufl.VectorElement("DG", msh.ufl_cell(), fproj_order)
+    )
+    V_rhs_proj = dfem.FunctionSpace(
+        msh, ufl.FiniteElement("DG", msh.ufl_cell(), fluxorder - 1)
+    )
 
     if mult_rhs:
         # Projection
-        list_proj = lsolver.local_projector(V_rhs_proj, [-u_prime.dx(0), -u_prime.dx(1), rhs_prime])
+        list_proj = lsolver.local_projector(
+            V_rhs_proj, [-u_prime.dx(0), -u_prime.dx(1), rhs_prime]
+        )
 
         # Assemble flux
         sig_proj = dfem.Function(V_flux_proj)
@@ -271,10 +286,6 @@ def projection_primal(eorder, fluxorder, u_prime, rhs_prime, mult_rhs=False):
 
         return sig_proj, list_proj[2]
     else:
-        # Create function spaces
-        V_flux_proj = dfem.FunctionSpace(msh, ufl.VectorElement("DG", msh.ufl_cell(), eorder - 1))
-        V_rhs_proj = dfem.FunctionSpace(msh, ufl.FiniteElement("DG", msh.ufl_cell(), fluxorder - 1))
-
         # Projection
         sig_proj = lsolver.local_projector(V_flux_proj, [-ufl.grad(u_prime)])
         rhs_proj = lsolver.local_projector(V_rhs_proj, [rhs_prime])
@@ -320,6 +331,7 @@ def setup_equilibration_ev(
             bc_esnt_flux.append(dfem.dirichletbc(vD, dofs, W.sub(0)))
 
     return fct_bcesnt_primal, fct_bcesnt_flux, bc_esnt_flux
+
 
 def setup_equilibration_semiexplt(
     V_flux, facet_tag, sig_ext, boundid_prime_dir, boundid_prime_vn
@@ -371,7 +383,9 @@ def estimate_error(rhs_prime, u_prime, sig_eqlb):
 
     # Extract cell diameter
     h_cell = dfem.Function(V_e)
-    num_cells = msh.topology.index_map(2).size_local + msh.topology.index_map(2).num_ghosts
+    num_cells = (
+        msh.topology.index_map(2).size_local + msh.topology.index_map(2).num_ghosts
+    )
     h = dolfinx.cpp.mesh.h(msh, 2, range(num_cells))
     h_cell.x.array[:] = h
 
@@ -391,6 +405,7 @@ def estimate_error(rhs_prime, u_prime, sig_eqlb):
 
     return Leta_sig, Leta_osc
 
+
 # --- Error norms ---
 
 
@@ -401,12 +416,14 @@ def error_L2(diff_u_uh, qorder=None):
         dvol = ufl.dx(degree=qorder)
     return dfem.form(ufl.inner(diff_u_uh, diff_u_uh) * dvol)
 
+
 def error_h1(diff_u_uh, qorder=None):
     if qorder is None:
         dvol = ufl.dx
     else:
         dvol = ufl.dx(degree=qorder)
     return dfem.form(ufl.inner(ufl.grad(diff_u_uh), ufl.grad(diff_u_uh)) * dvol)
+
 
 def error_hdiv0(diff_u_uh, qorder=None):
     if qorder is None:
@@ -415,12 +432,18 @@ def error_hdiv0(diff_u_uh, qorder=None):
         dvol = ufl.dx(degree=qorder)
     return dfem.form(ufl.inner(ufl.div(diff_u_uh), ufl.div(diff_u_uh)) * dvol)
 
-def calculate_error(uh, u_ex, form_error, degree_raise=2, use_ufl=False, error_eqlb_flux=False):
+
+def calculate_error(
+    uh, u_ex, form_error, degree_raise=2, use_ufl=False, error_eqlb_flux=False
+):
     # Create higher order function space
     if error_eqlb_flux:
         try:
-            degree = uh.ufl_operands[0].function_space.element.basix_element.degree + degree_raise
-            family = 'RT'
+            degree = (
+                uh.ufl_operands[0].function_space.element.basix_element.degree
+                + degree_raise
+            )
+            family = "RT"
             mesh = uh.ufl_operands[0].function_space.mesh
         except:
             degree = uh.function_space.ufl_element().degree() + degree_raise
@@ -462,7 +485,7 @@ def calculate_error(uh, u_ex, form_error, degree_raise=2, use_ufl=False, error_e
         e_W.x.array[:] = u_W.x.array - u_ex_W.x.array
 
     # Integrate the error
-    error_local = dfem.assemble_scalar(form_error(e_W, qorder = qdegree))
+    error_local = dfem.assemble_scalar(form_error(e_W, qorder=qdegree))
     error_global = mesh.comm.allreduce(error_local, op=MPI.SUM)
     return np.sqrt(error_global)
 
@@ -475,8 +498,20 @@ def init_protocol(i_conv, storage_protocol, nelmt, ndof_prime, ndof_eqlb):
     storage_protocol[i_conv, 3] = ndof_prime
     storage_protocol[i_conv, 4] = ndof_eqlb
 
-def convergence_rates(i_conv, storage_protocol, uh, sig_proj, sig_eqlb, eta_h_sig, eta_h_osc, 
-                      u_ext_np=None, u_ext_ufl=None, sig_ext_np=None, sig_ext_ufl=None):
+
+def convergence_rates(
+    i_conv,
+    storage_protocol,
+    uh,
+    sig_proj,
+    sig_eqlb,
+    eta_h_sig,
+    eta_h_osc,
+    u_ext_np=None,
+    u_ext_ufl=None,
+    sig_ext_np=None,
+    sig_ext_ufl=None,
+):
     # Evaluate errors (with respect to exact solution)
     if u_ext_np is None:
         x = ufl.SpatialCoordinate(uh.function_space.mesh)
@@ -498,15 +533,23 @@ def convergence_rates(i_conv, storage_protocol, uh, sig_proj, sig_eqlb, eta_h_si
 
         # Evaluate errors
         error_sigp_i = calculate_error(sig_proj, sig_ext, error_L2, use_ufl=True)
-        error_sige_i = calculate_error(sig_eqlb, sig_ext, error_hdiv0, 
-                                       use_ufl=True, error_eqlb_flux=True)
+        error_sige_i = calculate_error(
+            sig_eqlb, sig_ext, error_hdiv0, use_ufl=True, error_eqlb_flux=True
+        )
     else:
         error_sigp_i = calculate_error(sig_proj, sig_ext_np, error_L2, use_ufl=False)
-        error_sige_i = calculate_error(sig_eqlb, sig_ext_np, error_hdiv0, 
-                                       use_ufl=False, error_eqlb_flux=True)
+        error_sige_i = calculate_error(
+            sig_eqlb, sig_ext_np, error_hdiv0, use_ufl=False, error_eqlb_flux=True
+        )
 
     # Evaluate estimated error
-    error_gu_estm_i = np.sqrt(np.sum(eta_h_sig + eta_h_osc + 2 * np.multiply(np.sqrt(eta_h_sig), np.sqrt(eta_h_osc))))
+    error_gu_estm_i = np.sqrt(
+        np.sum(
+            eta_h_sig
+            + eta_h_osc
+            + 2 * np.multiply(np.sqrt(eta_h_sig), np.sqrt(eta_h_osc))
+        )
+    )
     error_gu_sig_estm_i = np.sqrt(np.sum(eta_h_sig))
     error_gu_osc_estm_i = np.sqrt(np.sum(eta_h_osc))
 
@@ -541,8 +584,12 @@ def convergence_rates(i_conv, storage_protocol, uh, sig_proj, sig_eqlb, eta_h_si
 
         rate_gu = np.log(error_gu_i / error_gu_im1) / np.log(h_i / h_im1)
         rate_gu_estm = np.log(error_gu_estm_i / error_gu_estm_im1) / np.log(h_i / h_im1)
-        rate_gu_sig_estm = np.log(error_gu_sig_estm_i / error_gu_sig_estm_im1) / np.log(h_i / h_im1)
-        rate_gu_osc_estm = np.log(error_gu_osc_estm_i / error_gu_osc_estm_im1) / np.log(h_i / h_im1)
+        rate_gu_sig_estm = np.log(error_gu_sig_estm_i / error_gu_sig_estm_im1) / np.log(
+            h_i / h_im1
+        )
+        rate_gu_osc_estm = np.log(error_gu_osc_estm_i / error_gu_osc_estm_im1) / np.log(
+            h_i / h_im1
+        )
 
     # Store results
     storage_protocol[i_conv, 14] = error_u_i
@@ -559,6 +606,7 @@ def convergence_rates(i_conv, storage_protocol, uh, sig_proj, sig_eqlb, eta_h_si
     storage_protocol[i_conv, 25] = rate_sigp
     storage_protocol[i_conv, 26] = error_sige_i
     storage_protocol[i_conv, 27] = rate_sige
+
 
 def document_calculation(i_conv, storage_protocol, timing_nretry, extime):
     # Set calculation times
@@ -593,7 +641,7 @@ extime = {
     "prime_project": 0.0,
     "eqlb_setup": 0.0,
     "eqlb_solve": 0.0,
-    "eqlb_error": 0.0
+    "eqlb_error": 0.0,
 }
 
 # Initialize exact solution
@@ -664,9 +712,9 @@ else:
     raise RuntimeError("No such solution option!")
 
 # Initilaise equlibrator
-if eqlb_type == 'EV':
+if eqlb_type == "EV":
     Equilibrator = equilibration.EquilibratorEV
-elif eqlb_type == 'SemiExplt':
+elif eqlb_type == "SemiExplt":
     Equilibrator = equilibration.EquilibratorSemiExplt
 else:
     raise RuntimeError("No such equilibrator option!")
@@ -711,7 +759,7 @@ for i_timing in range(0, timing_nretry):
         # Project fluxes into DG-space
         extime["prime_project"] -= time.perf_counter()
         sig_proj, rhs_proj = projection_primal(
-            sdisc_eorder, eqlb_fluxorder, u_prime, rhs_prime, mult_rhs=False
+            sdisc_eorder, eqlb_fluxorder, u_prime, rhs_prime, eqlb_type, mult_rhs=False
         )
         extime["prime_project"] += time.perf_counter()
 
@@ -721,7 +769,7 @@ for i_timing in range(0, timing_nretry):
         equilibrator = Equilibrator(eqlb_fluxorder, msh, [rhs_proj], [sig_proj])
 
         # Identify boundaries and set essential flux-bcs
-        if eqlb_type == 'EV':
+        if eqlb_type == "EV":
             fct_bcesnt_primal, fct_bcesnt_flux, bc_esnt_flux = setup_equilibration_ev(
                 equilibrator.V,
                 equilibrator.V_flux,
@@ -731,7 +779,11 @@ for i_timing in range(0, timing_nretry):
                 boundid_prime_vn,
             )
         else:
-            fct_bcesnt_primal, fct_bcesnt_flux, bc_esnt_flux = setup_equilibration_semiexplt(
+            (
+                fct_bcesnt_primal,
+                fct_bcesnt_flux,
+                bc_esnt_flux,
+            ) = setup_equilibration_semiexplt(
                 equilibrator.V_flux,
                 facets,
                 sig_ext,
@@ -766,7 +818,7 @@ for i_timing in range(0, timing_nretry):
             # Set function names
             u_prime.name = "u_prime"
             sig_proj.name = "sig_proj"
-            vD.name = 'sig_ext'
+            vD.name = "sig_ext"
 
             # Name output file
             outname = (
@@ -784,16 +836,34 @@ for i_timing in range(0, timing_nretry):
             outfile.write_mesh(msh)
             outfile.write_function(u_prime, 1)
             outfile.write_function(sig_proj, 1)
-            if eqlb_type == 'EV':
+            if eqlb_type == "EV":
                 flux_function_eqlb.name = "sig_eqlb"
                 outfile.write_function(flux_function_eqlb, 1)
             else:
+                # Auxilary RT space
+                P_drt = basix.create_element(
+                    basix.ElementFamily.RT,
+                    basix.CellType.triangle,
+                    eqlb_fluxorder,
+                    basix.LagrangeVariant.equispaced,
+                    True,
+                )
+                V_drt = dfem.FunctionSpace(msh, basix.ufl_wrapper.BasixElement(P_drt))
+
                 # Interpolate projected flux into RT space
-                flux_function_projected_RT = dfem.Function(equilibrator.V_flux)
+                flux_function_projected_RT = dfem.Function(V_drt)
                 flux_function_projected_RT.interpolate(sig_proj)
-                total_flux = dfem.Function(equilibrator.V_flux)
-                total_flux.x.array[:] = flux_function_projected_RT.x.array[:] + \
-                                        equilibrator.list_flux[0].x.array[:]
+
+                # Interpolate equilibrated flux into RT space
+                flux_function_equilibrated_RT = dfem.Function(V_drt)
+                flux_function_equilibrated_RT.interpolate(equilibrator.list_flux[0])
+
+                # Calculate total flux
+                total_flux = dfem.Function(V_drt)
+                total_flux.x.array[:] = (
+                    flux_function_projected_RT.x.array[:]
+                    + flux_function_equilibrated_RT.x.array[:]
+                )
 
                 # Add projected flux to corrector
                 total_flux.name = "sig_eqlb"
@@ -832,7 +902,7 @@ for i_timing in range(0, timing_nretry):
                 flux_function_eqlb,
                 error_sig.array,
                 error_osc.array,
-                u_ext_ufl=u_ext_ufl
+                u_ext_ufl=u_ext_ufl,
             )
 
         document_calculation(i_conv, storage_protocol, timing_nretry, extime)

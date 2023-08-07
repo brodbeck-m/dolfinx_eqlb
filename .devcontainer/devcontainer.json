@@ -14,19 +14,35 @@
 				"path": "/bin/bash"
 			}
 		},
-		"python.defaultInterpreterPath": "/usr/bin/python3"
+		"python.defaultInterpreterPath": "/usr/bin/python3",
+		"[python]": {
+			"editor.defaultFormatter": "ms-python.black-formatter",
+			"editor.formatOnSave": true,
+			"editor.codeActionsOnSave": [
+				"source.organizeImports"
+			]
+		
+		},
+		"[cpp]": {
+		"editor.formatOnSave": true,
+		}
 	},
-	"extensions": [
-		"ms-python.python",
-		"ms-python.vscode-pylance",
-		"ms-vscode.cpptools",
-		"ms-vscode.cpptools-extension-pack",
-		"ms-vscode.cpptools-themes",
-		"twxs.cmake",
-		"vscode.cmake-tools",
-		"gruntfuggly.todo-tree",
-		"streetsidesoftware.code-spell-checker",
-		"streetsidesoftware.code-spell-checker-british-english",
-		"github.copilot"
-	]
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"ms-python.python",
+				"ms-python.vscode-pylance",
+				"ms-python.black-formatter",
+				"ms-vscode.cpptools",
+				"ms-vscode.cpptools-extension-pack",
+				"ms-vscode.cpptools-themes",
+				"twxs.cmake",
+				"vscode.cmake-tools",
+				"gruntfuggly.todo-tree",
+				"streetsidesoftware.code-spell-checker",
+				"streetsidesoftware.code-spell-checker-british-english",
+				"github.copilot"
+			]
+	}
+	}
 }

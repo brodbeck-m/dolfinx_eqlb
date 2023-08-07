@@ -28,7 +28,7 @@ namespace dolfinx_adaptivity::equilibration
 /// Assembly and solution of patch problems
 ///
 /// Assembly of the patch-wise equation systems, following [1]. Element
-/// stiffness-matrizes - as these stay constant but appear in multiple
+/// stiffness-matrices - as these stay constant but appear in multiple
 //  patches - are stored within a adjacency-list. The LHS is assembled
 //  patch-wise and not stored!
 ///
@@ -36,14 +36,14 @@ namespace dolfinx_adaptivity::equilibration
 ///     Estimates in a Unified Setting for Conforming, Nonconforming,
 ///     Discontinuous Galerkin, and Mixed Discretizations, 2015
 ///
-/// @param geometry                   msh->geomtry of the problem
+/// @param geometry                   msh->geometry of the problem
 /// @param patch                      The patch
 /// @param dofmap_global              dofmap.list() of global FEspace
 /// @param dof_transform              DOF-transformation function
 /// @param dof_transform_to_transpose DOF-transformation function
 /// @param cell_info                  Information for DOF transformation
-/// @param kernel_a                   Kernel bilinar form
-/// @param kernel_lpen                Kernel for penalisation terms
+/// @param kernel_a                   Kernel bilinear form
+/// @param kernel_lpen                Kernel for penalization terms
 /// @param probelm_data               Linear forms and problem dependent
 ///                                   input data
 /// @param storage_stiffness          Storage element tangents

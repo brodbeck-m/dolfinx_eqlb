@@ -80,8 +80,8 @@ def create_hierarchic_rt(cell: CellType, degree: int, discontinuous: bool):
 
             for j in range(0, degree):
                 # lambda = int_E f * n * s^j ds
-                mat[j, 0, :, 0] = normal[0] * (pnt[:, 0]**j) * wts[:]
-                mat[j, 1, :, 0] = normal[1] * (pnt[:, 0]**j) * wts[:]
+                mat[j, 0, :, 0] = normal[0] * (pnt[:, 0] ** j) * wts[:]
+                mat[j, 1, :, 0] = normal[1] * (pnt[:, 0] ** j) * wts[:]
 
             M[1].append(mat)
 
