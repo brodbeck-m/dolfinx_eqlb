@@ -802,7 +802,7 @@ void minimise_flux(const mesh::Geometry& geometry,
       for (std::size_t i = 0; i < ndofs_cell_local; ++i)
       {
         // Overall correction factor (facet orientation and ansatz space)
-        double crr = crr_fct[i] * dofmap_patch(3, id_a, i);
+        T crr = crr_fct[i] * dofmap_patch(3, id_a, i);
 
         // Apply correction
         storage_result[dofmap_patch(2, id_a, i)]
