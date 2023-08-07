@@ -39,7 +39,7 @@ using namespace dolfinx;
 
 namespace dolfinx_adaptivity::equilibration
 {
-/// Execute calculation of patch contributions to flux
+/// Calculation of patch contributions to flux
 ///
 /// Equilibration procedure is based on the solution of patch-wise constrained
 /// minimisation problems as described in [1]
@@ -135,7 +135,7 @@ void reconstruct_fluxes_patch(const fem::Form<T>& a, const fem::Form<T>& l_pen,
   }
 }
 
-/// Execute calculation of patch contributions to flux
+/// Calculation of patch contributions to flux
 /// Equilibration procedure is based on an explicitly calculated flux and an
 /// unconstrained minimisation problem on an patch-wise divergence-free H(div)
 /// space (see [1]).
@@ -379,6 +379,17 @@ void reconstruct_fluxes_ev(
   reconstruct_fluxes_patch<T>(a, l_pen, problem_data, fct_type);
 }
 
+/// Execute flux calculation based on H(div) conforming equilibration
+///
+/// Equilibration based on semi-explicit formulas and small, unconstrained
+/// minimisation problems.
+///
+/// @param flux_hdiv           Function that holds the reconstructed flux
+/// @param flux_dg             Function that holds the projected primal flux
+/// @param rhs_dg              Function that holds the projected rhs
+/// @param fct_esntbound_prime Facets of essential BCs of primal problem
+/// @param fct_esntbound_flux  Facets of essential BCs on flux field
+/// @param bcs_flux            Essential boundary conditions for the flux
 template <typename T>
 void reconstruct_fluxes_cstm(
     std::vector<std::shared_ptr<fem::Function<T>>>& flux_hdiv,
