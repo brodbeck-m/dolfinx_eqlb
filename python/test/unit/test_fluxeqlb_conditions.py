@@ -1,197 +1,52 @@
 import numpy as np
-from mpi4py import MPI
-from petsc4py import PETSc
 import pytest
 
 import basix
-from basix import CellType
 import dolfinx.mesh as dmesh
 import dolfinx.fem as dfem
 import ufl
 
-from dolfinx_eqlb import equilibration, lsolver
+from dolfinx_eqlb.equilibration import EquilibratorEV, EquilibratorSemiExplt
+from dolfinx_eqlb.lsolver import local_projector
 
-""" Utility functions """
+from utils import create_unitsquare_builtin, create_unitsquare_gmsh
+from testcase_poisson import (
+    set_arbitrary_rhs,
+    set_arbitrary_bcs,
+    solve_poisson_problem,
+    equilibrate_poisson,
+)
 
-
-def solve_equilibration(pdegree, fdegree, eqlb_type, rhsdegree=None, n_elmt=5):
-    # --- Check input
-    if rhsdegree is None:
-        rhsdegree = fdegree - 1
-    else:
-        if rhsdegree > fdegree - 1:
-            raise ValueError("Degree of RHS to large!")
-
-    # --- Solve primal problem
-    # create mesh
-    domain = dmesh.create_rectangle(
-        MPI.COMM_WORLD,
-        [np.array([0, 0]), np.array([2, 2])],
-        [n_elmt, n_elmt],
-        cell_type=dmesh.CellType.triangle,
-        diagonal=dmesh.DiagonalType.crossed,
-    )
-
-    # get all boundary facets
-    domain.topology.create_connectivity(1, 2)
-    boundary_facets = dmesh.exterior_facet_indices(domain.topology)
-
-    # set function space
-    V_cg = dfem.FunctionSpace(domain, ("CG", pdegree))
-
-    # set source term
-    V_rhs = dfem.FunctionSpace(domain, ("DG", fdegree - 1))
-    f = dfem.Function(V_rhs)
-
-    if rhsdegree < fdegree - 1:
-        V_data = dfem.FunctionSpace(domain, ("DG", rhsdegree))
-        f_data = dfem.Function(V_data)
-        f_data.x.array[:] = 2 * (
-            np.random.rand(V_data.dofmap.index_map.size_local) + 0.1
-        )
-        f.interpolate(f_data)
-    else:
-        f.x.array[:] = 2 * (np.random.rand(V_rhs.dofmap.index_map.size_local) + 0.1)
-
-    # set weak forms
-    u = ufl.TrialFunction(V_cg)
-    v = ufl.TestFunction(V_cg)
-    a = ufl.inner(ufl.grad(u), ufl.grad(v)) * ufl.dx
-    l = f * v * ufl.dx
-
-    # set boundary conditions
-    dofs = dfem.locate_dofs_topological(V_cg, 1, boundary_facets)
-    bc_esnt = [dfem.dirichletbc(PETSc.ScalarType(0), dofs, V_cg)]
-
-    # solve primal problem
-    solveoptions = {
-        "ksp_type": "preonly",
-        "pc_type": "lu",
-        "ksp_rtol": 1e-10,
-        "ksp_atol": 1e-10,
-    }
-    problem_prime = dfem.petsc.LinearProblem(a, l, bc_esnt, petsc_options=solveoptions)
-    uh = problem_prime.solve()
-
-    # --- Project flux
-    # set function space for flux
-    V_flux_proj = dfem.VectorFunctionSpace(domain, ("DG", fdegree - 1))
-
-    # set weak forms
-    u = ufl.TrialFunction(V_flux_proj)
-    v = ufl.TestFunction(V_flux_proj)
-
-    a_proj = ufl.inner(u, v) * ufl.dx
-    l_proj = ufl.inner(-ufl.grad(uh), v) * ufl.dx
-
-    # solve projection
-    problem_proj = dfem.petsc.LinearProblem(
-        a_proj, l_proj, bcs=[], petsc_options=solveoptions
-    )
-    sig_proj = problem_proj.solve()
-
-    # --- Equilibrate flux
-    # setup and solve equilibration
-    if eqlb_type == "EV":
-        equilibrator = equilibration.EquilibratorEV(fdegree, domain, [f], [sig_proj])
-    elif eqlb_type == "SemiExplt":
-        equilibrator = equilibration.EquilibratorSemiExplt(
-            fdegree, domain, [f], [sig_proj]
-        )
-    else:
-        raise ValueError("Unknown equilibration type")
-
-    equilibrator.set_boundary_conditions([boundary_facets], [[]], [[]])
-    equilibrator.equilibrate_fluxes()
-
-    return uh, f, sig_proj, equilibrator.list_flux[0]
+""" Utility routines """
 
 
-def fkt_to_drt(list_fkt, degree):
-    # extract mesh
-    domain = list_fkt[0].function_space.mesh
-
-    # create DRT space
-    P_drt = basix.create_element(
-        basix.ElementFamily.RT,
-        basix.CellType.triangle,
-        degree,
-        basix.LagrangeVariant.equispaced,
-        True,
-    )
-    V_drt = dfem.FunctionSpace(domain, basix.ufl_wrapper.BasixElement(P_drt))
-
-    # interpolate function into DRT
-    list_fkt_drt = []
-
-    for fkt in list_fkt:
-        fkt_drt = dfem.Function(V_drt)
-        fkt_drt.interpolate(fkt)
-
-        list_fkt_drt.append(fkt_drt)
-
-    return list_fkt_drt
-
-
-def isoparametric_mapping_triangle(domain, dphi_geom, cell_id):
-    # geometry data for current cell
-    geometry = np.zeros((3, 2), dtype=np.float64)
-    geometry[:] = domain.geometry.x[domain.geometry.dofmap.links(cell_id), :2]
-
-    J_q = np.dot(geometry.T, dphi_geom.T)
-    detj = np.linalg.det(J_q)
-
-    return J_q, detj
-
-
-def points_on_triangle(v, n):
-    """
-    Give n random points uniformly on a triangle.
-
-    The vertices of the triangle are given by the shape
-    (2, 3) array *v*: one vertex per row.
-    """
-    x = np.sort(np.random.rand(2, n), axis=0)
-
-    return np.column_stack([x[0], x[1] - x[0], 1.0 - x[1]]) @ v
-
-
-""" Test divergence condition: div(sigma) = f """
-
-
-@pytest.mark.parametrize("eqlb_type", ["EV", "SemiExplt"])
-@pytest.mark.parametrize("degree", [1, 2, 3, 4])
-def test_div_condition(degree, eqlb_type):
-    if degree > 1:
-        pdegree = degree - 1
-        fdegree = degree
-    else:
-        pdegree = degree
-        fdegree = degree
-
-    # --- Solve equilibration
-    uh, f_proj, sig_proj, sig_eq = solve_equilibration(
-        pdegree,
-        fdegree,
-        eqlb_type,
-        n_elmt=3,
-    )
-
+def check_divergence_condition(
+    sigma_eq: dfem.Function, sigma_proj: dfem.Function, rhs_proj: dfem.Function
+):
     # --- Extract solution data
     # the mesh
-    domain = uh.function_space.mesh
+    mesh = sigma_eq.function_space.mesh
 
-    # tes geometry DOFmap
-    gdmap = domain.geometry.dofmap
+    # the geometry DOFmap
+    gdmap = mesh.geometry.dofmap
 
     # number of cells in mesh
-    n_cells = domain.topology.index_map(2).size_local
+    n_cells = mesh.topology.index_map(2).size_local
+
+    # degree of the flux space
+    degree = sigma_eq.function_space.element.basix_element.degree
+
+    # check if flux space is discontinuous
+    flux_is_dg = sigma_eq.function_space.element.basix_element.discontinuous
 
     # --- Calculate divergence of the equilibrated flux
-    V_div = dfem.FunctionSpace(domain, ("DG", degree - 1))
-    div_sigeq = lsolver.local_projector(V_div, [ufl.div(sig_eq + sig_proj)])[0]
+    V_div = dfem.FunctionSpace(mesh, ("DG", degree - 1))
 
-    # --- Check divergence condition
+    if flux_is_dg:
+        div_sigeq = local_projector(V_div, [ufl.div(sigma_eq + sigma_proj)])[0]
+    else:
+        div_sigeq = local_projector(V_div, [ufl.div(sigma_eq)])[0]
+
     # points for checking divergence condition
     n_points = int(0.5 * (degree + 3) * (degree + 4))
     points_3d = np.zeros((n_points, 3))
@@ -199,111 +54,193 @@ def test_div_condition(degree, eqlb_type):
     # loop over cells
     for c in range(0, n_cells):
         # points on current element
-        points = points_on_triangle(domain.geometry.x[gdmap.links(c), :2], n_points)
+        x = np.sort(np.random.rand(2, n_points), axis=0)
+        points = (
+            np.column_stack([x[0], x[1] - x[0], 1.0 - x[1]])
+            @ mesh.geometry.x[gdmap.links(c), :2]
+        )
         points_3d[:, :2] = points
 
         # evaluate div(sig_eqlb)
         val_div_sigeq = div_sigeq.eval(points_3d, n_points * [c])
 
         # evaluate RHS
-        val_rhs = f_proj.eval(points_3d, n_points * [c])
+        val_rhs = rhs_proj.eval(points_3d, n_points * [c])
 
         assert np.allclose(val_div_sigeq, val_rhs)
 
 
-""" Test jump condition on facet-normal fluxes """
+def check_jump_condition(sigma_eq: dfem.Function, sig_proj: dfem.Function):
+    # --- Extract geometry data
+    # the mesh
+    domain = sigma_eq.function_space.mesh
+
+    # number of cells/ factes in mesh
+    n_fcts = domain.topology.index_map(1).size_local
+    n_cells = domain.topology.index_map(2).size_local
+
+    # facet/cell connectivity
+    fct_to_cell = domain.topology.connectivity(1, 2)
+    cell_to_fct = domain.topology.connectivity(2, 1)
+
+    # --- Interpolate proj./equilibr. flux into Baisx RT space
+    # the flux degree
+    degree = sigma_eq.function_space.element.basix_element.degree
+
+    # create discontinuous RT space
+    P_drt = basix.create_element(
+        basix.ElementFamily.RT,
+        basix.CellType.triangle,
+        degree,
+        basix.LagrangeVariant.equispaced,
+        True,
+    )
+
+    V_drt = dfem.FunctionSpace(domain, basix.ufl_wrapper.BasixElement(P_drt))
+    dofmap_sigrt = V_drt.dofmap.list
+
+    # interpolate functions into space
+    sig_eq_rt = dfem.Function(V_drt)
+    sig_eq_rt.interpolate(sigma_eq)
+
+    sig_proj_rt = dfem.Function(V_drt)
+    sig_proj_rt.interpolate(sig_proj)
+
+    # calculate reconstructed flux (use default RT-space)
+    x_sig_rt = sig_proj_rt.x.array[:] + sig_eq_rt.x.array[:]
+
+    # --- Determine sign of detj per cell
+    # tabulate shape functions of geometry element
+    c_element = basix.create_element(
+        basix.ElementFamily.P,
+        basix.CellType.triangle,
+        1,
+        basix.LagrangeVariant.gll_warped,
+    )
+
+    dphi_geom = c_element.tabulate(1, np.array([[0, 0]]))[1 : 2 + 1, 0, :, 0]
+
+    # determine sign of detj per cell
+    sign_detj = np.zeros(n_cells, dtype=np.float64)
+    gdofs = np.zeros((3, 2), dtype=np.float64)
+
+    for c in range(0, n_cells):
+        # evaluate detj
+        gdofs[:] = domain.geometry.x[domain.geometry.dofmap.links(c), :2]
+
+        J_q = np.dot(gdofs.T, dphi_geom.T)
+        detj = np.linalg.det(J_q)
+
+        # determine sign of detj
+        sign_detj[c] = np.sign(detj)
+
+    # --- Check jump condition on all facets
+    for f in range(0, n_fcts):
+        # get cells adjacet to f
+        cells = fct_to_cell.links(f)
+
+        if len(cells) > 1:
+            # signs of cell jacobis
+            sign_plus = sign_detj[cells[0]]
+            sign_minus = sign_detj[cells[1]]
+
+            # local facet id of cell
+            if_plus = np.where(cell_to_fct.links(cells[0]) == f)[0][0]
+            if_minus = np.where(cell_to_fct.links(cells[1]) == f)[0][0]
+
+            for i in range(0, degree):
+                # local dof id of facet-normal flux
+                dof_plus = dofmap_sigrt.links(cells[0])[if_plus * degree + i]
+                dof_minus = dofmap_sigrt.links(cells[1])[if_minus * degree + i]
+
+                # calculate outward flux
+                if if_plus == 1:
+                    flux_plus = x_sig_rt[dof_plus] * sign_plus
+                else:
+                    flux_plus = x_sig_rt[dof_plus] * (-sign_plus)
+
+                if if_minus == 1:
+                    flux_minus = x_sig_rt[dof_minus] * sign_minus
+                else:
+                    flux_minus = x_sig_rt[dof_minus] * (-sign_minus)
+
+                # check continuity of facet-normal flux
+                assert np.isclose(flux_plus + flux_minus, 0)
 
 
-@pytest.mark.parametrize("degree_flux", [1, 2, 3, 4])
-def test_jump_condition(degree_flux):
-    # --- Solve equilibration
-    for degree_prime in range(1, degree_flux + 1):
-        for degree_rhs in range(0, degree_flux):
-            uh, f_proj, sig_proj, sig_eq = solve_equilibration(
-                degree_prime,
-                degree_flux,
-                "SemiExplt",
-                rhsdegree=degree_rhs,
-                n_elmt=5,
+""" 
+Check if equilibrated flux 
+    a.) fullfil the divergence condition div(sigma_eqlb) = f 
+    b.) lays in the H(div) space
+"""
+
+
+@pytest.mark.parametrize("mesh_type", ["builtin"])
+@pytest.mark.parametrize("degree", [1, 2, 3, 4])
+@pytest.mark.parametrize("bc_type", ["pure_dirichlet"])
+@pytest.mark.parametrize("equilibrator", [EquilibratorEV, EquilibratorSemiExplt])
+def test_equilibration_conditions(mesh_type, degree, bc_type, equilibrator):
+    # Create mesh
+    if mesh_type == "builtin":
+        geometry = create_unitsquare_builtin(
+            3, dmesh.CellType.triangle, dmesh.DiagonalType.crossed
+        )
+    elif mesh_type == "gmsh":
+        raise NotImplementedError("GMSH mesh not implemented yet")
+    else:
+        raise ValueError("Unknown mesh type")
+
+    for degree_prime in range(1, degree + 1):
+        for degree_rhs in range(0, degree):
+            # Set function space
+            V_prime = dfem.FunctionSpace(geometry.mesh, ("CG", degree_prime))
+
+            # Determine degree of projected quantities (primal flux, RHS)
+            degree_proj = max(degree_prime - 1, degree_rhs)
+
+            # Set RHS
+            rhs, rhs_projected = set_arbitrary_rhs(
+                geometry.mesh, degree_rhs, degree_projection=degree_proj
             )
 
-            # interpolate functions into DRT-space
-            fkt_drt = fkt_to_drt([sig_proj, sig_eq], degree_flux)
-            sig_proj_rt = fkt_drt[0]
-            sig_eq_rt = fkt_drt[1]
+            # Set boundary conditions
+            (
+                boundary_id_dirichlet,
+                boundary_id_neumann,
+                dirichlet_functions,
+                neumann_functions,
+            ) = set_arbitrary_bcs(bc_type, V_prime)
 
-            # calculate reconstructed flux (use default RT-space)
-            x_sig_rt = sig_proj_rt.x.array[:] + sig_eq_rt.x.array[:]
-
-            # extract relevant data
-            domain = uh.function_space.mesh
-            dofmap_sigrt = sig_proj_rt.function_space.dofmap.list
-            dofs_per_fct = degree_flux
-
-            # --- Determine sign of detj per cell
-            # tabulate shape functions of geometry element
-            c_element = basix.create_element(
-                basix.ElementFamily.P,
-                basix.CellType.triangle,
-                1,
-                basix.LagrangeVariant.gll_warped,
+            # Solve equilibration
+            u_prime, sigma_projected = solve_poisson_problem(
+                V_prime,
+                geometry,
+                boundary_id_neumann,
+                boundary_id_dirichlet,
+                rhs,
+                neumann_functions,
+                dirichlet_functions,
+                degree_projection=degree_proj,
             )
-            dphi_geom = c_element.tabulate(1, np.array([[0, 0]]))[1 : 2 + 1, 0, :, 0]
 
-            # determine sign of detj per cell
-            n_cells = domain.topology.index_map(2).size_local
-            sign_detj = np.zeros(n_cells, dtype=np.float64)
+            # Solve equilibration
+            sigma_eq = equilibrate_poisson(
+                equilibrator,
+                degree,
+                geometry,
+                [sigma_projected],
+                [rhs_projected],
+                [boundary_id_neumann],
+                [boundary_id_dirichlet],
+                [neumann_functions],
+            )[0]
 
-            for c in range(0, n_cells):
-                # evaluate detj
-                J_q, detj = isoparametric_mapping_triangle(domain, dphi_geom, c)
+            # --- Check divergence condition ---
+            check_divergence_condition(sigma_eq, sigma_projected, rhs_projected)
 
-                # determine sign of detj
-                sign_detj[c] = np.sign(detj)
-
-            # --- Check jump condition on all facets
-            # create connectivity facet -> cell
-            fct_to_cell = domain.topology.connectivity(1, 2)
-            cell_to_fct = domain.topology.connectivity(2, 1)
-
-            # check jump condition on all facets
-            n_fcts = domain.topology.index_map(1).size_local
-
-            for f in range(0, n_fcts):
-                # get cells adjacet to f
-                cells = fct_to_cell.links(f)
-
-                if len(cells) > 1:
-                    # signs of cell jacobis
-                    sign_plus = sign_detj[cells[0]]
-                    sign_minus = sign_detj[cells[1]]
-
-                    # local facet id of cell
-                    if_plus = np.where(cell_to_fct.links(cells[0]) == f)[0][0]
-                    if_minus = np.where(cell_to_fct.links(cells[1]) == f)[0][0]
-
-                    for i in range(0, dofs_per_fct):
-                        # local dof id of facet-normal flux
-                        dof_plus = dofmap_sigrt.links(cells[0])[
-                            if_plus * dofs_per_fct + i
-                        ]
-                        dof_minus = dofmap_sigrt.links(cells[1])[
-                            if_minus * dofs_per_fct + i
-                        ]
-
-                        # calculate outward flux
-                        if if_plus == 1:
-                            flux_plus = x_sig_rt[dof_plus] * sign_plus
-                        else:
-                            flux_plus = x_sig_rt[dof_plus] * (-sign_plus)
-
-                        if if_minus == 1:
-                            flux_minus = x_sig_rt[dof_minus] * sign_minus
-                        else:
-                            flux_minus = x_sig_rt[dof_minus] * (-sign_minus)
-
-                        # check continuity of facet-normal flux
-                        assert np.isclose(flux_plus + flux_minus, 0)
+            # --- Check jump condition (only required for semi-explicit equilibrator)
+            if equilibrator == EquilibratorSemiExplt:
+                check_jump_condition(sigma_eq, sigma_projected)
 
 
 if __name__ == "__main__":

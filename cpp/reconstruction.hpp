@@ -422,7 +422,7 @@ void reconstruct_fluxes_cstm(
   const int degree_rhs
       = rhs_dg[0]->function_space()->element()->basix_element().degree();
 
-  if (degree_rhs != (order_flux - 1) || degree_flux_dg > degree_rhs)
+  if (degree_rhs > (order_flux - 1) || degree_flux_dg > degree_rhs)
   {
     throw std::runtime_error(
         "Equilibration: Wrong polynomial degree of the projected RHS");
