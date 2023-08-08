@@ -218,26 +218,5 @@ void equilibrate_flux_constrmin(
     // Set hat function
     problem_data.set_hat_function(c, inode_local[index], 0.0);
   }
-
-  // // Debug
-  // std::fill(x_flux_dg.begin(), x_flux_dg.end(), 0);
-  // std::cout << "Type-Patch: " << patch.type(0) << std::endl;
-  // std::cout << "nDOFs patch: " << patch.ndofs_patch() << std::endl;
-  // int offset = 0;
-  // for (std::size_t k = 0; k < patch.ndofs_patch() + 1; ++k)
-  // {
-  //   // Calculate offset
-  //   offset = k * (patch.ndofs_patch() + 1);
-
-  //   for (std::size_t l = 0; l < patch.ndofs_patch() + 1; ++l)
-  //   {
-  //     // Assemble stiffness matrix
-  //     x_flux_dg[offset + l] = A_patch(k, l);
-  //   }
-  // }
-  // for (std::size_t k = 0; k < patch.ndofs_patch() + 1; ++k)
-  // {
-  //   x_flux_dg[k] = L_patch(k);
-  // }
 }
 } // namespace dolfinx_adaptivity::equilibration

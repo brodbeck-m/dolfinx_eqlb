@@ -26,6 +26,23 @@ using namespace dolfinx;
 
 namespace dolfinx_adaptivity::equilibration
 {
+/// Apply lifting of non-homogenous boundary conditions
+///
+/// A lifting routine for non-homogeneous boundary conditions on patches. As
+/// patch problems are always linear and therefore solvable within one
+/// newton-setp a correction of the boundary values by the pervious solution is
+/// unnecessary.
+///
+/// @param Ae           The element stiffness matrix
+/// @param Le           The element load vector
+/// @param bmarkers     The boundary markers
+/// @param bvalues      The boundary values
+/// @param dofs_elmt    The element-local DOFmap
+/// @param dofs_patch   The patch-local DOFmap
+/// @param dofs_global  The global DOFmap
+/// @param type_patch   The patch type
+/// @param ndof_elmt_nz The number of non-zero DOFs on element
+/// @param ndof_elmt    The number of DOFs on element
 template <typename T>
 void apply_lifting(std::span<T> Ae, std::vector<T>& Le,
                    std::span<const std::int8_t> bmarkers,
@@ -61,7 +78,38 @@ void apply_lifting(std::span<T> Ae, std::vector<T>& Le,
   }
 }
 
-template <typename T>
+/// Patch-wise assembly of equation-system
+///
+/// Assembles the patch-wise equation system for the constrained minimization,
+/// determining the equilibrated flux for some general RHS. Depending of the
+/// template parameter either the entire system or only the load vector is
+/// assembled. The elemental stiffness matrices are computed only once. If this
+/// is already done, values are extracted from storage and no recalculations is
+/// required.
+///
+/// @tparam T              The scalar type
+/// @tparam asmbl_systmtrx Flag if entire tangent or only load vector is
+///                        assembled
+/// @param A_patch                    The patch stiffness matrix
+/// @param L_patch                    The patch load vector
+/// @param cells                      The cells of the patch
+/// @param coordinate_dofs            The coordinate DOFs of each cell
+/// @param cstride_geom               The stride of the coordinate DOFs
+/// @param patch                      The patch
+/// @param dof_transform              The DOF transformation function
+/// @param dof_transform_to_transpose The DOF transformation function
+/// @param cell_info                  The cell transformation information
+/// @param kernel_a                   The kernel for the bilinear form
+/// @param kernel_lpen                The kernel for the penalization terms
+/// @param kernel_l                   The kernel for the linear form
+/// @param constants_l                The constants of the linear form
+/// @param coefficients_l             The coefficients of the linear form
+/// @param cstride_l                  The stride of the coefficients
+/// @param bmarkers                   The boundary markers
+/// @param bvalues                    The boundary values
+/// @param storage_stiffness          The storage for the stiffness matrices
+/// @param index_lhs                  The index of teh currently assembled LHS
+template <typename T, bool asmbl_systmtrx = true>
 void assemble_tangents(
     Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>& A_patch,
     Eigen::Matrix<T, Eigen::Dynamic, 1>& L_patch,
