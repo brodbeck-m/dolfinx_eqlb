@@ -146,36 +146,40 @@ void assemble_tangents(
     // Get current cell
     std::int32_t c = cells[index];
 
-    // Get current stiffness-matrix in storage
-    std::span<T> Ae = storage_stiffness.stiffness_elmt(c);
-    std::span<T> Pe = storage_stiffness.penalty_elmt(c);
-
     // Get coordinates of current element
     std::span<fem::impl::scalar_value_type_t<T>> coordinate_dofs_e(
         coordinate_dofs.data() + index * cstride_geom, cstride_geom);
 
-    /* Evaluate tangent arrays if not already done */
-    // Evaluate bilinar form
-    if (storage_stiffness.evaluation_status(c) == 0)
+    /* Evaluate stiffness matrix */
+    std::span<T> Ae, Pe;
+    if constexpr (asmbl_systmtrx)
     {
-      // Initialize bilinear form
-      std::fill(Ae.begin(), Ae.end(), 0);
-      std::fill(Pe.begin(), Pe.end(), 0);
+      // Get current stiffness-matrix in storage
+      Ae = storage_stiffness.stiffness_elmt(c);
+      Pe = storage_stiffness.penalty_elmt(c);
 
       // Evaluate bilinar form
-      kernel_a(Ae.data(), nullptr, nullptr, coordinate_dofs_e.data(), nullptr,
-               nullptr);
+      if (storage_stiffness.evaluation_status(c) == 0)
+      {
+        // Initialize bilinear form
+        std::fill(Ae.begin(), Ae.end(), 0);
+        std::fill(Pe.begin(), Pe.end(), 0);
 
-      // Evaluate penalty terms
-      kernel_lpen(Pe.data(), nullptr, nullptr, coordinate_dofs_e.data(),
-                  nullptr, nullptr);
+        // Evaluate bilinar form
+        kernel_a(Ae.data(), nullptr, nullptr, coordinate_dofs_e.data(), nullptr,
+                 nullptr);
 
-      // DOF transformation
-      dof_transform(Ae, cell_info, c, ndim0);
-      dof_transform_to_transpose(Ae, cell_info, c, ndim0);
+        // Evaluate penalty terms
+        kernel_lpen(Pe.data(), nullptr, nullptr, coordinate_dofs_e.data(),
+                    nullptr, nullptr);
 
-      // Set identifire for evaluated data
-      storage_stiffness.mark_cell_evaluated(c);
+        // DOF transformation
+        dof_transform(Ae, cell_info, c, ndim0);
+        dof_transform_to_transpose(Ae, cell_info, c, ndim0);
+
+        // Set identifire for evaluated data
+        storage_stiffness.mark_cell_evaluated(c);
+      }
     }
 
     // Evaluate linear form
@@ -196,6 +200,12 @@ void assemble_tangents(
 
     if (type_patch == 1 || type_patch == 3)
     {
+      // Extract stiffness matrix
+      if constexpr (!asmbl_systmtrx)
+      {
+        Ae = storage_stiffness.stiffness_elmt(c);
+      }
+
       // Apply lifting
       apply_lifting(Ae, Le, bmarkers, bvalues, dofs_elmt, dofs_patch,
                     dofs_global, type_patch, ndof_elmt_nz, ndim0);
@@ -206,8 +216,11 @@ void assemble_tangents(
         // Check for boundary condition
         if (bmarkers[dofs_global[k]] != 0)
         {
-          // Set main-digonal of stiffness matrix
-          A_patch(dofs_patch[k], dofs_patch[k]) = 1;
+          // Set main-diagonal of stiffness matrix
+          if constexpr (asmbl_systmtrx)
+          {
+            A_patch(dofs_patch[k], dofs_patch[k]) = 1;
+          }
 
           // Set boundary value
           L_patch(dofs_patch[k]) = bvalues[dofs_global[k]];
@@ -220,13 +233,16 @@ void assemble_tangents(
           // Assemble load vector
           L_patch(dofs_patch[k]) += Le[dofs_elmt[k]];
 
-          for (std::size_t l = 0; l < ndof_elmt_nz; ++l)
+          if constexpr (asmbl_systmtrx)
           {
-            // Assemble stiffness matrix
-            if (bmarkers[dofs_global[l]] == 0)
+            for (std::size_t l = 0; l < ndof_elmt_nz; ++l)
             {
-              A_patch(dofs_patch[k], dofs_patch[l])
-                  += Ae[offset + dofs_elmt[l]];
+              // Assemble stiffness matrix
+              if (bmarkers[dofs_global[l]] == 0)
+              {
+                A_patch(dofs_patch[k], dofs_patch[l])
+                    += Ae[offset + dofs_elmt[l]];
+              }
             }
           }
         }
@@ -242,55 +258,43 @@ void assemble_tangents(
         // Assemble load vector
         L_patch(dofs_patch[k]) += Le[dofs_elmt[k]];
 
-        for (std::size_t l = 0; l < ndof_elmt_nz; ++l)
+        // Assemble stiffness matrix
+        if constexpr (asmbl_systmtrx)
         {
-          // Assemble stiffness matrix
-          A_patch(dofs_patch[k], dofs_patch[l]) += Ae[offset + dofs_elmt[l]];
+          for (std::size_t l = 0; l < ndof_elmt_nz; ++l)
+          {
+            A_patch(dofs_patch[k], dofs_patch[l]) += Ae[offset + dofs_elmt[l]];
+          }
         }
       }
     }
 
     // Add penalty terms
-    if (type_patch < 2)
+    if constexpr (asmbl_systmtrx)
     {
-      // Required counters
-      const int ndofs_cons = patch.ndofs_cons();
-      const int offset = patch.ndofs_flux_nz();
-
-      // Loop over DOFs
-      for (std::size_t k = 0; k < ndofs_cons; ++k)
+      if (type_patch < 2)
       {
-        // Add K_ql
-        A_patch(dofs_patch[offset + k], ndof_ppatch - 1) += Pe[k];
+        // Required counters
+        const int ndofs_cons = patch.ndofs_cons();
+        const int offset = patch.ndofs_flux_nz();
 
-        // Add K_lq
-        A_patch(ndof_ppatch - 1, dofs_patch[offset + k]) += Pe[k];
+        // Loop over DOFs
+        for (std::size_t k = 0; k < ndofs_cons; ++k)
+        {
+          // Add K_ql
+          A_patch(dofs_patch[offset + k], ndof_ppatch - 1) += Pe[k];
+
+          // Add K_lq
+          A_patch(ndof_ppatch - 1, dofs_patch[offset + k]) += Pe[k];
+        }
+      }
+      else
+      {
+        // Set penalty to zero
+        A_patch(ndof_ppatch - 1, ndof_ppatch - 1) = 1.0;
       }
     }
-    else
-    {
-      // Set penalty to zero
-      A_patch(ndof_ppatch - 1, ndof_ppatch - 1) = 1.0;
-    }
   }
-}
-
-template <typename T>
-void assemble_vector(
-    Eigen::Matrix<T, Eigen::Dynamic, 1>& L_patch,
-    std::span<const std::int32_t> cells,
-    std::vector<fem::impl::scalar_value_type_t<T>>& coordinate_dofs,
-    const int cstride_geom, PatchFluxEV& patch,
-    const std::function<void(const std::span<T>&,
-                             const std::span<const std::uint32_t>&,
-                             std::int32_t, int)>& dof_transform,
-    std::span<const std::uint32_t> cell_info, fem::FEkernel<T> auto kernel_l,
-    std::span<const T> constants_l, std::span<T> coefficients_l,
-    const int cstride_l, std::span<const std::int8_t> bmarkers,
-    std::span<const T> bvalues, StorageStiffness<T>& storage_stiffness,
-    int index_lhs)
-{
-  throw std::runtime_error("assembly_vector: Not implemented!");
 }
 
 } // namespace dolfinx_adaptivity::equilibration

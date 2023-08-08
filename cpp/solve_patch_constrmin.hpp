@@ -146,11 +146,11 @@ void equilibrate_flux_constrmin(
       L_patch.setZero();
 
       // Assemble tangents
-      assemble_tangents(A_patch, L_patch, cells, coordinate_dofs, cstride_geom,
-                        patch, dof_transform, dof_transform_to_transpose,
-                        cell_info, kernel_a, kernel_lpen, kernel_l, constants_l,
-                        coefficients_l, cstride_l, bmarkers, bvalues,
-                        storage_stiffness, i_lhs);
+      assemble_tangents<T, true>(
+          A_patch, L_patch, cells, coordinate_dofs, cstride_geom, patch,
+          dof_transform, dof_transform_to_transpose, cell_info, kernel_a,
+          kernel_lpen, kernel_l, constants_l, coefficients_l, cstride_l,
+          bmarkers, bvalues, storage_stiffness, i_lhs);
 
       // LU-factorization of system matrix
       solver.compute(A_patch);
