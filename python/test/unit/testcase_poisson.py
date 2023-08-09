@@ -24,11 +24,27 @@ Supported variants:
 
 
 # --- Definition of manufactured solution
-def exakt_solution_poisson(pkt):
+def exact_solution_poisson(pkt):
+    """Exact solution
+    u_ext = sin(2*pi * x) * cos(2*pi * y)
+
+    Args:
+        pkt: Defines wether the function works with numpy or ufl
+    Returns:
+        lambda: The exact solution as function of the position x
+    """
     return lambda x: pkt.sin(2 * pkt.pi * x[0]) * pkt.cos(2 * pkt.pi * x[1])
 
 
-def exact_flux_poisson(x):
+def exact_flux_np_poisson(x):
+    """Exact flux
+    flux_ext = -Grad[sin(2*pi * x) * cos(2*pi * y)]
+
+    Args:
+        x
+    Returns:
+        The exact flux at spacial positions x as numpy array
+    """
     # Initialize flux
     sig = np.zeros((2, x.shape[1]), dtype=PETSc.ScalarType)
 
@@ -37,6 +53,18 @@ def exact_flux_poisson(x):
     sig[1] = 2 * np.pi * np.sin(2 * np.pi * x[0]) * np.sin(2 * np.pi * x[1])
 
     return sig
+
+
+def exact_flux_ufl_poisson(x):
+    """Exact flux
+    flux_ext = -Grad[sin(2*pi * x) * cos(2*pi * y)]
+
+    Args:
+        x
+    Returns:
+        The exact flux at spacial positions x as ufl expression
+    """
+    return -ufl.grad(exact_solution_poisson(ufl)(x))
 
 
 # --- Set right-hand side
@@ -119,6 +147,19 @@ def set_manufactured_rhs(
 
 # --- Set boundary conditions
 def set_arbitrary_bcs(bc_type: str, V_prime: dfem.FunctionSpace):
+    """Set arbitrary dirichlet and neumann BCs
+
+    Remark: Dirichlet BCs for primal problem are homogenous.
+
+    Args:
+        bc_type (str):           Type of boundary conditions
+                                 (pure_dirichlet, neumann_homogenous, neumann_inhomogenous)
+        V_prime (FunctionSpace): The function space of the primal problem
+
+    Returns:
+        u_D (List[Function]):     List of dirichlet boundary conditions
+        func_neumann (List[ufl]): List of neumann boundary conditions
+    """
     if bc_type == "pure_dirichlet":
         # Set boundary ids
         boundary_id_dirichlet = [1, 2, 3, 4]
@@ -184,6 +225,18 @@ def solve_poisson_problem(
     u_dirichlet: List[dfem.Function],
     degree_projection: int = -1,
 ):
+    """Solves a poisson problem based on lagrangian finite elements
+
+    Args:
+        V_prime (dolfinx.FunctionSpace):      The function space of the primal problem
+        geometry (Geometry):                  The geometry of the domain
+        bc_id_neumann (List[int]):            List of boundary ids for neumann BCs
+        bc_id_dirichlet (List[int]):          List of boundary ids for dirichlet BCs
+        ufl_rhs (ufl):                        The right-hand side of the primal problem
+        ufl_neumann (List[ufl]):              List of neumann boundary conditions
+        u_dirichlet (List[dolfinx.Function]): List of dirichlet boundary conditions
+        degree_projection (int):              Degree of projected flux
+    """
     # Check input
     if len(bc_id_dirichlet) == 0:
         raise ValueError("Pure neumann problem not supported!")
@@ -243,6 +296,21 @@ def equilibrate_poisson(
     bc_id_dirichlet: List[List[int]],
     flux_neumann: List[Any],
 ) -> List[dfem.Function]:
+    """Equilibrates the fluxes of the primal problem
+
+    Args:
+        Equilibrator (equilibration.FluxEquilibrator): The equilibrator object
+        degree_flux (int):                             Degree of flux space
+        geometry (Geometry):                           The geometry of the domain
+        sig_proj (List[dfem.Function]):                List of projected fluxes
+        rhs_proj (List[dfem.Function]):                List of projected right-hand sides
+        bc_id_neumann (List[List[int]]):               List of boundary ids for neumann BCs
+        bc_id_dirichlet (List[List[int]]):             List of boundary ids for dirichlet BCs
+        flux_neumann (List[ufl]):                      List of neumann boundary conditions
+
+    Returns:
+        List[dfem.Function]: List of equilibrated fluxes
+    """
     # Extract facet markers
     fct_values = geometry.facet_function.values
 
