@@ -91,3 +91,92 @@ def create_quatercircle_gmsh():
 """
 Calculate Convergence rates
 """
+
+
+def error_L2(diff_u_uh, qorder=None):
+    if qorder is None:
+        dvol = ufl.dx
+    else:
+        dvol = ufl.dx(degree=qorder)
+    return dfem.form(ufl.inner(diff_u_uh, diff_u_uh) * dvol)
+
+
+def error_h1(diff_u_uh, qorder=None):
+    if qorder is None:
+        dvol = ufl.dx
+    else:
+        dvol = ufl.dx(degree=qorder)
+    return dfem.form(ufl.inner(ufl.grad(diff_u_uh), ufl.grad(diff_u_uh)) * dvol)
+
+
+def error_hdiv0(diff_u_uh, qorder=None):
+    if qorder is None:
+        dvol = ufl.dx
+    else:
+        dvol = ufl.dx(degree=qorder)
+    return dfem.form(ufl.inner(ufl.div(diff_u_uh), ufl.div(diff_u_uh)) * dvol)
+
+
+def flux_error(
+    uh: Any, u_ex: Any, form_error: Callable, degree_raise=2, uex_is_ufl=False
+):
+    """Calculate convergence rate
+    Assumption: uh is constructed from a FE-space with block-size 1 and
+    the FE-space ca be interpolated by dolfinX!
+
+    Args:
+        uh (Any):              Approximate solution
+                               (DOLFINx-function (if u_ex is callable) or ufl-expression)
+        u_ex (Any):            Exact solution
+                               (callable function for interpolation or ufl expr.)
+        form_error (Callable): Generates form for error calculation
+
+    Returns:
+        error: The global error measured in the given norm
+
+    """
+    # Initialise quadrature degree
+    qdegree = None
+
+    if not uex_is_ufl:
+        # Get mesh
+        mesh = uh.function_space.mesh
+
+        # Create higher order function space
+        degree = uh.function_space.ufl_element().degree() + degree_raise
+        family = uh.function_space.ufl_element().family()
+        mesh = uh.function_space.mesh
+
+        elmt = ufl.FiniteElement(family, mesh.ufl_cell(), degree)
+
+        W = dfem.FunctionSpace(mesh, elmt)
+
+        # Interpolate approximate solution
+        u_W = dfem.Function(W)
+        u_W.interpolate(uh)
+
+        # Interpolate exact solution, special handling if exact solution
+        # is a ufl expression or a python lambda function
+        u_ex_W = dfem.Function(W)
+        u_ex_W.interpolate(u_ex)
+
+        # Compute the error in the higher order function space
+        e_W = dfem.Function(W)
+        e_W.x.array[:] = u_W.x.array - u_ex_W.x.array
+    else:
+        # Get mesh
+        try:
+            mesh = uh.function_space.mesh
+        except:
+            mesh = uh.ufl_operands[0].function_space.mesh
+
+        # Set quadrature degree
+        qdegree = 10
+
+        # Get spacial coordinate and set error functional
+        e_W = u_ex - uh
+
+    # Integrate the error
+    error_local = dfem.assemble_scalar(form_error(e_W, qorder=qdegree))
+    error_global = mesh.comm.allreduce(error_local, op=MPI.SUM)
+    return np.sqrt(error_global)

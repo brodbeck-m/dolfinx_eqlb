@@ -88,18 +88,15 @@ def set_arbitrary_rhs(
 def set_manufactured_rhs(
     u_ext_ufl: Callable,
     domain: dolfinx.mesh.Mesh,
-    degree_flux: int,
     degree_rhs: int,
 ):
     """Set right-hand based on manufactured solution
 
-    RHS is the -div(grad(u_ext)) of the manufactured solution
-
-            u_ext(x,y) = sin(2*pi * x) * cos(2*pi * y)
+    RHS is the -div(grad(u_ext)) of the manufactured solution u_ext.
 
     Args:
+        u_ext_ufl (Callable): ufl-expression of the manufactured solution
         domain (dolfinx.mesh.Mesh): The mesh
-        degree_flux (int): Degree of the equilibrated flux
         degree_rhs (int): Degree of the right-hand side
 
     Returns:
@@ -107,11 +104,6 @@ def set_manufactured_rhs(
         rhs_projected (dolfinx.Function): The projected RHS for the equilibration process
 
     """
-
-    # Check input
-    if degree_rhs > degree_flux - 1:
-        raise ValueError("Degree of RHS to large!")
-
     # Set function space
     V_rhs = dfem.FunctionSpace(domain, ("DG", degree_rhs))
 
@@ -143,8 +135,42 @@ def set_arbitrary_bcs(bc_type: str, V_prime: dfem.FunctionSpace):
     return boundary_id_dirichlet, boundary_id_neumann, u_D, func_neumann
 
 
-def set_manufactured_bcs(bc_type: str):
-    pass
+def set_manufactured_bcs(
+    V_prime: dfem.FunctionSpace,
+    boundary_id_dirichlet: List[int],
+    boundary_id_neumann: List[int],
+    u_ext: Callable,
+    sigma_ext: Any,
+):
+    """Sets dirichlet and neumann BCs based on manufactured solution
+
+    Args:
+        V_prime (dolfinx.FunctionSpace):   The function space of the primal problem
+        boundary_id_dirichlet (List[int]): List of boundary ids for dirichlet BCs
+        boundary_id_neumann (List[int]):   List of boundary ids for neumann BCs
+        u_ext (Callable):                  The manufactured solution (return np.array)
+        sigma_ext (ufl):                   The manufactured flux (ufl representation)
+
+    Returns:
+        u_D (List[dolfinx.Function]):      List of dirichlet boundary conditions
+        func_neumann (List[ufl]):          List of neumann boundary conditions
+    """
+
+    # Set dirichlet BCs
+    u_D = []
+    for id in boundary_id_dirichlet:
+        uD = dfem.Function(V_prime)
+        uD.interpolate(u_ext)
+
+        u_D.append(uD)
+
+    # Set neumann BCs
+    func_neumann = []
+
+    for id in boundary_id_neumann:
+        func_neumann.append(sigma_ext)
+
+    return u_D, func_neumann
 
 
 # --- Solution routines
@@ -186,8 +212,9 @@ def solve_poisson_problem(
 
     # Solve problem
     solveoptions = {
-        "ksp_type": "preonly",
-        "pc_type": "lu",
+        "ksp_type": "cg",
+        "pc_type": "hypre",
+        "pc_hypre_type": "boomeramg",
         "ksp_rtol": 1e-10,
         "ksp_atol": 1e-10,
     }
