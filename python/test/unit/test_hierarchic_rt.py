@@ -9,7 +9,7 @@ import dolfinx.mesh as dmesh
 
 from mpi4py import MPI
 
-from dolfinx_eqlb.e_raviart_thomas import create_hierarchic_rt
+from dolfinx_eqlb.elmtlib import create_hierarchic_rt
 
 
 """ Utility routines """

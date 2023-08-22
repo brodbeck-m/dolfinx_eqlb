@@ -29,7 +29,6 @@ Different problem setups:
 """
 
 import numpy as np
-import math
 from mpi4py import MPI
 import petsc4py
 from petsc4py import PETSc
@@ -41,16 +40,17 @@ import dolfinx.mesh as dmesh
 import ufl
 import time
 
-from dolfinx_eqlb import equilibration, lsolver
+from dolfinx_eqlb.eqlb import FluxEqlbEV, FluxEqlbSE
+from dolfinx_eqlb.lsolver import local_projection
 
 # --- Input parameters
 # Spacial discretisation
-sdisc_eorder = 2
+sdisc_eorder = 1
 sdisc_nelmt = 1
 
 # Equilibration (type EV or SemiExplt)
 eqlb_type = "SemiExplt"
-eqlb_fluxorder = 3
+eqlb_fluxorder = 2
 
 # Type of manufactured solution
 extsol_type = 1
@@ -63,7 +63,7 @@ convstudy_nref = 9
 convstudy_reffct = 2
 
 # Timing
-timing_nretry = 1
+timing_nretry = 3
 
 # --- Manufactured solution ---
 # Primal problem (trigonometric): Homogenous boundary conditions
@@ -275,7 +275,7 @@ def projection_primal(eorder, fluxorder, u_prime, rhs_prime, eqlb_type, mult_rhs
 
     if mult_rhs:
         # Projection
-        list_proj = lsolver.local_projector(
+        list_proj = local_projection(
             V_rhs_proj, [-u_prime.dx(0), -u_prime.dx(1), rhs_prime]
         )
 
@@ -287,8 +287,8 @@ def projection_primal(eorder, fluxorder, u_prime, rhs_prime, eqlb_type, mult_rhs
         return sig_proj, list_proj[2]
     else:
         # Projection
-        sig_proj = lsolver.local_projector(V_flux_proj, [-ufl.grad(u_prime)])
-        rhs_proj = lsolver.local_projector(V_rhs_proj, [rhs_prime])
+        sig_proj = local_projection(V_flux_proj, [-ufl.grad(u_prime)])
+        rhs_proj = local_projection(V_rhs_proj, [rhs_prime])
 
         return sig_proj[0], rhs_proj[0]
 
@@ -713,9 +713,9 @@ else:
 
 # Initilaise equlibrator
 if eqlb_type == "EV":
-    Equilibrator = equilibration.EquilibratorEV
+    Equilibrator = FluxEqlbEV
 elif eqlb_type == "SemiExplt":
-    Equilibrator = equilibration.EquilibratorSemiExplt
+    Equilibrator = FluxEqlbSE
 else:
     raise RuntimeError("No such equilibrator option!")
 

@@ -11,7 +11,7 @@ import dolfinx
 import dolfinx.mesh as dmesh
 import dolfinx.fem as dfem
 
-from dolfinx_eqlb import lsolver
+from dolfinx_eqlb.lsolver import local_solver_cholesky
 
 import ufl
 
@@ -20,18 +20,18 @@ import ufl
 sdisc_ctype = ufl.tetrahedron
 
 # Mesh resolution
-sdisc_nelmt = 30
+sdisc_nelmt = 20
 
 # Element type ('Lagrange', 'VectorLagrange', 'RT', 'BDM')
-elmt_type = 'Lagrange'
+elmt_type = "Lagrange"
 elmt_order = 3
 
 # Input projection (const, ufl, func_cg, func_dg, ufl_func_cg)
-rhs_type = 'ufl'
+rhs_type = "ufl"
 rhs_retry = 1
 
 # Solver settings
-solver_type = 'cg'
+solver_type = "cg"
 
 # Timing
 timing_nretry = 3
@@ -40,33 +40,34 @@ timing_nretry = 3
 
 
 def create_fespace_discontinous(family_basix, cell_basix, degree):
-    elmt_basix = basix.create_element(family_basix, cell_basix, degree,
-                                      basix.LagrangeVariant.equispaced, True)
+    elmt_basix = basix.create_element(
+        family_basix, cell_basix, degree, basix.LagrangeVariant.equispaced, True
+    )
     return basix.ufl_wrapper.BasixElement(elmt_basix)
 
 
 def set_rhs(rhs_type, msh, is_vectorial=False):
     # Set function rhs:
     def rhs_x(pkg, x, spacedim):
-        if (spacedim == 1):
+        if spacedim == 1:
             return pkg.sin(x[0])
-        elif (spacedim == 2):
+        elif spacedim == 2:
             return pkg.sin(x[0]) * pkg.sin(x[1])
         else:
             return pkg.sin(x[0]) * pkg.sin(x[1]) * pkg.sin(x[2])
 
     def rhs_y(pkg, x, spacedim):
-        if (spacedim == 1):
+        if spacedim == 1:
             return pkg.cos(x[0])
-        elif (spacedim == 2):
+        elif spacedim == 2:
             return pkg.cos(x[0]) * pkg.cos(x[1])
         else:
             return pkg.cos(x[0]) * pkg.cos(x[1]) * pkg.cos(x[2])
 
     def rhs_z(pkg, x, spacedim):
-        if (spacedim == 1):
+        if spacedim == 1:
             return pkg.cos(x[0])
-        elif (spacedim == 2):
+        elif spacedim == 2:
             return pkg.cos(x[0]) * pkg.sin(x[1])
         else:
             return pkg.cos(x[0]) * pkg.sin(x[1]) * pkg.cos(x[2])
@@ -74,13 +75,18 @@ def set_rhs(rhs_type, msh, is_vectorial=False):
     def rhs_pkg(pkg, x, spacedim, is_vectorial):
         if pkg == ufl:
             if is_vectorial:
-                if (spacedim == 2):
-                    rhs = ufl.as_vector([rhs_x(ufl, x, spacedim),
-                                         rhs_y(ufl, x, spacedim)])
+                if spacedim == 2:
+                    rhs = ufl.as_vector(
+                        [rhs_x(ufl, x, spacedim), rhs_y(ufl, x, spacedim)]
+                    )
                 else:
-                    rhs = ufl.as_vector([rhs_x(ufl, x, spacedim),
-                                         rhs_y(ufl, x, spacedim),
-                                         rhs_z(ufl, x, spacedim)])
+                    rhs = ufl.as_vector(
+                        [
+                            rhs_x(ufl, x, spacedim),
+                            rhs_y(ufl, x, spacedim),
+                            rhs_z(ufl, x, spacedim),
+                        ]
+                    )
                 return rhs
             else:
                 return rhs_x(ufl, x, spacedim)
@@ -96,7 +102,7 @@ def set_rhs(rhs_type, msh, is_vectorial=False):
 
     def rhs_const(msh, spacedim, is_vectorial):
         if is_vectorial:
-            if (spacedim == 2):
+            if spacedim == 2:
                 rhs = dfem.Constant(msh, PETSc.ScalarType((5, 2)))
             else:
                 rhs = dfem.Constant(msh, PETSc.ScalarType((5, 2, 3)))
@@ -104,44 +110,49 @@ def set_rhs(rhs_type, msh, is_vectorial=False):
         else:
             return dfem.Constant(msh, PETSc.ScalarType(5))
 
-    if (rhs_type == 'const'):
+    if rhs_type == "const":
         func = rhs_const(msh, msh.geometry.dim, is_vectorial)
-    elif (rhs_type == 'ufl'):
+    elif rhs_type == "ufl":
         x = ufl.SpatialCoordinate(msh)
         func = rhs_pkg(ufl, x, msh.geometry.dim, is_vectorial)
-    elif (rhs_type == 'func_cg'):
+    elif rhs_type == "func_cg":
         # Lambda function for interpolation
-        def f_intpl(x): return rhs_pkg(np, x, msh.geometry.dim, is_vectorial)
+        def f_intpl(x):
+            return rhs_pkg(np, x, msh.geometry.dim, is_vectorial)
+
         # Create Function
         if is_vectorial:
-            P_rhs = ufl.VectorElement('CG', msh.ufl_cell(), 2)
+            P_rhs = ufl.VectorElement("CG", msh.ufl_cell(), 2)
         else:
-            P_rhs = ufl.FiniteElement('CG', msh.ufl_cell(), 2)
+            P_rhs = ufl.FiniteElement("CG", msh.ufl_cell(), 2)
 
         V_rhs = dfem.FunctionSpace(msh, P_rhs)
         func = dfem.Function(V_rhs)
 
         # Interpolate values
         func.interpolate(f_intpl)
-    elif (rhs_type == 'func_dg'):
+    elif rhs_type == "func_dg":
         # Lambda function for interpolation
-        def f_intpl(x): return rhs_pkg(np, x, msh.geometry.dim, is_vectorial)
+        def f_intpl(x):
+            return rhs_pkg(np, x, msh.geometry.dim, is_vectorial)
+
         # Create Function
         if is_vectorial:
-            P_rhs = ufl.VectorElement('DG', msh.ufl_cell(), 2)
+            P_rhs = ufl.VectorElement("DG", msh.ufl_cell(), 2)
         else:
-            P_rhs = ufl.FiniteElement('DG', msh.ufl_cell(), 2)
+            P_rhs = ufl.FiniteElement("DG", msh.ufl_cell(), 2)
 
         V_rhs = dfem.FunctionSpace(msh, P_rhs)
         func = dfem.Function(V_rhs)
 
         # Interpolate values
         func.interpolate(f_intpl)
-    elif (rhs_type == 'ufl_func_cg'):
+    elif rhs_type == "ufl_func_cg":
         raise NotImplementedError(
-            'Projection of the gardient of a CG-Function not implemented!')
+            "Projection of the gardient of a CG-Function not implemented!"
+        )
     else:
-        raise NotImplementedError('Unknown RHS-Type!')
+        raise NotImplementedError("Unknown RHS-Type!")
 
     return func
 
@@ -161,43 +172,51 @@ def setup_problem(cell, n_elmt, elmt_type, elmt_degree, rhs_type):
         cell_mesh = dmesh.CellType.hexahedron
         cell_basix = basix.CellType.hexahedron
     else:
-        raise NotImplementedError('Unsupported cell-type!')
+        raise NotImplementedError("Unsupported cell-type!")
 
     # Create mesh
-    if (cell.geometric_dimension() == 1):
-        raise NotImplementedError('Projection in 1D not supported!')
-    elif (cell.geometric_dimension() == 2):
-        msh = dmesh.create_unit_square(MPI.COMM_WORLD, n_elmt, n_elmt, cell_mesh,
-                                       dmesh.GhostMode.shared_facet)
+    if cell.geometric_dimension() == 1:
+        raise NotImplementedError("Projection in 1D not supported!")
+    elif cell.geometric_dimension() == 2:
+        msh = dmesh.create_unit_square(
+            MPI.COMM_WORLD, n_elmt, n_elmt, cell_mesh, dmesh.GhostMode.shared_facet
+        )
     else:
-        msh = dmesh.create_unit_cube(MPI.COMM_WORLD, n_elmt, n_elmt, n_elmt, cell_mesh,
-                                     dmesh.GhostMode.shared_facet)
+        msh = dmesh.create_unit_cube(
+            MPI.COMM_WORLD,
+            n_elmt,
+            n_elmt,
+            n_elmt,
+            cell_mesh,
+            dmesh.GhostMode.shared_facet,
+        )
 
     # Create finite element
     is_vectorial = False
 
-    if (elmt_type == 'Lagrange'):
-        if (cell == ufl.triangle or cell == ufl.tetrahedron):
-            elmt = ufl.FiniteElement('DG', msh.ufl_cell(), elmt_degree)
+    if elmt_type == "Lagrange":
+        if cell == ufl.triangle or cell == ufl.tetrahedron:
+            elmt = ufl.FiniteElement("DG", msh.ufl_cell(), elmt_degree)
         else:
-            elmt = ufl.FiniteElement('DQ', msh.ufl_cell(), elmt_degree)
-    elif (elmt_type == 'VectorLagrange'):
+            elmt = ufl.FiniteElement("DQ", msh.ufl_cell(), elmt_degree)
+    elif elmt_type == "VectorLagrange":
         is_vectorial = True
-        if (cell == ufl.triangle or cell == ufl.tetrahedron):
-            elmt = ufl.VectorElement('DG', msh.ufl_cell(), elmt_degree)
+        if cell == ufl.triangle or cell == ufl.tetrahedron:
+            elmt = ufl.VectorElement("DG", msh.ufl_cell(), elmt_degree)
         else:
-            elmt = ufl.VectorElement('DQ', msh.ufl_cell(), elmt_degree)
-    elif elmt_type == 'RT':
+            elmt = ufl.VectorElement("DQ", msh.ufl_cell(), elmt_degree)
+    elif elmt_type == "RT":
         is_vectorial = True
         elmt = create_fespace_discontinous(
-            basix.ElementFamily.RT, cell_basix, elmt_degree)
-    elif elmt_type == 'BDM':
+            basix.ElementFamily.RT, cell_basix, elmt_degree
+        )
+    elif elmt_type == "BDM":
         is_vectorial = True
         elmt = create_fespace_discontinous(
-            basix.ElementFamily.BDM, cell_basix, elmt_degree)
+            basix.ElementFamily.BDM, cell_basix, elmt_degree
+        )
     else:
-        raise NotImplementedError(
-            'Projection into {elmt_type}-space not supported!')
+        raise NotImplementedError("Projection into {elmt_type}-space not supported!")
 
     # Create function space
     V = dfem.FunctionSpace(msh, elmt)
@@ -206,16 +225,17 @@ def setup_problem(cell, n_elmt, elmt_type, elmt_degree, rhs_type):
     u = ufl.TrialFunction(V)
     v = ufl.TestFunction(V)
 
-    a = ufl.inner(u, v)*ufl.dx
+    a = ufl.inner(u, v) * ufl.dx
 
-    if (rhs_type == 'ufl'):
-        dvol = ufl.Measure("dx", domain=msh, metadata={"quadrature_degree":
-                                                       3*elmt_degree})
+    if rhs_type == "ufl":
+        dvol = ufl.Measure(
+            "dx", domain=msh, metadata={"quadrature_degree": 3 * elmt_degree}
+        )
     else:
         dvol = ufl.dx
 
     f_rhs = set_rhs(rhs_type, msh, is_vectorial=is_vectorial)
-    l = ufl.inner(f_rhs, v)*dvol
+    l = ufl.inner(f_rhs, v) * dvol
 
     return V, a, l, f_rhs
 
@@ -266,7 +286,7 @@ def global_projection(V, a, l, rhs_retry=1, solver_type=None):
             solver.setTolerances(rtol=1e-10, atol=1e-10, max_it=1000)
         else:
             raise Exception("Unknown solver type: {}".format(solver_type))
-        
+
     # Solve projection repeatedly
     for ii in range(0, rhs_retry):
         # Recalculate LHS
@@ -291,7 +311,7 @@ def local_projection(V, a, l, rhs_retry=1):
     # Solve projection repeatedly
     for ii in range(0, rhs_retry):
         # Solve equation system
-        lsolver.local_solver_cholesky([u_proj], form_a, [form_l])
+        local_solver_cholesky([u_proj], form_a, [form_l])
 
     return u_proj
 
@@ -304,12 +324,15 @@ time_proj_local = np.zeros(timing_nretry)
 # Time projections
 for n in range(0, timing_nretry):
     # Create mesh
-    V_proj, a, l, lhs = setup_problem(sdisc_ctype, sdisc_nelmt,
-                                      elmt_type, elmt_order, rhs_type)
+    V_proj, a, l, lhs = setup_problem(
+        sdisc_ctype, sdisc_nelmt, elmt_type, elmt_order, rhs_type
+    )
 
     # Global projection
     time_proj_global[n] -= time.perf_counter()
-    u_global = global_projection(V_proj, a, l, rhs_retry=rhs_retry, solver_type=solver_type)
+    u_global = global_projection(
+        V_proj, a, l, rhs_retry=rhs_retry, solver_type=solver_type
+    )
     time_proj_global[n] += time.perf_counter()
 
     time_proj_local[n] -= time.perf_counter()
@@ -317,20 +340,22 @@ for n in range(0, timing_nretry):
     time_proj_local[n] += time.perf_counter()
 
 
-outfile = dolfinx.io.XDMFFile(
-    MPI.COMM_WORLD, "DebugProjection.xdmf", "w")
-u_global.name = 'ProjGlob'
-u_local.name = 'ProjLoc'
+outfile = dolfinx.io.XDMFFile(MPI.COMM_WORLD, "DebugProjection.xdmf", "w")
+u_global.name = "ProjGlob"
+u_local.name = "ProjLoc"
 outfile.write_mesh(V_proj.mesh)
 outfile.write_function(u_global, 1)
 outfile.write_function(u_local, 1)
 outfile.close()
 
 # Output results
-if (np.allclose(u_global.vector.array, u_local.vector.array)):
-    print('Local and global approach have same results!')
+if np.allclose(u_global.vector.array, u_local.vector.array):
+    print("Local and global approach have same results!")
 else:
-    raise ValueError('Projected results does not match!')
+    raise ValueError("Projected results does not match!")
 
-print("Global projection: {}, Local projection: {}".format(
-    min(time_proj_global), min(time_proj_local)))
+print(
+    "Global projection: {}, Local projection: {}".format(
+        min(time_proj_global), min(time_proj_local)
+    )
+)

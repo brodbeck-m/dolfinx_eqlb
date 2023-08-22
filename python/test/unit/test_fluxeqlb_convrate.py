@@ -6,7 +6,7 @@ import dolfinx.mesh as dmesh
 import dolfinx.fem as dfem
 import ufl
 
-from dolfinx_eqlb.equilibration import EquilibratorEV, EquilibratorSemiExplt
+from dolfinx_eqlb.eqlb import FluxEqlbEV, FluxEqlbSE
 
 from utils import create_unitsquare_builtin, flux_error, error_hdiv0
 from testcase_poisson import (
@@ -22,7 +22,7 @@ from testcase_poisson import (
 
 @pytest.mark.parametrize("degree", [1, 2, 3, 4])
 @pytest.mark.parametrize("bc_type", ["pure_dirichlet"])
-@pytest.mark.parametrize("equilibrator", [EquilibratorEV, EquilibratorSemiExplt])
+@pytest.mark.parametrize("equilibrator", [FluxEqlbEV, FluxEqlbSE])
 def test_convrate(degree, bc_type, equilibrator):
     # Initialise exact solution
     uext_ufl = exact_solution_poisson(ufl)
@@ -106,7 +106,7 @@ def test_convrate(degree, bc_type, equilibrator):
         data_convstudy[i, 0] = 1 / n_elmt
 
         # Calculate error
-        if equilibrator == EquilibratorSemiExplt:
+        if equilibrator == FluxEqlbSE:
             data_convstudy[i, 1] = flux_error(
                 sigma_eq + sigma_projected, sigma_ext_ufl, error_hdiv0, uex_is_ufl=True
             )

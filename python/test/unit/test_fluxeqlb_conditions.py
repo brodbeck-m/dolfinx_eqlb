@@ -6,8 +6,8 @@ import dolfinx.mesh as dmesh
 import dolfinx.fem as dfem
 import ufl
 
-from dolfinx_eqlb.equilibration import EquilibratorEV, EquilibratorSemiExplt
-from dolfinx_eqlb.lsolver import local_projector
+from dolfinx_eqlb.eqlb import FluxEqlbEV, FluxEqlbSE
+from dolfinx_eqlb.lsolver import local_projection
 
 from utils import create_unitsquare_builtin, create_unitsquare_gmsh
 from testcase_poisson import (
@@ -43,9 +43,9 @@ def check_divergence_condition(
     V_div = dfem.FunctionSpace(mesh, ("DG", degree - 1))
 
     if flux_is_dg:
-        div_sigeq = local_projector(V_div, [ufl.div(sigma_eq + sigma_proj)])[0]
+        div_sigeq = local_projection(V_div, [ufl.div(sigma_eq + sigma_proj)])[0]
     else:
-        div_sigeq = local_projector(V_div, [ufl.div(sigma_eq)])[0]
+        div_sigeq = local_projection(V_div, [ufl.div(sigma_eq)])[0]
 
     # points for checking divergence condition
     n_points = int(0.5 * (degree + 3) * (degree + 4))
@@ -178,7 +178,7 @@ Check if equilibrated flux
 @pytest.mark.parametrize("mesh_type", ["builtin"])
 @pytest.mark.parametrize("degree", [1, 2, 3, 4])
 @pytest.mark.parametrize("bc_type", ["pure_dirichlet"])
-@pytest.mark.parametrize("equilibrator", [EquilibratorEV, EquilibratorSemiExplt])
+@pytest.mark.parametrize("equilibrator", [FluxEqlbEV, FluxEqlbSE])
 def test_equilibration_conditions(mesh_type, degree, bc_type, equilibrator):
     # Create mesh
     if mesh_type == "builtin":
@@ -239,7 +239,7 @@ def test_equilibration_conditions(mesh_type, degree, bc_type, equilibrator):
             check_divergence_condition(sigma_eq, sigma_projected, rhs_projected)
 
             # --- Check jump condition (only required for semi-explicit equilibrator)
-            if equilibrator == EquilibratorSemiExplt:
+            if equilibrator == FluxEqlbSE:
                 check_jump_condition(sigma_eq, sigma_projected)
 
 

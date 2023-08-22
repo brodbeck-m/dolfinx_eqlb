@@ -10,7 +10,7 @@ import dolfinx.mesh as dmesh
 
 import ufl
 
-from dolfinx_eqlb import equilibration, lsolver
+from dolfinx_eqlb.lsolver import local_projection
 
 from python.test.unit.utils import Geometry
 
@@ -140,7 +140,7 @@ def set_manufactured_rhs(
     rhs_ufl = -ufl.div(ufl.grad(u_ext_ufl(x_crds)))
 
     # Project RHS to appropriate DG space
-    rhs_projected = lsolver.local_projector(V_rhs, [rhs_ufl])[0]
+    rhs_projected = local_projection(V_rhs, [rhs_ufl])[0]
 
     return rhs_ufl, rhs_projected
 
@@ -281,13 +281,13 @@ def solve_poisson_problem(
         degree_projection = V_prime.element.basix_element.degree - 1
 
     V_flux = dfem.VectorFunctionSpace(geometry.mesh, ("DG", degree_projection))
-    sig_proj = lsolver.local_projector(V_flux, [-ufl.grad(u_prime)])[0]
+    sig_proj = local_projection(V_flux, [-ufl.grad(u_prime)])[0]
 
     return u_prime, sig_proj
 
 
 def equilibrate_poisson(
-    Equilibrator: equilibration.FluxEquilibrator,
+    Equilibrator: Any,
     degree_flux: int,
     geometry: Geometry,
     sig_proj: List[dfem.Function],
