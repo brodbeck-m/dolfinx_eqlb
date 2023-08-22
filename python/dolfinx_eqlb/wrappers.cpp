@@ -7,6 +7,7 @@
 #include <pybind11/pytypes.h>
 #include <pybind11/stl.h>
 
+#include <dolfinx_eqlb/FluxBC.hpp>
 #include <dolfinx_eqlb/local_solver.hpp>
 #include <dolfinx_eqlb/reconstruction.hpp>
 
@@ -14,43 +15,42 @@
 #define MACRO_STRINGIFY(x) STRINGIFY(x)
 
 namespace py = pybind11;
+using namespace dolfinx_adaptivity;
 
-PYBIND11_MODULE(cpp, m)
+template <typename T>
+void declare_lsolver(py::module& m)
 {
-  using namespace dolfinx_adaptivity;
-
-  // Create module for C++ wrappers
-  m.doc() = "DOLFINx_eqlb Python interface";
-
-  // Local solver
   m.def(
       "local_solver_lu",
-      [](std::vector<std::shared_ptr<dolfinx::fem::Function<double>>>& sol_elmt,
-         const dolfinx::fem::Form<double>& a,
-         const std::vector<std::shared_ptr<const dolfinx::fem::Form<double>>>&
-             l) { local_solver_lu<double>(sol_elmt, a, l); },
+      [](std::vector<std::shared_ptr<dolfinx::fem::Function<T>>>& sol_elmt,
+         const dolfinx::fem::Form<T>& a,
+         const std::vector<std::shared_ptr<const dolfinx::fem::Form<T>>>& l)
+      { local_solver_lu<T>(sol_elmt, a, l); },
       py::arg("solution"), py::arg("a"), py::arg("l"),
       "Local solver based on the LU decomposition");
 
   m.def(
       "local_solver_cholesky",
-      [](std::vector<std::shared_ptr<dolfinx::fem::Function<double>>>& sol_elmt,
-         const dolfinx::fem::Form<double>& a,
-         const std::vector<std::shared_ptr<const dolfinx::fem::Form<double>>>&
-             l) { local_solver_cholesky<double>(sol_elmt, a, l); },
+      [](std::vector<std::shared_ptr<dolfinx::fem::Function<T>>>& sol_elmt,
+         const dolfinx::fem::Form<T>& a,
+         const std::vector<std::shared_ptr<const dolfinx::fem::Form<T>>>& l)
+      { local_solver_cholesky<T>(sol_elmt, a, l); },
       py::arg("solution"), py::arg("a"), py::arg("l"),
       "Local solver based on the Cholesky decomposition");
 
   m.def(
       "local_solver_cg",
-      [](std::vector<std::shared_ptr<dolfinx::fem::Function<double>>>& sol_elmt,
-         const dolfinx::fem::Form<double>& a,
-         const std::vector<std::shared_ptr<const dolfinx::fem::Form<double>>>&
-             l) { local_solver_cg<double>(sol_elmt, a, l); },
+      [](std::vector<std::shared_ptr<dolfinx::fem::Function<T>>>& sol_elmt,
+         const dolfinx::fem::Form<T>& a,
+         const std::vector<std::shared_ptr<const dolfinx::fem::Form<T>>>& l)
+      { local_solver_cg<T>(sol_elmt, a, l); },
       py::arg("solution"), py::arg("a"), py::arg("l"),
       "Local solver based on a Conjugated-Gradient solver");
+}
 
-  // Equilibartion of vector-valued quantity
+template <typename T>
+void declare_fluxeqlb(py::module& m)
+{
   m.def(
       "reconstruct_fluxes_minimisation",
       [](const dolfinx::fem::Form<double>& a,
@@ -95,4 +95,30 @@ PYBIND11_MODULE(cpp, m)
       "Local equilibration of H(div) conforming fluxes, using an explicit "
       "determination of the flues alongside with an unconstrained ministration "
       "problem on a reduced space.");
+}
+
+template <typename T>
+void declare_bcs(py::module& m)
+{
+  py::class_<equilibration::FluxBC<T>,
+             std::shared_ptr<equilibration::FluxBC<T>>>(m, "FluxBC",
+                                                        "FluxBC object")
+      .def(py::init<const std::vector<std::int32_t>&, double, int, int, bool>(),
+           py::arg("facets"), py::arg("value"), py::arg("nevals_per_fct"),
+           py::arg("ndofs_per_fct"), py::arg("projection_required"));
+}
+
+PYBIND11_MODULE(cpp, m)
+{
+  // Create module for C++ wrappers
+  m.doc() = "DOLFINx_eqlb Python interface";
+
+  // Local solver
+  declare_lsolver<double>(m);
+
+  // Boundary condition for fluxes
+  declare_bcs<double>(m);
+
+  // Equilibration of vector-valued quantity
+  declare_fluxeqlb<double>(m);
 }

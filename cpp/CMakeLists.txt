@@ -54,6 +54,7 @@ include(GNUInstallDirs)
 
 set(
   HEADERS_EQLB
+  FluxBC.hpp
   KernelData.hpp
   Patch.hpp
   PatchFluxEV.hpp
