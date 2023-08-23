@@ -74,7 +74,8 @@ public:
       const fem::Form<T>& l_i = *(l[i]);
 
       // Get sizes (constants, boundary conditions)
-      std::int32_t size_cnst_i = size_constants(l_i);
+      std::int32_t size_cnst_i
+          = dolfinx_adaptivity::size_constants_data<T>(l_i.constants());
 
       if (!id_no_bcs)
       {
@@ -222,7 +223,8 @@ public:
       _l[i] = l[i];
 
       // Get sizes (constants, boundary conditions)
-      std::int32_t size_cnst_i = size_constants(l_i);
+      std::int32_t size_cnst_i
+          = dolfinx_adaptivity::size_constants_data<T>(l_i.constants());
 
       // Increment overall size
       size_cnst += size_cnst_i;
@@ -345,15 +347,6 @@ public:
 
 protected:
   /* Handle constants */
-  std::int32_t size_constants(const fem::Form<T>& l_i)
-  {
-    // Extract constants
-    const std::vector<std::shared_ptr<const fem::Constant<T>>>& constants_i
-        = l_i.constants();
-
-    return dolfinx_adaptivity::size_coefficient_data<T>(constants_i);
-  }
-
   void set_data_constants()
   {
     for (std::size_t i = 0; i < _nlhs; ++i)
@@ -362,8 +355,8 @@ protected:
       const fem::Form<T>& l_i = *(_l[i]);
 
       // Extract data
-      dolfinx_adaptivity::extract_coefficient_data<T>(l_i.constants(),
-                                                      constants(i));
+      dolfinx_adaptivity::extract_constants_data<T>(l_i.constants(),
+                                                    constants(i));
     }
   }
 

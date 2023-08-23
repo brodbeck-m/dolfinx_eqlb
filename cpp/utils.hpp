@@ -50,7 +50,7 @@ using smdspan_t
 /// @param constants Vector with fem::Constant objects
 /// @return Size of flattened storage vector
 template <typename T>
-std::int32_t size_coefficient_data(
+std::int32_t size_constants_data(
     const std::vector<std::shared_ptr<const fem::Constant<T>>>& constants)
 {
   std::int32_t size = std::accumulate(constants.cbegin(), constants.cend(), 0,
@@ -64,7 +64,7 @@ std::int32_t size_coefficient_data(
 /// @param constants      Vector with fem::Constant objects
 /// @param data_constants Flattened storage for coefficients
 template <typename T>
-void extract_coefficient_data(
+void extract_constants_data(
     const std::vector<std::shared_ptr<const fem::Constant<T>>>& constants,
     std::span<T> data_constants)
 {
