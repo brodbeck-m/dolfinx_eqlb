@@ -1,13 +1,16 @@
 #pragma once
 
-#include <algorithm>
-#include <cmath>
+#include "utils.hpp"
+
 #include <dolfinx/common/IndexMap.h>
 #include <dolfinx/fem/Constant.h>
 #include <dolfinx/fem/DirichletBC.h>
 #include <dolfinx/fem/DofMap.h>
 #include <dolfinx/fem/Form.h>
 #include <dolfinx/fem/utils.h>
+
+#include <algorithm>
+#include <cmath>
 #include <iostream>
 #include <memory>
 #include <numeric>
@@ -348,36 +351,19 @@ protected:
     const std::vector<std::shared_ptr<const fem::Constant<T>>>& constants_i
         = l_i.constants();
 
-    // Get overall size
-    std::int32_t size
-        = std::accumulate(constants_i.cbegin(), constants_i.cend(), 0,
-                          [](std::int32_t sum, auto& constant)
-                          { return sum + constant->value.size(); });
-
-    return size;
+    return dolfinx_adaptivity::size_coefficient_data<T>(constants_i);
   }
 
   void set_data_constants()
   {
     for (std::size_t i = 0; i < _nlhs; ++i)
     {
-      // Extract data for l_i
+      // The linear form l_i
       const fem::Form<T>& l_i = *(_l[i]);
 
-      const std::vector<std::shared_ptr<const fem::Constant<T>>>& constants_i
-          = l_i.constants();
-
-      std::span<T> data_cnst = constants(i);
-
       // Extract data
-      std::int32_t offset = 0;
-      for (auto& constant : constants_i)
-      {
-        const std::vector<T>& value = constant->value;
-        std::copy(value.begin(), value.end(),
-                  std::next(data_cnst.begin(), offset));
-        offset += value.size();
-      }
+      dolfinx_adaptivity::extract_coefficient_data<T>(l_i.constants(),
+                                                      constants(i));
     }
   }
 
