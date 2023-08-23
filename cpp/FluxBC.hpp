@@ -33,21 +33,6 @@ public:
         _cstide_eval(n_bceval_per_fct),
         _projection_required(projection_required)
   {
-    // Set number of projected DOFs
-    if (_function_space->mesh()->geometry().dim() == 2)
-    {
-      _cstride_proj = _function_space->element()->basix_element().degree();
-    }
-    else if (_function_space->mesh()->geometry().dim() == 3)
-    {
-      const int degree = _function_space->element()->basix_element().degree();
-      _cstride_proj = 0.5 * (degree + 1) * (degree + 2);
-    }
-    else
-    {
-      throw std::runtime_error("Unsupported dimension");
-    }
-
     /* Initialise constants */
     if (constants.size() > 0)
     {
@@ -76,6 +61,31 @@ public:
 
       // Extract coefficients
       extract_coefficients_data(coefficients);
+    }
+
+    /* Initialise storage of projection */
+    if (_projection_required)
+    {
+      // Number of projected DOFs per facet
+      if (_function_space->mesh()->geometry().dim() == 2)
+      {
+        _cstride_proj = _function_space->element()->basix_element().degree();
+      }
+      else if (_function_space->mesh()->geometry().dim() == 3)
+      {
+        const int degree = _function_space->element()->basix_element().degree();
+        _cstride_proj = 0.5 * (degree + 1) * (degree + 2);
+      }
+      else
+      {
+        throw std::runtime_error("Unsupported dimension");
+      }
+
+      // Resize storage vector
+      _coefficients.resize(_nfcts * _cstride_proj, 0);
+
+      // Initialise marker vector (projection already performed)
+      _bfct_is_projected.resize(_nfcts, false);
     }
   }
 
@@ -170,11 +180,13 @@ protected:
   // Number of data-points per facet
   const int _cstide_eval;
 
-  // Number of DOFs (projected RB) per facet
-  int _cstride_proj;
-
   // Projection id (true, if projection is required)
   const bool _projection_required;
+
+  // Storage of projected BC
+  std::vector<T> _projected_bc;
+  std::vector<bool> _bfct_is_projected;
+  int _cstride_proj;
 };
 
 } // namespace dolfinx_adaptivity::equilibration
