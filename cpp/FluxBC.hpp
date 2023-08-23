@@ -2,8 +2,16 @@
 
 #include "utils.hpp"
 
+#include <dolfinx/fem/Constant.h>
+#include <dolfinx/fem/Function.h>
+#include <dolfinx/fem/FunctionSpace.h>
+#include <dolfinx/graph/AdjacencyList.h>
+
+#include <algorithm>
 #include <array>
 #include <iostream>
+#include <memory>
+#include <numeric>
 #include <span>
 #include <vector>
 
@@ -15,48 +23,155 @@ template <typename T>
 class FluxBC
 {
 public:
-  FluxBC(const std::vector<std::int32_t>& boundary_facets,
-         double boundary_value, int n_bceval_per_fct, int ndof_per_fct,
-         bool projection_required)
-      : _facets(boundary_facets), _boundary_kernel(boundary_value),
-        _cstide_eval_bvalues(n_bceval_per_fct),
-        _cstride_proj_bvalues(ndof_per_fct),
+  FluxBC(std::shared_ptr<const fem::FunctionSpace> function_space,
+         const std::vector<std::int32_t>& boundary_facets,
+         double boundary_value, int n_bceval_per_fct, bool projection_required,
+         std::vector<std::shared_ptr<const fem::Function<T>>> coefficients,
+         std::vector<std::shared_ptr<const fem::Constant<T>>> constants)
+      : _function_space(function_space), _fcts(boundary_facets),
+        _nfcts(boundary_facets.size()), _boundary_kernel(boundary_value),
+        _cstide_eval(n_bceval_per_fct),
         _projection_required(projection_required)
   {
-    std::cout << "Test class binding: " << std::endl;
-    std::cout << "Boundary facets 0, 1, 2: " << _facets[0] << ", " << _facets[1]
-              << ", " << _facets[2] << std::endl;
-    std::cout << "Evaluations on boundary: " << _cstide_eval_bvalues
-              << std::endl;
-    std::cout << "DOFs per facet: " << _cstride_proj_bvalues << std::endl;
+    // Set number of projected DOFs
+    if (_function_space->mesh()->geometry().dim() == 2)
+    {
+      _cstride_proj = _function_space->element()->basix_element().degree();
+    }
+    else if (_function_space->mesh()->geometry().dim() == 3)
+    {
+      const int degree = _function_space->element()->basix_element().degree();
+      _cstride_proj = 0.5 * (degree + 1) * (degree + 2);
+    }
+    else
+    {
+      throw std::runtime_error("Unsupported dimension");
+    }
 
-    // Extract constants
-    // TODO: Add extraction of constants
+    /* Initialise constants */
+    if (constants.size() > 0)
+    {
+      // Number of constants
+      std::int32_t size_constants
+          = dolfinx_adaptivity::size_constants_data<T>(constants);
 
-    // Extract coefficients
-    // TODO: Add extraction of coefficients
+      // Resize storage vector
+      _constants.resize(size_constants, 0);
+
+      // Extract constants
+      dolfinx_adaptivity::extract_constants_data<T>(constants, _constants);
+    }
+
+    /* Initialise coefficients */
+    if (coefficients.size() > 0)
+    {
+      // Number of coefficients per element
+      _cstride_coefficients = std::accumulate(
+          coefficients.cbegin(), coefficients.cend(), 0,
+          [](int sum, auto& f)
+          { return sum + f->function_space()->element()->space_dimension(); });
+
+      // Resize storage vector
+      _coefficients.resize(_nfcts * _cstride_coefficients, 0);
+
+      // Extract coefficients
+      extract_coefficients_data(coefficients);
+    }
   }
 
 protected:
+  /// Compute size of coefficient for each boundary cell
+  ///
+  /// Extract coefficients for each boundary cell and store values in flattened
+  /// array. Array structure relative to counter on boundary cells for this
+  /// boundary.
+  ///
+  /// @param coefficients Vector with fem::Function objects
+  void extract_coefficients_data(
+      std::vector<std::shared_ptr<const fem::Function<T>>> coefficients)
+  {
+    // Extract connectivity facets->cell
+    int dim = _function_space->mesh()->geometry().dim();
+    std::shared_ptr<const graph::AdjacencyList<std::int32_t>> fct_to_cell
+        = _function_space->mesh()->topology().connectivity(dim - 1, dim);
+
+    // Extract coefficients
+    std::int32_t offs_cstride = 0;
+
+    for (std::shared_ptr<const fem::Function<T>> function : coefficients)
+    {
+      // Data storage
+      std::span<const T> x_coeff = function->x()->array();
+
+      // Function space
+      std::shared_ptr<const fem::FunctionSpace> function_space
+          = function->function_space();
+
+      // cstride of current coefficients
+      const int bs = function_space->element()->block_size();
+      const int space_dimension = function_space->element()->space_dimension();
+      const int map_dimension = space_dimension / bs;
+
+      for (std::size_t i = 0; i < _nfcts; ++i)
+      {
+        // Global facet id
+        std::int32_t fct = _fcts[i];
+
+        // Get cell, adjacent to facet
+        std::int32_t c = fct_to_cell->links(fct)[0];
+
+        // DOFmap of cell
+        std::span<const int32_t> dofs
+            = function_space->dofmap()->list().links(c);
+
+        // Flattened storage
+        std::int32_t offs_coef = i * _cstride_coefficients + offs_cstride;
+        std::span<T> data
+            = std::span<T>(_coefficients.data() + offs_coef, space_dimension);
+
+        // Extract coefficient data
+        for (std::size_t j = 0; j < map_dimension; ++j)
+        {
+          // DOF id
+          std::int32_t offs_dof = bs * dofs[j];
+          std::int32_t offs = offs_coef + j * bs;
+
+          // Copy DOF
+          for (std::size_t k = 0; k < bs; ++k)
+          {
+            _coefficients[offs + k] = x_coeff[offs_dof + k];
+          }
+        }
+      }
+
+      // Update cstride
+      offs_cstride += space_dimension;
+    }
+  }
+
   /* Variable definitions */
+  // The flux function space
+  std::shared_ptr<const fem::FunctionSpace> _function_space;
+
   // Boundary facets
-  const std::vector<std::int32_t> _facets;
+  const int _nfcts;
+  const std::vector<std::int32_t> _fcts;
 
   // Kernel (executable c++ code)
   const double _boundary_kernel;
 
   // Coefficients associated with the BCs
   std::vector<T> _coefficients;
-  std::int32_t _cstride_coefficients;
+  int _cstride_coefficients;
 
   // Constants associated with the BCs
   std::vector<T> _constants;
 
   // Number of data-points per facet
-  const std::int32_t _cstide_eval_bvalues;
+  const int _cstide_eval;
 
   // Number of DOFs (projected RB) per facet
-  const std::int32_t _cstride_proj_bvalues;
+  int _cstride_proj;
 
   // Projection id (true, if projection is required)
   const bool _projection_required;

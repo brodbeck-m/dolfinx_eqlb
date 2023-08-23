@@ -103,9 +103,13 @@ void declare_bcs(py::module& m)
   py::class_<equilibration::FluxBC<T>,
              std::shared_ptr<equilibration::FluxBC<T>>>(m, "FluxBC",
                                                         "FluxBC object")
-      .def(py::init<const std::vector<std::int32_t>&, double, int, int, bool>(),
-           py::arg("facets"), py::arg("value"), py::arg("nevals_per_fct"),
-           py::arg("ndofs_per_fct"), py::arg("projection_required"));
+      .def(py::init<std::shared_ptr<const fem::FunctionSpace>,
+                    const std::vector<std::int32_t>&, double, int, bool,
+                    std::vector<std::shared_ptr<const fem::Function<T>>>,
+                    std::vector<std::shared_ptr<const fem::Constant<T>>>>(),
+           py::arg("function_space"), py::arg("facets"), py::arg("value"),
+           py::arg("nevals_per_fct"), py::arg("projection_required"),
+           py::arg("coefficients"), py::arg("constants"));
 }
 
 PYBIND11_MODULE(cpp, m)
