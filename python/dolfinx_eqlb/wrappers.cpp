@@ -134,6 +134,7 @@ void declare_bcs(py::module& m)
                  bool projection_required,
                  std::vector<std::shared_ptr<const fem::Function<T>>>
                      coefficients,
+                 std::vector<int> positions_of_coefficients,
                  std::vector<std::shared_ptr<const fem::Constant<T>>> constants)
               {
                 using scalar_value_type_t =
@@ -143,15 +144,12 @@ void declare_bcs(py::module& m)
                     T*, const T*, const T*, const scalar_value_type_t*,
                     const int*, const std::uint8_t*)>;
 
-                // Cast ufcx function
+                // Cast kernel_ptr to ufcx_expression
                 ufcx_expression* expression
                     = reinterpret_cast<ufcx_expression*>(kernel_ptr);
 
-                std::cout << "Step 1" << std::endl;
-
                 // Extract executable kernel
                 kern tabulate_tensor_ptr = nullptr;
-                std::cout << "Step 2" << std::endl;
                 if constexpr (std::is_same_v<T, double>)
                 {
                   tabulate_tensor_ptr = expression->tabulate_tensor_float64;
@@ -161,18 +159,16 @@ void declare_bcs(py::module& m)
                   throw std::runtime_error("Unsupported data type");
                 }
 
-                std::cout << "Step 3" << std::endl;
-
                 // Return class
                 return equilibration::FluxBC<T>(
                     function_space, boundary_facets, tabulate_tensor_ptr,
                     n_bceval_per_fct, projection_required, coefficients,
-                    constants);
+                    positions_of_coefficients, constants);
               }),
           py::arg("function_space"), py::arg("facets"),
           py::arg("pointer_boundary_kernel"), py::arg("nevals_per_fct"),
           py::arg("projection_required"), py::arg("coefficients"),
-          py::arg("constants"));
+          py::arg("position_of_coefficients"), py::arg("constants"));
 }
 
 PYBIND11_MODULE(cpp, m)

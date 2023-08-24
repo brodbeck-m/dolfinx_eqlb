@@ -44,11 +44,13 @@ public:
              boundary_value,
          int n_bceval_per_fct, bool projection_required,
          std::vector<std::shared_ptr<const fem::Function<T>>> coefficients,
+         std::vector<int> positions_of_coefficients,
          std::vector<std::shared_ptr<const fem::Constant<T>>> constants)
       : _function_space(function_space), _fcts(boundary_facets),
         _nfcts(boundary_facets.size()), _boundary_kernel(boundary_value),
         _cstide_eval(n_bceval_per_fct),
-        _projection_required(projection_required)
+        _projection_required(projection_required),
+        _c_positions(positions_of_coefficients)
   {
     /* Initialise constants */
     if (constants.size() > 0)
@@ -100,21 +102,7 @@ public:
 
       // Resize storage vector
       _coefficients.resize(_nfcts * _cstride_proj, 0);
-
-      // Initialise marker vector (projection already performed)
-      _bfct_is_projected.resize(_nfcts, false);
     }
-
-    // Debug function
-    std::vector<double> crds{0.0, 0.2, 0.0, 0.0, 0.3, 0.0, 0.05, 0.25, 0.0};
-    std::vector<T> result;
-    result.resize(3, 0);
-
-    _boundary_kernel(result.data(), nullptr, nullptr, crds.data(), nullptr,
-                     nullptr);
-
-    std::cout << "Result: " << result[0] << " " << result[1] << " " << result[2]
-              << std::endl;
   }
 
 protected:
@@ -136,8 +124,11 @@ protected:
     // Extract coefficients
     std::int32_t offs_cstride = 0;
 
-    for (std::shared_ptr<const fem::Function<T>> function : coefficients)
+    for (int i : _c_positions)
     {
+      // Extract function
+      std::shared_ptr<const fem::Function<T>> function = coefficients[i];
+
       // Data storage
       std::span<const T> x_coeff = function->x()->array();
 
@@ -204,6 +195,8 @@ protected:
   std::vector<T> _coefficients;
   int _cstride_coefficients;
 
+  const std::vector<int> _c_positions;
+
   // Constants associated with the BCs
   std::vector<T> _constants;
 
@@ -215,7 +208,6 @@ protected:
 
   // Storage of projected BC
   std::vector<T> _projected_bc;
-  std::vector<bool> _bfct_is_projected;
   int _cstride_proj;
 };
 
