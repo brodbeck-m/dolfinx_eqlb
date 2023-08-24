@@ -10,12 +10,35 @@
 #include <dolfinx_eqlb/FluxBC.hpp>
 #include <dolfinx_eqlb/local_solver.hpp>
 #include <dolfinx_eqlb/reconstruction.hpp>
+#include <ufcx.h>
+
+#include <cstdint>
+#include <functional>
+#include <memory>
+#include <stdexcept>
+#include <type_traits>
+#include <vector>
 
 #define STRINGIFY(x) #x
 #define MACRO_STRINGIFY(x) STRINGIFY(x)
 
 namespace py = pybind11;
+
+namespace
+{
+
 using namespace dolfinx_adaptivity;
+
+template <typename X, typename = void>
+struct scalar_value_type
+{
+  typedef X value_type;
+};
+template <typename X>
+struct scalar_value_type<X, std::void_t<typename X::value_type>>
+{
+  typedef typename X::value_type value_type;
+};
 
 template <typename T>
 void declare_lsolver(py::module& m)
@@ -103,13 +126,53 @@ void declare_bcs(py::module& m)
   py::class_<equilibration::FluxBC<T>,
              std::shared_ptr<equilibration::FluxBC<T>>>(m, "FluxBC",
                                                         "FluxBC object")
-      .def(py::init<std::shared_ptr<const fem::FunctionSpace>,
-                    const std::vector<std::int32_t>&, double, int, bool,
-                    std::vector<std::shared_ptr<const fem::Function<T>>>,
-                    std::vector<std::shared_ptr<const fem::Constant<T>>>>(),
-           py::arg("function_space"), py::arg("facets"), py::arg("value"),
-           py::arg("nevals_per_fct"), py::arg("projection_required"),
-           py::arg("coefficients"), py::arg("constants"));
+      .def(
+          py::init(
+              [](std::shared_ptr<const fem::FunctionSpace> function_space,
+                 const std::vector<std::int32_t>& boundary_facets,
+                 std::uintptr_t kernel_ptr, int n_bceval_per_fct,
+                 bool projection_required,
+                 std::vector<std::shared_ptr<const fem::Function<T>>>
+                     coefficients,
+                 std::vector<std::shared_ptr<const fem::Constant<T>>> constants)
+              {
+                using scalar_value_type_t =
+                    typename scalar_value_type<T>::value_type;
+
+                using kern = std::function<void(
+                    T*, const T*, const T*, const scalar_value_type_t*,
+                    const int*, const std::uint8_t*)>;
+
+                // Cast ufcx function
+                ufcx_expression* expression
+                    = reinterpret_cast<ufcx_expression*>(kernel_ptr);
+
+                std::cout << "Step 1" << std::endl;
+
+                // Extract executable kernel
+                kern tabulate_tensor_ptr = nullptr;
+                std::cout << "Step 2" << std::endl;
+                if constexpr (std::is_same_v<T, double>)
+                {
+                  tabulate_tensor_ptr = expression->tabulate_tensor_float64;
+                }
+                else
+                {
+                  throw std::runtime_error("Unsupported data type");
+                }
+
+                std::cout << "Step 3" << std::endl;
+
+                // Return class
+                return equilibration::FluxBC<T>(
+                    function_space, boundary_facets, tabulate_tensor_ptr,
+                    n_bceval_per_fct, projection_required, coefficients,
+                    constants);
+              }),
+          py::arg("function_space"), py::arg("facets"),
+          py::arg("pointer_boundary_kernel"), py::arg("nevals_per_fct"),
+          py::arg("projection_required"), py::arg("coefficients"),
+          py::arg("constants"));
 }
 
 PYBIND11_MODULE(cpp, m)
@@ -126,3 +189,4 @@ PYBIND11_MODULE(cpp, m)
   // Equilibration of vector-valued quantity
   declare_fluxeqlb<double>(m);
 }
+} // namespace

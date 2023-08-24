@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <array>
+#include <functional>
 #include <iostream>
 #include <memory>
 #include <numeric>
@@ -22,10 +23,26 @@ namespace dolfinx_adaptivity::equilibration
 template <typename T>
 class FluxBC
 {
+
+  template <typename X, typename = void>
+  struct scalar_value_type
+  {
+    typedef X value_type;
+  };
+  template <typename X>
+  struct scalar_value_type<X, std::void_t<typename X::value_type>>
+  {
+    typedef typename X::value_type value_type;
+  };
+  using scalar_value_type_t = typename scalar_value_type<T>::value_type;
+
 public:
   FluxBC(std::shared_ptr<const fem::FunctionSpace> function_space,
          const std::vector<std::int32_t>& boundary_facets,
-         double boundary_value, int n_bceval_per_fct, bool projection_required,
+         std::function<void(T*, const T*, const T*, const scalar_value_type_t*,
+                            const int*, const std::uint8_t*)>
+             boundary_value,
+         int n_bceval_per_fct, bool projection_required,
          std::vector<std::shared_ptr<const fem::Function<T>>> coefficients,
          std::vector<std::shared_ptr<const fem::Constant<T>>> constants)
       : _function_space(function_space), _fcts(boundary_facets),
@@ -87,6 +104,17 @@ public:
       // Initialise marker vector (projection already performed)
       _bfct_is_projected.resize(_nfcts, false);
     }
+
+    // Debug function
+    std::vector<double> crds{0.0, 0.2, 0.0, 0.0, 0.3, 0.0, 0.05, 0.25, 0.0};
+    std::vector<T> result;
+    result.resize(3, 0);
+
+    _boundary_kernel(result.data(), nullptr, nullptr, crds.data(), nullptr,
+                     nullptr);
+
+    std::cout << "Result: " << result[0] << " " << result[1] << " " << result[2]
+              << std::endl;
   }
 
 protected:
@@ -168,7 +196,9 @@ protected:
   const std::vector<std::int32_t> _fcts;
 
   // Kernel (executable c++ code)
-  const double _boundary_kernel;
+  std::function<void(T*, const T*, const T*, const scalar_value_type_t*,
+                     const int*, const std::uint8_t*)>
+      _boundary_kernel;
 
   // Coefficients associated with the BCs
   std::vector<T> _coefficients;
