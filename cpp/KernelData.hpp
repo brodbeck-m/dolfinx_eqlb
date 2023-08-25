@@ -26,6 +26,90 @@ using namespace dolfinx;
 namespace dolfinx_adaptivity::equilibration
 {
 template <typename T>
+class KernelData
+{
+public:
+  KernelData(
+      std::shared_ptr<const mesh::Mesh> mesh,
+      std::vector<std::shared_ptr<const QuadratureRule>> quadrature_rule);
+
+  /// Compute isogeometric mapping for a given cell
+  /// @param[in,out] J            The Jacobian
+  /// @param[in,out] K            The inverse Jacobian
+  /// @param[in,out] detJ_scratch Storage for determinant calculation
+  /// @param[in] coords           The cell coordinates
+  /// @return                     The determinant of the Jacobian
+  double compute_jacobian(dolfinx_adaptivity::mdspan_t<double, 2> J,
+                          dolfinx_adaptivity::mdspan_t<double, 2> K,
+                          std::span<double> detJ_scratch,
+                          dolfinx_adaptivity::mdspan_t<const double, 2> coords);
+
+  /* Basic transformations */
+  /// Compute isogeometric mapping for a given cell
+  /// @param[in,out] J            The Jacobian
+  /// @param[in,out] detJ_scratch Storage for determinant calculation
+  /// @param[in] coords           The cell coordinates
+  /// @return                     The determinant of the Jacobian
+  double compute_jacobian(dolfinx_adaptivity::mdspan_t<double, 2> J,
+                          std::span<double> detJ_scratch,
+                          dolfinx_adaptivity::mdspan_t<const double, 2> coords);
+
+  /// Calculate physical normal of facet
+  /// @param[in,out] normal_phys The physical normal
+  /// @param[in] K               The inverse Jacobi-Matrix
+  /// @param[in] fct_id          The cell-local facet id
+  void physical_fct_normal(std::span<double> normal_phys,
+                           dolfinx_adaptivity::mdspan_t<double, 2> K,
+                           std::int8_t fct_id);
+
+  /* Tabulate shape function */
+
+  /* Getter functions (Cell geometry) */
+  /// Returns number of nodes, forming a reference cell
+  /// @param[out] n The number of nodes, forming the cell
+  int nnodes_cell() { return _num_coordinate_dofs; }
+
+  /// Returns facet normal on reference facet (const. version)
+  /// @param[in] id_fct The cell-local facet id
+  /// @param[out] normal_ref The reference facet normal
+  std::span<const double> fct_normal(std::int8_t fct_id) const
+  {
+    return std::span<const double>(_fct_normals.data() + fct_id * _tdim, _tdim);
+  }
+
+  /// Returns id if cell-normal points outward
+  /// @param[in] id_fct      The cell-local facet id
+  /// @param[out] is_outward Direction indicator (true->outward)
+  bool fct_normal_is_outward(std::int8_t id_fct)
+  {
+    return _fct_normal_out[id_fct];
+  }
+
+  /* Getter functions (Quadrature) */
+
+protected:
+  /* Variable definitions */
+  // Dimensions
+  std::uint32_t _gdim, _tdim;
+
+  // Description mesh element
+  std::size_t _num_coordinate_dofs, _nfcts_per_cell;
+  bool _is_affine;
+
+  // Facet normals (reference element)
+  std::vector<double> _fct_normals;
+  std::array<std::size_t, 2> _normals_shape;
+  std::vector<bool> _fct_normal_out;
+
+  // Quadrature rule
+  std::vector<std::shared_ptr<const QuadratureRule>> _quadrature_rule;
+
+  // Tabulated shape-functions (geometry)
+  std::vector<double> _g_basis_values;
+  dolfinx_adaptivity::mdspan_t<const double, 4> _g_basis;
+};
+
+template <typename T>
 class KernelDataEqlb
 {
 public:

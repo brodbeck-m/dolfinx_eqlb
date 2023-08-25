@@ -4,6 +4,144 @@
 using namespace dolfinx;
 using namespace dolfinx_adaptivity::equilibration;
 
+// ------------------------------------------------------------------------------
+/* KernelData */
+// ------------------------------------------------------------------------------
+template <typename T>
+KernelData<T>::KernelData(
+    std::shared_ptr<const mesh::Mesh> mesh,
+    std::vector<std::shared_ptr<const QuadratureRule>> quadrature_rule)
+    : _quadrature_rule(quadrature_rule)
+{
+  const mesh::Topology& topology = mesh->topology();
+  const mesh::Geometry& geometry = mesh->geometry();
+  const fem::CoordinateElement& cmap = geometry.cmap();
+
+  // Check if mesh is affine
+  _is_affine = cmap.is_affine();
+
+  if (!_is_affine)
+  {
+    throw std::runtime_error("KernelData limited to affine meshes!");
+  }
+
+  // Set dimensions
+  _gdim = geometry.dim();
+  _tdim = topology.dim();
+
+  if (_gdim == 2)
+  {
+    _nfcts_per_cell = 3;
+  }
+  else
+  {
+    _nfcts_per_cell = 4;
+  }
+
+  /* Geometry element */
+  _num_coordinate_dofs = cmap.dim();
+
+  std::array<std::size_t, 4> g_basis_shape = cmap.tabulate_shape(1, 1);
+  _g_basis_values = std::vector<double>(std::reduce(
+      g_basis_shape.begin(), g_basis_shape.end(), 1, std::multiplies{}));
+  _g_basis = dolfinx_adaptivity::mdspan_t<const double, 4>(
+      _g_basis_values.data(), g_basis_shape);
+
+  std::vector<double> points(_gdim, 0);
+  cmap.tabulate(1, points, {1, _gdim}, _g_basis_values);
+
+  // Get facet normals of reference element
+  basix::cell::type basix_cell
+      = mesh::cell_type_to_basix_type(topology.cell_type());
+
+  std::tie(_fct_normals, _normals_shape)
+      = basix::cell::facet_outward_normals(basix_cell);
+
+  _fct_normal_out = basix::cell::facet_orientations(basix_cell);
+}
+
+/* Compute isoparametric mapping */
+template <typename T>
+double KernelData<T>::compute_jacobian(
+    dolfinx_adaptivity::mdspan_t<double, 2> J,
+    dolfinx_adaptivity::mdspan_t<double, 2> K, std::span<double> detJ_scratch,
+    dolfinx_adaptivity::mdspan_t<const double, 2> coords)
+{
+  // Basis functions evaluated at first gauss-point
+  dolfinx_adaptivity::smdspan_t<const double, 2> dphi = stdex::submdspan(
+      _g_basis, std::pair{1, (std::size_t)_tdim + 1}, 0, stdex::full_extent, 0);
+
+  // Compute Jacobian
+  for (std::size_t i = 0; i < J.extent(0); ++i)
+  {
+    for (std::size_t j = 0; j < J.extent(1); ++j)
+    {
+      J(i, j) = 0;
+      K(i, j) = 0;
+    }
+  }
+
+  fem::CoordinateElement::compute_jacobian(dphi, coords, J);
+  fem::CoordinateElement::compute_jacobian_inverse(J, K);
+
+  return fem::CoordinateElement::compute_jacobian_determinant(J, detJ_scratch);
+}
+
+template <typename T>
+double KernelData<T>::compute_jacobian(
+    dolfinx_adaptivity::mdspan_t<double, 2> J, std::span<double> detJ_scratch,
+    dolfinx_adaptivity::mdspan_t<const double, 2> coords)
+{
+  // Basis functions evaluated at first gauss-point
+  dolfinx_adaptivity::smdspan_t<const double, 2> dphi = stdex::submdspan(
+      _g_basis, std::pair{1, (std::size_t)_tdim + 1}, 0, stdex::full_extent, 0);
+
+  // Compute Jacobian
+  for (std::size_t i = 0; i < J.extent(0); ++i)
+  {
+    for (std::size_t j = 0; j < J.extent(1); ++j)
+    {
+      J(i, j) = 0;
+    }
+  }
+
+  fem::CoordinateElement::compute_jacobian(dphi, coords, J);
+
+  return fem::CoordinateElement::compute_jacobian_determinant(J, detJ_scratch);
+}
+
+template <typename T>
+void KernelData<T>::physical_fct_normal(
+    std::span<double> normal_phys, dolfinx_adaptivity::mdspan_t<double, 2> K,
+    std::int8_t fct_id)
+{
+  // Set physical normal to zero
+  std::fill(normal_phys.begin(), normal_phys.end(), 0);
+
+  // Extract normal on reference cell
+  std::span<const double> normal_ref = fct_normal(fct_id);
+
+  // n_phys = F^(-T) * n_ref
+  for (int i = 0; i < _gdim; ++i)
+  {
+    for (int j = 0; j < _gdim; ++j)
+    {
+      normal_phys[i] += K(j, i) * normal_ref[j];
+    }
+  }
+
+  // Normalize vector
+  double norm = 0;
+  std::for_each(normal_phys.begin(), normal_phys.end(),
+                [&norm](auto ni) { norm += std::pow(ni, 2); });
+  norm = std::sqrt(norm);
+  std::for_each(normal_phys.begin(), normal_phys.end(),
+                [norm](auto& ni) { ni = ni / norm; });
+}
+
+// ------------------------------------------------------------------------------
+/* KernelDataEqlb */
+// ------------------------------------------------------------------------------
 template <typename T>
 KernelDataEqlb<T>::KernelDataEqlb(
     std::shared_ptr<const mesh::Mesh> mesh,
@@ -393,6 +531,9 @@ KernelDataEqlb<T>::shapefunctions_cell_rhs(dolfinx_adaptivity::cmdspan2_t K)
 }
 
 // ------------------------------------------------------------------------------
+template class dolfinx_adaptivity::equilibration::KernelData<float>;
+template class dolfinx_adaptivity::equilibration::KernelData<double>;
+
 template class dolfinx_adaptivity::equilibration::KernelDataEqlb<float>;
 template class dolfinx_adaptivity::equilibration::KernelDataEqlb<double>;
 // ------------------------------------------------------------------------------
