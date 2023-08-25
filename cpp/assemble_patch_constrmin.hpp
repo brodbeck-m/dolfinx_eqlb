@@ -1,7 +1,5 @@
 #pragma once
 
-#include "KernelData.hpp"
-#include "PatchFluxCstm.hpp"
 #include "PatchFluxEV.hpp"
 #include "StorageStiffness.hpp"
 #include "eigen3/Eigen/Dense"

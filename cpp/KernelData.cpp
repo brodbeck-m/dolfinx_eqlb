@@ -5,11 +5,12 @@ using namespace dolfinx;
 using namespace dolfinx_adaptivity::equilibration;
 
 template <typename T>
-KernelData<T>::KernelData(std::shared_ptr<const mesh::Mesh> mesh,
-                          std::shared_ptr<const QuadratureRule> qrule,
-                          const basix::FiniteElement& basix_element_fluxpw,
-                          const basix::FiniteElement& basix_element_rhs,
-                          const basix::FiniteElement& basix_element_hat)
+KernelDataEqlb<T>::KernelDataEqlb(
+    std::shared_ptr<const mesh::Mesh> mesh,
+    std::shared_ptr<const QuadratureRule> qrule,
+    const basix::FiniteElement& basix_element_fluxpw,
+    const basix::FiniteElement& basix_element_rhs,
+    const basix::FiniteElement& basix_element_hat)
     : _quadrature_rule(qrule)
 {
   const mesh::Topology& topology = mesh->topology();
@@ -141,7 +142,7 @@ KernelData<T>::KernelData(std::shared_ptr<const mesh::Mesh> mesh,
 
 /* Tabulation of shape-functions */
 template <typename T>
-void KernelData<T>::tabulate_flux_basis(
+void KernelDataEqlb<T>::tabulate_flux_basis(
     const basix::FiniteElement& basix_element_fluxpw)
 {
   // Number of surface quadrature points
@@ -169,7 +170,7 @@ void KernelData<T>::tabulate_flux_basis(
 }
 
 template <typename T>
-void KernelData<T>::tabulate_rhs_basis(
+void KernelDataEqlb<T>::tabulate_rhs_basis(
     const basix::FiniteElement& basix_element_rhs)
 {
   // Number of surface quadrature points
@@ -219,7 +220,7 @@ void KernelData<T>::tabulate_rhs_basis(
 }
 
 template <typename T>
-void KernelData<T>::tabulate_hat_basis(
+void KernelDataEqlb<T>::tabulate_hat_basis(
     const basix::FiniteElement& basix_element_hat)
 {
   // Number of surface quadrature points
@@ -255,7 +256,7 @@ void KernelData<T>::tabulate_hat_basis(
 
 /* Mapping routines */
 template <typename T>
-void KernelData<T>::contravariant_piola_mapping(
+void KernelDataEqlb<T>::contravariant_piola_mapping(
     dolfinx_adaptivity::smdspan_t<double, 3> phi_cur,
     dolfinx_adaptivity::smdspan_t<const double, 3> phi_ref,
     dolfinx_adaptivity::mdspan2_t J, double detJ)
@@ -279,10 +280,9 @@ void KernelData<T>::contravariant_piola_mapping(
 
 /* Compute isoparametric mapping */
 template <typename T>
-double KernelData<T>::compute_jacobian(dolfinx_adaptivity::mdspan2_t J,
-                                       dolfinx_adaptivity::mdspan2_t K,
-                                       std::span<double> detJ_scratch,
-                                       dolfinx_adaptivity::cmdspan2_t coords)
+double KernelDataEqlb<T>::compute_jacobian(
+    dolfinx_adaptivity::mdspan2_t J, dolfinx_adaptivity::mdspan2_t K,
+    std::span<double> detJ_scratch, dolfinx_adaptivity::cmdspan2_t coords)
 {
   // Reshape basis functions (geometry)
   dolfinx_adaptivity::cmdspan4_t full_basis(_g_basis_values.data(),
@@ -310,9 +310,10 @@ double KernelData<T>::compute_jacobian(dolfinx_adaptivity::mdspan2_t J,
 }
 
 template <typename T>
-double KernelData<T>::compute_jacobian(dolfinx_adaptivity::mdspan2_t J,
-                                       std::span<double> detJ_scratch,
-                                       dolfinx_adaptivity::cmdspan2_t coords)
+double
+KernelDataEqlb<T>::compute_jacobian(dolfinx_adaptivity::mdspan2_t J,
+                                    std::span<double> detJ_scratch,
+                                    dolfinx_adaptivity::cmdspan2_t coords)
 {
   // Reshape basis functions (geometry)
   dolfinx_adaptivity::cmdspan4_t full_basis(_g_basis_values.data(),
@@ -338,9 +339,9 @@ double KernelData<T>::compute_jacobian(dolfinx_adaptivity::mdspan2_t J,
 }
 
 template <typename T>
-void KernelData<T>::physical_fct_normal(std::span<double> normal_phys,
-                                        dolfinx_adaptivity::mdspan2_t K,
-                                        std::int8_t fct_id)
+void KernelDataEqlb<T>::physical_fct_normal(std::span<double> normal_phys,
+                                            dolfinx_adaptivity::mdspan2_t K,
+                                            std::int8_t fct_id)
 {
   // Set physical normal to zero
   std::fill(normal_phys.begin(), normal_phys.end(), 0);
@@ -369,7 +370,7 @@ void KernelData<T>::physical_fct_normal(std::span<double> normal_phys,
 /* Push-forward of shape-functions */
 template <typename T>
 dolfinx_adaptivity::s_cmdspan3_t
-KernelData<T>::shapefunctions_cell_rhs(dolfinx_adaptivity::cmdspan2_t K)
+KernelDataEqlb<T>::shapefunctions_cell_rhs(dolfinx_adaptivity::cmdspan2_t K)
 {
   // Loop over all evaluation points
   for (std::size_t i = 0; i < _rhs_cell_fullbasis.extent(1); ++i)
@@ -392,6 +393,6 @@ KernelData<T>::shapefunctions_cell_rhs(dolfinx_adaptivity::cmdspan2_t K)
 }
 
 // ------------------------------------------------------------------------------
-template class dolfinx_adaptivity::equilibration::KernelData<float>;
-template class dolfinx_adaptivity::equilibration::KernelData<double>;
+template class dolfinx_adaptivity::equilibration::KernelDataEqlb<float>;
+template class dolfinx_adaptivity::equilibration::KernelDataEqlb<double>;
 // ------------------------------------------------------------------------------

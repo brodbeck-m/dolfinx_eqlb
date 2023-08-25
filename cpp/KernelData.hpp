@@ -26,7 +26,7 @@ using namespace dolfinx;
 namespace dolfinx_adaptivity::equilibration
 {
 template <typename T>
-class KernelData
+class KernelDataEqlb
 {
 public:
   /// Kernel data basic constructor
@@ -37,11 +37,11 @@ public:
   /// @param mesh                 The mesh
   /// @param basix_element_fluxpw The basix-element for the H(div) flux
   /// @param basix_element_rhs    The basix-element for RHS and projected flux
-  KernelData(std::shared_ptr<const mesh::Mesh> mesh,
-             std::shared_ptr<const QuadratureRule> qrule,
-             const basix::FiniteElement& basix_element_fluxpw,
-             const basix::FiniteElement& basix_element_rhs,
-             const basix::FiniteElement& basix_element_hat);
+  KernelDataEqlb(std::shared_ptr<const mesh::Mesh> mesh,
+                 std::shared_ptr<const QuadratureRule> qrule,
+                 const basix::FiniteElement& basix_element_fluxpw,
+                 const basix::FiniteElement& basix_element_rhs,
+                 const basix::FiniteElement& basix_element_hat);
 
   /// Compute isogeometric mapping for a given cell
   /// @param J            The Jacobian

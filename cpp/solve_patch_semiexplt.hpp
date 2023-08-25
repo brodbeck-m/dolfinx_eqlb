@@ -185,7 +185,7 @@ template <typename T, int id_flux_order = 3>
 void calc_fluxtilde_explt(const mesh::Geometry& geometry,
                           PatchFluxCstm<T, id_flux_order>& patch,
                           ProblemDataFluxCstm<T>& problem_data,
-                          KernelData<T>& kernel_data)
+                          KernelDataEqlb<T>& kernel_data)
 {
   /* Geometry data */
   const int dim = 2;
@@ -667,7 +667,7 @@ template <typename T, int id_flux_order = 3>
 void minimise_flux(const mesh::Geometry& geometry,
                    PatchFluxCstm<T, id_flux_order>& patch,
                    ProblemDataFluxCstm<T>& problem_data,
-                   KernelData<T>& kernel_data)
+                   KernelDataEqlb<T>& kernel_data)
 {
   assert(id_flux_order < 0);
 
