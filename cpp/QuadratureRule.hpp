@@ -29,8 +29,7 @@ public:
     _dim_fct = _dim - 1;
 
     // Get basix cell type
-    basix::cell::type b_cell_type
-        = dolfinx::mesh::cell_type_to_basix_type(cell_type);
+    basix::cell::type b_cell_type = mesh::cell_type_to_basix_type(cell_type);
 
     /* Quadrature rule cell */
     // Calculate quadrature points and weights
@@ -198,4 +197,84 @@ private:
   std::size_t _npoints_per_fct, _npoints_fct;
   std::vector<double> _points_fct, _sloc_fct, _weights_fct;
 };
+
+class QuadratureRuleNew
+{
+  // Contains quadrature points and weights on a cell on a set of entities
+  // Implementation taken from https://github.com/Wells-Group/asimov-contact/
+
+public:
+  /// Constructor
+  /// @param[in] ct The cell type
+  /// @param[in] degree Degree of quadrature rule
+  /// @param[in] Dimension of entity
+  /// @param[in] type Type of quadrature rule
+  QuadratureRuleNew(mesh::CellType ct, int degree, int dim,
+                    basix::quadrature::type type
+                    = basix::quadrature::type::Default);
+
+  /// Return a list of quadrature points for each entity in the cell
+  const std::vector<double>& points() const { return _points; }
+
+  /// Return the quadrature points for the ith entity
+  /// @param[in] i The local entity index
+  dolfinx_adaptivity::mdspan_t<const double, 2> points(std::int8_t i) const;
+
+  /// Return a list of quadrature weights for each entity in the cell
+  /// (using local entity index as in DOLFINx/Basix)
+  const std::vector<double>& weights() const { return _weights; }
+
+  /// Return the quadrature weights for the ith entity
+  /// @param[in] i The local entity index
+  std::span<const double> weights(std::int8_t i) const;
+
+  /// Return dimension of entity in the quadrature rule
+  int dim() const { return _dim; }
+
+  /// Return the cell type for the ith quadrature rule
+  /// @param[in] Local entity number
+  mesh::CellType cell_type(std::int8_t i) const;
+
+  /// Return degree of quadrature rule
+  int degree() const;
+
+  /// Return type of the quadrature rule
+  basix::quadrature::type type() const;
+
+  /// Return the number of quadrature points per entity
+  std::size_t num_points(std::int8_t i) const;
+
+  /// Return the topological dimension of the quadrature rule
+  std::size_t tdim() const { return _tdim; };
+
+  /// Return offset for quadrature rule of the ith entity
+  const std::vector<std::size_t>& offset() const { return _entity_offset; }
+
+private:
+  /* Variable definition */
+  // Spacial dimensions
+  std::size_t _tdim;
+  int _dim;
+  int _num_sub_entities; // Number of sub entities
+
+  // Cell type
+  mesh::CellType _cell_type;
+
+  // Quadrature type
+  basix::quadrature::type _type;
+
+  // Quadrature degree
+  int _degree;
+
+  // Quadrature points and weights
+  std::vector<double>
+      _points; // Quadrature points for each entity on the cell. Shape (entity,
+               // num_points, tdim). Flattened row-major.
+  std::vector<double>
+      _weights; // Quadrature weights for each entity on the cell
+
+  // Offset for each entity
+  std::vector<std::size_t> _entity_offset; // The offset for each entity
+};
+
 } // namespace dolfinx_adaptivity::equilibration
