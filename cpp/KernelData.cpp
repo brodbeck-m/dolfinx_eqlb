@@ -60,7 +60,7 @@ KernelData<T>::KernelData(
   _fct_normal_out = basix::cell::facet_orientations(basix_cell);
 }
 
-/* Compute isoparametric mapping */
+/* Basic transformations */
 template <typename T>
 double KernelData<T>::compute_jacobian(
     dolfinx_adaptivity::mdspan_t<double, 2> J,
@@ -137,6 +137,48 @@ void KernelData<T>::physical_fct_normal(
   norm = std::sqrt(norm);
   std::for_each(normal_phys.begin(), normal_phys.end(),
                 [norm](auto& ni) { ni = ni / norm; });
+}
+
+/* Tabulate shape function */
+template <typename T>
+std::array<std::size_t, 5> KernelData<T>::tabulate_basis(
+    const basix::FiniteElement& basix_element, std::vector<double> points,
+    std::vector<double>& storage, bool tabulate_gradient,
+    bool stoarge_elmtcur = false)
+{
+  // Number of tabulated points
+  std::size_t num_points = points.size() / _gdim;
+
+  // Get shape of tabulated data
+  int id_grad = (tabulate_gradient) ? 1 : 0;
+  std::array<std::size_t, 4> shape
+      = basix_element.tabulate_shape(id_grad, num_points);
+
+  // Resize storage
+  std::size_t size_storage
+      = std::reduce(shape.begin(), shape.end(), 1, std::multiplies{});
+
+  if (stoarge_elmtcur)
+  {
+    storage.resize(2 * size_storage, 0);
+  }
+  else
+  {
+    storage.resize(size_storage, 0);
+  }
+
+  // Tabulate basis
+  basix_element.tabulate(id_grad, points, {num_points, _gdim}, storage);
+
+  // Create shape of final mdspan
+  std::size_t shape_final[5] = {1, shape[0], shape[1], shape[2], shape[3]};
+
+  if (stoarge_elmtcur)
+  {
+    shape_final[0] = 2;
+  }
+
+  return shape_final;
 }
 
 // ------------------------------------------------------------------------------

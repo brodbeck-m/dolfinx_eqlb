@@ -63,6 +63,10 @@ public:
                            std::int8_t fct_id);
 
   /* Tabulate shape function */
+  std::array<std::size_t, 5>
+  tabulate_basis(const basix::FiniteElement& basix_element,
+                 std::vector<double> points, std::vector<double>& storage,
+                 bool tabulate_gradient, bool stoarge_elmtcur = false);
 
   /* Getter functions (Cell geometry) */
   /// Returns number of nodes, forming a reference cell
