@@ -214,69 +214,22 @@ public:
 
   // Extract number of quadrature points on cell
   /// @return Number of quadrature points
-  int nqpoints_cell() const { return _quadrature_rule->npoints_cell(); }
-
-  // Extract number of quadrature points per facet
-  /// @return Number of quadrature points
-  int nqpoints_facet() const { return _quadrature_rule->npoints_per_fct(); }
+  int nqpoints_cell() const { return _quadrature_rule->num_points(); }
 
   /// Extract quadrature points on cell
   /// @return The quadrature points
-  dolfinx_adaptivity::cmdspan2_t quadrature_points_cell() const
+  dolfinx_adaptivity::mdspan_t<const double, 2> quadrature_points_cell() const
   {
-    // Number of quadrature points
-    const int nqpoints = _quadrature_rule->npoints_cell();
-
-    // Recast into span
-    return dolfinx_adaptivity::cmdspan2_t(
-        _quadrature_rule->points_cell().data(), (std::size_t)nqpoints,
-        (std::size_t)_gdim);
-  }
-
-  /// Extract quadrature points on facet
-  /// @param fct_id The cell-local facet id
-  /// @return The quadrature points
-  dolfinx_adaptivity::cmdspan2_t quadrature_points_facet(std::int8_t fct_id)
-  {
-    // Offset of points for current facet
-    const int nqpoints = _quadrature_rule->npoints_per_fct();
-    const int offset = fct_id * nqpoints * _gdim;
-
-    return dolfinx_adaptivity::cmdspan2_t(
-        _quadrature_rule->points_fct().data() + offset, (std::size_t)nqpoints,
-        (std::size_t)_gdim);
-  }
-
-  /// Extract 1D quadrature points on facet
-  /// @param fct_id The cell-local facet id
-  /// @return The 1D quadrature points scaled by edge length
-  std::span<const double> quadrature_points_1D_facet(std::int8_t fct_id)
-  {
-    // Offset of points for current facet
-    const int nqpoints = _quadrature_rule->npoints_per_fct();
-    const int offset = fct_id * nqpoints;
-
-    return std::span(_quadrature_rule->s_fct().data() + offset, nqpoints);
+    return dolfinx_adaptivity::mdspan_t<const double, 2>(
+        _quadrature_rule->points().data(), _quadrature_rule->num_points(),
+        _quadrature_rule->tdim());
   }
 
   /// Extract quadrature weights on cell
   /// @return The quadrature weights
   std::span<const double> quadrature_weights_cell() const
   {
-    return _quadrature_rule->weights_cell();
-  }
-
-  /// Extract quadrature weights on facet
-  /// @param fct_id The cell-local facet id
-  /// @return The quadrature weights
-  std::span<const double> quadrature_weights_facet(std::int8_t fct_id)
-  {
-    // Offset of weights for current facet
-    const int nqpoints = _quadrature_rule->npoints_per_fct();
-    const int offset = fct_id * nqpoints;
-
-    return std::span<const double>(
-        _quadrature_rule->weights_fct().data() + offset, nqpoints);
+    return _quadrature_rule->weights();
   }
 
   /* Getter functions (Interpolation) */

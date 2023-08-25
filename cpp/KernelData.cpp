@@ -145,7 +145,7 @@ void KernelData<T>::tabulate_flux_basis(
     const basix::FiniteElement& basix_element_fluxpw)
 {
   // Number of surface quadrature points
-  std::size_t n_qpoints_cell = _quadrature_rule->npoints_cell();
+  std::size_t n_qpoints_cell = _quadrature_rule->num_points();
 
   // Get shape of storage for tabulated functions
   std::array<std::size_t, 4> flux_basis_shape
@@ -158,7 +158,7 @@ void KernelData<T>::tabulate_flux_basis(
       flux_basis_shape.begin(), flux_basis_shape.end(), 1, std::multiplies{}));
 
   // Tabulate functions on reference cell
-  basix_element_fluxpw.tabulate(0, _quadrature_rule->points_cell(),
+  basix_element_fluxpw.tabulate(0, _quadrature_rule->points(),
                                 {n_qpoints_cell, _gdim}, _flux_basis_values);
 
   // Recast functions into mdspans for later usage
@@ -173,7 +173,7 @@ void KernelData<T>::tabulate_rhs_basis(
     const basix::FiniteElement& basix_element_rhs)
 {
   // Number of surface quadrature points
-  std::size_t n_qpoints_cell = _quadrature_rule->npoints_cell();
+  std::size_t n_qpoints_cell = _quadrature_rule->num_points();
 
   // Get shape of storage for tabulated functions
   std::array<std::size_t, 4> rhs_basis_shape_cell
@@ -194,7 +194,7 @@ void KernelData<T>::tabulate_rhs_basis(
                   std::multiplies{}));
 
   // Tabulate functions on reference cell
-  basix_element_rhs.tabulate(1, _quadrature_rule->points_cell(),
+  basix_element_rhs.tabulate(1, _quadrature_rule->points(),
                              {n_qpoints_cell, _gdim}, _rhs_basis_cell_values);
   basix_element_rhs.tabulate(0, _ipoints_fct, {_nipoints_fct, _gdim},
                              _rhs_basis_fct_values);
@@ -223,7 +223,7 @@ void KernelData<T>::tabulate_hat_basis(
     const basix::FiniteElement& basix_element_hat)
 {
   // Number of surface quadrature points
-  std::size_t n_qpoints_cell = _quadrature_rule->npoints_cell();
+  std::size_t n_qpoints_cell = _quadrature_rule->num_points();
 
   // Get shape of storage for tabulated functions
   std::array<std::size_t, 4> hat_basis_shape_cell
@@ -241,7 +241,7 @@ void KernelData<T>::tabulate_hat_basis(
                   std::multiplies{}));
 
   // Tabulate functions on reference cell
-  basix_element_hat.tabulate(0, _quadrature_rule->points_cell(),
+  basix_element_hat.tabulate(0, _quadrature_rule->points(),
                              {n_qpoints_cell, _gdim}, _hat_basis_cell_values);
   basix_element_hat.tabulate(0, _ipoints_fct, {_nipoints_fct, _gdim},
                              _hat_basis_fct_values);
