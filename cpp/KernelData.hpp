@@ -66,7 +66,7 @@ public:
   std::array<std::size_t, 5>
   tabulate_basis(const basix::FiniteElement& basix_element,
                  std::vector<double> points, std::vector<double>& storage,
-                 bool tabulate_gradient, bool stoarge_elmtcur = false);
+                 bool tabulate_gradient, bool stoarge_elmtcur);
 
   /* Getter functions (Cell geometry) */
   /// Returns number of nodes, forming a reference cell

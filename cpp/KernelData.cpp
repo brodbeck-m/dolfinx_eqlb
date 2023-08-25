@@ -143,8 +143,7 @@ void KernelData<T>::physical_fct_normal(
 template <typename T>
 std::array<std::size_t, 5> KernelData<T>::tabulate_basis(
     const basix::FiniteElement& basix_element, std::vector<double> points,
-    std::vector<double>& storage, bool tabulate_gradient,
-    bool stoarge_elmtcur = false)
+    std::vector<double>& storage, bool tabulate_gradient, bool stoarge_elmtcur)
 {
   // Number of tabulated points
   std::size_t num_points = points.size() / _gdim;
@@ -171,14 +170,15 @@ std::array<std::size_t, 5> KernelData<T>::tabulate_basis(
   basix_element.tabulate(id_grad, points, {num_points, _gdim}, storage);
 
   // Create shape of final mdspan
-  std::size_t shape_final[5] = {1, shape[0], shape[1], shape[2], shape[3]};
+  std::array<std::size_t, 5> shape_final
+      = {{1, shape[0], shape[1], shape[2], shape[3]}};
 
   if (stoarge_elmtcur)
   {
     shape_final[0] = 2;
   }
 
-  return shape_final;
+  return std::move(shape_final);
 }
 
 // ------------------------------------------------------------------------------
