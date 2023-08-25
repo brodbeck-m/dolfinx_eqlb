@@ -87,6 +87,49 @@ public:
 
   /* Getter functions (Quadrature) */
 
+  /// Extract quadrature points on all sub-entity of cell
+  /// @param[in] id_qspace The id of the quadrature space
+  /// @param[out] points   The quadrature points
+  dolfinx_adaptivity::mdspan_t<const double, 2> quadrature_points(int id_qspace)
+  {
+    // Extract quadrature rule
+    std::shared_ptr<const QuadratureRule> quadrature_rule
+        = _quadrature_rule[id_qspace];
+
+    // Cast points to mdspan
+    return dolfinx_adaptivity::mdspan_t<const double, 2>(
+        quadrature_rule->points().data(), quadrature_rule->num_points(),
+        quadrature_rule->tdim());
+  }
+
+  /// Extract quadrature points on one sub-entity of cell
+  /// @param[in] id_qspace    The id of the quadrature space
+  /// @param[in] id_subentity The id of the sub-entity
+  /// @param[out] points      The quadrature points
+  dolfinx_adaptivity::mdspan_t<const double, 2>
+  quadrature_points(int id_qspace, std::int8_t id_subentity)
+  {
+    return _quadrature_rule[id_qspace]->points(id_subentity);
+  }
+
+  /// Extract quadrature weights on all sub-entity of cell
+  /// @param[in] id_qspace The id of the quadrature space
+  /// @param[out] weights  The quadrature weights
+  std::span<const double> quadrature_weights(int id_qspace)
+  {
+    return _quadrature_rule[id_qspace]->weights();
+  }
+
+  /// Extract quadrature weights on one sub-entity of cell
+  /// @param[in] id_qspace    The id of the quadrature space
+  /// @param[in] id_subentity The id of the sub-entity
+  /// @param[out] weights     The quadrature weights
+  std::span<const double> quadrature_weights(int id_qspace,
+                                             std::int8_t id_subentity)
+  {
+    return _quadrature_rule[id_qspace]->weights(id_subentity);
+  }
+
 protected:
   /* Variable definitions */
   // Dimensions
