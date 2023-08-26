@@ -185,7 +185,7 @@ template <typename T, int id_flux_order = 3>
 void calc_fluxtilde_explt(const mesh::Geometry& geometry,
                           PatchFluxCstm<T, id_flux_order>& patch,
                           ProblemDataFluxCstm<T>& problem_data,
-                          KernelData<T>& kernel_data)
+                          KernelDataEqlb<T>& kernel_data)
 {
   /* Geometry data */
   const int dim = 2;
@@ -518,10 +518,10 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
             = extract_mapping_data(id_a, storage_K);
 
         // Quadrature points and weights
-        const int nqpoints = kernel_data.nqpoints_cell();
         dolfinx_adaptivity::cmdspan2_t qpoints
-            = kernel_data.quadrature_points_cell();
-        std::span<const double> weights = kernel_data.quadrature_weights_cell();
+            = kernel_data.quadrature_points(0);
+        std::span<const double> weights = kernel_data.quadrature_weights(0);
+        const int nqpoints = weights.size();
 
         // Shape-functions RHS
         dolfinx_adaptivity::s_cmdspan3_t shp_rhs
@@ -667,7 +667,7 @@ template <typename T, int id_flux_order = 3>
 void minimise_flux(const mesh::Geometry& geometry,
                    PatchFluxCstm<T, id_flux_order>& patch,
                    ProblemDataFluxCstm<T>& problem_data,
-                   KernelData<T>& kernel_data)
+                   KernelDataEqlb<T>& kernel_data)
 {
   assert(id_flux_order < 0);
 

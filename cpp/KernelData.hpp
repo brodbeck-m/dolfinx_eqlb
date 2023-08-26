@@ -29,6 +29,147 @@ template <typename T>
 class KernelData
 {
 public:
+  KernelData(
+      std::shared_ptr<const mesh::Mesh> mesh,
+      std::vector<std::shared_ptr<const QuadratureRule>> quadrature_rule);
+
+  /// Compute isogeometric mapping for a given cell
+  /// @param[in,out] J            The Jacobian
+  /// @param[in,out] K            The inverse Jacobian
+  /// @param[in,out] detJ_scratch Storage for determinant calculation
+  /// @param[in] coords           The cell coordinates
+  /// @return                     The determinant of the Jacobian
+  double compute_jacobian(dolfinx_adaptivity::mdspan_t<double, 2> J,
+                          dolfinx_adaptivity::mdspan_t<double, 2> K,
+                          std::span<double> detJ_scratch,
+                          dolfinx_adaptivity::mdspan_t<const double, 2> coords);
+
+  /* Basic transformations */
+  /// Compute isogeometric mapping for a given cell
+  /// @param[in,out] J            The Jacobian
+  /// @param[in,out] detJ_scratch Storage for determinant calculation
+  /// @param[in] coords           The cell coordinates
+  /// @return                     The determinant of the Jacobian
+  double compute_jacobian(dolfinx_adaptivity::mdspan_t<double, 2> J,
+                          std::span<double> detJ_scratch,
+                          dolfinx_adaptivity::mdspan_t<const double, 2> coords);
+
+  /// Calculate physical normal of facet
+  /// @param[in,out] normal_phys The physical normal
+  /// @param[in] K               The inverse Jacobi-Matrix
+  /// @param[in] fct_id          The cell-local facet id
+  void physical_fct_normal(std::span<double> normal_phys,
+                           dolfinx_adaptivity::mdspan_t<double, 2> K,
+                           std::int8_t fct_id);
+
+  /* Tabulate shape function */
+  std::array<std::size_t, 5>
+  tabulate_basis(const basix::FiniteElement& basix_element,
+                 std::vector<double> points, std::vector<double>& storage,
+                 bool tabulate_gradient, bool stoarge_elmtcur);
+
+  /* Getter functions (Cell geometry) */
+  /// Returns number of nodes, forming a reference cell
+  /// @param[out] n The number of nodes, forming the cell
+  int nnodes_cell() { return _num_coordinate_dofs; }
+
+  /// Returns facet normal on reference facet (const. version)
+  /// @param[in] id_fct The cell-local facet id
+  /// @param[out] normal_ref The reference facet normal
+  std::span<const double> fct_normal(std::int8_t fct_id) const
+  {
+    return std::span<const double>(_fct_normals.data() + fct_id * _tdim, _tdim);
+  }
+
+  /// Returns id if cell-normal points outward
+  /// @param[in] id_fct      The cell-local facet id
+  /// @param[out] is_outward Direction indicator (true->outward)
+  bool fct_normal_is_outward(std::int8_t id_fct)
+  {
+    return _fct_normal_out[id_fct];
+  }
+
+  /// Returns id if cell-normal points outward
+  /// @param id_fct1 The cell-local facet id
+  /// @param id_fct2 The cell-local facet id
+  /// @return Direction indicator (true->outward)
+  std::pair<bool, bool> fct_normal_is_outward(std::int8_t id_fct1,
+                                              std::int8_t id_fct2)
+  {
+    return {_fct_normal_out[id_fct1], _fct_normal_out[id_fct2]};
+  }
+
+  /* Getter functions (Quadrature) */
+
+  /// Extract quadrature points on all sub-entity of cell
+  /// @param[in] id_qspace The id of the quadrature space
+  /// @param[out] points   The quadrature points
+  dolfinx_adaptivity::mdspan_t<const double, 2> quadrature_points(int id_qspace)
+  {
+    // Extract quadrature rule
+    std::shared_ptr<const QuadratureRule> quadrature_rule
+        = _quadrature_rule[id_qspace];
+
+    // Cast points to mdspan
+    return dolfinx_adaptivity::mdspan_t<const double, 2>(
+        quadrature_rule->points().data(), quadrature_rule->num_points(),
+        quadrature_rule->tdim());
+  }
+
+  /// Extract quadrature points on one sub-entity of cell
+  /// @param[in] id_qspace    The id of the quadrature space
+  /// @param[in] id_subentity The id of the sub-entity
+  /// @param[out] points      The quadrature points
+  dolfinx_adaptivity::mdspan_t<const double, 2>
+  quadrature_points(int id_qspace, std::int8_t id_subentity)
+  {
+    return _quadrature_rule[id_qspace]->points(id_subentity);
+  }
+
+  /// Extract quadrature weights on all sub-entity of cell
+  /// @param[in] id_qspace The id of the quadrature space
+  /// @param[out] weights  The quadrature weights
+  std::span<const double> quadrature_weights(int id_qspace)
+  {
+    return _quadrature_rule[id_qspace]->weights();
+  }
+
+  /// Extract quadrature weights on one sub-entity of cell
+  /// @param[in] id_qspace    The id of the quadrature space
+  /// @param[in] id_subentity The id of the sub-entity
+  /// @param[out] weights     The quadrature weights
+  std::span<const double> quadrature_weights(int id_qspace,
+                                             std::int8_t id_subentity)
+  {
+    return _quadrature_rule[id_qspace]->weights(id_subentity);
+  }
+
+protected:
+  /* Variable definitions */
+  // Dimensions
+  std::uint32_t _gdim, _tdim;
+
+  // Description mesh element
+  std::size_t _num_coordinate_dofs, _nfcts_per_cell;
+  bool _is_affine;
+
+  // Facet normals (reference element)
+  std::vector<double> _fct_normals;
+  std::array<std::size_t, 2> _normals_shape;
+  std::vector<bool> _fct_normal_out;
+
+  // Quadrature rule
+  std::vector<std::shared_ptr<const QuadratureRule>> _quadrature_rule;
+
+  // Tabulated shape-functions (geometry)
+  std::vector<double> _g_basis_values;
+  dolfinx_adaptivity::mdspan_t<const double, 4> _g_basis;
+};
+
+template <typename T>
+class KernelDataEqlb : public KernelData<T>
+{
+public:
   /// Kernel data basic constructor
   ///
   /// Generates data required for isoparametric mapping between reference and
@@ -37,37 +178,11 @@ public:
   /// @param mesh                 The mesh
   /// @param basix_element_fluxpw The basix-element for the H(div) flux
   /// @param basix_element_rhs    The basix-element for RHS and projected flux
-  KernelData(std::shared_ptr<const mesh::Mesh> mesh,
-             std::shared_ptr<const QuadratureRule> qrule,
-             const basix::FiniteElement& basix_element_fluxpw,
-             const basix::FiniteElement& basix_element_rhs,
-             const basix::FiniteElement& basix_element_hat);
-
-  /// Compute isogeometric mapping for a given cell
-  /// @param J            The Jacobian
-  /// @param K            The inverse Jacobian
-  /// @param detJ_scratch Storage for determinant calculation
-  /// @param coords       The cell coordinates
-  /// @return             The determinant of the Jacobian
-  double compute_jacobian(dolfinx_adaptivity::mdspan2_t J,
-                          dolfinx_adaptivity::mdspan2_t K,
-                          std::span<double> detJ_scratch,
-                          dolfinx_adaptivity::cmdspan2_t coords);
-
-  /// Compute isogeometric mapping for a given cell
-  /// @param J            The Jacobian
-  /// @param detJ_scratch Storage for determinant calculation
-  /// @param coords       The cell coordinates
-  /// @return             The determinant of the Jacobian
-  double compute_jacobian(dolfinx_adaptivity::mdspan2_t J,
-                          std::span<double> detJ_scratch,
-                          dolfinx_adaptivity::cmdspan2_t coords);
-
-  /// Calculate physical normal of facet
-  /// @param K      The inverse Jacobi-Matrix
-  /// @param fct_id The cell-local facet id
-  void physical_fct_normal(std::span<double> normal_phys,
-                           dolfinx_adaptivity::mdspan2_t K, std::int8_t fct_id);
+  KernelDataEqlb(std::shared_ptr<const mesh::Mesh> mesh,
+                 std::shared_ptr<const QuadratureRule> quadrature_rule_cell,
+                 const basix::FiniteElement& basix_element_fluxpw,
+                 const basix::FiniteElement& basix_element_rhs,
+                 const basix::FiniteElement& basix_element_hat);
 
   /// Pull back of flux-data from current to reference cell
   /// @param flux_ref The flux data on reference cell
@@ -85,39 +200,6 @@ public:
   }
 
   /* Setter functions */
-
-  /* Getter functions (Geometry of cell) */
-
-  /// Returns number of nodes, forming a reference cell
-  /// @return Number of nodes on reference cell
-  int nnodes_cell() { return _num_coordinate_dofs; }
-
-  /// Returns facet normal on reference facet (const. version)
-  /// @param id_fct The cell-local facet id
-  /// @return The facet normal (reference cell)
-  std::span<const double> fct_normal(std::int8_t fct_id) const
-  {
-    std::size_t tdim = _normals_shape[1];
-    return std::span<const double>(_fct_normals.data() + fct_id * tdim, tdim);
-  }
-
-  /// Returns id if cell-normal points outward
-  /// @param id_fct The cell-local facet id
-  /// @return Direction indicator (true->outward)
-  bool fct_normal_is_outward(std::int8_t id_fct)
-  {
-    return _fct_normal_out[id_fct];
-  }
-
-  /// Returns id if cell-normal points outward
-  /// @param id_fct1 The cell-local facet id
-  /// @param id_fct2 The cell-local facet id
-  /// @return Direction indicator (true->outward)
-  std::pair<bool, bool> fct_normal_is_outward(std::int8_t id_fct1,
-                                              std::int8_t id_fct2)
-  {
-    return {_fct_normal_out[id_fct1], _fct_normal_out[id_fct2]};
-  }
 
   /* Getter functions (Shape functions) */
 
@@ -210,75 +292,6 @@ public:
                             stdex::full_extent, 0);
   }
 
-  /* Getter functions (Quadrature) */
-
-  // Extract number of quadrature points on cell
-  /// @return Number of quadrature points
-  int nqpoints_cell() const { return _quadrature_rule->npoints_cell(); }
-
-  // Extract number of quadrature points per facet
-  /// @return Number of quadrature points
-  int nqpoints_facet() const { return _quadrature_rule->npoints_per_fct(); }
-
-  /// Extract quadrature points on cell
-  /// @return The quadrature points
-  dolfinx_adaptivity::cmdspan2_t quadrature_points_cell() const
-  {
-    // Number of quadrature points
-    const int nqpoints = _quadrature_rule->npoints_cell();
-
-    // Recast into span
-    return dolfinx_adaptivity::cmdspan2_t(
-        _quadrature_rule->points_cell().data(), (std::size_t)nqpoints,
-        (std::size_t)_gdim);
-  }
-
-  /// Extract quadrature points on facet
-  /// @param fct_id The cell-local facet id
-  /// @return The quadrature points
-  dolfinx_adaptivity::cmdspan2_t quadrature_points_facet(std::int8_t fct_id)
-  {
-    // Offset of points for current facet
-    const int nqpoints = _quadrature_rule->npoints_per_fct();
-    const int offset = fct_id * nqpoints * _gdim;
-
-    return dolfinx_adaptivity::cmdspan2_t(
-        _quadrature_rule->points_fct().data() + offset, (std::size_t)nqpoints,
-        (std::size_t)_gdim);
-  }
-
-  /// Extract 1D quadrature points on facet
-  /// @param fct_id The cell-local facet id
-  /// @return The 1D quadrature points scaled by edge length
-  std::span<const double> quadrature_points_1D_facet(std::int8_t fct_id)
-  {
-    // Offset of points for current facet
-    const int nqpoints = _quadrature_rule->npoints_per_fct();
-    const int offset = fct_id * nqpoints;
-
-    return std::span(_quadrature_rule->s_fct().data() + offset, nqpoints);
-  }
-
-  /// Extract quadrature weights on cell
-  /// @return The quadrature weights
-  std::span<const double> quadrature_weights_cell() const
-  {
-    return _quadrature_rule->weights_cell();
-  }
-
-  /// Extract quadrature weights on facet
-  /// @param fct_id The cell-local facet id
-  /// @return The quadrature weights
-  std::span<const double> quadrature_weights_facet(std::int8_t fct_id)
-  {
-    // Offset of weights for current facet
-    const int nqpoints = _quadrature_rule->npoints_per_fct();
-    const int offset = fct_id * nqpoints;
-
-    return std::span<const double>(
-        _quadrature_rule->weights_fct().data() + offset, nqpoints);
-  }
-
   /* Getter functions (Interpolation) */
   // Extract number of interpolation points per facet
   /// @return Number of interpolation points
@@ -337,29 +350,10 @@ protected:
       dolfinx_adaptivity::mdspan2_t J, double detJ);
 
   /* Variable definitions */
-  // Dimensions
-  std::uint32_t _gdim, _tdim;
-
-  // Description mesh element
-  std::size_t _num_coordinate_dofs, _nfcts_per_cell;
-  bool _is_affine;
-
-  // Facet normals (reference element)
-  std::vector<double> _fct_normals;
-  std::array<std::size_t, 2> _normals_shape;
-  std::vector<bool> _fct_normal_out;
-
-  // Quadrature rule
-  std::shared_ptr<const QuadratureRule> _quadrature_rule;
-
   // Interpolation data
   std::size_t _nipoints_per_fct, _nipoints_fct;
   std::vector<double> _ipoints_fct, _data_M_fct;
   dolfinx_adaptivity::cmdspan4_t _M_fct; // Indices: facet, dof, gdim, points
-
-  // Tabulated shape-functions (geometry)
-  std::array<std::size_t, 4> _g_basis_shape;
-  std::vector<double> _g_basis_values;
 
   // Tabulated shape-functions (pice-wise H(div) flux)
   std::vector<double> _flux_basis_values, _flux_basis_current_values;

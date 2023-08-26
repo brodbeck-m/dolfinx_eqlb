@@ -202,10 +202,10 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data,
       = (degree_flux_hdiv == 1) ? 2 : 2 * degree_flux_hdiv + 1;
 
   QuadratureRule quadrature_rule
-      = QuadratureRule(mesh->topology().cell_type(), quadrature_degree);
+      = QuadratureRule(mesh->topology().cell_type(), quadrature_degree, dim);
 
   // Initialize KernelData
-  KernelData<T> kernel_data = KernelData<T>(
+  KernelDataEqlb<T> kernel_data = KernelDataEqlb<T>(
       mesh, std::make_shared<QuadratureRule>(quadrature_rule),
       basix_element_fluxhdiv, basix_element_rhs, basix_element_hat);
 

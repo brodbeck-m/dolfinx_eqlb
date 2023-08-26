@@ -2,8 +2,6 @@
 
 #include "KernelData.hpp"
 #include "PatchFluxCstm.hpp"
-#include "PatchFluxEV.hpp"
-#include "StorageStiffness.hpp"
 #include "eigen3/Eigen/Dense"
 #include "utils.hpp"
 
@@ -39,7 +37,8 @@ namespace dolfinx_adaptivity::equilibration
 /// @param coordinate_dofs  The coordinate DOFs of current cell
 template <typename T, int id_flux_order = 3, bool asmbl_systmtrx = true>
 void minimisation_kernel(dolfinx_adaptivity::mdspan2_t Te,
-                         KernelData<T>& kernel_data, std::span<T> coefficients,
+                         KernelDataEqlb<T>& kernel_data,
+                         std::span<T> coefficients,
                          dolfinx_adaptivity::smdspan_t<std::int32_t, 2> dofmap,
                          const int fluxdofs_per_fct,
                          dolfinx_adaptivity::cmdspan2_t coordinate_dofs)
@@ -62,7 +61,7 @@ void minimisation_kernel(dolfinx_adaptivity::mdspan2_t Te,
       = kernel_data.shapefunctions_flux(J, detJ);
 
   std::span<const double> quadrature_weights
-      = kernel_data.quadrature_weights_cell();
+      = kernel_data.quadrature_weights(0);
 
   /* Initialisation */
   // Interpolated solution from step 1
@@ -214,7 +213,7 @@ template <typename T, int id_flux_order = 3, bool asmbl_systmtrx = true>
 void assemble_minimisation(
     Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>& A_patch,
     Eigen::Matrix<T, Eigen::Dynamic, 1>& L_patch,
-    PatchFluxCstm<T, id_flux_order>& patch, KernelData<T>& kernel_data,
+    PatchFluxCstm<T, id_flux_order>& patch, KernelDataEqlb<T>& kernel_data,
     dolfinx_adaptivity::mdspan_t<std::int32_t, 3> dofmap_patch,
     std::span<T> coefficients, std::span<double> coordinate_dofs,
     const int type_patch)

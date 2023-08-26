@@ -4,13 +4,14 @@
 using namespace dolfinx;
 using namespace dolfinx_adaptivity::equilibration;
 
+// ------------------------------------------------------------------------------
+/* KernelData */
+// ------------------------------------------------------------------------------
 template <typename T>
-KernelData<T>::KernelData(std::shared_ptr<const mesh::Mesh> mesh,
-                          std::shared_ptr<const QuadratureRule> qrule,
-                          const basix::FiniteElement& basix_element_fluxpw,
-                          const basix::FiniteElement& basix_element_rhs,
-                          const basix::FiniteElement& basix_element_hat)
-    : _quadrature_rule(qrule)
+KernelData<T>::KernelData(
+    std::shared_ptr<const mesh::Mesh> mesh,
+    std::vector<std::shared_ptr<const QuadratureRule>> quadrature_rule)
+    : _quadrature_rule(quadrature_rule)
 {
   const mesh::Topology& topology = mesh->topology();
   const mesh::Geometry& geometry = mesh->geometry();
@@ -21,7 +22,7 @@ KernelData<T>::KernelData(std::shared_ptr<const mesh::Mesh> mesh,
 
   if (!_is_affine)
   {
-    throw std::runtime_error("Equilibration on no-affine meshes not supported");
+    throw std::runtime_error("KernelData limited to affine meshes!");
   }
 
   // Set dimensions
@@ -40,9 +41,11 @@ KernelData<T>::KernelData(std::shared_ptr<const mesh::Mesh> mesh,
   /* Geometry element */
   _num_coordinate_dofs = cmap.dim();
 
-  _g_basis_shape = cmap.tabulate_shape(1, 1);
+  std::array<std::size_t, 4> g_basis_shape = cmap.tabulate_shape(1, 1);
   _g_basis_values = std::vector<double>(std::reduce(
-      _g_basis_shape.begin(), _g_basis_shape.end(), 1, std::multiplies{}));
+      g_basis_shape.begin(), g_basis_shape.end(), 1, std::multiplies{}));
+  _g_basis = dolfinx_adaptivity::mdspan_t<const double, 4>(
+      _g_basis_values.data(), g_basis_shape);
 
   std::vector<double> points(_gdim, 0);
   cmap.tabulate(1, points, {1, _gdim}, _g_basis_values);
@@ -55,7 +58,142 @@ KernelData<T>::KernelData(std::shared_ptr<const mesh::Mesh> mesh,
       = basix::cell::facet_outward_normals(basix_cell);
 
   _fct_normal_out = basix::cell::facet_orientations(basix_cell);
+}
 
+/* Basic transformations */
+template <typename T>
+double KernelData<T>::compute_jacobian(
+    dolfinx_adaptivity::mdspan_t<double, 2> J,
+    dolfinx_adaptivity::mdspan_t<double, 2> K, std::span<double> detJ_scratch,
+    dolfinx_adaptivity::mdspan_t<const double, 2> coords)
+{
+  // Basis functions evaluated at first gauss-point
+  dolfinx_adaptivity::smdspan_t<const double, 2> dphi = stdex::submdspan(
+      _g_basis, std::pair{1, (std::size_t)_tdim + 1}, 0, stdex::full_extent, 0);
+
+  // Compute Jacobian
+  for (std::size_t i = 0; i < J.extent(0); ++i)
+  {
+    for (std::size_t j = 0; j < J.extent(1); ++j)
+    {
+      J(i, j) = 0;
+      K(i, j) = 0;
+    }
+  }
+
+  fem::CoordinateElement::compute_jacobian(dphi, coords, J);
+  fem::CoordinateElement::compute_jacobian_inverse(J, K);
+
+  return fem::CoordinateElement::compute_jacobian_determinant(J, detJ_scratch);
+}
+
+template <typename T>
+double KernelData<T>::compute_jacobian(
+    dolfinx_adaptivity::mdspan_t<double, 2> J, std::span<double> detJ_scratch,
+    dolfinx_adaptivity::mdspan_t<const double, 2> coords)
+{
+  // Basis functions evaluated at first gauss-point
+  dolfinx_adaptivity::smdspan_t<const double, 2> dphi = stdex::submdspan(
+      _g_basis, std::pair{1, (std::size_t)_tdim + 1}, 0, stdex::full_extent, 0);
+
+  // Compute Jacobian
+  for (std::size_t i = 0; i < J.extent(0); ++i)
+  {
+    for (std::size_t j = 0; j < J.extent(1); ++j)
+    {
+      J(i, j) = 0;
+    }
+  }
+
+  fem::CoordinateElement::compute_jacobian(dphi, coords, J);
+
+  return fem::CoordinateElement::compute_jacobian_determinant(J, detJ_scratch);
+}
+
+template <typename T>
+void KernelData<T>::physical_fct_normal(
+    std::span<double> normal_phys, dolfinx_adaptivity::mdspan_t<double, 2> K,
+    std::int8_t fct_id)
+{
+  // Set physical normal to zero
+  std::fill(normal_phys.begin(), normal_phys.end(), 0);
+
+  // Extract normal on reference cell
+  std::span<const double> normal_ref = fct_normal(fct_id);
+
+  // n_phys = F^(-T) * n_ref
+  for (int i = 0; i < _gdim; ++i)
+  {
+    for (int j = 0; j < _gdim; ++j)
+    {
+      normal_phys[i] += K(j, i) * normal_ref[j];
+    }
+  }
+
+  // Normalize vector
+  double norm = 0;
+  std::for_each(normal_phys.begin(), normal_phys.end(),
+                [&norm](auto ni) { norm += std::pow(ni, 2); });
+  norm = std::sqrt(norm);
+  std::for_each(normal_phys.begin(), normal_phys.end(),
+                [norm](auto& ni) { ni = ni / norm; });
+}
+
+/* Tabulate shape function */
+template <typename T>
+std::array<std::size_t, 5> KernelData<T>::tabulate_basis(
+    const basix::FiniteElement& basix_element, std::vector<double> points,
+    std::vector<double>& storage, bool tabulate_gradient, bool stoarge_elmtcur)
+{
+  // Number of tabulated points
+  std::size_t num_points = points.size() / _gdim;
+
+  // Get shape of tabulated data
+  int id_grad = (tabulate_gradient) ? 1 : 0;
+  std::array<std::size_t, 4> shape
+      = basix_element.tabulate_shape(id_grad, num_points);
+
+  // Resize storage
+  std::size_t size_storage
+      = std::reduce(shape.begin(), shape.end(), 1, std::multiplies{});
+
+  if (stoarge_elmtcur)
+  {
+    storage.resize(2 * size_storage, 0);
+  }
+  else
+  {
+    storage.resize(size_storage, 0);
+  }
+
+  // Tabulate basis
+  std::span<double> storage_ref(storage.data(), size_storage);
+  basix_element.tabulate(id_grad, points, {num_points, _gdim}, storage_ref);
+
+  // Create shape of final mdspan
+  std::array<std::size_t, 5> shape_final
+      = {{1, shape[0], shape[1], shape[2], shape[3]}};
+
+  if (stoarge_elmtcur)
+  {
+    shape_final[0] = 2;
+  }
+
+  return std::move(shape_final);
+}
+
+// ------------------------------------------------------------------------------
+/* KernelDataEqlb */
+// ------------------------------------------------------------------------------
+template <typename T>
+KernelDataEqlb<T>::KernelDataEqlb(
+    std::shared_ptr<const mesh::Mesh> mesh,
+    std::shared_ptr<const QuadratureRule> quadrature_rule_cell,
+    const basix::FiniteElement& basix_element_fluxpw,
+    const basix::FiniteElement& basix_element_rhs,
+    const basix::FiniteElement& basix_element_hat)
+    : KernelData<T>(mesh, {quadrature_rule_cell})
+{
   /* Interpolation points on facets */
   // Extract interpolation points
   auto [X, Xshape] = basix_element_fluxpw.points();
@@ -73,36 +211,36 @@ KernelData<T>::KernelData(std::shared_ptr<const mesh::Mesh> mesh,
     _nipoints_per_fct++;
 
     // Get next x-coordinate
-    x_fctpoint = X[_nipoints_per_fct * _gdim];
+    x_fctpoint = X[_nipoints_per_fct * this->_gdim];
   }
 
-  _nipoints_fct = _nipoints_per_fct * _nfcts_per_cell;
+  _nipoints_fct = _nipoints_per_fct * this->_nfcts_per_cell;
 
   // Initialise storage for interpolation data
   const int degree = basix_element_fluxpw.degree();
   std::size_t ndofs_fct
-      = (_gdim == 2) ? degree : (degree + 1) * (degree + 2) / 2;
+      = (this->_gdim == 2) ? degree : (degree + 1) * (degree + 2) / 2;
 
-  _ipoints_fct.resize(_nipoints_fct * _gdim, 0);
-  _data_M_fct.resize(ndofs_fct * _nipoints_fct * _gdim, 0);
+  _ipoints_fct.resize(_nipoints_fct * this->_gdim, 0);
+  _data_M_fct.resize(ndofs_fct * _nipoints_fct * this->_gdim, 0);
 
   std::array<std::size_t, 4> M_shape
-      = {_nfcts_per_cell, ndofs_fct, _gdim, _nipoints_per_fct};
+      = {this->_nfcts_per_cell, ndofs_fct, this->_gdim, _nipoints_per_fct};
   _M_fct = dolfinx_adaptivity::cmdspan4_t(_data_M_fct.data(), M_shape);
   dolfinx_adaptivity::mdspan4_t M_fct(_data_M_fct.data(), M_shape);
 
   // Copy interpolation points (on facets)
-  std::copy_n(X.begin(), _nipoints_fct * _gdim, _ipoints_fct.begin());
+  std::copy_n(X.begin(), _nipoints_fct * this->_gdim, _ipoints_fct.begin());
 
   // Copy interpolation matrix (on facets)
-  const int offs_drvt = (degree > 1) ? _gdim + 1 : 1;
+  const int offs_drvt = (degree > 1) ? this->_gdim + 1 : 1;
 
   int id_dof = 0;
   int offs_pnt = 0;
 
-  for (std::size_t i = 0; i < _gdim; ++i)
+  for (std::size_t i = 0; i < this->_gdim; ++i)
   {
-    for (std::size_t j = 0; j < _nfcts_per_cell; ++j)
+    for (std::size_t j = 0; j < this->_nfcts_per_cell; ++j)
     {
       for (std::size_t k = 0; k < ndofs_fct; ++k)
       {
@@ -141,11 +279,11 @@ KernelData<T>::KernelData(std::shared_ptr<const mesh::Mesh> mesh,
 
 /* Tabulation of shape-functions */
 template <typename T>
-void KernelData<T>::tabulate_flux_basis(
+void KernelDataEqlb<T>::tabulate_flux_basis(
     const basix::FiniteElement& basix_element_fluxpw)
 {
   // Number of surface quadrature points
-  std::size_t n_qpoints_cell = _quadrature_rule->npoints_cell();
+  std::size_t n_qpoints_cell = this->_quadrature_rule[0]->num_points();
 
   // Get shape of storage for tabulated functions
   std::array<std::size_t, 4> flux_basis_shape
@@ -158,8 +296,9 @@ void KernelData<T>::tabulate_flux_basis(
       flux_basis_shape.begin(), flux_basis_shape.end(), 1, std::multiplies{}));
 
   // Tabulate functions on reference cell
-  basix_element_fluxpw.tabulate(0, _quadrature_rule->points_cell(),
-                                {n_qpoints_cell, _gdim}, _flux_basis_values);
+  basix_element_fluxpw.tabulate(0, this->_quadrature_rule[0]->points(),
+                                {n_qpoints_cell, this->_gdim},
+                                _flux_basis_values);
 
   // Recast functions into mdspans for later usage
   _flux_fullbasis = dolfinx_adaptivity::cmdspan4_t(_flux_basis_values.data(),
@@ -169,11 +308,11 @@ void KernelData<T>::tabulate_flux_basis(
 }
 
 template <typename T>
-void KernelData<T>::tabulate_rhs_basis(
+void KernelDataEqlb<T>::tabulate_rhs_basis(
     const basix::FiniteElement& basix_element_rhs)
 {
   // Number of surface quadrature points
-  std::size_t n_qpoints_cell = _quadrature_rule->npoints_cell();
+  std::size_t n_qpoints_cell = this->_quadrature_rule[0]->num_points();
 
   // Get shape of storage for tabulated functions
   std::array<std::size_t, 4> rhs_basis_shape_cell
@@ -194,9 +333,10 @@ void KernelData<T>::tabulate_rhs_basis(
                   std::multiplies{}));
 
   // Tabulate functions on reference cell
-  basix_element_rhs.tabulate(1, _quadrature_rule->points_cell(),
-                             {n_qpoints_cell, _gdim}, _rhs_basis_cell_values);
-  basix_element_rhs.tabulate(0, _ipoints_fct, {_nipoints_fct, _gdim},
+  basix_element_rhs.tabulate(1, this->_quadrature_rule[0]->points(),
+                             {n_qpoints_cell, this->_gdim},
+                             _rhs_basis_cell_values);
+  basix_element_rhs.tabulate(0, _ipoints_fct, {_nipoints_fct, this->_gdim},
                              _rhs_basis_fct_values);
 
   // Recast functions into mdspans for later usage
@@ -219,11 +359,11 @@ void KernelData<T>::tabulate_rhs_basis(
 }
 
 template <typename T>
-void KernelData<T>::tabulate_hat_basis(
+void KernelDataEqlb<T>::tabulate_hat_basis(
     const basix::FiniteElement& basix_element_hat)
 {
   // Number of surface quadrature points
-  std::size_t n_qpoints_cell = _quadrature_rule->npoints_cell();
+  std::size_t n_qpoints_cell = this->_quadrature_rule[0]->num_points();
 
   // Get shape of storage for tabulated functions
   std::array<std::size_t, 4> hat_basis_shape_cell
@@ -241,9 +381,10 @@ void KernelData<T>::tabulate_hat_basis(
                   std::multiplies{}));
 
   // Tabulate functions on reference cell
-  basix_element_hat.tabulate(0, _quadrature_rule->points_cell(),
-                             {n_qpoints_cell, _gdim}, _hat_basis_cell_values);
-  basix_element_hat.tabulate(0, _ipoints_fct, {_nipoints_fct, _gdim},
+  basix_element_hat.tabulate(0, this->_quadrature_rule[0]->points(),
+                             {n_qpoints_cell, this->_gdim},
+                             _hat_basis_cell_values);
+  basix_element_hat.tabulate(0, _ipoints_fct, {_nipoints_fct, this->_gdim},
                              _hat_basis_fct_values);
 
   // Recast functions into mdspans for later usage
@@ -255,7 +396,7 @@ void KernelData<T>::tabulate_hat_basis(
 
 /* Mapping routines */
 template <typename T>
-void KernelData<T>::contravariant_piola_mapping(
+void KernelDataEqlb<T>::contravariant_piola_mapping(
     dolfinx_adaptivity::smdspan_t<double, 3> phi_cur,
     dolfinx_adaptivity::smdspan_t<const double, 3> phi_ref,
     dolfinx_adaptivity::mdspan2_t J, double detJ)
@@ -277,99 +418,10 @@ void KernelData<T>::contravariant_piola_mapping(
   }
 }
 
-/* Compute isoparametric mapping */
-template <typename T>
-double KernelData<T>::compute_jacobian(dolfinx_adaptivity::mdspan2_t J,
-                                       dolfinx_adaptivity::mdspan2_t K,
-                                       std::span<double> detJ_scratch,
-                                       dolfinx_adaptivity::cmdspan2_t coords)
-{
-  // Reshape basis functions (geometry)
-  dolfinx_adaptivity::cmdspan4_t full_basis(_g_basis_values.data(),
-                                            _g_basis_shape);
-
-  // Basis functions evaluated at first gauss-point
-  dolfinx_adaptivity::s_cmdspan2_t dphi
-      = stdex::submdspan(full_basis, std::pair{1, (std::size_t)_tdim + 1}, 0,
-                         stdex::full_extent, 0);
-
-  // Compute Jacobian
-  for (std::size_t i = 0; i < J.extent(0); ++i)
-  {
-    for (std::size_t j = 0; j < J.extent(1); ++j)
-    {
-      J(i, j) = 0;
-      K(i, j) = 0;
-    }
-  }
-
-  fem::CoordinateElement::compute_jacobian(dphi, coords, J);
-  fem::CoordinateElement::compute_jacobian_inverse(J, K);
-
-  return fem::CoordinateElement::compute_jacobian_determinant(J, detJ_scratch);
-}
-
-template <typename T>
-double KernelData<T>::compute_jacobian(dolfinx_adaptivity::mdspan2_t J,
-                                       std::span<double> detJ_scratch,
-                                       dolfinx_adaptivity::cmdspan2_t coords)
-{
-  // Reshape basis functions (geometry)
-  dolfinx_adaptivity::cmdspan4_t full_basis(_g_basis_values.data(),
-                                            _g_basis_shape);
-
-  // Basis functions evaluated at first gauss-point
-  dolfinx_adaptivity::s_cmdspan2_t dphi
-      = stdex::submdspan(full_basis, std::pair{1, (std::size_t)_tdim + 1}, 0,
-                         stdex::full_extent, 0);
-
-  // Compute Jacobian
-  for (std::size_t i = 0; i < J.extent(0); ++i)
-  {
-    for (std::size_t j = 0; j < J.extent(1); ++j)
-    {
-      J(i, j) = 0;
-    }
-  }
-
-  fem::CoordinateElement::compute_jacobian(dphi, coords, J);
-
-  return fem::CoordinateElement::compute_jacobian_determinant(J, detJ_scratch);
-}
-
-template <typename T>
-void KernelData<T>::physical_fct_normal(std::span<double> normal_phys,
-                                        dolfinx_adaptivity::mdspan2_t K,
-                                        std::int8_t fct_id)
-{
-  // Set physical normal to zero
-  std::fill(normal_phys.begin(), normal_phys.end(), 0);
-
-  // Extract normal on reference cell
-  std::span<const double> normal_ref = fct_normal(fct_id);
-
-  // n_phys = F^(-T) * n_ref
-  for (int i = 0; i < _gdim; ++i)
-  {
-    for (int j = 0; j < _gdim; ++j)
-    {
-      normal_phys[i] += K(j, i) * normal_ref[j];
-    }
-  }
-
-  // Normalize vector
-  double norm = 0;
-  std::for_each(normal_phys.begin(), normal_phys.end(),
-                [&norm](auto ni) { norm += std::pow(ni, 2); });
-  norm = std::sqrt(norm);
-  std::for_each(normal_phys.begin(), normal_phys.end(),
-                [norm](auto& ni) { ni = ni / norm; });
-}
-
 /* Push-forward of shape-functions */
 template <typename T>
 dolfinx_adaptivity::s_cmdspan3_t
-KernelData<T>::shapefunctions_cell_rhs(dolfinx_adaptivity::cmdspan2_t K)
+KernelDataEqlb<T>::shapefunctions_cell_rhs(dolfinx_adaptivity::cmdspan2_t K)
 {
   // Loop over all evaluation points
   for (std::size_t i = 0; i < _rhs_cell_fullbasis.extent(1); ++i)
@@ -394,4 +446,7 @@ KernelData<T>::shapefunctions_cell_rhs(dolfinx_adaptivity::cmdspan2_t K)
 // ------------------------------------------------------------------------------
 template class dolfinx_adaptivity::equilibration::KernelData<float>;
 template class dolfinx_adaptivity::equilibration::KernelData<double>;
+
+template class dolfinx_adaptivity::equilibration::KernelDataEqlb<float>;
+template class dolfinx_adaptivity::equilibration::KernelDataEqlb<double>;
 // ------------------------------------------------------------------------------
