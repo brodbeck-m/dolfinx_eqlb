@@ -190,6 +190,7 @@ void equilibrate_flux_constrmin(
       {
         std::int32_t dof_flux_glob = dofs_flux_global[k];
 
+        // TODO - Check not necessary when correct BCs are used
         if (bmarkers[dofs_flux_mixed[k]])
         {
           x_flux_hdiv[dof_flux_glob] = u_patch[dofs_flux_patch[k]];

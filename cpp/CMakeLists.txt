@@ -54,6 +54,7 @@ include(GNUInstallDirs)
 
 set(
   HEADERS_EQLB
+  BoundaryData.hpp
   FluxBC.hpp
   KernelData.hpp
   Patch.hpp
@@ -75,6 +76,7 @@ set(
 
 target_sources(
   dolfinx_eqlb
+  PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/BoundaryData.cpp
   PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/KernelData.cpp
   PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Patch.cpp
   PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/PatchFluxEV.cpp

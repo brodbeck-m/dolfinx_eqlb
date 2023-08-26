@@ -101,7 +101,10 @@ public:
       }
 
       // Resize storage vector
-      _coefficients.resize(_nfcts * _cstride_proj, 0);
+      const int size = _nfcts * _cstride_proj;
+
+      _projected_bc.resize(size, 0);
+      _dofs_projected_bc.resize(size, 0);
     }
   }
 
@@ -208,6 +211,7 @@ protected:
 
   // Storage of projected BC
   std::vector<T> _projected_bc;
+  std::vector<std::int32_t> _dofs_projected_bc;
   int _cstride_proj;
 };
 

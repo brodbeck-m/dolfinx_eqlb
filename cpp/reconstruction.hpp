@@ -335,7 +335,7 @@ graph::AdjacencyList<std::int8_t> mark_mesh_facets(
 
 /// Execute flux calculation based on H(div) conforming equilibration
 ///
-/// Equilibration based on local minimazation problems. Weak forms
+/// Equilibration based on local minimization problems. Weak forms
 /// discretized using ufl.
 ///
 /// @param a                   The bilinears form to assemble
