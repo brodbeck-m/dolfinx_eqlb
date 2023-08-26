@@ -89,6 +89,16 @@ public:
     return _fct_normal_out[id_fct];
   }
 
+  /// Returns id if cell-normal points outward
+  /// @param id_fct1 The cell-local facet id
+  /// @param id_fct2 The cell-local facet id
+  /// @return Direction indicator (true->outward)
+  std::pair<bool, bool> fct_normal_is_outward(std::int8_t id_fct1,
+                                              std::int8_t id_fct2)
+  {
+    return {_fct_normal_out[id_fct1], _fct_normal_out[id_fct2]};
+  }
+
   /* Getter functions (Quadrature) */
 
   /// Extract quadrature points on all sub-entity of cell
@@ -157,7 +167,7 @@ protected:
 };
 
 template <typename T>
-class KernelDataEqlb
+class KernelDataEqlb : public KernelData<T>
 {
 public:
   /// Kernel data basic constructor
@@ -169,36 +179,10 @@ public:
   /// @param basix_element_fluxpw The basix-element for the H(div) flux
   /// @param basix_element_rhs    The basix-element for RHS and projected flux
   KernelDataEqlb(std::shared_ptr<const mesh::Mesh> mesh,
-                 std::shared_ptr<const QuadratureRule> qrule,
+                 std::shared_ptr<const QuadratureRule> quadrature_rule_cell,
                  const basix::FiniteElement& basix_element_fluxpw,
                  const basix::FiniteElement& basix_element_rhs,
                  const basix::FiniteElement& basix_element_hat);
-
-  /// Compute isogeometric mapping for a given cell
-  /// @param J            The Jacobian
-  /// @param K            The inverse Jacobian
-  /// @param detJ_scratch Storage for determinant calculation
-  /// @param coords       The cell coordinates
-  /// @return             The determinant of the Jacobian
-  double compute_jacobian(dolfinx_adaptivity::mdspan2_t J,
-                          dolfinx_adaptivity::mdspan2_t K,
-                          std::span<double> detJ_scratch,
-                          dolfinx_adaptivity::cmdspan2_t coords);
-
-  /// Compute isogeometric mapping for a given cell
-  /// @param J            The Jacobian
-  /// @param detJ_scratch Storage for determinant calculation
-  /// @param coords       The cell coordinates
-  /// @return             The determinant of the Jacobian
-  double compute_jacobian(dolfinx_adaptivity::mdspan2_t J,
-                          std::span<double> detJ_scratch,
-                          dolfinx_adaptivity::cmdspan2_t coords);
-
-  /// Calculate physical normal of facet
-  /// @param K      The inverse Jacobi-Matrix
-  /// @param fct_id The cell-local facet id
-  void physical_fct_normal(std::span<double> normal_phys,
-                           dolfinx_adaptivity::mdspan2_t K, std::int8_t fct_id);
 
   /// Pull back of flux-data from current to reference cell
   /// @param flux_ref The flux data on reference cell
@@ -216,39 +200,6 @@ public:
   }
 
   /* Setter functions */
-
-  /* Getter functions (Geometry of cell) */
-
-  /// Returns number of nodes, forming a reference cell
-  /// @return Number of nodes on reference cell
-  int nnodes_cell() { return _num_coordinate_dofs; }
-
-  /// Returns facet normal on reference facet (const. version)
-  /// @param id_fct The cell-local facet id
-  /// @return The facet normal (reference cell)
-  std::span<const double> fct_normal(std::int8_t fct_id) const
-  {
-    std::size_t tdim = _normals_shape[1];
-    return std::span<const double>(_fct_normals.data() + fct_id * tdim, tdim);
-  }
-
-  /// Returns id if cell-normal points outward
-  /// @param id_fct The cell-local facet id
-  /// @return Direction indicator (true->outward)
-  bool fct_normal_is_outward(std::int8_t id_fct)
-  {
-    return _fct_normal_out[id_fct];
-  }
-
-  /// Returns id if cell-normal points outward
-  /// @param id_fct1 The cell-local facet id
-  /// @param id_fct2 The cell-local facet id
-  /// @return Direction indicator (true->outward)
-  std::pair<bool, bool> fct_normal_is_outward(std::int8_t id_fct1,
-                                              std::int8_t id_fct2)
-  {
-    return {_fct_normal_out[id_fct1], _fct_normal_out[id_fct2]};
-  }
 
   /* Getter functions (Shape functions) */
 
@@ -341,28 +292,6 @@ public:
                             stdex::full_extent, 0);
   }
 
-  /* Getter functions (Quadrature) */
-
-  // Extract number of quadrature points on cell
-  /// @return Number of quadrature points
-  int nqpoints_cell() const { return _quadrature_rule->num_points(); }
-
-  /// Extract quadrature points on cell
-  /// @return The quadrature points
-  dolfinx_adaptivity::mdspan_t<const double, 2> quadrature_points_cell() const
-  {
-    return dolfinx_adaptivity::mdspan_t<const double, 2>(
-        _quadrature_rule->points().data(), _quadrature_rule->num_points(),
-        _quadrature_rule->tdim());
-  }
-
-  /// Extract quadrature weights on cell
-  /// @return The quadrature weights
-  std::span<const double> quadrature_weights_cell() const
-  {
-    return _quadrature_rule->weights();
-  }
-
   /* Getter functions (Interpolation) */
   // Extract number of interpolation points per facet
   /// @return Number of interpolation points
@@ -421,29 +350,10 @@ protected:
       dolfinx_adaptivity::mdspan2_t J, double detJ);
 
   /* Variable definitions */
-  // Dimensions
-  std::uint32_t _gdim, _tdim;
-
-  // Description mesh element
-  std::size_t _num_coordinate_dofs, _nfcts_per_cell;
-  bool _is_affine;
-
-  // Facet normals (reference element)
-  std::vector<double> _fct_normals;
-  std::array<std::size_t, 2> _normals_shape;
-  std::vector<bool> _fct_normal_out;
-
-  // Quadrature rule
-  std::shared_ptr<const QuadratureRule> _quadrature_rule;
-
   // Interpolation data
   std::size_t _nipoints_per_fct, _nipoints_fct;
   std::vector<double> _ipoints_fct, _data_M_fct;
   dolfinx_adaptivity::cmdspan4_t _M_fct; // Indices: facet, dof, gdim, points
-
-  // Tabulated shape-functions (geometry)
-  std::array<std::size_t, 4> _g_basis_shape;
-  std::vector<double> _g_basis_values;
 
   // Tabulated shape-functions (pice-wise H(div) flux)
   std::vector<double> _flux_basis_values, _flux_basis_current_values;

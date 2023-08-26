@@ -61,7 +61,7 @@ void minimisation_kernel(dolfinx_adaptivity::mdspan2_t Te,
       = kernel_data.shapefunctions_flux(J, detJ);
 
   std::span<const double> quadrature_weights
-      = kernel_data.quadrature_weights_cell();
+      = kernel_data.quadrature_weights(0);
 
   /* Initialisation */
   // Interpolated solution from step 1
