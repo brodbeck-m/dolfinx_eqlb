@@ -27,7 +27,7 @@ namespace py = pybind11;
 namespace
 {
 
-using namespace dolfinx_adaptivity;
+using namespace dolfinx_eqlb;
 
 template <typename X, typename = void>
 struct scalar_value_type
@@ -87,9 +87,8 @@ void declare_fluxeqlb(py::module& m)
          std::vector<std::shared_ptr<dolfinx::fem::Function<double>>>&
              flux_hdiv)
       {
-        equilibration::reconstruct_fluxes_ev<double>(
-            a, l_pen, l, fct_esntbound_prime, fct_esntbound_flux, bcs1,
-            flux_hdiv);
+        reconstruct_fluxes_ev<double>(a, l_pen, l, fct_esntbound_prime,
+                                      fct_esntbound_flux, bcs1, flux_hdiv);
       },
       py::arg("a"), py::arg("l_pen"), py::arg("l"),
       py::arg("fct_esntbound_prime"), py::arg("fct_esntbound_prime"),
@@ -108,9 +107,9 @@ void declare_fluxeqlb(py::module& m)
          const std::vector<std::vector<
              std::shared_ptr<const dolfinx::fem::DirichletBC<double>>>>& bcs)
       {
-        equilibration::reconstruct_fluxes_cstm<double>(
-            flux_hdiv, flux_dg, rhs_dg, fct_esntbound_prime, fct_esntbound_flux,
-            bcs);
+        reconstruct_fluxes_cstm<double>(flux_hdiv, flux_dg, rhs_dg,
+                                        fct_esntbound_prime, fct_esntbound_flux,
+                                        bcs);
       },
       py::arg("flux_hdiv"), py::arg("flux_dg"), py::arg("rhs_dg"),
       py::arg("fct_esntbound_prime"), py::arg("fct_esntbound_prime"),
@@ -123,9 +122,8 @@ void declare_fluxeqlb(py::module& m)
 template <typename T>
 void declare_bcs(py::module& m)
 {
-  py::class_<equilibration::FluxBC<T>,
-             std::shared_ptr<equilibration::FluxBC<T>>>(m, "FluxBC",
-                                                        "FluxBC object")
+  py::class_<FluxBC<T>, std::shared_ptr<FluxBC<T>>>(m, "FluxBC",
+                                                    "FluxBC object")
       .def(
           py::init(
               [](std::shared_ptr<const fem::FunctionSpace> function_space,
@@ -160,10 +158,10 @@ void declare_bcs(py::module& m)
                 }
 
                 // Return class
-                return equilibration::FluxBC<T>(
-                    function_space, boundary_facets, tabulate_tensor_ptr,
-                    n_bceval_per_fct, projection_required, coefficients,
-                    positions_of_coefficients, constants);
+                return FluxBC<T>(function_space, boundary_facets,
+                                 tabulate_tensor_ptr, n_bceval_per_fct,
+                                 projection_required, coefficients,
+                                 positions_of_coefficients, constants);
               }),
           py::arg("function_space"), py::arg("facets"),
           py::arg("pointer_boundary_kernel"), py::arg("nevals_per_fct"),

@@ -23,7 +23,7 @@
 
 using namespace dolfinx;
 
-namespace dolfinx_adaptivity::equilibration
+namespace dolfinx_eqlb
 {
 /// Assembly and solution of patch problems
 ///
@@ -220,4 +220,4 @@ void equilibrate_flux_constrmin(
     problem_data.set_hat_function(c, inode_local[index], 0.0);
   }
 }
-} // namespace dolfinx_adaptivity::equilibration
+} // namespace dolfinx_eqlb

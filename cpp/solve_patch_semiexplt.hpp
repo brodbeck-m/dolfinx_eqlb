@@ -26,7 +26,7 @@
 
 using namespace dolfinx;
 
-namespace dolfinx_adaptivity::equilibration
+namespace dolfinx_eqlb
 {
 
 namespace stdex = std::experimental;
@@ -142,7 +142,7 @@ void set_dof_prefactors(int a, bool noutward_eam1, bool noutward_ea,
 /// @param storage The flattened storage
 /// @param matrix  The matrix (J, K) on the current cell
 void store_mapping_data(const int cell_id, std::span<double> storage,
-                        dolfinx_adaptivity::mdspan2_t matrix)
+                        mdspan2_t matrix)
 {
   // Set offset
   const int offset = 4 * cell_id;
@@ -157,13 +157,12 @@ void store_mapping_data(const int cell_id, std::span<double> storage,
 /// @param cell_id The patch-local index of a cell
 /// @param storage The flattened storage
 /// @return        The matrix (J, K) on the current cell
-dolfinx_adaptivity::cmdspan2_t extract_mapping_data(const int cell_id,
-                                                    std::span<double> storage)
+cmdspan2_t extract_mapping_data(const int cell_id, std::span<double> storage)
 {
   // Set offset
   const int offset = 4 * cell_id;
 
-  return dolfinx_adaptivity::cmdspan2_t(storage.data() + offset, 2, 2);
+  return cmdspan2_t(storage.data() + offset, 2, 2);
 }
 
 /// Step 1: Calculate fluxes with jump/divergence condition on patch
@@ -210,15 +209,14 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
   const int ndofs_rhs = patch.ndofs_rhs_cell();
 
   // Interpolation matrix (reference cell)
-  dolfinx_adaptivity::mdspan_t<const double, 4> M
-      = kernel_data.interpl_matrix_facte();
+  mdspan_t<const double, 4> M = kernel_data.interpl_matrix_facte();
 
   /* Initialise solution process */
   // Jacobian J, inverse K and determinant detJ
   std::array<double, 9> Jb;
-  dolfinx_adaptivity::mdspan2_t J(Jb.data(), 2, 2);
+  mdspan2_t J(Jb.data(), 2, 2);
   std::array<double, 9> Kb;
-  dolfinx_adaptivity::mdspan2_t K(Kb.data(), 2, 2);
+  mdspan2_t K(Kb.data(), 2, 2);
   std::array<double, 18> detJ_scratch;
 
   // Interpolation data
@@ -228,8 +226,8 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
 
   std::vector<double> data_M_mapped(
       ncells * nipoints_facet * ndofs_flux_fct * 2, 0);
-  dolfinx_adaptivity::mdspan_t<double, 4> M_mapped(
-      data_M_mapped.data(), ncells, ndofs_flux_fct, 2, nipoints_facet);
+  mdspan_t<double, 4> M_mapped(data_M_mapped.data(), ncells, ndofs_flux_fct, 2,
+                               nipoints_facet);
 
   // Coefficient arrays for RHS/ projected flux
   std::vector<T> coefficients_f(ndofs_rhs, 0),
@@ -241,8 +239,7 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
 
   const int size_jump = dim * nipoints_facet;
   std::vector<T> data_jG_Eam1(size_jump, 0);
-  dolfinx_adaptivity::mdspan_t<T, 2> jG_Eam1(data_jG_Eam1.data(),
-                                             nipoints_facet, dim);
+  mdspan_t<T, 2> jG_Eam1(data_jG_Eam1.data(), nipoints_facet, dim);
 
   // History array for c_tam1_eam1
   T c_ta_ea, c_ta_eam1, c_tam1_eam1;
@@ -272,7 +269,7 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
   std::int8_t fctloc_ea, fctloc_eam1;
   bool noutward_ea, noutward_eam1;
   std::vector<double> dprefactor_dof(ncells * 2, 1.0);
-  dolfinx_adaptivity::mdspan2_t prefactor_dof(dprefactor_dof.data(), ncells, 2);
+  mdspan2_t prefactor_dof(dprefactor_dof.data(), ncells, 2);
 
   for (std::size_t index = 0; index < ncells; ++index)
   {
@@ -290,8 +287,7 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
 
     /* Piola mapping */
     // Reshape geometry infos
-    dolfinx_adaptivity::cmdspan2_t coords(coordinate_dofs_e.data(), nnodes_cell,
-                                          3);
+    cmdspan2_t coords(coordinate_dofs_e.data(), nnodes_cell, 3);
 
     // Calculate Jacobi, inverse, and determinant
     storage_detJ[index]
@@ -396,16 +392,12 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
       std::span<const std::int32_t> dofs_Ea = patch.dofs_projflux_fct(a);
 
       // Shape functions RHS
-      dolfinx_adaptivity::s_cmdspan2_t shp_TaEa
-          = kernel_data.shapefunctions_fct_rhs(fl_TaEa);
-      dolfinx_adaptivity::s_cmdspan2_t shp_Tap1Ea
-          = kernel_data.shapefunctions_fct_rhs(fl_Tap1Ea);
+      s_cmdspan2_t shp_TaEa = kernel_data.shapefunctions_fct_rhs(fl_TaEa);
+      s_cmdspan2_t shp_Tap1Ea = kernel_data.shapefunctions_fct_rhs(fl_Tap1Ea);
 
       // Shape-functions hat-function
-      dolfinx_adaptivity::s_cmdspan2_t hat_TaEam1
-          = kernel_data.shapefunctions_fct_hat(fl_TaEam1);
-      dolfinx_adaptivity::s_cmdspan2_t hat_TaEa
-          = kernel_data.shapefunctions_fct_hat(fl_TaEa);
+      s_cmdspan2_t hat_TaEam1 = kernel_data.shapefunctions_fct_hat(fl_TaEam1);
+      s_cmdspan2_t hat_TaEa = kernel_data.shapefunctions_fct_hat(fl_TaEa);
 
       // Quadrature loop
       c_ta_eam1 = -c_tam1_eam1;
@@ -514,22 +506,18 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
       else
       {
         // Isoparametric mapping
-        dolfinx_adaptivity::cmdspan2_t K
-            = extract_mapping_data(id_a, storage_K);
+        cmdspan2_t K = extract_mapping_data(id_a, storage_K);
 
         // Quadrature points and weights
-        dolfinx_adaptivity::cmdspan2_t qpoints
-            = kernel_data.quadrature_points(0);
+        cmdspan2_t qpoints = kernel_data.quadrature_points(0);
         std::span<const double> weights = kernel_data.quadrature_weights(0);
         const int nqpoints = weights.size();
 
         // Shape-functions RHS
-        dolfinx_adaptivity::s_cmdspan3_t shp_rhs
-            = kernel_data.shapefunctions_cell_rhs(K);
+        s_cmdspan3_t shp_rhs = kernel_data.shapefunctions_cell_rhs(K);
 
         // Shape-functions hat-function
-        dolfinx_adaptivity::s_cmdspan2_t shp_hat
-            = kernel_data.shapefunctions_cell_hat();
+        s_cmdspan2_t shp_hat = kernel_data.shapefunctions_cell_hat();
 
         // Quadrature loop
         c_ta_ea = -c_ta_eam1;
@@ -719,9 +707,9 @@ void minimise_flux(const mesh::Geometry& geometry,
   // Storage DOFmap
   // dim: (dof_local, dof_patch, dof_global, prefactor) x cell x dofs_per_cell
   std::vector<std::int32_t> ddofmap_patch(4 * ncells * ndofs_cell_local, 0);
-  dolfinx_adaptivity::mdspan_t<std::int32_t, 3> dofmap_patch(
-      ddofmap_patch.data(), 4, (std::size_t)ncells,
-      (std::size_t)ndofs_cell_local);
+  mdspan_t<std::int32_t, 3> dofmap_patch(ddofmap_patch.data(), 4,
+                                         (std::size_t)ncells,
+                                         (std::size_t)ndofs_cell_local);
 
   /* Storage cell geometries and DOFmap*/
   // Initialisations
@@ -853,4 +841,4 @@ void minimise_flux(const mesh::Geometry& geometry,
     }
   }
 }
-} // namespace dolfinx_adaptivity::equilibration
+} // namespace dolfinx_eqlb

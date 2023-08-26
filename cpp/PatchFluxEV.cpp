@@ -7,7 +7,7 @@
 
 using namespace dolfinx;
 
-namespace dolfinx_adaptivity::equilibration
+namespace dolfinx_eqlb
 {
 PatchFluxEV::PatchFluxEV(
     int nnodes_proc, std::shared_ptr<const mesh::Mesh> mesh,
@@ -302,4 +302,4 @@ void PatchFluxEV::create_subdofmap(int node_i)
   // std::cout << "\n";
   // throw std::exception();
 }
-} // namespace dolfinx_adaptivity::equilibration
+} // namespace dolfinx_eqlb

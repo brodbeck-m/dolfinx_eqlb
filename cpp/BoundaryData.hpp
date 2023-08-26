@@ -13,7 +13,7 @@
 
 using namespace dolfinx;
 
-namespace dolfinx_adaptivity::equilibration
+namespace dolfinx_eqlb
 {
 template <typename T>
 class BoundaryData
@@ -49,24 +49,22 @@ protected:
 
   // Geometric mapping
   std::array<double, 9> _data_J, data_K;
-  dolfinx_adaptivity::mdspan_t<double, 2> _J, _K;
+  mdspan_t<double, 2> _J, _K;
 
   // Interpolation on facets
   // (Indices M: facet, dof, gdim, points)
   std::size_t _ipoints_per_fct, _num_ipoints;
   std::vector<double> _ipoints, _data_M;
-  dolfinx_adaptivity::mdspan_t<const double, 4> _M;
+  mdspan_t<const double, 4> _M;
 
   // Push-back H(div) data
-  std::function<void(dolfinx_adaptivity::mdspan_t<T, 2>&,
-                     const dolfinx_adaptivity::mdspan_t<const T, 2>&,
-                     const dolfinx_adaptivity::mdspan_t<const double, 2>&,
-                     double,
-                     const dolfinx_adaptivity::mdspan_t<const double, 2>&)>
+  std::function<void(mdspan_t<T, 2>&, const mdspan_t<const T, 2>&,
+                     const mdspan_t<const double, 2>&, double,
+                     const mdspan_t<const double, 2>&)>
       _pull_back_fluxspace;
 
   // Shape-functions lagrange space
   std::vector<double> _basis_values;
-  dolfinx_adaptivity::mdspan_t<const double, 4> _basis;
+  mdspan_t<const double, 4> _basis;
 };
-} // namespace dolfinx_adaptivity::equilibration
+} // namespace dolfinx_eqlb

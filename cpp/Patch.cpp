@@ -10,7 +10,7 @@
 
 using namespace dolfinx;
 
-namespace dolfinx_adaptivity::equilibration
+namespace dolfinx_eqlb
 {
 Patch::Patch(int nnodes_proc, std::shared_ptr<const mesh::Mesh> mesh,
              graph::AdjacencyList<std::int8_t>& bfct_type)
@@ -363,4 +363,4 @@ Patch::next_facet_triangle(std::int32_t cell_i,
   return fct_next;
 }
 
-} // namespace dolfinx_adaptivity::equilibration
+} // namespace dolfinx_eqlb

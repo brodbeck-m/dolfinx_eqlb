@@ -2,7 +2,7 @@
 #include "QuadratureRule.hpp"
 
 using namespace dolfinx;
-using namespace dolfinx_adaptivity::equilibration;
+using namespace dolfinx_eqlb;
 
 // ------------------------------------------------------------------------------
 /* KernelData */
@@ -44,8 +44,7 @@ KernelData<T>::KernelData(
   std::array<std::size_t, 4> g_basis_shape = cmap.tabulate_shape(1, 1);
   _g_basis_values = std::vector<double>(std::reduce(
       g_basis_shape.begin(), g_basis_shape.end(), 1, std::multiplies{}));
-  _g_basis = dolfinx_adaptivity::mdspan_t<const double, 4>(
-      _g_basis_values.data(), g_basis_shape);
+  _g_basis = mdspan_t<const double, 4>(_g_basis_values.data(), g_basis_shape);
 
   std::vector<double> points(_gdim, 0);
   cmap.tabulate(1, points, {1, _gdim}, _g_basis_values);
@@ -62,13 +61,13 @@ KernelData<T>::KernelData(
 
 /* Basic transformations */
 template <typename T>
-double KernelData<T>::compute_jacobian(
-    dolfinx_adaptivity::mdspan_t<double, 2> J,
-    dolfinx_adaptivity::mdspan_t<double, 2> K, std::span<double> detJ_scratch,
-    dolfinx_adaptivity::mdspan_t<const double, 2> coords)
+double KernelData<T>::compute_jacobian(mdspan_t<double, 2> J,
+                                       mdspan_t<double, 2> K,
+                                       std::span<double> detJ_scratch,
+                                       mdspan_t<const double, 2> coords)
 {
   // Basis functions evaluated at first gauss-point
-  dolfinx_adaptivity::smdspan_t<const double, 2> dphi = stdex::submdspan(
+  smdspan_t<const double, 2> dphi = stdex::submdspan(
       _g_basis, std::pair{1, (std::size_t)_tdim + 1}, 0, stdex::full_extent, 0);
 
   // Compute Jacobian
@@ -88,12 +87,12 @@ double KernelData<T>::compute_jacobian(
 }
 
 template <typename T>
-double KernelData<T>::compute_jacobian(
-    dolfinx_adaptivity::mdspan_t<double, 2> J, std::span<double> detJ_scratch,
-    dolfinx_adaptivity::mdspan_t<const double, 2> coords)
+double KernelData<T>::compute_jacobian(mdspan_t<double, 2> J,
+                                       std::span<double> detJ_scratch,
+                                       mdspan_t<const double, 2> coords)
 {
   // Basis functions evaluated at first gauss-point
-  dolfinx_adaptivity::smdspan_t<const double, 2> dphi = stdex::submdspan(
+  smdspan_t<const double, 2> dphi = stdex::submdspan(
       _g_basis, std::pair{1, (std::size_t)_tdim + 1}, 0, stdex::full_extent, 0);
 
   // Compute Jacobian
@@ -111,9 +110,9 @@ double KernelData<T>::compute_jacobian(
 }
 
 template <typename T>
-void KernelData<T>::physical_fct_normal(
-    std::span<double> normal_phys, dolfinx_adaptivity::mdspan_t<double, 2> K,
-    std::int8_t fct_id)
+void KernelData<T>::physical_fct_normal(std::span<double> normal_phys,
+                                        mdspan_t<double, 2> K,
+                                        std::int8_t fct_id)
 {
   // Set physical normal to zero
   std::fill(normal_phys.begin(), normal_phys.end(), 0);
@@ -198,7 +197,7 @@ KernelDataEqlb<T>::KernelDataEqlb(
   // Extract interpolation points
   auto [X, Xshape] = basix_element_fluxpw.points();
   const auto [Mdata, Mshape] = basix_element_fluxpw.interpolation_matrix();
-  dolfinx_adaptivity::cmdspan2_t M(Mdata.data(), Mshape);
+  cmdspan2_t M(Mdata.data(), Mshape);
 
   // Determine number of pointe per facet
   _nipoints_per_fct = 0;
@@ -226,8 +225,8 @@ KernelDataEqlb<T>::KernelDataEqlb(
 
   std::array<std::size_t, 4> M_shape
       = {this->_nfcts_per_cell, ndofs_fct, this->_gdim, _nipoints_per_fct};
-  _M_fct = dolfinx_adaptivity::cmdspan4_t(_data_M_fct.data(), M_shape);
-  dolfinx_adaptivity::mdspan4_t M_fct(_data_M_fct.data(), M_shape);
+  _M_fct = cmdspan4_t(_data_M_fct.data(), M_shape);
+  mdspan4_t M_fct(_data_M_fct.data(), M_shape);
 
   // Copy interpolation points (on facets)
   std::copy_n(X.begin(), _nipoints_fct * this->_gdim, _ipoints_fct.begin());
@@ -269,10 +268,10 @@ KernelDataEqlb<T>::KernelDataEqlb(
   tabulate_hat_basis(basix_element_hat);
 
   /* H(div)-flux: Pull back into reference */
-  using V_t = dolfinx_adaptivity::mdspan_t<T, 2>;
-  using v_t = dolfinx_adaptivity::mdspan_t<const T, 2>;
-  using J_t = dolfinx_adaptivity::mdspan_t<const double, 2>;
-  using K_t = dolfinx_adaptivity::mdspan_t<const double, 2>;
+  using V_t = mdspan_t<T, 2>;
+  using v_t = mdspan_t<const T, 2>;
+  using J_t = mdspan_t<const double, 2>;
+  using K_t = mdspan_t<const double, 2>;
 
   _pull_back_fluxspace = basix_element_fluxpw.map_fn<V_t, v_t, K_t, J_t>();
 }
@@ -301,10 +300,9 @@ void KernelDataEqlb<T>::tabulate_flux_basis(
                                 _flux_basis_values);
 
   // Recast functions into mdspans for later usage
-  _flux_fullbasis = dolfinx_adaptivity::cmdspan4_t(_flux_basis_values.data(),
-                                                   flux_basis_shape);
-  _flux_fullbasis_current = dolfinx_adaptivity::mdspan4_t(
-      _flux_basis_current_values.data(), flux_basis_shape);
+  _flux_fullbasis = cmdspan4_t(_flux_basis_values.data(), flux_basis_shape);
+  _flux_fullbasis_current
+      = mdspan4_t(_flux_basis_current_values.data(), flux_basis_shape);
 }
 
 template <typename T>
@@ -340,13 +338,13 @@ void KernelDataEqlb<T>::tabulate_rhs_basis(
                              _rhs_basis_fct_values);
 
   // Recast functions into mdspans for later usage
-  _rhs_cell_fullbasis = dolfinx_adaptivity::cmdspan4_t(
-      _rhs_basis_cell_values.data(), rhs_basis_shape_cell);
-  _rhs_fct_fullbasis = dolfinx_adaptivity::cmdspan4_t(
-      _rhs_basis_fct_values.data(), rhs_basis_shape_fct);
+  _rhs_cell_fullbasis
+      = cmdspan4_t(_rhs_basis_cell_values.data(), rhs_basis_shape_cell);
+  _rhs_fct_fullbasis
+      = cmdspan4_t(_rhs_basis_fct_values.data(), rhs_basis_shape_fct);
 
-  _rhs_fullbasis_current = dolfinx_adaptivity::mdspan4_t(
-      _rhs_basis_current_values.data(), rhs_basis_shape_cell);
+  _rhs_fullbasis_current
+      = mdspan4_t(_rhs_basis_current_values.data(), rhs_basis_shape_cell);
 
   // Apply identity-map (ref->cur) on shape-functions (on cell)
   for (std::size_t i = 0; i < _rhs_cell_fullbasis.extent(1); ++i)
@@ -388,18 +386,17 @@ void KernelDataEqlb<T>::tabulate_hat_basis(
                              _hat_basis_fct_values);
 
   // Recast functions into mdspans for later usage
-  _hat_cell_fullbasis = dolfinx_adaptivity::cmdspan4_t(
-      _hat_basis_cell_values.data(), hat_basis_shape_cell);
-  _hat_fct_fullbasis = dolfinx_adaptivity::cmdspan4_t(
-      _hat_basis_fct_values.data(), hat_basis_shape_fct);
+  _hat_cell_fullbasis
+      = cmdspan4_t(_hat_basis_cell_values.data(), hat_basis_shape_cell);
+  _hat_fct_fullbasis
+      = cmdspan4_t(_hat_basis_fct_values.data(), hat_basis_shape_fct);
 }
 
 /* Mapping routines */
 template <typename T>
 void KernelDataEqlb<T>::contravariant_piola_mapping(
-    dolfinx_adaptivity::smdspan_t<double, 3> phi_cur,
-    dolfinx_adaptivity::smdspan_t<const double, 3> phi_ref,
-    dolfinx_adaptivity::mdspan2_t J, double detJ)
+    smdspan_t<double, 3> phi_cur, smdspan_t<const double, 3> phi_ref,
+    mdspan2_t J, double detJ)
 {
   // Loop over all evaluation points
   for (std::size_t i = 0; i < phi_ref.extent(0); ++i)
@@ -420,8 +417,7 @@ void KernelDataEqlb<T>::contravariant_piola_mapping(
 
 /* Push-forward of shape-functions */
 template <typename T>
-dolfinx_adaptivity::s_cmdspan3_t
-KernelDataEqlb<T>::shapefunctions_cell_rhs(dolfinx_adaptivity::cmdspan2_t K)
+s_cmdspan3_t KernelDataEqlb<T>::shapefunctions_cell_rhs(cmdspan2_t K)
 {
   // Loop over all evaluation points
   for (std::size_t i = 0; i < _rhs_cell_fullbasis.extent(1); ++i)
@@ -444,9 +440,9 @@ KernelDataEqlb<T>::shapefunctions_cell_rhs(dolfinx_adaptivity::cmdspan2_t K)
 }
 
 // ------------------------------------------------------------------------------
-template class dolfinx_adaptivity::equilibration::KernelData<float>;
-template class dolfinx_adaptivity::equilibration::KernelData<double>;
+template class KernelData<float>;
+template class KernelData<double>;
 
-template class dolfinx_adaptivity::equilibration::KernelDataEqlb<float>;
-template class dolfinx_adaptivity::equilibration::KernelDataEqlb<double>;
+template class KernelDataEqlb<float>;
+template class KernelDataEqlb<double>;
 // ------------------------------------------------------------------------------

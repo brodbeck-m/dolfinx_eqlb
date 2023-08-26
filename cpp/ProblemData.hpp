@@ -20,7 +20,7 @@
 
 using namespace dolfinx;
 
-namespace dolfinx_adaptivity::equilibration
+namespace dolfinx_eqlb
 {
 template <typename T>
 class ProblemData
@@ -74,8 +74,7 @@ public:
       const fem::Form<T>& l_i = *(l[i]);
 
       // Get sizes (constants, boundary conditions)
-      std::int32_t size_cnst_i
-          = dolfinx_adaptivity::size_constants_data<T>(l_i.constants());
+      std::int32_t size_cnst_i = size_constants_data<T>(l_i.constants());
 
       if (!id_no_bcs)
       {
@@ -223,8 +222,7 @@ public:
       _l[i] = l[i];
 
       // Get sizes (constants, boundary conditions)
-      std::int32_t size_cnst_i
-          = dolfinx_adaptivity::size_constants_data<T>(l_i.constants());
+      std::int32_t size_cnst_i = size_constants_data<T>(l_i.constants());
 
       // Increment overall size
       size_cnst += size_cnst_i;
@@ -355,8 +353,7 @@ protected:
       const fem::Form<T>& l_i = *(_l[i]);
 
       // Extract data
-      dolfinx_adaptivity::extract_constants_data<T>(l_i.constants(),
-                                                    constants(i));
+      extract_constants_data<T>(l_i.constants(), constants(i));
     }
   }
 
@@ -482,4 +479,4 @@ protected:
   // Offset
   std::vector<std::int32_t> _offset_bc;
 };
-} // namespace dolfinx_adaptivity::equilibration
+} // namespace dolfinx_eqlb

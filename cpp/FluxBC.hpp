@@ -18,7 +18,7 @@
 
 using namespace dolfinx;
 
-namespace dolfinx_adaptivity::equilibration
+namespace dolfinx_eqlb
 {
 template <typename T>
 class FluxBC
@@ -56,14 +56,13 @@ public:
     if (constants.size() > 0)
     {
       // Number of constants
-      std::int32_t size_constants
-          = dolfinx_adaptivity::size_constants_data<T>(constants);
+      std::int32_t size_constants = size_constants_data<T>(constants);
 
       // Resize storage vector
       _constants.resize(size_constants, 0);
 
       // Extract constants
-      dolfinx_adaptivity::extract_constants_data<T>(constants, _constants);
+      extract_constants_data<T>(constants, _constants);
     }
 
     /* Initialise coefficients */
@@ -215,4 +214,4 @@ protected:
   int _cstride_proj;
 };
 
-} // namespace dolfinx_adaptivity::equilibration
+} // namespace dolfinx_eqlb

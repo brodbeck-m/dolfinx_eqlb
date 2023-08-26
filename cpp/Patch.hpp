@@ -10,7 +10,7 @@
 
 using namespace dolfinx;
 
-namespace dolfinx_adaptivity::equilibration
+namespace dolfinx_eqlb
 {
 class Patch
 {
@@ -232,4 +232,4 @@ protected:
   std::span<std::int32_t> _fcts_sorted;
   std::vector<std::int8_t> _inodes_local;
 };
-} // namespace dolfinx_adaptivity::equilibration
+} // namespace dolfinx_eqlb

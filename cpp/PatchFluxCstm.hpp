@@ -18,7 +18,7 @@
 
 using namespace dolfinx;
 
-namespace dolfinx_adaptivity::equilibration
+namespace dolfinx_eqlb
 {
 template <typename T, int id_flux_order = 3>
 class PatchFluxCstm : public Patch
@@ -859,4 +859,4 @@ protected:
   std::vector<std::int8_t> _localid_fct;
 };
 
-} // namespace dolfinx_adaptivity::equilibration
+} // namespace dolfinx_eqlb

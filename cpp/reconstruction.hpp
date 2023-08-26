@@ -37,7 +37,7 @@
 
 using namespace dolfinx;
 
-namespace dolfinx_adaptivity::equilibration
+namespace dolfinx_eqlb
 {
 /// Calculation of patch contributions to flux
 ///
@@ -461,4 +461,4 @@ void reconstruct_fluxes_cstm(
   }
 }
 
-} // namespace dolfinx_adaptivity::equilibration
+} // namespace dolfinx_eqlb

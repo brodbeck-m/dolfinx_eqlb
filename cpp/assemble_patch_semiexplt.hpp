@@ -22,7 +22,7 @@
 
 using namespace dolfinx;
 
-namespace dolfinx_adaptivity::equilibration
+namespace dolfinx_eqlb
 {
 /// Integration kernel for system matrix/load vector per patch element
 /// @tparam T              The scalar type
@@ -36,12 +36,10 @@ namespace dolfinx_adaptivity::equilibration
 /// @param fluxdofs_per_fct Number of flux DOFs per facet
 /// @param coordinate_dofs  The coordinate DOFs of current cell
 template <typename T, int id_flux_order = 3, bool asmbl_systmtrx = true>
-void minimisation_kernel(dolfinx_adaptivity::mdspan2_t Te,
-                         KernelDataEqlb<T>& kernel_data,
+void minimisation_kernel(mdspan2_t Te, KernelDataEqlb<T>& kernel_data,
                          std::span<T> coefficients,
-                         dolfinx_adaptivity::smdspan_t<std::int32_t, 2> dofmap,
-                         const int fluxdofs_per_fct,
-                         dolfinx_adaptivity::cmdspan2_t coordinate_dofs)
+                         smdspan_t<std::int32_t, 2> dofmap,
+                         const int fluxdofs_per_fct, cmdspan2_t coordinate_dofs)
 {
   const int index_load = Te.extent(0) - 1;
 
@@ -51,14 +49,13 @@ void minimisation_kernel(dolfinx_adaptivity::mdspan2_t Te,
 
   /* Isoparametric mapping */
   std::array<double, 9> Jb;
-  dolfinx_adaptivity::mdspan2_t J(Jb.data(), 2, 2);
+  mdspan2_t J(Jb.data(), 2, 2);
   std::array<double, 18> detJ_scratch;
 
   double detJ = kernel_data.compute_jacobian(J, detJ_scratch, coordinate_dofs);
 
   /* Extract shape functions and quadrature data */
-  dolfinx_adaptivity::smdspan_t<double, 3> phi
-      = kernel_data.shapefunctions_flux(J, detJ);
+  smdspan_t<double, 3> phi = kernel_data.shapefunctions_flux(J, detJ);
 
   std::span<const double> quadrature_weights
       = kernel_data.quadrature_weights(0);
@@ -214,9 +211,8 @@ void assemble_minimisation(
     Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>& A_patch,
     Eigen::Matrix<T, Eigen::Dynamic, 1>& L_patch,
     PatchFluxCstm<T, id_flux_order>& patch, KernelDataEqlb<T>& kernel_data,
-    dolfinx_adaptivity::mdspan_t<std::int32_t, 3> dofmap_patch,
-    std::span<T> coefficients, std::span<double> coordinate_dofs,
-    const int type_patch)
+    mdspan_t<std::int32_t, 3> dofmap_patch, std::span<T> coefficients,
+    std::span<double> coordinate_dofs, const int type_patch)
 {
   assert(id_flux_order < 0);
 
@@ -243,7 +239,7 @@ void assemble_minimisation(
   const int ndofs_nz = 2 * ndofs_per_fct + ndofs_cell_add - 1;
   const int index_load = ndofs_nz;
   std::vector<T> dTe(ndofs_nz * (ndofs_nz + 1), 0);
-  dolfinx_adaptivity::mdspan2_t Te(dTe.data(), ndofs_nz + 1, ndofs_nz);
+  mdspan2_t Te(dTe.data(), ndofs_nz + 1, ndofs_nz);
 
   /* Calculation and assembly */
   for (std::size_t a = 1; a < ncells + 1; ++a)
@@ -251,13 +247,12 @@ void assemble_minimisation(
     int id_a = a - 1;
 
     // Cell coordinates
-    dolfinx_adaptivity::cmdspan2_t coordinates_elmt(
-        coordinate_dofs.data() + id_a * cstride_geom, nnodes_cell, 3);
+    cmdspan2_t coordinates_elmt(coordinate_dofs.data() + id_a * cstride_geom,
+                                nnodes_cell, 3);
 
     // DOFmap on cell
-    dolfinx_adaptivity::smdspan_t<std::int32_t, 2> dofmap_cell
-        = stdex::submdspan(dofmap_patch, stdex::full_extent, id_a,
-                           stdex::full_extent);
+    smdspan_t<std::int32_t, 2> dofmap_cell = stdex::submdspan(
+        dofmap_patch, stdex::full_extent, id_a, stdex::full_extent);
 
     // DOFs on cell (equilibration step 1)
     std::span<T> coefficients_elmt = coefficients.subspan(id_a * ndofs, ndofs);
@@ -414,4 +409,4 @@ void assemble_minimisation(
   }
 }
 
-} // namespace dolfinx_adaptivity::equilibration
+} // namespace dolfinx_eqlb

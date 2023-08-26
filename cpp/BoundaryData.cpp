@@ -1,8 +1,8 @@
 #include "BoundaryData.hpp"
 
 using namespace dolfinx;
-using namespace dolfinx_adaptivity::equilibration;
+using namespace dolfinx_eqlb;
 
 // ------------------------------------------------------------------------------
-template class dolfinx_adaptivity::equilibration::BoundaryData<double>;
+template class BoundaryData<double>;
 // ------------------------------------------------------------------------------

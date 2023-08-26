@@ -19,7 +19,7 @@
 
 using namespace dolfinx;
 
-namespace dolfinx_adaptivity::equilibration
+namespace dolfinx_eqlb
 {
 template <typename T>
 class ProblemDataFluxEV : public ProblemData<T>
@@ -231,4 +231,4 @@ protected:
   // Infos on constants and coefficients
   std::vector<int> _begin_hat, _begin_fluxdg;
 };
-} // namespace dolfinx_adaptivity::equilibration
+} // namespace dolfinx_eqlb

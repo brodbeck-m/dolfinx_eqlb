@@ -22,7 +22,7 @@
 
 using namespace dolfinx;
 
-namespace dolfinx_adaptivity::equilibration
+namespace dolfinx_eqlb
 {
 /// Apply lifting of non-homogenous boundary conditions
 ///
@@ -295,4 +295,4 @@ void assemble_tangents(
   }
 }
 
-} // namespace dolfinx_adaptivity::equilibration
+} // namespace dolfinx_eqlb

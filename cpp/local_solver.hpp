@@ -18,7 +18,7 @@
 
 using namespace dolfinx;
 
-namespace dolfinx_adaptivity
+namespace dolfinx_eqlb
 {
 /// Execute solution of problem in element-wise manner
 ///
@@ -42,8 +42,7 @@ void local_solver(std::vector<std::shared_ptr<fem::Function<T>>>& vec_sol,
   // Initilize data of LHS
   const std::vector<std::vector<std::shared_ptr<const fem::DirichletBC<T>>>>
       bcs;
-  equilibration::ProblemData<T> problem_data
-      = equilibration::ProblemData<T>(vec_sol, bcs, vec_l);
+  ProblemData<T> problem_data = ProblemData<T>(vec_sol, bcs, vec_l);
 
   // Prepare cell geometry
   const mesh::Geometry& geometry = a.mesh()->geometry();
@@ -237,4 +236,4 @@ void local_solver_cg(
   // Solve problems element-wise
   local_solver(vec_sol, a, vec_l, cg_solver);
 }
-} // namespace dolfinx_adaptivity
+} // namespace dolfinx_eqlb

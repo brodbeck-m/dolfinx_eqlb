@@ -15,7 +15,7 @@
 
 using namespace dolfinx;
 
-namespace dolfinx_adaptivity::equilibration
+namespace dolfinx_eqlb
 {
 class PatchFluxEV : public Patch
 {
@@ -223,4 +223,4 @@ protected:
   int _ndof_elmt_nz, _ndof_flux_nz, _ndof_patch_nz, _ndof_fluxhdiv;
 };
 
-} // namespace dolfinx_adaptivity::equilibration
+} // namespace dolfinx_eqlb

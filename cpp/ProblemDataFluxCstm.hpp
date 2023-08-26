@@ -20,7 +20,7 @@
 
 using namespace dolfinx;
 
-namespace dolfinx_adaptivity::equilibration
+namespace dolfinx_eqlb
 {
 template <typename T>
 class ProblemDataFluxCstm
@@ -137,4 +137,4 @@ protected:
   std::vector<T> _x_fhdiv_minimisation;
   std::vector<std::int32_t> _offset_x;
 };
-} // namespace dolfinx_adaptivity::equilibration
+} // namespace dolfinx_eqlb

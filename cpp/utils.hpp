@@ -11,7 +11,7 @@
 
 using namespace dolfinx;
 
-namespace dolfinx_adaptivity
+namespace dolfinx_eqlb
 {
 // Define mdspan types
 namespace stdex = std::experimental;
@@ -79,4 +79,4 @@ void extract_constants_data(
   }
 }
 
-} // namespace dolfinx_adaptivity
+} // namespace dolfinx_eqlb

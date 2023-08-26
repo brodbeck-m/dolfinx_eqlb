@@ -6,7 +6,7 @@
 #include <span>
 #include <vector>
 
-namespace dolfinx_adaptivity::equilibration
+namespace dolfinx_eqlb
 {
 template <typename T>
 class StorageStiffness
