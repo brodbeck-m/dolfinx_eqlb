@@ -11,6 +11,7 @@
 #include "utils.hpp"
 
 #include <basix/e-lagrange.h>
+#include <basix/finite-element.h>
 #include <dolfinx/fem/CoordinateElement.h>
 #include <dolfinx/fem/DirichletBC.h>
 #include <dolfinx/fem/DofMap.h>

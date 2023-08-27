@@ -194,67 +194,14 @@ KernelDataEqlb<T>::KernelDataEqlb(
     : KernelData<T>(mesh, {quadrature_rule_cell})
 {
   /* Interpolation points on facets */
-  // Extract interpolation points
-  auto [X, Xshape] = basix_element_fluxpw.points();
-  const auto [Mdata, Mshape] = basix_element_fluxpw.interpolation_matrix();
-  cmdspan2_t M(Mdata.data(), Mshape);
+  std::array<std::size_t, 4> shape_intpl = interpolation_data_facet_rt(
+      basix_element_fluxpw, this->_gdim, this->_nfcts_per_cell, _ipoints_fct,
+      _data_M_fct);
 
-  // Determine number of pointe per facet
-  _nipoints_per_fct = 0;
+  _M_fct = mdspan_t<const double, 4>(_data_M_fct.data(), shape_intpl);
 
-  double x_fctpoint = X[0];
-
-  while (x_fctpoint > 0.0)
-  {
-    // Increment number of points per facet
-    _nipoints_per_fct++;
-
-    // Get next x-coordinate
-    x_fctpoint = X[_nipoints_per_fct * this->_gdim];
-  }
-
-  _nipoints_fct = _nipoints_per_fct * this->_nfcts_per_cell;
-
-  // Initialise storage for interpolation data
-  const int degree = basix_element_fluxpw.degree();
-  std::size_t ndofs_fct
-      = (this->_gdim == 2) ? degree : (degree + 1) * (degree + 2) / 2;
-
-  _ipoints_fct.resize(_nipoints_fct * this->_gdim, 0);
-  _data_M_fct.resize(ndofs_fct * _nipoints_fct * this->_gdim, 0);
-
-  std::array<std::size_t, 4> M_shape
-      = {this->_nfcts_per_cell, ndofs_fct, this->_gdim, _nipoints_per_fct};
-  _M_fct = cmdspan4_t(_data_M_fct.data(), M_shape);
-  mdspan4_t M_fct(_data_M_fct.data(), M_shape);
-
-  // Copy interpolation points (on facets)
-  std::copy_n(X.begin(), _nipoints_fct * this->_gdim, _ipoints_fct.begin());
-
-  // Copy interpolation matrix (on facets)
-  const int offs_drvt = (degree > 1) ? this->_gdim + 1 : 1;
-
-  int id_dof = 0;
-  int offs_pnt = 0;
-
-  for (std::size_t i = 0; i < this->_gdim; ++i)
-  {
-    for (std::size_t j = 0; j < this->_nfcts_per_cell; ++j)
-    {
-      for (std::size_t k = 0; k < ndofs_fct; ++k)
-      {
-        // Determine cell-local DOF id
-        id_dof = j * ndofs_fct + k;
-        offs_pnt = (i * Xshape[0] + j * _nipoints_per_fct) * offs_drvt;
-
-        // Copy interpolation coefficients
-        for (std::size_t l = 0; l < _nipoints_per_fct; ++l)
-        {
-          M_fct(j, k, i, l) = M(id_dof, offs_pnt + offs_drvt * l);
-        }
-      }
-    }
-  }
+  std::tie(_nipoints_per_fct, _nipoints_fct)
+      = size_interpolation_data_facet_rt(shape_intpl);
 
   /* Tabulate required shape-functions */
   // Tabulate pice-wise H(div) flux
