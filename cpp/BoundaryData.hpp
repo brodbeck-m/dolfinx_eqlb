@@ -8,6 +8,7 @@
 #include <basix/e-lagrange.h>
 #include <basix/element-families.h>
 #include <basix/finite-element.h>
+#include <dolfinx/graph/AdjacencyList.h>
 #include <dolfinx/mesh/Geometry.h>
 #include <dolfinx/mesh/Mesh.h>
 #include <dolfinx/mesh/Topology.h>
@@ -28,30 +29,59 @@ class BoundaryData
 public:
   BoundaryData(
       int flux_degree,
-      const std::vector<std::vector<std::shared_ptr<const FluxBC<T>>>>&
-          bcs_flux,
+      std::vector<std::vector<std::shared_ptr<FluxBC<T>>>>& bcs_flux,
       std::shared_ptr<const mesh::Mesh> mesh,
       const std::vector<std::vector<std::int32_t>>& fct_esntbound_prime);
 
   BoundaryData(
       int flux_degree,
-      const std::vector<std::vector<std::shared_ptr<const FluxBC<T>>>>&
-          bcs_flux,
+      std::vector<std::vector<std::shared_ptr<FluxBC<T>>>>& bcs_flux,
       std::shared_ptr<const mesh::Mesh> mesh,
       const std::vector<std::vector<std::int32_t>>& fct_esntbound_prime,
       const basix::FiniteElement& belmt_flux_proj);
 
+  /* Getter methods */
+  std::span<std::int8_t> facet_type(int rhs_i)
+  {
+    return std::span<std::int8_t>(
+        _data_facet_type.data() + _offset_facetdata[rhs_i],
+        _offset_facetdata[rhs_i + 1] - _offset_facetdata[rhs_i]);
+  }
+
+  std::span<std::int32_t> dof_to_fluxbc(int rhs_i)
+  {
+    return std::span<std::int32_t>(
+        _data_dof_to_fluxbc.data() + _offset_facetdata[rhs_i],
+        _offset_facetdata[rhs_i + 1] - _offset_facetdata[rhs_i]);
+  }
+
+  std::span<std::int32_t> dof_to_fluxbcid(int rhs_i)
+  {
+    return std::span<std::int32_t>(
+        _data_dof_to_fluxbcid.data() + _offset_facetdata[rhs_i],
+        _offset_facetdata[rhs_i + 1] - _offset_facetdata[rhs_i]);
+  }
+
 protected:
-  void setup_boundary_data(
+  void initialise_boundary_data(
       int flux_degree, std::shared_ptr<const mesh::Mesh> mesh,
       const std::vector<std::vector<std::int32_t>>& fct_esntbound_prime,
       const basix::FiniteElement& belmt_flux_proj);
 
-  void initialise_boundary_conditions();
+  void initialise_boundary_conditions(
+      std::shared_ptr<const mesh::Mesh> mesh,
+      const std::vector<std::vector<std::int32_t>>& fct_esntbound_prime,
+      mdspan_t<const double, 5> basis_flux,
+      const graph::AdjacencyList<std::int32_t>& dofmap_flux);
 
   /* Variable definitions */
+  // Counters
+  int _gdim, _flux_degree;
+  std::vector<std::int32_t> _num_fcts_fluxbc;
+  std::size_t _num_rhs;
+
   // The boundary conditions
-  const std::vector<std::vector<std::shared_ptr<const FluxBC<T>>>>& _flux_bcs;
+  std::vector<std::vector<std::shared_ptr<FluxBC<T>>>>& _flux_bcs;
 
   // Boundary markers/values in global vector
   std::vector<T> _boundary_values;
@@ -60,14 +90,13 @@ protected:
   // Facet types
   // (Facet type: 0->internal, 1->essent. BC primal problem, 2->essent. BCflux)
   std::vector<std::int8_t> _data_facet_type;
-  std::vector<std::int32_t> _offset_facet_type;
+  std::vector<std::int32_t> _offset_facetdata;
 
   // Connectivity between global facet id and FluxBC
-  std::vector<std::int8_t> _data_fctid_to_fluxbc;
-  std::vector<std::int32_t> _offset_fctid_to_fluxbc;
+  std::vector<std::int32_t> _data_dof_to_fluxbc;
 
   // Connectivity between global facet id and position in FluxBC
-  std::vector<std::int32_t> _data_fctid_to_fluxbcid, _offset_fctid_to_fluxbcid;
+  std::vector<std::int32_t> _data_dof_to_fluxbcid;
 
   // ID if (some) BCs require projection
   bool _projection_required;

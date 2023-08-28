@@ -112,6 +112,17 @@ public:
   /// @param[out] projection_id The projection id
   bool projection_required() const { return _projection_required; }
 
+  /// Return the number of boundary facets
+  /// @param[out] nfcts The number of boundary facets
+  std::int32_t num_facets() const { return _nfcts; }
+
+  /// Return list of boundary facets
+  /// @param[out] fcts The list of boundary facets
+  std::span<const std::int32_t> facets() const
+  {
+    return std::span<const std::int32_t>(_fcts.data(), _fcts.size());
+  }
+
   /// Return the flux function-space
   /// @param[out] function_space The flux function-space
   std::shared_ptr<const fem::FunctionSpace> function_space() const
@@ -197,7 +208,7 @@ protected:
   std::shared_ptr<const fem::FunctionSpace> _function_space;
 
   // Boundary facets
-  const int _nfcts;
+  const std::int32_t _nfcts;
   const std::vector<std::int32_t> _fcts;
 
   // Kernel (executable c++ code)
