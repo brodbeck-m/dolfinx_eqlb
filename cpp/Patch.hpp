@@ -1,9 +1,11 @@
 #pragma once
 
-#include <algorithm>
 #include <dolfinx/graph/AdjacencyList.h>
 #include <dolfinx/mesh/Mesh.h>
 #include <dolfinx/mesh/Topology.h>
+
+#include <algorithm>
+#include <iostream>
 #include <memory>
 #include <span>
 #include <vector>

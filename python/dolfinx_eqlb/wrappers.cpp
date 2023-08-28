@@ -6,11 +6,11 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/pytypes.h>
 #include <pybind11/stl.h>
+#include <ufcx.h>
 
 #include <dolfinx_eqlb/FluxBC.hpp>
 #include <dolfinx_eqlb/local_solver.hpp>
 #include <dolfinx_eqlb/reconstruction.hpp>
-#include <ufcx.h>
 
 #include <cstdint>
 #include <functional>

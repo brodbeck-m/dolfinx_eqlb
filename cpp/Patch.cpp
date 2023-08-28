@@ -1,17 +1,8 @@
 #include "Patch.hpp"
-#include <algorithm>
-#include <dolfinx/graph/AdjacencyList.h>
-#include <dolfinx/mesh/Mesh.h>
-#include <dolfinx/mesh/Topology.h>
-#include <iostream>
-#include <memory>
-#include <span>
-#include <vector>
 
 using namespace dolfinx;
+using namespace dolfinx_eqlb;
 
-namespace dolfinx_eqlb
-{
 Patch::Patch(int nnodes_proc, std::shared_ptr<const mesh::Mesh> mesh,
              graph::AdjacencyList<std::int8_t>& bfct_type)
     : _mesh(mesh), _bfct_type(bfct_type), _dim(mesh->geometry().dim()),
@@ -362,5 +353,3 @@ Patch::next_facet_triangle(std::int32_t cell_i,
 
   return fct_next;
 }
-
-} // namespace dolfinx_eqlb

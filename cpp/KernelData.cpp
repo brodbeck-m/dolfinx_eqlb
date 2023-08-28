@@ -1,5 +1,4 @@
 #include "KernelData.hpp"
-#include "QuadratureRule.hpp"
 
 using namespace dolfinx;
 using namespace dolfinx_eqlb;
