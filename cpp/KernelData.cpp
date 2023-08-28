@@ -139,9 +139,11 @@ void KernelData<T>::physical_fct_normal(std::span<double> normal_phys,
 
 /* Tabulate shape function */
 template <typename T>
-std::array<std::size_t, 5> KernelData<T>::tabulate_basis(
-    const basix::FiniteElement& basix_element, std::vector<double> points,
-    std::vector<double>& storage, bool tabulate_gradient, bool stoarge_elmtcur)
+std::array<std::size_t, 5>
+KernelData<T>::tabulate_basis(const basix::FiniteElement& basix_element,
+                              const std::vector<double>& points,
+                              std::vector<double>& storage,
+                              bool tabulate_gradient, bool stoarge_elmtcur)
 {
   // Number of tabulated points
   std::size_t num_points = points.size() / _gdim;

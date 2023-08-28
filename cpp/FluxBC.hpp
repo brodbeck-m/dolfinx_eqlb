@@ -107,6 +107,18 @@ public:
     }
   }
 
+  /* Getter functions */
+  /// Return the flux function space
+  /// @param[out] projection_id The projection id
+  bool projection_required() const { return _projection_required; }
+
+  /// Return the flux function-space
+  /// @param[out] function_space The flux function-space
+  std::shared_ptr<const fem::FunctionSpace> function_space() const
+  {
+    return _function_space;
+  }
+
 protected:
   /// Compute size of coefficient for each boundary cell
   ///

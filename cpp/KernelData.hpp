@@ -62,13 +62,18 @@ public:
   /* Tabulate shape function */
   std::array<std::size_t, 5>
   tabulate_basis(const basix::FiniteElement& basix_element,
-                 std::vector<double> points, std::vector<double>& storage,
-                 bool tabulate_gradient, bool stoarge_elmtcur);
+                 const std::vector<double>& points,
+                 std::vector<double>& storage, bool tabulate_gradient,
+                 bool stoarge_elmtcur);
 
   /* Getter functions (Cell geometry) */
   /// Returns number of nodes, forming a reference cell
   /// @param[out] n The number of nodes, forming the cell
   int nnodes_cell() { return _num_coordinate_dofs; }
+
+  /// Returns number of facets, forming a reference cell
+  /// @param[out] n The number of facets, forming the cell
+  int nfacets_cell() { return _nfcts_per_cell; }
 
   /// Returns facet normal on reference facet (const. version)
   /// @param[in] id_fct The cell-local facet id
@@ -97,6 +102,13 @@ public:
   }
 
   /* Getter functions (Quadrature) */
+  /// Extract quadrature points on all sub-entity of cell
+  /// @param[in] id_qspace The id of the quadrature space
+  /// @param[out] points   The quadrature points (flattened storage)
+  const std::vector<double>& quadrature_points_flattened(int id_qspace) const
+  {
+    return _quadrature_rule[id_qspace]->points();
+  }
 
   /// Extract quadrature points on all sub-entity of cell
   /// @param[in] id_qspace The id of the quadrature space
