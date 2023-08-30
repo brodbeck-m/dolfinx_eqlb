@@ -50,37 +50,9 @@ public:
       : _function_space(function_space), _fcts(boundary_facets),
         _nfcts(boundary_facets.size()), _boundary_kernel(boundary_value),
         _cstide_eval(n_bceval_per_fct),
-        _projection_required(projection_required),
-        _c_positions(positions_of_coefficients)
+        _projection_required(projection_required), _coefficients(coefficients),
+        _coefficient_positions(positions_of_coefficients), _constants(constants)
   {
-    /* Initialise constants */
-    if (constants.size() > 0)
-    {
-      // Number of constants
-      std::int32_t size_constants = size_constants_data<T>(constants);
-
-      // Resize storage vector
-      _constants.resize(size_constants, 0);
-
-      // Extract constants
-      extract_constants_data<T>(constants, _constants);
-    }
-
-    /* Initialise coefficients */
-    if (coefficients.size() > 0)
-    {
-      // Number of coefficients per element
-      _cstride_coefficients = std::accumulate(
-          coefficients.cbegin(), coefficients.cend(), 0,
-          [](int sum, auto& f)
-          { return sum + f->function_space()->element()->space_dimension(); });
-
-      // Resize storage vector
-      _coefficients.resize(_nfcts * _cstride_coefficients, 0);
-
-      // Extract coefficients
-      extract_coefficients_data(coefficients);
-    }
   }
 
   /* Getter functions */
@@ -106,79 +78,119 @@ public:
     return _function_space;
   }
 
-protected:
-  /// Compute size of coefficient for each boundary cell
+  /// Extract constants for evaluation of boundary kernel
+  /// @returns The constants vector
+  std::vector<T> extract_constants()
+  {
+    // Initialise constants
+    std::vector<T> constants;
+
+    if (_constants.size() > 0)
+    {
+      // Calculate the number of constants
+      std::int32_t size_constants = size_constants_data<T>(_constants);
+
+      // Initialise storage
+      constants.resize(size_constants);
+
+      // Extract coefficients
+      extract_constants_data<T>(_constants, constants);
+    }
+
+    return std::move(constants);
+  }
+
+  /// Extract coefficients for each boundary cell
   ///
   /// Extract coefficients for each boundary cell and store values in flattened
   /// array. Array structure relative to counter on boundary cells for this
   /// boundary.
   ///
-  /// @param coefficients Vector with fem::Function objects
-  void extract_coefficients_data(
-      std::vector<std::shared_ptr<const fem::Function<T>>> coefficients)
+  /// @returns std::pair<cstride, The coefficient vector>
+  std::pair<std::int32_t, std::vector<T>> extract_coefficients()
   {
-    // Extract connectivity facets->cell
-    int dim = _function_space->mesh()->geometry().dim();
-    std::shared_ptr<const graph::AdjacencyList<std::int32_t>> fct_to_cell
-        = _function_space->mesh()->topology().connectivity(dim - 1, dim);
+    // Initialise storage
+    std::int32_t cstride = 0;
+    std::vector<T> coefficients;
 
-    // Extract coefficients
-    std::int32_t offs_cstride = 0;
-
-    for (int i : _c_positions)
+    if (_coefficients.size() > 0)
     {
-      // Extract function
-      std::shared_ptr<const fem::Function<T>> function = coefficients[i];
+      // Number of constants
+      cstride = std::accumulate(
+          _coefficients.cbegin(), _coefficients.cend(), 0,
+          [](int sum, auto& f)
+          { return sum + f->function_space()->element()->space_dimension(); });
 
-      // Data storage
-      std::span<const T> x_coeff = function->x()->array();
+      // Initialise storage
+      coefficients.resize(_nfcts * cstride);
 
-      // Function space
-      std::shared_ptr<const fem::FunctionSpace> function_space
-          = function->function_space();
+      // Extract connectivity facets->cell
+      int dim = _function_space->mesh()->geometry().dim();
+      std::shared_ptr<const graph::AdjacencyList<std::int32_t>> fct_to_cell
+          = _function_space->mesh()->topology().connectivity(dim - 1, dim);
 
-      // cstride of current coefficients
-      const int bs = function_space->element()->block_size();
-      const int space_dimension = function_space->element()->space_dimension();
-      const int map_dimension = space_dimension / bs;
+      // Extract coefficients
+      std::int32_t offs_cstride = 0;
 
-      for (std::size_t i = 0; i < _nfcts; ++i)
+      for (int i : _coefficient_positions)
       {
-        // Global facet id
-        std::int32_t fct = _fcts[i];
+        // Extract function
+        std::shared_ptr<const fem::Function<T>> function = _coefficients[i];
 
-        // Get cell, adjacent to facet
-        std::int32_t c = fct_to_cell->links(fct)[0];
+        // Data storage
+        std::span<const T> x_coeff = function->x()->array();
 
-        // DOFmap of cell
-        std::span<const int32_t> dofs
-            = function_space->dofmap()->list().links(c);
+        // Function space
+        std::shared_ptr<const fem::FunctionSpace> function_space
+            = function->function_space();
 
-        // Flattened storage
-        std::int32_t offs_coef = i * _cstride_coefficients + offs_cstride;
-        std::span<T> data
-            = std::span<T>(_coefficients.data() + offs_coef, space_dimension);
+        // cstride of current coefficients
+        const int bs = function_space->element()->block_size();
+        const int space_dimension
+            = function_space->element()->space_dimension();
+        const int map_dimension = space_dimension / bs;
 
-        // Extract coefficient data
-        for (std::size_t j = 0; j < map_dimension; ++j)
+        for (std::size_t i = 0; i < _nfcts; ++i)
         {
-          // DOF id
-          std::int32_t offs_dof = bs * dofs[j];
-          std::int32_t offs = offs_coef + j * bs;
+          // Global facet id
+          std::int32_t fct = _fcts[i];
 
-          // Copy DOF
-          for (std::size_t k = 0; k < bs; ++k)
+          // Get cell, adjacent to facet
+          std::int32_t c = fct_to_cell->links(fct)[0];
+
+          // DOFmap of cell
+          std::span<const int32_t> dofs
+              = function_space->dofmap()->list().links(c);
+
+          // Flattened storage
+          std::int32_t offs_coef = i * cstride + offs_cstride;
+          std::span<T> data
+              = std::span<T>(coefficients.data() + offs_coef, space_dimension);
+
+          // Extract coefficient data
+          for (std::size_t j = 0; j < map_dimension; ++j)
           {
-            _coefficients[offs + k] = x_coeff[offs_dof + k];
+            // DOF id
+            std::int32_t offs_dof = bs * dofs[j];
+            std::int32_t offs = offs_coef + j * bs;
+
+            // Copy DOF
+            for (std::size_t k = 0; k < bs; ++k)
+            {
+              coefficients[offs + k] = x_coeff[offs_dof + k];
+            }
           }
         }
-      }
 
-      // Update cstride
-      offs_cstride += space_dimension;
+        // Update cstride
+        offs_cstride += space_dimension;
+      }
     }
+
+    return {cstride, std::move(coefficients)};
   }
 
+protected:
   /* Variable definitions */
   // Boundary facets
   const std::int32_t _nfcts;
@@ -193,13 +205,11 @@ protected:
       _boundary_kernel;
 
   // Coefficients associated with the BCs
-  std::vector<T> _coefficients;
-  int _cstride_coefficients;
-
-  const std::vector<int> _c_positions;
+  std::vector<std::shared_ptr<const fem::Function<T>>> _coefficients;
+  const std::vector<int> _coefficient_positions;
 
   // Constants associated with the BCs
-  std::vector<T> _constants;
+  std::vector<std::shared_ptr<const fem::Constant<T>>> _constants;
 
   // Number of data-points per facet
   const int _cstide_eval;
