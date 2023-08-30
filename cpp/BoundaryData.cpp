@@ -6,227 +6,164 @@ using namespace dolfinx_eqlb;
 template <typename T>
 BoundaryData<T>::BoundaryData(
     int flux_degree,
-    std::vector<std::vector<std::shared_ptr<FluxBC<T>>>>& bcs_flux,
-    std::shared_ptr<const mesh::Mesh> mesh,
+    std::vector<std::vector<std::shared_ptr<FluxBC<T>>>>& list_bcs,
+    std::vector<std::shared_ptr<fem::Function<T>>>& boundary_flux,
+    std::shared_ptr<const fem::FunctionSpace> V_flux_hdiv,
+    std::shared_ptr<const fem::FunctionSpace> V_flux_l2,
     const std::vector<std::vector<std::int32_t>>& fct_esntbound_prime)
-    : _flux_bcs(bcs_flux),
-      _quadrature_rule(QuadratureRule(mesh->topology().cell_type(),
-                                      2 * flux_degree,
-                                      mesh->geometry().dim() - 1)),
-      _kernel_data(KernelData<T>(
-          mesh, {std::make_shared<QuadratureRule>(_quadrature_rule)})),
-      _belmt_hat(basix::element::create_lagrange(
-          mesh::cell_type_to_basix_type(mesh->topology().cell_type()), 1,
-          basix::element::lagrange_variant::equispaced, false))
-
+    : _boundary_flux(boundary_flux),
+      _quadrature_rule(QuadratureRule(
+          V_flux_hdiv->mesh()->topology().cell_type(), 2 * flux_degree,
+          V_flux_hdiv->mesh()->geometry().dim() - 1)),
+      _kernel_data(
+          KernelDataBC<T>(V_flux_hdiv->mesh(),
+                          {std::make_shared<QuadratureRule>(_quadrature_rule)},
+                          V_flux_hdiv->element()->basix_element(),
+                          V_flux_l2->element()->basix_element())),
+      _num_rhs(list_bcs.size()), _gdim(V_flux_hdiv->mesh()->geometry().dim()),
+      _num_fcts(
+          V_flux_hdiv->mesh()->topology().index_map(_gdim - 1)->size_local()),
+      _nfcts_per_cell(_kernel_data.nfacets_cell()), _V_flux_hdiv(V_flux_hdiv),
+      _flux_is_discontinous(
+          V_flux_hdiv->element()->basix_element().discontinuous()),
+      _flux_degree(V_flux_hdiv->element()->basix_element().degree()),
+      _ndofs_per_cell(V_flux_hdiv->element()->space_dimension()),
+      _ndofs_per_fct(_gdim == 2 ? _flux_degree
+                                : 0.5 * _flux_degree * (_flux_degree + 1)),
+      _num_dofs(V_flux_hdiv->dofmap()->index_map->size_local()
+                + V_flux_hdiv->dofmap()->index_map->num_ghosts())
 {
-  // Create Basix element of projected flux
-  basix::FiniteElement belmt_flux_proj = basix::element::create_lagrange(
-      mesh::cell_type_to_basix_type(mesh->topology().cell_type()), 1,
-      basix::element::lagrange_variant::equispaced, false);
+  // Resize storage
+  _num_bcfcts.resize(_num_rhs);
 
-  initialise_boundary_data(flux_degree, mesh, fct_esntbound_prime,
-                           belmt_flux_proj);
-}
+  std::int32_t size_dofdata = _num_rhs * _num_dofs;
+  _boundary_values.resize(size_dofdata, 0.0);
+  _boundary_markers.resize(size_dofdata, false);
+  _offset_dofdata.resize(_num_rhs + 1);
 
-template <typename T>
-BoundaryData<T>::BoundaryData(
-    int flux_degree,
-    std::vector<std::vector<std::shared_ptr<FluxBC<T>>>>& bcs_flux,
-    std::shared_ptr<const mesh::Mesh> mesh,
-    const std::vector<std::vector<std::int32_t>>& fct_esntbound_prime,
-    const basix::FiniteElement& belmt_flux_proj)
-    : _flux_bcs(bcs_flux),
-      _quadrature_rule(QuadratureRule(mesh->topology().cell_type(),
-                                      2 * flux_degree,
-                                      mesh->geometry().dim() - 1)),
-      _kernel_data(KernelData<T>(
-          mesh, {std::make_shared<QuadratureRule>(_quadrature_rule)})),
-      _belmt_hat(basix::element::create_lagrange(
-          mesh::cell_type_to_basix_type(mesh->topology().cell_type()), 1,
-          basix::element::lagrange_variant::equispaced, false))
+  std::int32_t size_fctdata = _num_rhs * _num_fcts;
+  _local_fct_id.resize(size_fctdata);
+  _facet_type.resize(size_fctdata, facte_type::internal);
+  _offset_fctdata.resize(_num_rhs + 1);
 
-{
-  initialise_boundary_data(flux_degree, mesh, fct_esntbound_prime,
-                           belmt_flux_proj);
-}
+  // Set offsets
+  std::int32_t num_dofs = _num_dofs;
+  std::generate(_offset_dofdata.begin(), _offset_dofdata.end(),
+                [n = 0, num_dofs]() mutable { return num_dofs * (n++); });
 
-template <typename T>
-void BoundaryData<T>::initialise_boundary_data(
-    int flux_degree, std::shared_ptr<const mesh::Mesh> mesh,
-    const std::vector<std::vector<std::int32_t>>& fct_esntbound_prime,
-    const basix::FiniteElement& belmt_flux_proj)
-{
-  /* Check Input */
-  _projection_required = false;
-  _num_rhs = _flux_bcs.size();
+  std::int32_t num_fcts = _num_fcts;
+  std::generate(_offset_fctdata.begin(), _offset_fctdata.end(),
+                [n = 0, num_fcts]() mutable { return num_fcts * (n++); });
 
-  std::shared_ptr<const fem::FunctionSpace> function_space_flux;
+  // Extract required data
+  std::shared_ptr<const mesh::Mesh> mesh = V_flux_hdiv->mesh();
 
-  for (std::vector<std::shared_ptr<FluxBC<T>>> list_bc_rhsi : _flux_bcs)
-  {
-    for (std::shared_ptr<FluxBC<T>> bc : list_bc_rhsi)
-    {
-      // Check if bc_rhsi is a valid FluxBC
-      if (bc->projection_required())
-      {
-        // Set projection id
-        _projection_required = true;
-
-        // Extract function space
-        function_space_flux = bc->function_space();
-
-        break;
-      }
-
-      if (_projection_required)
-      {
-        break;
-      }
-    }
-  }
-
-  /* Extract relevant data */
-  // Mesh: Geometry/ Topology
-  const mesh::Topology& topology = mesh->topology();
-  const mesh::Geometry& geometry = mesh->geometry();
-
-  // Storage
-  _flux_degree = function_space_flux->element()->basix_element().degree();
-  _gdim = geometry.dim();
-
-  /* Extract interpolation data */
-  std::array<std::size_t, 4> shape_intpl = interpolation_data_facet_rt(
-      function_space_flux->element()->basix_element(), geometry.dim(),
-      _kernel_data.nfacets_cell(), _ipoints, _data_M);
-
-  _M = mdspan_t<const double, 4>(_data_M.data(), shape_intpl);
-
-  std::tie(_num_ipoints_per_fct, _num_ipoints)
-      = size_interpolation_data_facet_rt(shape_intpl);
-
-  /* Tabulate hat-function */
-  std::array<std::size_t, 5> shape_hat = _kernel_data.tabulate_basis(
-      _belmt_hat, _ipoints, _basis_hat_values, false, false);
-
-  _basis_hat = mdspan_t<const double, 5>(_basis_hat_values.data(), shape_hat);
-
-  /* Tabulate projected flux */
-  std::vector<double> basis_bc_values_proj;
-  mdspan_t<const double, 5> basis_bc_proj;
-
-  if (_projection_required)
-  {
-    // Tabulate basis at interpolation points
-    std::array<std::size_t, 5> shape_flux = _kernel_data.tabulate_basis(
-        belmt_flux_proj, _ipoints, _basis_bc_values, false, false);
-
-    _basis_bc = mdspan_t<const double, 5>(_basis_bc_values.data(), shape_flux);
-
-    // Tabulate basis at quadrature points on surfaces
-    shape_flux = _kernel_data.tabulate_basis(
-        belmt_flux_proj, _kernel_data.quadrature_points_flattened(0),
-        basis_bc_values_proj, false, false);
-    basis_bc_proj
-        = mdspan_t<const double, 5>(basis_bc_values_proj.data(), shape_flux);
-  }
-
-  /* Initialise boundary information */
-  initialise_boundary_conditions(mesh, fct_esntbound_prime, basis_bc_proj,
-                                 function_space_flux->dofmap()->list());
-}
-
-template <typename T>
-void BoundaryData<T>::initialise_boundary_conditions(
-    std::shared_ptr<const mesh::Mesh> mesh,
-    const std::vector<std::vector<std::int32_t>>& fct_esntbound_prime,
-    mdspan_t<const double, 5> basis_flux,
-    const graph::AdjacencyList<std::int32_t>& dofmap_flux)
-{
-  // Number of facets
-  const std::int32_t num_facets
-      = mesh->topology().index_map(_gdim - 1)->size_local();
-
-  // Connectivity facet->cell
   std::shared_ptr<const graph::AdjacencyList<std::int32_t>> fct_to_cell
       = mesh->topology().connectivity(_gdim - 1, _gdim);
+  std::shared_ptr<const graph::AdjacencyList<std::int32_t>> cell_to_fct
+      = mesh->topology().connectivity(_gdim, _gdim - 1);
 
-  // Storage of facet data
-  const std::int32_t size_fctstrg = num_facets * _num_rhs;
+  const graph::AdjacencyList<std::int32_t>& dofmap_hdiv
+      = V_flux_hdiv->dofmap()->list();
+  const fem::ElementDofLayout& doflayout_hdiv
+      = V_flux_hdiv->dofmap()->element_dof_layout();
 
-  _data_facet_type.resize(size_fctstrg);
-  _data_dof_to_fluxbc.resize(size_fctstrg);
-  _data_dof_to_fluxbcid.resize(size_fctstrg);
+  std::vector<std::int32_t> boundary_dofs_fct(_ndofs_per_fct);
 
-  // Offset vector
-  _offset_facetdata.resize(_num_rhs + 1);
-  std::generate(_offset_facetdata.begin(), _offset_facetdata.end(),
-                [n = 0, num_facets]() mutable { return num_facets * (n++); });
-
-  /* Perform initialisation */
+  // Loop over all facets
   for (int i_rhs = 0; i_rhs < _num_rhs; ++i_rhs)
   {
-    // Extract data for current rhs
-    std::span<std::int8_t> fct_type_i = facet_type(i_rhs);
-    std::span<std::int32_t> dof_to_fluxbc_i = dof_to_fluxbc(i_rhs);
-    std::span<std::int32_t> dof_to_fluxbcid_i = dof_to_fluxbcid(i_rhs);
+    // Storage of current RHS
+    std::span<std::int8_t> facet_type_i = facet_type(i_rhs);
+    std::span<std::int8_t> local_fct_id_i = local_facet_id(i_rhs);
+    std::span<std::int8_t> boundary_markers_i = boundary_markers(i_rhs);
 
-    // Mark facets with essential BC on primal problem
+    std::span<T> x_bvals = _boundary_flux[i_rhs]->x()->mutable_array();
+
+    // Handle facets with essential BCs on primal problem
     for (std::int32_t fct : fct_esntbound_prime[i_rhs])
     {
       // Set facet type
-      fct_type_i[fct] = 1;
+      facet_type_i[fct] = facte_type::essnt_primal;
     }
 
-    // Handle facets with essential BC on flux
-    for (std::int32_t i_bc = 0; i_bc < _flux_bcs[i_rhs].size(); ++i_bc)
+    // Handle facets with essential BCs on dual problem
+    for (std::shared_ptr<FluxBC<T>> bc : list_bcs[i_rhs])
     {
-      // Get boundary function
-      std::shared_ptr<FluxBC<T>> bc = _flux_bcs[i_rhs][i_bc];
+      // Set number of boundary facets
+      _num_bcfcts[i_rhs] += bc->num_facets();
 
-      // Add up number of boundary facets
-      const std::int32_t num_facets = bc->num_facets();
-      _num_fcts_fluxbc[i_rhs] += num_facets;
-
-      // Extract list of boundary facets
-      std::span<const std::int32_t> list_fcts = bc->facets();
-
-      // Loop over boundary facets
-      for (std::size_t i_fct = 0; i_fct < num_facets; ++i_fct)
+      // Loop over all facets
+      for (std::int32_t fct = 0; fct < _num_fcts; ++fct)
       {
-        // Global facet id
-        std::int32_t fct = list_fcts[i_fct];
+        // Get cell adjacent to facet
+        std::int32_t cell = fct_to_cell->links(fct)[0];
 
-        // Cell adjacent to facet
-        std::int32_t c = fct_to_cell->links(fct)[0];
+        // Get cell-local facet id
+        std::span<const std::int32_t> fcts_cell = cell_to_fct->links(cell);
+        std::size_t fct_loc
+            = std::distance(fcts_cell.begin(),
+                            std::find(fcts_cell.begin(), fcts_cell.end(), fct));
 
-        // Extract DOFs on facet
-        std::span<const std::int32_t> dofs = dofmap_flux.links(c);
+        // Get ids of boundary DOFs
+        boundary_dofs(cell, fct_loc, boundary_dofs_fct);
 
-        /* Project boundary data */
+        // Calculate boundary DOFs
         if (bc->projection_required())
         {
-          throw std::runtime_error("Projection of BCs not implemented");
-        }
-
-        /* Set facet type and connectivity */
-        // Set connectivity onto global dof
-        // TODO - Adjust for parallel computation --> How is global vector
-        // partitioned?
-
-        // TODO - Extract DOFs on facet --> see locate DOFs topological?
-
-        // Set facet type
-        if (fct_type_i[i_fct] != 0)
-        {
           throw std::runtime_error(
-              "Dirichlet- and Neumann BC set on same facet");
+              "Projection for boundary conditions not implemented");
         }
         else
         {
-          fct_type_i[i_fct] = 2;
+          throw std::runtime_error(
+              "Evaluation of boundary conditions not implemented");
+        }
+
+        // Set values and markers
+        facet_type_i[fct] = facte_type::essnt_dual;
+        local_fct_id_i[fct] = fct_loc;
+
+        for (std::size_t i = 0; i < _ndofs_per_fct; ++i)
+        {
+          boundary_markers_i[boundary_dofs_fct[i]] = true;
+          x_bvals[boundary_dofs_fct[i]] = 0;
         }
       }
+    }
+  }
+}
+
+template <typename T>
+void BoundaryData<T>::boundary_dofs(std::int32_t cell, std::int8_t fct_loc,
+                                    std::span<std::int32_t> boundary_dofs)
+{
+  if (_flux_is_discontinous)
+  {
+    // Get offset of facet DOFs in current cell
+    const int offs = cell * _ndofs_per_cell + fct_loc * _ndofs_per_fct;
+
+    // Calculate DOFs on boundary facet
+    for (std::size_t i = 0; i < _ndofs_per_fct; ++i)
+    {
+      boundary_dofs[i] = offs + i;
+    }
+  }
+  else
+  {
+    // Extract DOFs of current cell
+    std::span<const std::int32_t> dofs_cell
+        = _V_flux_hdiv->dofmap()->list().links(cell);
+
+    // Local DOF-ids on facet
+    const std::vector<int>& entity_dofs
+        = _V_flux_hdiv->dofmap()->element_dof_layout().entity_dofs(_gdim - 1,
+                                                                   fct_loc);
+
+    // Calculate DOFs on boundary facet
+    for (std::size_t i = 0; i < _ndofs_per_fct; ++i)
+    {
+      boundary_dofs[i] = dofs_cell[entity_dofs[i]];
     }
   }
 }

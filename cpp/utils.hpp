@@ -93,7 +93,7 @@ void extract_constants_data(
 /// @param[in] nfcts_per_cell  The number of facets per cell
 /// @param[in,out] ipoints_fct Storage for interpolation points
 /// @param[in,out] data_M_fct  Storage for interpolation matrix
-/// @param[out] shape          The Shape M for creation of an mdspan
+/// @return The Shape M for creation of an mdspan
 std::array<std::size_t, 4>
 interpolation_data_facet_rt(const basix::FiniteElement& basix_element,
                             std::size_t gdim, std::size_t nfcts_per_cell,
@@ -102,7 +102,7 @@ interpolation_data_facet_rt(const basix::FiniteElement& basix_element,
 
 /// Get shape of facet interpolation data
 /// @param[in] shape Shape, used for creation of the mdspan
-/// @param[out] std::tuple(nipoints_per_fct, nipoints_all_fcts)
+/// @return std::tuple(nipoints_per_fct, nipoints_all_fcts)
 static inline std::pair<std::size_t, std::size_t>
 size_interpolation_data_facet_rt(std::array<std::size_t, 4> shape)
 {

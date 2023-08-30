@@ -53,27 +53,6 @@ public:
         _projection_required(projection_required),
         _c_positions(positions_of_coefficients)
   {
-    /* Calculate boundary DOFs */
-    // Degree of the flux-element
-    const int degree = _function_space->element()->basix_element().degree();
-
-    // Number of projected DOFs per facet
-    if (_function_space->mesh()->geometry().dim() == 2)
-    {
-      _ndofs_per_fct = degree;
-    }
-    else if (_function_space->mesh()->geometry().dim() == 3)
-    {
-      _ndofs_per_fct = 0.5 * (degree + 1) * (degree + 2);
-    }
-    else
-    {
-      throw std::runtime_error("Unsupported dimension");
-    }
-
-    // Initialise boundary DOFs
-    initialise_boundary_dofs();
-
     /* Initialise constants */
     if (constants.size() > 0)
     {
@@ -102,19 +81,6 @@ public:
       // Extract coefficients
       extract_coefficients_data(coefficients);
     }
-
-    /* Initialise storage of projection */
-    if (_projection_required)
-    {
-      // Number of projected DOFs per facet
-      _cstride_proj = _ndofs_per_fct;
-
-      // Resize storage vector
-      const int size = _nfcts * _cstride_proj;
-
-      _projected_bc.resize(size, 0);
-      _dofs_projected_bc.resize(size, 0);
-    }
   }
 
   /* Getter functions */
@@ -131,22 +97,6 @@ public:
   std::span<const std::int32_t> facets() const
   {
     return std::span<const std::int32_t>(_fcts.data(), _fcts.size());
-  }
-
-  /// Return list of all boundary DOFs
-  /// @param[out] dofs The list of all boundary DOFs
-  std::span<const std::int32_t> dofs() const
-  {
-    return std::span<const std::int32_t>(_dofs.data(), _dofs.size());
-  }
-
-  /// Return boundary DOFs on current facet
-  /// @param[in] fct_i The fact-id within this BC instance
-  /// @param[out] dofs The list of all boundary DOFs
-  std::span<const std::int32_t> dofs(int fct_i) const
-  {
-    return std::span<const std::int32_t>(_dofs.data() + fct_i * _ndofs_per_fct,
-                                         _ndofs_per_fct);
   }
 
   /// Return the flux function-space
@@ -229,96 +179,13 @@ protected:
     }
   }
 
-  /// Compute (global) DOF-ids of the DOFs on boundary facets
-  void initialise_boundary_dofs()
-  {
-    /* Extract relevant data */
-    // Id if element is discontinuous
-    const bool is_discontinous
-        = _function_space->element()->basix_element().discontinuous();
-
-    // The spacial dimension
-    const int dim = _function_space->mesh()->geometry().dim();
-
-    // Connectivity facets->cell
-    std::shared_ptr<const graph::AdjacencyList<std::int32_t>> fct_to_cell
-        = _function_space->mesh()->topology().connectivity(dim - 1, dim);
-
-    // Connectivity cell->facet
-    std::shared_ptr<const graph::AdjacencyList<std::int32_t>> cell_to_fct
-        = _function_space->mesh()->topology().connectivity(dim, dim - 1);
-
-    // The flux-DOFmap
-    const int ndofs_per_cell = _function_space->element()->space_dimension();
-    const graph::AdjacencyList<std::int32_t>& dofmap
-        = _function_space->dofmap()->list();
-
-    // The ElementDofLayout
-    const fem::ElementDofLayout& doflayout
-        = _function_space->dofmap()->element_dof_layout();
-
-    /* Initialise storage */
-    _dofs.resize(_nfcts * _ndofs_per_fct, 0);
-
-    mdspan_t<std::int32_t, 2> dofs
-        = mdspan_t<std::int32_t, 2>(_dofs.data(), _nfcts, _ndofs_per_fct);
-
-    /* Extract DOFs */
-    for (std::size_t i = 0; i < _nfcts; ++i)
-    {
-      // Global facet id
-      std::int32_t fct = _fcts[i];
-
-      // Get cell, adjacent to facet
-      std::int32_t c = fct_to_cell->links(fct)[0];
-
-      // Get local cell-local facet id
-      std::span<const std::int32_t> fcts_cell = cell_to_fct->links(c);
-      std::size_t fct_loc
-          = std::distance(fcts_cell.begin(),
-                          std::find(fcts_cell.begin(), fcts_cell.end(), fct));
-
-      // Get facet DOFs
-      if (is_discontinous)
-      {
-        // Get offset of facet DOFs in current cell
-        const int offs = c * ndofs_per_cell + fct_loc * _ndofs_per_fct;
-
-        // Set ids of facet DOFs
-        for (std::size_t j = 0; j < _ndofs_per_fct; ++j)
-        {
-          dofs(i, j) = offs + j;
-        }
-      }
-      else
-      {
-        // Extract DOFs of current cell
-        std::span<const std::int32_t> dofs_cell = dofmap.links(c);
-
-        // Local cell ids on current facet
-        const std::vector<int>& entity_dofs
-            = doflayout.entity_dofs(dim - 1, fct_loc);
-
-        // Set ids of facet DOFs
-        for (std::size_t j = 0; j < _ndofs_per_fct; ++j)
-        {
-          dofs(i, j) = dofs_cell[entity_dofs[j]];
-        }
-      }
-    }
-  }
-
   /* Variable definitions */
-  // The flux function space
-  std::shared_ptr<const fem::FunctionSpace> _function_space;
-
   // Boundary facets
   const std::int32_t _nfcts;
   const std::vector<std::int32_t> _fcts;
 
-  // Boundary DOFs
-  int _ndofs_per_fct;
-  std::vector<std::int32_t> _dofs;
+  // The flux function space
+  std::shared_ptr<const fem::FunctionSpace> _function_space;
 
   // Kernel (executable c++ code)
   std::function<void(T*, const T*, const T*, const scalar_value_type_t*,
@@ -339,11 +206,6 @@ protected:
 
   // Projection id (true, if projection is required)
   const bool _projection_required;
-
-  // Storage of projected BC
-  std::vector<T> _projected_bc;
-  std::vector<std::int32_t> _dofs_projected_bc;
-  int _cstride_proj;
 };
 
 } // namespace dolfinx_eqlb

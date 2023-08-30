@@ -388,9 +388,65 @@ s_cmdspan3_t KernelDataEqlb<T>::shapefunctions_cell_rhs(cmdspan2_t K)
 }
 
 // ------------------------------------------------------------------------------
+/* KernelDataBC */
+// ------------------------------------------------------------------------------
+template <typename T>
+KernelDataBC<T>::KernelDataBC(
+    std::shared_ptr<const mesh::Mesh> mesh,
+    std::shared_ptr<const QuadratureRule> quadrature_rule_fct,
+    const basix::FiniteElement& basix_element_flux_hdiv,
+    const basix::FiniteElement& basix_element_rhs_l2)
+    : KernelData<T>(mesh, {quadrature_rule_fct}),
+      _basix_element_hat(basix::element::create_lagrange(
+          mesh::cell_type_to_basix_type(mesh->topology().cell_type()), 1,
+          basix::element::lagrange_variant::equispaced, false))
+{
+  /* Interpolation points on facets */
+  std::array<std::size_t, 4> shape_intpl
+      = interpolation_data_facet_rt(basix_element_flux_hdiv, this->_gdim,
+                                    this->_nfcts_per_cell, _ipoints, _data_M);
+
+  _M = mdspan_t<const double, 4>(_data_M.data(), shape_intpl);
+
+  std::tie(_nipoints_per_fct, _nipoints)
+      = size_interpolation_data_facet_rt(shape_intpl);
+
+  /* Tabulate required shape-functions */
+  std::array<std::size_t, 5> shape;
+
+  // Tabulate H(div) flux at interpolation points
+  shape = this->tabulate_basis(basix_element_flux_hdiv, _ipoints,
+                               _basis_flux_values, false, false);
+  _basis_flux = mdspan_t<const double, 5>(_basis_flux_values.data(), shape);
+
+  // Tabulate projected flux at surface quadrature points
+  shape = this->tabulate_basis(basix_element_rhs_l2,
+                               this->_quadrature_rule[0]->points(),
+                               _basis_projection_values, false, false);
+  _basis_projection
+      = mdspan_t<const double, 5>(_basis_projection_values.data(), shape);
+
+  // Tabulate hat-function at interpolation points
+  shape = this->tabulate_basis(_basix_element_hat, _ipoints, _basis_hat_values,
+                               false, false);
+  _basis_hat = mdspan_t<const double, 5>(_basis_hat_values.data(), shape);
+
+  /* H(div)-flux: Pull back into reference */
+  using V_t = mdspan_t<T, 2>;
+  using v_t = mdspan_t<const T, 2>;
+  using J_t = mdspan_t<const double, 2>;
+  using K_t = mdspan_t<const double, 2>;
+
+  _pull_back_flux = basix_element_flux_hdiv.map_fn<V_t, v_t, K_t, J_t>();
+}
+
+// ------------------------------------------------------------------------------
 template class KernelData<float>;
 template class KernelData<double>;
 
 template class KernelDataEqlb<float>;
 template class KernelDataEqlb<double>;
+
+template class KernelDataBC<float>;
+template class KernelDataBC<double>;
 // ------------------------------------------------------------------------------

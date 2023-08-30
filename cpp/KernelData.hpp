@@ -184,9 +184,11 @@ public:
   /// Generates data required for isoparametric mapping between reference and
   /// actual element and tabulates flux element.
   ///
-  /// @param mesh                 The mesh
-  /// @param basix_element_fluxpw The basix-element for the H(div) flux
-  /// @param basix_element_rhs    The basix-element for RHS and projected flux
+  /// @param[in] mesh                 The mesh
+  /// @param[in] quadrature_rule_cell The quadrature rule on the cell
+  /// @param[in] basix_element_fluxpw The basix-element for the H(div) flux
+  /// @param[in] basix_element_rhs    The basix-element for RHS and proj. flux
+  /// @param[in] basix_element_hat    The basix-element for the hat-function
   KernelDataEqlb(std::shared_ptr<const mesh::Mesh> mesh,
                  std::shared_ptr<const QuadratureRule> quadrature_rule_cell,
                  const basix::FiniteElement& basix_element_fluxpw,
@@ -380,4 +382,48 @@ protected:
       _pull_back_fluxspace;
 };
 
+template <typename T>
+class KernelDataBC : public KernelData<T>
+{
+public:
+  /// Kernel data basic constructor
+  ///
+  /// Generates data required for calculating patch specific boundary conditions
+  /// during equilibration.
+  ///
+  /// @param[in] mesh                 The mesh
+  /// @param[in] quadrature_rule_fct  The quadrature rule on the cell facets
+  /// @param[in] basix_element_fluxpw The basix-element for the H(div) flux
+  /// @param[in] basix_element_rhs    The basix-element for RHS and proj. flux
+  KernelDataBC(std::shared_ptr<const mesh::Mesh> mesh,
+               std::shared_ptr<const QuadratureRule> quadrature_rule_fct,
+               const basix::FiniteElement& basix_element_flux_hdiv,
+               const basix::FiniteElement& basix_element_rhs_l2);
+
+protected:
+  /* Variable definitions */
+  // Interpolation data
+  std::size_t _nipoints_per_fct, _nipoints;
+  std::vector<double> _ipoints, _data_M;
+  mdspan_t<const double, 4> _M; // Indices: facet, dof, gdim, points
+
+  // Tabulated shape-functions (H(div) flux)
+  std::vector<double> _basis_flux_values;
+  mdspan_t<const double, 5> _basis_flux;
+
+  // Tabulated shape-functions (projected flux, RHS)
+  std::vector<double> _basis_projection_values;
+  mdspan_t<const double, 5> _basis_projection;
+
+  // Tabulated shape-functions (hat-function)
+  basix::FiniteElement _basix_element_hat;
+  std::vector<double> _basis_hat_values;
+  mdspan_t<const double, 5> _basis_hat;
+
+  // Pull-back H(div) data
+  std::function<void(mdspan_t<T, 2>&, const mdspan_t<const T, 2>&,
+                     const mdspan_t<const double, 2>&, double,
+                     const mdspan_t<const double, 2>&)>
+      _pull_back_flux;
+};
 } // namespace dolfinx_eqlb
