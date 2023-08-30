@@ -68,7 +68,11 @@ BoundaryData<T>::BoundaryData(
   const fem::ElementDofLayout& doflayout_hdiv
       = V_flux_hdiv->dofmap()->element_dof_layout();
 
+  // Initialise storage
   std::vector<std::int32_t> boundary_dofs_fct(_ndofs_per_fct);
+
+  std::vector<T> constants_belmts, coefficients_belmts;
+  std::int32_t cstride_coefficients;
 
   // Loop over all facets
   for (int i_rhs = 0; i_rhs < _num_rhs; ++i_rhs)
@@ -90,12 +94,23 @@ BoundaryData<T>::BoundaryData(
     // Handle facets with essential BCs on dual problem
     for (std::shared_ptr<FluxBC<T>> bc : list_bcs[i_rhs])
     {
-      // Set number of boundary facets
+      // Adjust number of boundary facets
       _num_bcfcts[i_rhs] += bc->num_facets();
 
+      // Extract list of boundary facets
+      std::span<const std::int32_t> boundary_fcts = bc->facets();
+
+      // Extract constants and coefficients
+      constants_belmts = bc->extract_constants();
+      std::tie(cstride_coefficients, coefficients_belmts)
+          = bc->extract_coefficients();
+
       // Loop over all facets
-      for (std::int32_t fct = 0; fct < _num_fcts; ++fct)
+      for (std::int32_t i_fct = 0; i_fct < _num_fcts; ++i_fct)
       {
+        // Get facet
+        std::int32_t fct = boundary_fcts[i_fct];
+
         // Get cell adjacent to facet
         std::int32_t cell = fct_to_cell->links(fct)[0];
 
