@@ -8,6 +8,7 @@
 #include <pybind11/stl.h>
 #include <ufcx.h>
 
+#include <dolfinx_eqlb/BoundaryData.hpp>
 #include <dolfinx_eqlb/FluxBC.hpp>
 #include <dolfinx_eqlb/local_solver.hpp>
 #include <dolfinx_eqlb/reconstruction.hpp>
@@ -122,6 +123,7 @@ void declare_fluxeqlb(py::module& m)
 template <typename T>
 void declare_bcs(py::module& m)
 {
+  /* A single boundary-condition for the flux */
   py::class_<FluxBC<T>, std::shared_ptr<FluxBC<T>>>(m, "FluxBC",
                                                     "FluxBC object")
       .def(
@@ -167,6 +169,28 @@ void declare_bcs(py::module& m)
           py::arg("pointer_boundary_kernel"), py::arg("nevals_per_fct"),
           py::arg("projection_required"), py::arg("coefficients"),
           py::arg("position_of_coefficients"), py::arg("constants"));
+
+  /* The collection of all BCs of all RHS */
+  py::class_<BoundaryData<T>, std::shared_ptr<BoundaryData<T>>>(
+      m, "BoundaryData", "BoundaryData object")
+      .def(
+          py::init(
+              [](int flux_degree,
+                 std::vector<std::vector<std::shared_ptr<FluxBC<T>>>>& list_bcs,
+                 std::vector<std::shared_ptr<fem::Function<T>>>& boundary_flux,
+                 std::shared_ptr<const fem::FunctionSpace> V_flux_hdiv,
+                 std::shared_ptr<const fem::FunctionSpace> V_flux_l2,
+                 const std::vector<std::vector<std::int32_t>>&
+                     fct_esntbound_prime)
+              {
+                // Return class
+                return BoundaryData<T>(flux_degree, list_bcs, boundary_flux,
+                                       V_flux_hdiv, V_flux_l2,
+                                       fct_esntbound_prime);
+              }),
+          py::arg("flux_degree"), py::arg("list_of_bcs"),
+          py::arg("list_of_boundary_fluxes"), py::arg("V_flux_hdiv"),
+          py::arg("V_flux_l2"), py::arg("list_bfcts_prime"));
 }
 
 PYBIND11_MODULE(cpp, m)

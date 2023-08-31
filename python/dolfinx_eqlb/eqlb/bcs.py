@@ -89,31 +89,21 @@ def fluxbc(
         else:
             raise NotImplementedError("3D meshes currently not supported")
     else:
-        # The basix element
-        belmt = V.element.basix_element.points
-
         # Points required for interpolation into element
-        pnts = belmt.points
+        pnts = V.element.basix_element.points
 
         # Number of evaluation points per facet
         # (Check if point is on facet 0 --> x != 0)
-        x_pnt = pnts[0, 0] == 0
+        x_pnt = pnts[0, 0]
         neval_per_fct = 0
 
         while x_pnt > 0:
             neval_per_fct += 1
-            x_pnt = pnts[: nfcts_per_cell * neval_per_fct, 0]
+            x_pnt = pnts[neval_per_fct, 0]
 
         # Extract points
-        pnts_eval = pnts[:neval_per_fct, :]
+        pnts_eval = pnts[: neval_per_fct * nfcts_per_cell, :]
 
-    # Evaluation points (Debug)
-    V_rb = dfem.FunctionSpace(domain, ("DG", 1))
-
-    basix_elmt = V_rb.element.basix_element
-    pnts_eval = basix_elmt.points
-
-    # --- Create flux-bc
     # Precompile ufl-function
     ufcx_form, _, _ = dolfinx.jit.ffcx_jit(domain.comm, (value, pnts_eval))
 
