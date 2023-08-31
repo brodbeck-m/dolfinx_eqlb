@@ -17,6 +17,7 @@
 #include <cmath>
 #include <functional>
 #include <numeric>
+#include <span>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -56,8 +57,8 @@ public:
   /// @param[in,out] normal_phys The physical normal
   /// @param[in] K               The inverse Jacobi-Matrix
   /// @param[in] fct_id          The cell-local facet id
-  void physical_fct_normal(std::span<double> normal_phys, mdspan_t<double, 2> K,
-                           std::int8_t fct_id);
+  void physical_fct_normal(std::span<double> normal_phys,
+                           mdspan_t<const double, 2> K, std::int8_t fct_id);
 
   /* Tabulate shape function */
   std::array<std::size_t, 5>
@@ -400,6 +401,41 @@ public:
                const basix::FiniteElement& basix_element_flux_hdiv,
                const basix::FiniteElement& basix_element_rhs_l2);
 
+  /* Interpolate flux function */
+  void interpolate_flux(std::span<const T> flux_ntrace_cur,
+                        std::span<T> flux_dofs, std::int8_t fct_id,
+                        mdspan_t<const double, 2> J, double detJ,
+                        mdspan_t<const double, 2> K);
+
+  std::vector<T> interpolate_flux(std::span<const T> flux_dofs_bc,
+                                  std::int8_t fct_id, std::int8_t hat_id,
+                                  mdspan_t<const double, 2> J, double detJ,
+                                  mdspan_t<const double, 2> K)
+  {
+    // Initialise storage
+    std::vector<T> flux_dofs_patch(flux_dofs_bc.size());
+
+    // Interpolaate flux
+    interpolate_flux(flux_dofs_bc, flux_dofs_patch, fct_id, hat_id, J, detJ, K);
+
+    return std::move(flux_dofs_patch);
+  }
+
+  void interpolate_flux(std::span<const T> flux_dofs_bc,
+                        std::span<T> flux_dofs_patch, std::int8_t fct_id,
+                        std::int8_t hat_id, mdspan_t<const double, 2> J,
+                        double detJ, mdspan_t<const double, 2> K);
+
+  void interpolate_flux(mdspan_t<const T, 2> flux_cur,
+                        std::span<T> flux_dofs_patch, std::int8_t fct_id,
+                        mdspan_t<const double, 2> J, double detJ,
+                        mdspan_t<const double, 2> K);
+
+  /* Getter methods: Interpolation */
+  /// Extract number of interpolation points per facet
+  /// @return Number of interpolation points
+  int num_interpolation_points() const { return _nipoints; }
+
 protected:
   /* Variable definitions */
   // Interpolation data
@@ -421,6 +457,11 @@ protected:
   mdspan_t<const double, 5> _basis_hat;
 
   // Pull-back H(div) data
+  std::vector<T> _flux_cur_scratch_data;
+  mdspan_t<const T, 2> _flux_cur_scratch;
+
+  std::array<double, 3> _normal_scratch;
+
   std::function<void(mdspan_t<T, 2>&, const mdspan_t<const T, 2>&,
                      const mdspan_t<const double, 2>&, double,
                      const mdspan_t<const double, 2>&)>

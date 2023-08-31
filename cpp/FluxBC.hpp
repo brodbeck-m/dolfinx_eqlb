@@ -190,6 +190,15 @@ public:
     return {cstride, std::move(coefficients)};
   }
 
+  /// Extract the boundary kernel
+  /// @return The boundary kernel
+  const std::function<void(T*, const T*, const T*, const scalar_value_type_t*,
+                           const int*, const std::uint8_t*)>&
+  boundary_kernel() const
+  {
+    return _boundary_kernel;
+  }
+
 protected:
   /* Variable definitions */
   // Boundary facets

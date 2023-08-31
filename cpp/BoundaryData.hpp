@@ -3,6 +3,8 @@
 #include "FluxBC.hpp"
 #include "KernelData.hpp"
 #include "QuadratureRule.hpp"
+#include "eigen3/Eigen/Dense"
+#include "eigen3/Eigen/Sparse"
 #include "utils.hpp"
 
 #include <basix/e-lagrange.h>
@@ -194,6 +196,7 @@ protected:
 
   // Geometric mapping
   std::array<double, 9> _data_J, data_K;
+  std::array<double, 18> _detJ_scratch;
   mdspan_t<double, 2> _J, _K;
 };
 } // namespace dolfinx_eqlb

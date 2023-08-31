@@ -55,26 +55,58 @@ BoundaryData<T>::BoundaryData(
   std::generate(_offset_fctdata.begin(), _offset_fctdata.end(),
                 [n = 0, num_fcts]() mutable { return num_fcts * (n++); });
 
-  // Extract required data
+  /* Extract required data */
+  // The mesh
   std::shared_ptr<const mesh::Mesh> mesh = V_flux_hdiv->mesh();
 
+  // Required conductivities
   std::shared_ptr<const graph::AdjacencyList<std::int32_t>> fct_to_cell
       = mesh->topology().connectivity(_gdim - 1, _gdim);
   std::shared_ptr<const graph::AdjacencyList<std::int32_t>> cell_to_fct
       = mesh->topology().connectivity(_gdim, _gdim - 1);
 
+  // Geometry DOFmap and nodal coordinates
+  const graph::AdjacencyList<std::int32_t>& dofmap_geom
+      = mesh->geometry().dofmap();
+  std::span<const double> node_coordinates = mesh->geometry().x();
+
+  // Flux DOFmap
   const graph::AdjacencyList<std::int32_t>& dofmap_hdiv
       = V_flux_hdiv->dofmap()->list();
   const fem::ElementDofLayout& doflayout_hdiv
       = V_flux_hdiv->dofmap()->element_dof_layout();
 
-  // Initialise storage
-  std::vector<std::int32_t> boundary_dofs_fct(_ndofs_per_fct);
+  // Transformation information flux space
+  const auto apply_inverse_dof_transform
+      = _V_flux_hdiv->element()->get_dof_transformation_function<T>(true, true,
+                                                                    false);
 
+  std::span<const std::uint32_t> cell_info;
+  if (_V_flux_hdiv->element()->needs_dof_transformations())
+  {
+    mesh->topology_mutable().create_entity_permutations();
+    cell_info = std::span(mesh->topology().get_cell_permutation_info());
+  }
+
+  /* Initialise storage */
+  // DOF ids and values on boundary facets
+  // (values on entire element to enable application of DOF transformations)
+  std::vector<std::int32_t> boundary_dofs_fct(_ndofs_per_fct);
+  std::vector<T> boundary_values(_ndofs_per_cell);
+
+  // Storage for extraction of cell geometry
+  std::vector<double> coordinates_data(mesh->geometry().cmap().dim() * 3);
+  mdspan_t<const double, 2> coordinates(coordinates_data.data(),
+                                        mesh->geometry().cmap().dim(), 3);
+
+  // The boundary kernel
+  std::vector<T> values_bkernel(_kernel_data.num_interpolation_points());
+
+  // Constants/coefficients for evaluation of boundary kernel
   std::vector<T> constants_belmts, coefficients_belmts;
   std::int32_t cstride_coefficients;
 
-  // Loop over all facets
+  /* Calculate boundary DOFs */
   for (int i_rhs = 0; i_rhs < _num_rhs; ++i_rhs)
   {
     // Storage of current RHS
@@ -105,6 +137,9 @@ BoundaryData<T>::BoundaryData(
       std::tie(cstride_coefficients, coefficients_belmts)
           = bc->extract_coefficients();
 
+      // Extract boundary kernel
+      const auto& boundary_kernel = bc->boundary_kernel();
+
       // Loop over all facets
       for (std::int32_t i_fct = 0; i_fct < _num_fcts; ++i_fct)
       {
@@ -123,6 +158,26 @@ BoundaryData<T>::BoundaryData(
         // Get ids of boundary DOFs
         boundary_dofs(cell, fct_loc, boundary_dofs_fct);
 
+        /* Calculate boundary values on current cell */
+        // Extract cell geometry
+        std::span<const std::int32_t> nodes_cell = dofmap_geom.links(cell);
+        for (std::size_t j = 0; j < nodes_cell.size(); ++j)
+        {
+          std::copy_n(std::next(node_coordinates.begin(), 3 * nodes_cell[j]), 3,
+                      std::next(coordinates_data.begin(), 3 * j));
+        }
+
+        // Extract DOFs on boundary facet
+        std::span<T> boundary_values_fct(
+            boundary_values.data() + fct_loc * _ndofs_per_fct, _ndofs_per_fct);
+
+        // Calculate mapping tensors
+        double detJ
+            = _kernel_data.compute_jacobian(_J, _K, _detJ_scratch, coordinates);
+
+        std::fill(values_bkernel.begin(), values_bkernel.end(), 0.0);
+        std::fill(boundary_values.begin(), boundary_values.end(), 0.0);
+
         // Calculate boundary DOFs
         if (bc->projection_required())
         {
@@ -131,9 +186,20 @@ BoundaryData<T>::BoundaryData(
         }
         else
         {
-          throw std::runtime_error(
-              "Evaluation of boundary conditions not implemented");
+          // Evaluate boundary condition at interpolation points
+          boundary_kernel(values_bkernel.data(),
+                          coefficients_belmts.data()
+                              + i_fct * cstride_coefficients,
+                          constants_belmts.data(), coordinates_data.data(),
+                          nullptr, nullptr);
+
+          // Perform interpolation
+          _kernel_data.interpolate_flux(values_bkernel, boundary_values_fct,
+                                        fct_loc, _J, detJ, _K);
         }
+
+        // Apply DOF transformations
+        apply_inverse_dof_transform(boundary_values, cell_info, cell, 1);
 
         // Set values and markers
         facet_type_i[fct] = facte_type::essnt_dual;
@@ -142,7 +208,7 @@ BoundaryData<T>::BoundaryData(
         for (std::size_t i = 0; i < _ndofs_per_fct; ++i)
         {
           boundary_markers_i[boundary_dofs_fct[i]] = true;
-          x_bvals[boundary_dofs_fct[i]] = 0;
+          x_bvals[boundary_dofs_fct[i]] = boundary_values_fct[i];
         }
       }
     }
@@ -184,6 +250,5 @@ void BoundaryData<T>::boundary_dofs(std::int32_t cell, std::int8_t fct_loc,
 }
 
 // ------------------------------------------------------------------------------
-template class BoundaryData<float>;
 template class BoundaryData<double>;
 // ------------------------------------------------------------------------------

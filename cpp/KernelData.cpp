@@ -110,7 +110,7 @@ double KernelData<T>::compute_jacobian(mdspan_t<double, 2> J,
 
 template <typename T>
 void KernelData<T>::physical_fct_normal(std::span<double> normal_phys,
-                                        mdspan_t<double, 2> K,
+                                        mdspan_t<const double, 2> K,
                                         std::int8_t fct_id)
 {
   // Set physical normal to zero
@@ -432,12 +432,81 @@ KernelDataBC<T>::KernelDataBC(
   _basis_hat = mdspan_t<const double, 5>(_basis_hat_values.data(), shape);
 
   /* H(div)-flux: Pull back into reference */
+  // Initialise scratch
+  _flux_cur_scratch_data.resize(_nipoints_per_fct * 3);
+  _flux_cur_scratch = mdspan_t<const T, 2>(_flux_cur_scratch_data.data(),
+                                           _nipoints_per_fct, 3);
+
+  // Extract mapping function
   using V_t = mdspan_t<T, 2>;
   using v_t = mdspan_t<const T, 2>;
   using J_t = mdspan_t<const double, 2>;
   using K_t = mdspan_t<const double, 2>;
 
   _pull_back_flux = basix_element_flux_hdiv.map_fn<V_t, v_t, K_t, J_t>();
+}
+
+template <typename T>
+void KernelDataBC<T>::interpolate_flux(std::span<const T> flux_ntrace_cur,
+                                       std::span<T> flux_dofs,
+                                       std::int8_t fct_id,
+                                       mdspan_t<const double, 2> J, double detJ,
+                                       mdspan_t<const double, 2> K)
+{
+  // Calculate flux within current cell
+  std::span<double> normal_cur(_normal_scratch.data(), this->_gdim);
+  this->physical_fct_normal(normal_cur, K, fct_id);
+
+  // Calculate flux within current cell
+  for (std::size_t i = 0; i < _nipoints_per_fct; ++i)
+  {
+    int offs = 3 * i;
+
+    // Set flux
+    _flux_cur_scratch_data[offs] = _normal_scratch[0] * flux_ntrace_cur[i];
+    _flux_cur_scratch_data[offs + 1] = _normal_scratch[1] * flux_ntrace_cur[i];
+    _flux_cur_scratch_data[offs + 2] = _normal_scratch[2] * flux_ntrace_cur[i];
+  }
+
+  // Calculate DOFs based on values at interpolation points
+  interpolate_flux(_flux_cur_scratch, flux_dofs, fct_id, J, detJ, K);
+}
+
+template <typename T>
+void KernelDataBC<T>::interpolate_flux(std::span<const T> flux_dofs_bc,
+                                       std::span<T> flux_dofs_patch,
+                                       std::int8_t fct_id, std::int8_t hat_id,
+                                       mdspan_t<const double, 2> J, double detJ,
+                                       mdspan_t<const double, 2> K)
+{
+  // Evaluate flux and multiply it with hat-function
+  // TODO - Implement evaulation of RT-flux and multiply it with hat-function
+  // TODO - Take example from fem::Function::eval
+  throw std::runtime_error("Not implemented");
+
+  // Calculate DOF of scaled flux
+  interpolate_flux(_flux_cur_scratch, flux_dofs_patch, fct_id, J, detJ, K);
+}
+
+template <typename T>
+void KernelDataBC<T>::interpolate_flux(mdspan_t<const T, 2> flux_cur,
+                                       std::span<T> flux_dofs,
+                                       std::int8_t fct_id,
+                                       mdspan_t<const double, 2> J, double detJ,
+                                       mdspan_t<const double, 2> K)
+{
+  for (std::size_t i = 0; i < flux_dofs.size(); ++i)
+  {
+    for (std::size_t j = 0; j < _nipoints_per_fct; ++j)
+    {
+      for (std::size_t k = 0; k < this->_gdim; ++k)
+      {
+        {
+          flux_dofs[i] += _M(fct_id, i, k, j) * flux_cur(j, k);
+        }
+      }
+    }
+  }
 }
 
 // ------------------------------------------------------------------------------
