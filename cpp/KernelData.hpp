@@ -160,7 +160,7 @@ protected:
   std::uint32_t _gdim, _tdim;
 
   // Description mesh element
-  std::size_t _num_coordinate_dofs, _nfcts_per_cell;
+  int _num_coordinate_dofs, _nfcts_per_cell;
   bool _is_affine;
 
   // Facet normals (reference element)
@@ -432,9 +432,13 @@ public:
                         mdspan_t<const double, 2> K);
 
   /* Getter methods: Interpolation */
-  /// Extract number of interpolation points per facet
+  /// Extract number of interpolation points
   /// @return Number of interpolation points
   int num_interpolation_points() const { return _nipoints; }
+
+  /// Extract number of interpolation points per facet
+  /// @return Number of interpolation points
+  int num_interpolation_points_per_facet() const { return _nipoints_per_fct; }
 
 protected:
   /* Variable definitions */

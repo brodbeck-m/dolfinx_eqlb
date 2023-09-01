@@ -63,6 +63,26 @@ public:
                                       - _offset_fctdata[rhs_i]);
   }
 
+  /// Get list of boundary markers
+  /// @param[in] rhs_i Index of RHS
+  /// @return List of boundary markers (sorted by DOF-ids)
+  std::span<std::int8_t> boundary_markers(int rhs_i)
+  {
+    return std::span<std::int8_t>(
+        _boundary_markers.data() + _offset_dofdata[rhs_i],
+        _offset_dofdata[rhs_i + 1] - _offset_dofdata[rhs_i]);
+  }
+
+  /// Get list of boundary values
+  /// @param[in] rhs_i Index of RHS
+  /// @return List of boundary values (sorted by DOF-ids)
+  std::span<T> boundary_values(int rhs_i)
+  {
+    return std::span<T>(_boundary_values.data() + _offset_dofdata[rhs_i],
+                        _offset_dofdata[rhs_i + 1] - _offset_dofdata[rhs_i]);
+  }
+
+protected:
   /// Get list of cell local facet ids
   /// @param[in] rhs_i Index of RHS
   /// @return List of cell-local facet ids (sorted by facet-ids)
@@ -107,26 +127,6 @@ public:
   void boundary_dofs(std::int32_t cell, std::int8_t fct_loc,
                      std::span<std::int32_t> boundary_dofs);
 
-  /// Get list of boundary markers
-  /// @param[in] rhs_i Index of RHS
-  /// @return List of boundary markers (sorted by DOF-ids)
-  std::span<std::int8_t> boundary_markers(int rhs_i)
-  {
-    return std::span<std::int8_t>(
-        _boundary_markers.data() + _offset_dofdata[rhs_i],
-        _offset_dofdata[rhs_i + 1] - _offset_dofdata[rhs_i]);
-  }
-
-  /// Get list of boundary values
-  /// @param[in] rhs_i Index of RHS
-  /// @return List of boundary values (sorted by DOF-ids)
-  std::span<T> boundary_values(int rhs_i)
-  {
-    return std::span<T>(_boundary_values.data() + _offset_dofdata[rhs_i],
-                        _offset_dofdata[rhs_i + 1] - _offset_dofdata[rhs_i]);
-  }
-
-protected:
   /* Variable definitions */
   // The boundary conditions
   std::vector<std::shared_ptr<fem::Function<T>>>& _boundary_flux;
@@ -195,7 +195,7 @@ protected:
   KernelDataBC<T> _kernel_data;
 
   // Geometric mapping
-  std::array<double, 9> _data_J, data_K;
+  std::array<double, 9> _data_J, _data_K;
   std::array<double, 18> _detJ_scratch;
   mdspan_t<double, 2> _J, _K;
 };

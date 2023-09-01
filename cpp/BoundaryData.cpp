@@ -11,9 +11,10 @@ BoundaryData<T>::BoundaryData(
     std::shared_ptr<const fem::FunctionSpace> V_flux_hdiv,
     std::shared_ptr<const fem::FunctionSpace> V_flux_l2,
     const std::vector<std::vector<std::int32_t>>& fct_esntbound_prime)
-    : _boundary_flux(boundary_flux),
+    : _flux_degree(V_flux_hdiv->element()->basix_element().degree()),
+      _boundary_flux(boundary_flux),
       _quadrature_rule(QuadratureRule(
-          V_flux_hdiv->mesh()->topology().cell_type(), 2 * flux_degree,
+          V_flux_hdiv->mesh()->topology().cell_type(), 2 * _flux_degree,
           V_flux_hdiv->mesh()->geometry().dim() - 1)),
       _kernel_data(
           KernelDataBC<T>(V_flux_hdiv->mesh(),
@@ -23,16 +24,34 @@ BoundaryData<T>::BoundaryData(
       _num_rhs(list_bcs.size()), _gdim(V_flux_hdiv->mesh()->geometry().dim()),
       _num_fcts(
           V_flux_hdiv->mesh()->topology().index_map(_gdim - 1)->size_local()),
-      _nfcts_per_cell(_kernel_data.nfacets_cell()), _V_flux_hdiv(V_flux_hdiv),
+      _nfcts_per_cell((_gdim == 2) ? 3 : 4), _V_flux_hdiv(V_flux_hdiv),
       _flux_is_discontinous(
           V_flux_hdiv->element()->basix_element().discontinuous()),
-      _flux_degree(V_flux_hdiv->element()->basix_element().degree()),
       _ndofs_per_cell(V_flux_hdiv->element()->space_dimension()),
-      _ndofs_per_fct(_gdim == 2 ? _flux_degree
-                                : 0.5 * _flux_degree * (_flux_degree + 1)),
+      _ndofs_per_fct((_gdim == 2) ? _flux_degree
+                                  : 0.5 * _flux_degree * (_flux_degree + 1)),
       _num_dofs(V_flux_hdiv->dofmap()->index_map->size_local()
                 + V_flux_hdiv->dofmap()->index_map->num_ghosts())
 {
+  // Debug initialisation
+  std::cout << "flux degree: " << _flux_degree << std::endl;
+  std::cout << "num rhs: " << _num_rhs << std::endl;
+  std::cout << "num factes: " << _num_fcts << std::endl;
+  std::cout << "num factes per cell: " << _nfcts_per_cell << std::endl;
+  std::cout << "num factes per cell (from kernel_data): "
+            << _kernel_data.nfacets_cell() << std::endl;
+  if (_flux_is_discontinous)
+  {
+    std::cout << "flux is discontinuous" << std::endl;
+  }
+  else
+  {
+    std::cout << "flux is continuous" << std::endl;
+  }
+  std::cout << "num dofs per cell: " << _ndofs_per_cell << std::endl;
+  std::cout << "num dofs per facet: " << _ndofs_per_fct << std::endl;
+  std::cout << "num dofs: " << _num_dofs << std::endl;
+
   // Resize storage
   _num_bcfcts.resize(_num_rhs);
 
@@ -54,6 +73,9 @@ BoundaryData<T>::BoundaryData(
   std::int32_t num_fcts = _num_fcts;
   std::generate(_offset_fctdata.begin(), _offset_fctdata.end(),
                 [n = 0, num_fcts]() mutable { return num_fcts * (n++); });
+
+  _J = mdspan_t<double, 2>(_data_J.data(), _gdim, _gdim);
+  _K = mdspan_t<double, 2>(_data_K.data(), _gdim, _gdim);
 
   /* Extract required data */
   // The mesh
@@ -99,8 +121,13 @@ BoundaryData<T>::BoundaryData(
   mdspan_t<const double, 2> coordinates(coordinates_data.data(),
                                         mesh->geometry().cmap().dim(), 3);
 
+  // Number of interpolation points per facet
+  const int nipoints = _kernel_data.num_interpolation_points();
+  const int nipoints_per_fct
+      = _kernel_data.num_interpolation_points_per_facet();
+
   // The boundary kernel
-  std::vector<T> values_bkernel(_kernel_data.num_interpolation_points());
+  std::vector<T> values_bkernel(nipoints);
 
   // Constants/coefficients for evaluation of boundary kernel
   std::vector<T> constants_belmts, coefficients_belmts;
@@ -134,6 +161,7 @@ BoundaryData<T>::BoundaryData(
 
       // Extract constants and coefficients
       constants_belmts = bc->extract_constants();
+
       std::tie(cstride_coefficients, coefficients_belmts)
           = bc->extract_coefficients();
 
@@ -141,7 +169,7 @@ BoundaryData<T>::BoundaryData(
       const auto& boundary_kernel = bc->boundary_kernel();
 
       // Loop over all facets
-      for (std::int32_t i_fct = 0; i_fct < _num_fcts; ++i_fct)
+      for (std::int32_t i_fct = 0; i_fct < bc->num_facets(); ++i_fct)
       {
         // Get facet
         std::int32_t fct = boundary_fcts[i_fct];
@@ -179,27 +207,30 @@ BoundaryData<T>::BoundaryData(
         std::fill(boundary_values.begin(), boundary_values.end(), 0.0);
 
         // Calculate boundary DOFs
-        if (bc->projection_required())
-        {
-          throw std::runtime_error(
-              "Projection for boundary conditions not implemented");
-        }
-        else
-        {
-          // Evaluate boundary condition at interpolation points
-          boundary_kernel(values_bkernel.data(),
-                          coefficients_belmts.data()
-                              + i_fct * cstride_coefficients,
-                          constants_belmts.data(), coordinates_data.data(),
-                          nullptr, nullptr);
+        // if (bc->projection_required())
+        // {
+        //   throw std::runtime_error(
+        //       "Projection for boundary conditions not implemented");
+        // }
+        // else
+        // {
+        //   // Evaluate boundary condition at interpolation points
+        //   boundary_kernel(values_bkernel.data(),
+        //                   coefficients_belmts.data()
+        //                       + i_fct * cstride_coefficients,
+        //                   constants_belmts.data(), coordinates_data.data(),
+        //                   nullptr, nullptr);
 
-          // Perform interpolation
-          _kernel_data.interpolate_flux(values_bkernel, boundary_values_fct,
-                                        fct_loc, _J, detJ, _K);
-        }
+        //   // Perform interpolation
+        //   std::span<T> flux_ntrace(values_bkernel.data()
+        //                                + fct_loc * nipoints_per_fct,
+        //                            nipoints_per_fct);
+        //   _kernel_data.interpolate_flux(flux_ntrace, boundary_values_fct,
+        //                                 fct_loc, _J, detJ, _K);
+        // }
 
-        // Apply DOF transformations
-        apply_inverse_dof_transform(boundary_values, cell_info, cell, 1);
+        // // Apply DOF transformations
+        // apply_inverse_dof_transform(boundary_values, cell_info, cell, 1);
 
         // Set values and markers
         facet_type_i[fct] = facte_type::essnt_dual;

@@ -164,8 +164,6 @@ public:
 
           // Flattened storage
           std::int32_t offs_coef = i * cstride + offs_cstride;
-          std::span<T> data
-              = std::span<T>(coefficients.data() + offs_coef, space_dimension);
 
           // Extract coefficient data
           for (std::size_t j = 0; j < map_dimension; ++j)

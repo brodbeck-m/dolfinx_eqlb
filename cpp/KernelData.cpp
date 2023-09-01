@@ -495,6 +495,9 @@ void KernelDataBC<T>::interpolate_flux(mdspan_t<const T, 2> flux_cur,
                                        mdspan_t<const double, 2> J, double detJ,
                                        mdspan_t<const double, 2> K)
 {
+  // Map flux to reference cell
+
+  // Apply interpolation operator
   for (std::size_t i = 0; i < flux_dofs.size(); ++i)
   {
     for (std::size_t j = 0; j < _nipoints_per_fct; ++j)
