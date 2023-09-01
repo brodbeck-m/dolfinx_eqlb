@@ -461,8 +461,8 @@ protected:
   mdspan_t<const double, 5> _basis_hat;
 
   // Pull-back H(div) data
-  std::vector<T> _flux_cur_scratch_data;
-  mdspan_t<const T, 2> _flux_cur_scratch;
+  std::vector<T> _flux_scratch_data, _mflux_scratch_data;
+  mdspan_t<T, 2> _flux_scratch, _mflux_scratch;
 
   std::array<double, 3> _normal_scratch;
 

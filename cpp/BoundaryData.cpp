@@ -33,25 +33,6 @@ BoundaryData<T>::BoundaryData(
       _num_dofs(V_flux_hdiv->dofmap()->index_map->size_local()
                 + V_flux_hdiv->dofmap()->index_map->num_ghosts())
 {
-  // Debug initialisation
-  std::cout << "flux degree: " << _flux_degree << std::endl;
-  std::cout << "num rhs: " << _num_rhs << std::endl;
-  std::cout << "num factes: " << _num_fcts << std::endl;
-  std::cout << "num factes per cell: " << _nfcts_per_cell << std::endl;
-  std::cout << "num factes per cell (from kernel_data): "
-            << _kernel_data.nfacets_cell() << std::endl;
-  if (_flux_is_discontinous)
-  {
-    std::cout << "flux is discontinuous" << std::endl;
-  }
-  else
-  {
-    std::cout << "flux is continuous" << std::endl;
-  }
-  std::cout << "num dofs per cell: " << _ndofs_per_cell << std::endl;
-  std::cout << "num dofs per facet: " << _ndofs_per_fct << std::endl;
-  std::cout << "num dofs: " << _num_dofs << std::endl;
-
   // Resize storage
   _num_bcfcts.resize(_num_rhs);
 

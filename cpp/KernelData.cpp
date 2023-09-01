@@ -433,9 +433,13 @@ KernelDataBC<T>::KernelDataBC(
 
   /* H(div)-flux: Pull back into reference */
   // Initialise scratch
-  _flux_cur_scratch_data.resize(_nipoints_per_fct * 3);
-  _flux_cur_scratch = mdspan_t<const T, 2>(_flux_cur_scratch_data.data(),
-                                           _nipoints_per_fct, 3);
+  _flux_scratch_data.resize(_nipoints_per_fct * this->_gdim);
+  _mflux_scratch_data.resize(_nipoints_per_fct * this->_gdim);
+
+  _flux_scratch = mdspan_t<T, 2>(_flux_scratch_data.data(), _nipoints_per_fct,
+                                 this->_gdim);
+  _mflux_scratch = mdspan_t<T, 2>(_mflux_scratch_data.data(), _nipoints_per_fct,
+                                  this->_gdim);
 
   // Extract mapping function
   using V_t = mdspan_t<T, 2>;
@@ -460,16 +464,17 @@ void KernelDataBC<T>::interpolate_flux(std::span<const T> flux_ntrace_cur,
   // Calculate flux within current cell
   for (std::size_t i = 0; i < _nipoints_per_fct; ++i)
   {
-    int offs = 3 * i;
+    int offs = this->_gdim * i;
 
     // Set flux
-    _flux_cur_scratch_data[offs] = _normal_scratch[0] * flux_ntrace_cur[i];
-    _flux_cur_scratch_data[offs + 1] = _normal_scratch[1] * flux_ntrace_cur[i];
-    _flux_cur_scratch_data[offs + 2] = _normal_scratch[2] * flux_ntrace_cur[i];
+    for (std::size_t j = 0; j < this->_gdim; ++j)
+    {
+      _flux_scratch(i, j) = normal_cur[j] * flux_ntrace_cur[i];
+    }
   }
 
   // Calculate DOFs based on values at interpolation points
-  interpolate_flux(_flux_cur_scratch, flux_dofs, fct_id, J, detJ, K);
+  interpolate_flux(_flux_scratch, flux_dofs, fct_id, J, detJ, K);
 }
 
 template <typename T>
@@ -485,7 +490,7 @@ void KernelDataBC<T>::interpolate_flux(std::span<const T> flux_dofs_bc,
   throw std::runtime_error("Not implemented");
 
   // Calculate DOF of scaled flux
-  interpolate_flux(_flux_cur_scratch, flux_dofs_patch, fct_id, J, detJ, K);
+  interpolate_flux(_flux_scratch, flux_dofs_patch, fct_id, J, detJ, K);
 }
 
 template <typename T>
@@ -496,6 +501,7 @@ void KernelDataBC<T>::interpolate_flux(mdspan_t<const T, 2> flux_cur,
                                        mdspan_t<const double, 2> K)
 {
   // Map flux to reference cell
+  _pull_back_flux(_mflux_scratch, flux_cur, K, 1 / detJ, J);
 
   // Apply interpolation operator
   for (std::size_t i = 0; i < flux_dofs.size(); ++i)
