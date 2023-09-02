@@ -399,7 +399,8 @@ public:
   KernelDataBC(std::shared_ptr<const mesh::Mesh> mesh,
                std::shared_ptr<const QuadratureRule> quadrature_rule_fct,
                const basix::FiniteElement& basix_element_flux_hdiv,
-               const basix::FiniteElement& basix_element_rhs_l2);
+               const basix::FiniteElement& basix_element_rhs_l2,
+               bool flux_is_custom);
 
   /* Interpolate flux function */
   void interpolate_flux(std::span<const T> flux_ntrace_cur,

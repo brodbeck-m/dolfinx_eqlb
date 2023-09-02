@@ -196,8 +196,8 @@ KernelDataEqlb<T>::KernelDataEqlb(
 {
   /* Interpolation points on facets */
   std::array<std::size_t, 4> shape_intpl = interpolation_data_facet_rt(
-      basix_element_fluxpw, this->_gdim, this->_nfcts_per_cell, _ipoints_fct,
-      _data_M_fct);
+      basix_element_fluxpw, true, this->_gdim, this->_nfcts_per_cell,
+      _ipoints_fct, _data_M_fct);
 
   _M_fct = mdspan_t<const double, 4>(_data_M_fct.data(), shape_intpl);
 
@@ -395,16 +395,16 @@ KernelDataBC<T>::KernelDataBC(
     std::shared_ptr<const mesh::Mesh> mesh,
     std::shared_ptr<const QuadratureRule> quadrature_rule_fct,
     const basix::FiniteElement& basix_element_flux_hdiv,
-    const basix::FiniteElement& basix_element_rhs_l2)
+    const basix::FiniteElement& basix_element_rhs_l2, bool flux_is_custom)
     : KernelData<T>(mesh, {quadrature_rule_fct}),
       _basix_element_hat(basix::element::create_lagrange(
           mesh::cell_type_to_basix_type(mesh->topology().cell_type()), 1,
           basix::element::lagrange_variant::equispaced, false))
 {
   /* Interpolation points on facets */
-  std::array<std::size_t, 4> shape_intpl
-      = interpolation_data_facet_rt(basix_element_flux_hdiv, this->_gdim,
-                                    this->_nfcts_per_cell, _ipoints, _data_M);
+  std::array<std::size_t, 4> shape_intpl = interpolation_data_facet_rt(
+      basix_element_flux_hdiv, flux_is_custom, this->_gdim,
+      this->_nfcts_per_cell, _ipoints, _data_M);
 
   _M = mdspan_t<const double, 4>(_data_M.data(), shape_intpl);
 
@@ -506,15 +506,18 @@ void KernelDataBC<T>::interpolate_flux(mdspan_t<const T, 2> flux_cur,
   // Apply interpolation operator
   for (std::size_t i = 0; i < flux_dofs.size(); ++i)
   {
+    T dof = 0;
     for (std::size_t j = 0; j < _nipoints_per_fct; ++j)
     {
       for (std::size_t k = 0; k < this->_gdim; ++k)
       {
         {
-          flux_dofs[i] += _M(fct_id, i, k, j) * flux_cur(j, k);
+          dof += _M(fct_id, i, k, j) * _mflux_scratch(j, k);
         }
       }
     }
+
+    flux_dofs[i] = dof;
   }
 }
 

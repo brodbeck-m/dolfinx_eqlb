@@ -4,11 +4,10 @@ using namespace dolfinx;
 
 namespace dolfinx_eqlb
 {
-std::array<std::size_t, 4>
-interpolation_data_facet_rt(const basix::FiniteElement& basix_element,
-                            std::size_t gdim, std::size_t nfcts_per_cell,
-                            std::vector<double>& ipoints_fct,
-                            std::vector<double>& data_M_fct)
+std::array<std::size_t, 4> interpolation_data_facet_rt(
+    const basix::FiniteElement& basix_element, const bool flux_is_custom,
+    const std::size_t gdim, const std::size_t nfcts_per_cell,
+    std::vector<double>& ipoints_fct, std::vector<double>& data_M_fct)
 {
   // Extract interpolation points
   auto [X, Xshape] = basix_element.points();
@@ -48,7 +47,16 @@ interpolation_data_facet_rt(const basix::FiniteElement& basix_element,
   std::copy_n(X.begin(), nipoints_fct * gdim, ipoints_fct.begin());
 
   // Copy interpolation matrix (on facets)
-  const int offs_drvt = (degree > 1) ? gdim + 1 : 1;
+  int offs_drvt;
+
+  if (flux_is_custom)
+  {
+    offs_drvt = (degree > 1) ? gdim + 1 : 1;
+  }
+  else
+  {
+    offs_drvt = 1;
+  }
 
   int id_dof = 0;
   int offs_pnt = 0;

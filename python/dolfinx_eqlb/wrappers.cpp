@@ -175,20 +175,20 @@ void declare_bcs(py::module& m)
       m, "BoundaryData", "BoundaryData object")
       .def(
           py::init(
-              [](int flux_degree,
-                 std::vector<std::vector<std::shared_ptr<FluxBC<T>>>>& list_bcs,
+              [](std::vector<std::vector<std::shared_ptr<FluxBC<T>>>>& list_bcs,
                  std::vector<std::shared_ptr<fem::Function<T>>>& boundary_flux,
                  std::shared_ptr<const fem::FunctionSpace> V_flux_hdiv,
+                 bool rtflux_is_custom,
                  std::shared_ptr<const fem::FunctionSpace> V_flux_l2,
                  const std::vector<std::vector<std::int32_t>>&
                      fct_esntbound_prime)
               {
                 // Return class
-                return BoundaryData<T>(flux_degree, list_bcs, boundary_flux,
-                                       V_flux_hdiv, V_flux_l2,
+                return BoundaryData<T>(list_bcs, boundary_flux, V_flux_hdiv,
+                                       rtflux_is_custom, V_flux_l2,
                                        fct_esntbound_prime);
               }),
-          py::arg("flux_degree"), py::arg("list_of_bcs"),
+          py::arg("rtflux_is_custom"), py::arg("list_of_bcs"),
           py::arg("list_of_boundary_fluxes"), py::arg("V_flux_hdiv"),
           py::arg("V_flux_l2"), py::arg("list_bfcts_prime"));
 }

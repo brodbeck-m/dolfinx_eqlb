@@ -5,22 +5,21 @@ using namespace dolfinx_eqlb;
 
 template <typename T>
 BoundaryData<T>::BoundaryData(
-    int flux_degree,
     std::vector<std::vector<std::shared_ptr<FluxBC<T>>>>& list_bcs,
     std::vector<std::shared_ptr<fem::Function<T>>>& boundary_flux,
     std::shared_ptr<const fem::FunctionSpace> V_flux_hdiv,
-    std::shared_ptr<const fem::FunctionSpace> V_flux_l2,
+    bool rtflux_is_custom, std::shared_ptr<const fem::FunctionSpace> V_flux_l2,
     const std::vector<std::vector<std::int32_t>>& fct_esntbound_prime)
     : _flux_degree(V_flux_hdiv->element()->basix_element().degree()),
       _boundary_flux(boundary_flux),
       _quadrature_rule(QuadratureRule(
           V_flux_hdiv->mesh()->topology().cell_type(), 2 * _flux_degree,
           V_flux_hdiv->mesh()->geometry().dim() - 1)),
-      _kernel_data(
-          KernelDataBC<T>(V_flux_hdiv->mesh(),
-                          {std::make_shared<QuadratureRule>(_quadrature_rule)},
-                          V_flux_hdiv->element()->basix_element(),
-                          V_flux_l2->element()->basix_element())),
+      _kernel_data(KernelDataBC<T>(
+          V_flux_hdiv->mesh(),
+          {std::make_shared<QuadratureRule>(_quadrature_rule)},
+          V_flux_hdiv->element()->basix_element(),
+          V_flux_l2->element()->basix_element(), rtflux_is_custom)),
       _num_rhs(list_bcs.size()), _gdim(V_flux_hdiv->mesh()->geometry().dim()),
       _num_fcts(
           V_flux_hdiv->mesh()->topology().index_map(_gdim - 1)->size_local()),
@@ -184,34 +183,33 @@ BoundaryData<T>::BoundaryData(
         double detJ
             = _kernel_data.compute_jacobian(_J, _K, _detJ_scratch, coordinates);
 
-        std::fill(values_bkernel.begin(), values_bkernel.end(), 0.0);
-        std::fill(boundary_values.begin(), boundary_values.end(), 0.0);
-
         // Calculate boundary DOFs
-        // if (bc->projection_required())
-        // {
-        //   throw std::runtime_error(
-        //       "Projection for boundary conditions not implemented");
-        // }
-        // else
-        // {
-        //   // Evaluate boundary condition at interpolation points
-        //   boundary_kernel(values_bkernel.data(),
-        //                   coefficients_belmts.data()
-        //                       + i_fct * cstride_coefficients,
-        //                   constants_belmts.data(), coordinates_data.data(),
-        //                   nullptr, nullptr);
+        if (bc->projection_required())
+        {
+          throw std::runtime_error(
+              "Projection for boundary conditions not implemented");
+        }
+        else
+        {
+          // Evaluate boundary condition at interpolation points
+          std::fill(values_bkernel.begin(), values_bkernel.end(), 0.0);
+          boundary_kernel(values_bkernel.data(),
+                          coefficients_belmts.data()
+                              + i_fct * cstride_coefficients,
+                          constants_belmts.data(), coordinates_data.data(),
+                          nullptr, nullptr);
 
-        //   // Perform interpolation
-        //   std::span<T> flux_ntrace(values_bkernel.data()
-        //                                + fct_loc * nipoints_per_fct,
-        //                            nipoints_per_fct);
-        //   _kernel_data.interpolate_flux(flux_ntrace, boundary_values_fct,
-        //                                 fct_loc, _J, detJ, _K);
-        // }
+          // Perform interpolation
+          std::span<T> flux_ntrace(values_bkernel.data()
+                                       + fct_loc * nipoints_per_fct,
+                                   nipoints_per_fct);
 
-        // // Apply DOF transformations
-        // apply_inverse_dof_transform(boundary_values, cell_info, cell, 1);
+          _kernel_data.interpolate_flux(flux_ntrace, boundary_values_fct,
+                                        fct_loc, _J, detJ, _K);
+        }
+
+        // Apply DOF transformations
+        apply_inverse_dof_transform(boundary_values, cell_info, cell, 1);
 
         // Set values and markers
         facet_type_i[fct] = facte_type::essnt_dual;
