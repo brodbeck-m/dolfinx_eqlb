@@ -11,16 +11,8 @@ BoundaryData<T>::BoundaryData(
     bool rtflux_is_custom, std::shared_ptr<const fem::FunctionSpace> V_flux_l2,
     const std::vector<std::vector<std::int32_t>>& fct_esntbound_prime)
     : _flux_degree(V_flux_hdiv->element()->basix_element().degree()),
-      _boundary_flux(boundary_flux),
-      _quadrature_rule(QuadratureRule(
-          V_flux_hdiv->mesh()->topology().cell_type(), 2 * _flux_degree,
-          V_flux_hdiv->mesh()->geometry().dim() - 1)),
-      _kernel_data(KernelDataBC<T>(
-          V_flux_hdiv->mesh(),
-          {std::make_shared<QuadratureRule>(_quadrature_rule)},
-          V_flux_hdiv->element()->basix_element(),
-          V_flux_l2->element()->basix_element(), rtflux_is_custom)),
-      _num_rhs(list_bcs.size()), _gdim(V_flux_hdiv->mesh()->geometry().dim()),
+      _boundary_flux(boundary_flux), _num_rhs(list_bcs.size()),
+      _gdim(V_flux_hdiv->mesh()->geometry().dim()),
       _num_fcts(
           V_flux_hdiv->mesh()->topology().index_map(_gdim - 1)->size_local()),
       _nfcts_per_cell((_gdim == 2) ? 3 : 4), _V_flux_hdiv(V_flux_hdiv),
@@ -30,7 +22,14 @@ BoundaryData<T>::BoundaryData(
       _ndofs_per_fct((_gdim == 2) ? _flux_degree
                                   : 0.5 * _flux_degree * (_flux_degree + 1)),
       _num_dofs(V_flux_hdiv->dofmap()->index_map->size_local()
-                + V_flux_hdiv->dofmap()->index_map->num_ghosts())
+                + V_flux_hdiv->dofmap()->index_map->num_ghosts()),
+      _quadrature_rule(QuadratureRule(
+          V_flux_hdiv->mesh()->topology().cell_type(), 2 * _flux_degree,
+          V_flux_hdiv->mesh()->geometry().dim() - 1)),
+      _kernel_data(KernelDataBC<T>(
+          V_flux_hdiv->mesh(),
+          {std::make_shared<QuadratureRule>(_quadrature_rule)},
+          V_flux_hdiv->element(), _ndofs_per_fct, rtflux_is_custom))
 {
   // Resize storage
   _num_bcfcts.resize(_num_rhs);

@@ -394,13 +394,19 @@ template <typename T>
 KernelDataBC<T>::KernelDataBC(
     std::shared_ptr<const mesh::Mesh> mesh,
     std::shared_ptr<const QuadratureRule> quadrature_rule_fct,
-    const basix::FiniteElement& basix_element_flux_hdiv,
-    const basix::FiniteElement& basix_element_rhs_l2, bool flux_is_custom)
+    std::shared_ptr<const fem::FiniteElement> element_flux_hdiv,
+    const int nfluxdofs_per_fct, const bool flux_is_custom)
     : KernelData<T>(mesh, {quadrature_rule_fct}),
+      _ndofs_per_fct(nfluxdofs_per_fct),
+      _ndofs_fct(this->_nfcts_per_cell * _ndofs_per_fct),
       _basix_element_hat(basix::element::create_lagrange(
           mesh::cell_type_to_basix_type(mesh->topology().cell_type()), 1,
           basix::element::lagrange_variant::equispaced, false))
 {
+  // Extract the baisx flux element
+  const basix::FiniteElement& basix_element_flux_hdiv
+      = element_flux_hdiv->basix_element();
+
   /* Interpolation points on facets */
   std::array<std::size_t, 4> shape_intpl = interpolation_data_facet_rt(
       basix_element_flux_hdiv, flux_is_custom, this->_gdim,
@@ -419,8 +425,15 @@ KernelDataBC<T>::KernelDataBC(
                                _basis_flux_values, false, false);
   _basis_flux = mdspan_t<const double, 5>(_basis_flux_values.data(), shape);
 
+  _mbasis_flux_values.resize(_nipoints_per_fct * _ndofs_fct * this->_gdim);
+  _mbasis_scratch_values.resize(_nipoints_per_fct * _ndofs_fct * this->_gdim);
+  _mbasis_flux = mdspan_t<double, 3>(
+      _mbasis_flux_values.data(), _nipoints_per_fct, _ndofs_fct, this->_gdim);
+  _mbasis_scratch = mdspan_t<double, 3>(
+      _mbasis_flux_values.data(), _nipoints_per_fct, _ndofs_fct, this->_gdim);
+
   // Tabulate projected flux at surface quadrature points
-  shape = this->tabulate_basis(basix_element_rhs_l2,
+  shape = this->tabulate_basis(basix_element_flux_hdiv,
                                this->_quadrature_rule[0]->points(),
                                _basis_projection_values, false, false);
   _basis_projection
@@ -441,25 +454,38 @@ KernelDataBC<T>::KernelDataBC(
   _mflux_scratch = mdspan_t<T, 2>(_mflux_scratch_data.data(), _nipoints_per_fct,
                                   this->_gdim);
 
-  // Extract mapping function
-  using V_t = mdspan_t<T, 2>;
-  using v_t = mdspan_t<const T, 2>;
+  /* Extract mapping functions */
   using J_t = mdspan_t<const double, 2>;
   using K_t = mdspan_t<const double, 2>;
 
+  // Push-forward for shape-functions
+  using u_t = smdspan_t<double, 2>;
+  using U_t = smdspan_t<const double, 2>;
+
+  _push_forward_flux = basix_element_flux_hdiv.map_fn<u_t, U_t, K_t, J_t>();
+
+  // Pull-back for values
+  using V_t = mdspan_t<T, 2>;
+  using v_t = mdspan_t<const T, 2>;
+
   _pull_back_flux = basix_element_flux_hdiv.map_fn<V_t, v_t, K_t, J_t>();
+
+  // DOF-transformation function (shape functions)
+  _apply_dof_transformation
+      = element_flux_hdiv->get_dof_transformation_function<double>(false, false,
+                                                                   false);
 }
 
 template <typename T>
 void KernelDataBC<T>::interpolate_flux(std::span<const T> flux_ntrace_cur,
                                        std::span<T> flux_dofs,
-                                       std::int8_t fct_id,
+                                       std::int8_t lfct_id,
                                        mdspan_t<const double, 2> J, double detJ,
                                        mdspan_t<const double, 2> K)
 {
   // Calculate flux within current cell
   std::span<double> normal_cur(_normal_scratch.data(), this->_gdim);
-  this->physical_fct_normal(normal_cur, K, fct_id);
+  this->physical_fct_normal(normal_cur, K, lfct_id);
 
   // Calculate flux within current cell
   for (std::size_t i = 0; i < _nipoints_per_fct; ++i)
@@ -474,29 +500,76 @@ void KernelDataBC<T>::interpolate_flux(std::span<const T> flux_ntrace_cur,
   }
 
   // Calculate DOFs based on values at interpolation points
-  interpolate_flux(_flux_scratch, flux_dofs, fct_id, J, detJ, K);
+  interpolate_flux(_flux_scratch, flux_dofs, lfct_id, J, detJ, K);
 }
 
 template <typename T>
 void KernelDataBC<T>::interpolate_flux(std::span<const T> flux_dofs_bc,
                                        std::span<T> flux_dofs_patch,
-                                       std::int8_t fct_id, std::int8_t hat_id,
+                                       std::int32_t cell_id,
+                                       std::int8_t lfct_id, std::int8_t hat_id,
+                                       std::span<const std::uint32_t> cell_info,
                                        mdspan_t<const double, 2> J, double detJ,
                                        mdspan_t<const double, 2> K)
 {
-  // Evaluate flux and multiply it with hat-function
-  // TODO - Implement evaulation of RT-flux and multiply it with hat-function
-  // TODO - Take example from fem::Function::eval
-  throw std::runtime_error("Not implemented");
+  /* Map shape functions*/
+  // Copy shape-functions from reference element
+  const int offs_ipnt = lfct_id * _nipoints_per_fct;
+
+  for (std::size_t i_pnt = 0; i_pnt < _nipoints_per_fct; ++i_pnt)
+  {
+    // Copy shape-functions at current point
+    for (std::size_t i_dof = 0; i_dof < _ndofs_fct; ++i_dof)
+    {
+      for (std::size_t i_dim = 0; i_dim < this->_gdim; ++i_dim)
+      {
+        _mbasis_scratch(i_pnt, i_dof, i_dim)
+            = _basis_flux(0, 0, offs_ipnt + i_pnt, i_dof, i_dim);
+      }
+    }
+
+    // Apply dof transformation
+    std::span<double> mbasis_scratch_cvalues(
+        _mbasis_scratch_values.data() + i_pnt * _ndofs_fct * this->_gdim,
+        _ndofs_fct * this->_gdim);
+
+    _apply_dof_transformation(mbasis_scratch_cvalues, cell_info, cell_id,
+                              this->_gdim);
+
+    // Apply push-foreward function
+    smdspan_t<const double, 2> mbasis_scratch_c = stdex::submdspan(
+        _mbasis_scratch, i_pnt, stdex::full_extent, stdex::full_extent);
+    smdspan_t<double, 2> mbasis_flux_c = stdex::submdspan(
+        _mbasis_flux, i_pnt, stdex::full_extent, stdex::full_extent);
+
+    _push_forward_flux(mbasis_flux_c, mbasis_scratch_c, J, detJ, K);
+  }
+
+  /* Evaluate flux */
+  for (std::size_t i_pnt = 0; i_pnt < _nipoints_per_fct; ++i_pnt)
+  {
+    for (std::size_t i_dim = 0; i_dim < this->_gdim; ++i_dim)
+    {
+      // Evaluate flux at current point
+      T acc = 0;
+      for (std::size_t i_dof = 0; i_dof < _ndofs_fct; ++i_dof)
+      {
+        acc += flux_dofs_bc[i_dof] * _mbasis_flux(i_pnt, i_dof, i_dim);
+      }
+
+      // Multiply flux with hat function
+      _flux_scratch(i_pnt, i_dim) = acc * _basis_hat(0, 0, i_pnt, hat_id, 0);
+    }
+  }
 
   // Calculate DOF of scaled flux
-  interpolate_flux(_flux_scratch, flux_dofs_patch, fct_id, J, detJ, K);
+  interpolate_flux(_flux_scratch, flux_dofs_patch, lfct_id, J, detJ, K);
 }
 
 template <typename T>
 void KernelDataBC<T>::interpolate_flux(mdspan_t<const T, 2> flux_cur,
                                        std::span<T> flux_dofs,
-                                       std::int8_t fct_id,
+                                       std::int8_t lfct_id,
                                        mdspan_t<const double, 2> J, double detJ,
                                        mdspan_t<const double, 2> K)
 {
@@ -512,7 +585,7 @@ void KernelDataBC<T>::interpolate_flux(mdspan_t<const T, 2> flux_cur,
       for (std::size_t k = 0; k < this->_gdim; ++k)
       {
         {
-          dof += _M(fct_id, i, k, j) * _mflux_scratch(j, k);
+          dof += _M(lfct_id, i, k, j) * _mflux_scratch(j, k);
         }
       }
     }

@@ -7,6 +7,7 @@
 #include <basix/e-lagrange.h>
 #include <basix/finite-element.h>
 #include <dolfinx/fem/CoordinateElement.h>
+#include <dolfinx/fem/FiniteElement.h>
 #include <dolfinx/mesh/Geometry.h>
 #include <dolfinx/mesh/Mesh.h>
 #include <dolfinx/mesh/Topology.h>
@@ -398,18 +399,19 @@ public:
   /// @param[in] basix_element_rhs    The basix-element for RHS and proj. flux
   KernelDataBC(std::shared_ptr<const mesh::Mesh> mesh,
                std::shared_ptr<const QuadratureRule> quadrature_rule_fct,
-               const basix::FiniteElement& basix_element_flux_hdiv,
-               const basix::FiniteElement& basix_element_rhs_l2,
-               bool flux_is_custom);
+               std::shared_ptr<const fem::FiniteElement> element_flux_hdiv,
+               const int nfluxdofs_per_fct, const bool flux_is_custom);
 
   /* Interpolate flux function */
   void interpolate_flux(std::span<const T> flux_ntrace_cur,
-                        std::span<T> flux_dofs, std::int8_t fct_id,
+                        std::span<T> flux_dofs, std::int8_t lfct_id,
                         mdspan_t<const double, 2> J, double detJ,
                         mdspan_t<const double, 2> K);
 
   std::vector<T> interpolate_flux(std::span<const T> flux_dofs_bc,
-                                  std::int8_t fct_id, std::int8_t hat_id,
+                                  std::int32_t cell_id, std::int8_t lfct_id,
+                                  std::int8_t hat_id,
+                                  std::span<const std::uint32_t> cell_info,
                                   mdspan_t<const double, 2> J, double detJ,
                                   mdspan_t<const double, 2> K)
   {
@@ -417,18 +419,21 @@ public:
     std::vector<T> flux_dofs_patch(flux_dofs_bc.size());
 
     // Interpolaate flux
-    interpolate_flux(flux_dofs_bc, flux_dofs_patch, fct_id, hat_id, J, detJ, K);
+    interpolate_flux(flux_dofs_bc, flux_dofs_patch, cell_id, lfct_id, hat_id,
+                     cell_info, J, detJ, K);
 
     return std::move(flux_dofs_patch);
   }
 
   void interpolate_flux(std::span<const T> flux_dofs_bc,
-                        std::span<T> flux_dofs_patch, std::int8_t fct_id,
-                        std::int8_t hat_id, mdspan_t<const double, 2> J,
-                        double detJ, mdspan_t<const double, 2> K);
+                        std::span<T> flux_dofs_patch, std::int32_t cell_id,
+                        std::int8_t lfct_id, std::int8_t hat_id,
+                        std::span<const std::uint32_t> cell_info,
+                        mdspan_t<const double, 2> J, double detJ,
+                        mdspan_t<const double, 2> K);
 
   void interpolate_flux(mdspan_t<const T, 2> flux_cur,
-                        std::span<T> flux_dofs_patch, std::int8_t fct_id,
+                        std::span<T> flux_dofs_patch, std::int8_t lfct_id,
                         mdspan_t<const double, 2> J, double detJ,
                         mdspan_t<const double, 2> K);
 
@@ -451,6 +456,7 @@ protected:
   // Tabulated shape-functions (H(div) flux)
   std::vector<double> _basis_flux_values;
   mdspan_t<const double, 5> _basis_flux;
+  const int _ndofs_fct, _ndofs_per_fct;
 
   // Tabulated shape-functions (projected flux, RHS)
   std::vector<double> _basis_projection_values;
@@ -471,5 +477,18 @@ protected:
                      const mdspan_t<const double, 2>&, double,
                      const mdspan_t<const double, 2>&)>
       _pull_back_flux;
+
+  // Push-forward H(div) shape-functions
+  std::vector<double> _mbasis_flux_values, _mbasis_scratch_values;
+  mdspan_t<double, 3> _mbasis_flux, _mbasis_scratch;
+
+  std::function<void(smdspan_t<double, 2>&, const smdspan_t<const double, 2>&,
+                     const mdspan_t<const double, 2>&, double,
+                     const mdspan_t<const double, 2>&)>
+      _push_forward_flux;
+
+  std::function<void(const std::span<double>&,
+                     const std::span<const std::uint32_t>&, std::int32_t, int)>
+      _apply_dof_transformation;
 };
 } // namespace dolfinx_eqlb
