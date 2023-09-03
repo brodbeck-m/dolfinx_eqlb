@@ -50,7 +50,7 @@ sdisc_nelmt = 1
 
 # Equilibration (type EV or SemiExplt)
 eqlb_type = "SemiExplt"
-eqlb_fluxorder = 2
+eqlb_fluxorder = 1
 
 # Type of manufactured solution
 extsol_type = 1
