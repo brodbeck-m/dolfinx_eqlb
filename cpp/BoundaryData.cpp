@@ -41,7 +41,7 @@ BoundaryData<T>::BoundaryData(
 
   std::int32_t size_fctdata = _num_rhs * _num_fcts;
   _local_fct_id.resize(size_fctdata);
-  _facet_type.resize(size_fctdata, facte_type::internal);
+  _facet_type.resize(size_fctdata, facet_type_eqlb::internal);
   _offset_fctdata.resize(_num_rhs + 1);
 
   // Set offsets
@@ -126,7 +126,7 @@ BoundaryData<T>::BoundaryData(
     for (std::int32_t fct : fct_esntbound_prime[i_rhs])
     {
       // Set facet type
-      facet_type_i[fct] = facte_type::essnt_primal;
+      facet_type_i[fct] = facet_type_eqlb::essnt_primal;
     }
 
     // Handle facets with essential BCs on dual problem
@@ -211,7 +211,7 @@ BoundaryData<T>::BoundaryData(
         apply_inverse_dof_transform(boundary_values, cell_info, cell, 1);
 
         // Set values and markers
-        facet_type_i[fct] = facte_type::essnt_dual;
+        facet_type_i[fct] = facet_type_eqlb::essnt_dual;
         local_fct_id_i[fct] = fct_loc;
 
         for (std::size_t i = 0; i < _ndofs_per_fct; ++i)
@@ -219,6 +219,88 @@ BoundaryData<T>::BoundaryData(
           boundary_markers_i[boundary_dofs_fct[i]] = true;
           x_bvals[boundary_dofs_fct[i]] = boundary_values_fct[i];
         }
+      }
+    }
+  }
+}
+
+template <typename T>
+void BoundaryData<T>::calculate_patch_bc(
+    std::span<const std::int32_t> bound_fcts,
+    std::span<const std::int8_t> patchnode_local)
+{
+  for (std::size_t i_fct = 0; i_fct < bound_fcts.size(); i_fct++)
+  {
+    // The facet
+    std::int32_t fct = bound_fcts[i_fct];
+
+    // Evaluate mapping
+    std::int32_t cell = _fct_to_cell->links(fct)[0];
+    double detJ = calculate_mapping(cell);
+
+    for (int i_rhs = 0; i_rhs < _num_rhs; ++i_rhs)
+    {
+      calculate_patch_bc(i_rhs, fct, patchnode_local[i_fct], _J, detJ, _K);
+    }
+  }
+}
+
+template <typename T>
+void BoundaryData<T>::calculate_patch_bc(
+    const int rhs_i, const std::int32_t fct, const std::int8_t hat_id,
+    mdspan_t<const double, 2> J, const double detJ, mdspan_t<const double, 2> K)
+{
+  if (facet_type(rhs_i)[fct] == facet_type_eqlb::essnt_dual)
+  {
+    /* Extract values */
+    // Local facet id
+    std::int8_t fct_loc = _local_fct_id[fct];
+
+    // Global id of cell
+    std::int32_t cell = _fct_to_cell->links(fct)[0];
+
+    // Global DOF ids on facet
+    std::vector<std::int32_t> boundary_dofs_rhs = boundary_dofs(fct);
+
+    // Storage of (patch) boundary values
+    std::span<T> boundary_values_rhs = boundary_values(rhs_i);
+
+    // Storage of (global) boundary values
+    std::span<const T> x_bfunc_rhs = _boundary_flux[rhs_i]->x()->array();
+
+    /* Calculate patch boundary */
+    // Extract boundary DOFs without hat-function
+    std::vector<T> flux_dofs_bfunc(_ndofs_per_fct);
+    int ndofs_zero = 0;
+
+    for (std::size_t i = 0; i < _ndofs_per_fct; i++)
+    {
+      flux_dofs_bfunc[i] = x_bfunc_rhs[boundary_dofs_rhs[i]];
+
+      if (std::abs(flux_dofs_bfunc[i]) < 1e-8)
+      {
+        ndofs_zero++;
+      }
+    }
+
+    // Perform interpolation only on non-zero boundary
+    if (ndofs_zero < _ndofs_per_fct)
+    {
+      // Get cell info
+      std::span<const std::uint32_t> cell_info;
+      if (_V_flux_hdiv->element()->needs_dof_transformations())
+      {
+        cell_info = std::span(
+            _V_flux_hdiv->mesh()->topology().get_cell_permutation_info());
+      }
+
+      // Calculate boundary DOFs
+      std::vector<T> bdofs_patch = _kernel_data.interpolate_flux(
+          flux_dofs_bfunc, cell, fct_loc, hat_id, cell_info, J, detJ, K);
+
+      for (std::size_t i = 0; i < _ndofs_per_fct; i++)
+      {
+        boundary_values_rhs[boundary_dofs_rhs[i]] = bdofs_patch[i];
       }
     }
   }
@@ -256,6 +338,37 @@ void BoundaryData<T>::boundary_dofs(std::int32_t cell, std::int8_t fct_loc,
       boundary_dofs[i] = dofs_cell[entity_dofs[i]];
     }
   }
+}
+
+template <typename T>
+double BoundaryData<T>::calculate_mapping(std::int32_t cell_id)
+{
+  /* Extract data */
+  // The mesh
+  std::shared_ptr<const mesh::Mesh> mesh = _V_flux_hdiv->mesh();
+
+  // The geometry DOFmap
+  const graph::AdjacencyList<std::int32_t>& dofmap_geom
+      = mesh->geometry().dofmap();
+
+  // The node coordinates
+  std::span<const double> node_coordinates = mesh->geometry().x();
+
+  /* Evaluate the mapping */
+  // Copy node coordinates
+  std::vector<double> coordinates_data(mesh->geometry().cmap().dim() * 3);
+  mdspan_t<const double, 2> coordinates(coordinates_data.data(),
+                                        mesh->geometry().cmap().dim(), 3);
+
+  std::span<const std::int32_t> nodes_cell = dofmap_geom.links(cell_id);
+  for (std::size_t j = 0; j < nodes_cell.size(); ++j)
+  {
+    std::copy_n(std::next(node_coordinates.begin(), 3 * nodes_cell[j]), 3,
+                std::next(coordinates_data.begin(), 3 * j));
+  }
+
+  // Calculate mapping tensors
+  return _kernel_data.compute_jacobian(_J, _K, _detJ_scratch, coordinates);
 }
 
 // ------------------------------------------------------------------------------

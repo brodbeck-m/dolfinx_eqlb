@@ -19,6 +19,7 @@
 #include <dolfinx/mesh/Topology.h>
 #include <dolfinx/mesh/cell_types.h>
 
+#include <cmath>
 #include <functional>
 #include <iterator>
 #include <memory>
@@ -30,7 +31,7 @@ using namespace dolfinx;
 
 namespace dolfinx_eqlb
 {
-enum facte_type : std::int8_t
+enum facet_type_eqlb : std::int8_t
 {
   internal = 0,
   essnt_primal = 1,
@@ -48,6 +49,14 @@ public:
       bool rtflux_is_custom,
       std::shared_ptr<const fem::FunctionSpace> V_flux_l2,
       const std::vector<std::vector<std::int32_t>>& fct_esntbound_prime);
+
+  void calculate_patch_bc(std::span<const std::int32_t> bound_fcts,
+                          std::span<const std::int8_t> patchnode_local);
+
+  void calculate_patch_bc(const int rhs_i, const std::int32_t bound_fcts,
+                          const std::int8_t patchnode_local,
+                          mdspan_t<const double, 2> J, const double detJ,
+                          mdspan_t<const double, 2> K);
 
   /* Getter methods */
   /// Get list of facet types
@@ -126,6 +135,8 @@ protected:
   /// @param[in,out] boundary_dofs Storage for DOFs on facet
   void boundary_dofs(std::int32_t cell, std::int8_t fct_loc,
                      std::span<std::int32_t> boundary_dofs);
+
+  double calculate_mapping(std::int32_t cell_id);
 
   /* Variable definitions */
   // The boundary conditions
