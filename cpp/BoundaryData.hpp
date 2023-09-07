@@ -57,6 +57,11 @@ public:
                           mdspan_t<const double, 2> J, const double detJ,
                           mdspan_t<const double, 2> K);
 
+  /* Getter methods: general */
+  /// Get number of considered RHS
+  /// @return Number of considered RHS
+  int num_rhs() const { return _num_rhs; }
+
   /* Getter methods */
   /// Get list of facet types
   /// (marked with respect to facet_type_eqlb)
@@ -69,12 +74,31 @@ public:
                                       - _offset_fctdata[rhs_i]);
   }
 
+  /// Get list of facet types
+  /// (marked with respect to facet_type_eqlb)
+  /// @return List of all facet types (sorted by facet-ids)
+  mdspan_t<const std::int8_t, 2> facet_type()
+  {
+    return mdspan_t<const std::int8_t, 2>(_facet_type.data(), _num_rhs,
+                                          _num_fcts);
+  }
+
   /// Get list of boundary markers
   /// @param[in] rhs_i Index of RHS
   /// @return List of boundary markers (sorted by DOF-ids)
   std::span<std::int8_t> boundary_markers(const int rhs_i)
   {
     return std::span<std::int8_t>(
+        _boundary_markers.data() + _offset_dofdata[rhs_i],
+        _offset_dofdata[rhs_i + 1] - _offset_dofdata[rhs_i]);
+  }
+
+  /// Get list of boundary markers
+  /// @param[in] rhs_i Index of RHS
+  /// @return List of boundary markers (sorted by DOF-ids)
+  std::span<const std::int8_t> boundary_markers(const int rhs_i) const
+  {
+    return std::span<const std::int8_t>(
         _boundary_markers.data() + _offset_dofdata[rhs_i],
         _offset_dofdata[rhs_i + 1] - _offset_dofdata[rhs_i]);
   }
@@ -86,6 +110,16 @@ public:
   {
     return std::span<T>(_boundary_values.data() + _offset_dofdata[rhs_i],
                         _offset_dofdata[rhs_i + 1] - _offset_dofdata[rhs_i]);
+  }
+
+  /// Get list of boundary values
+  /// @param[in] rhs_i Index of RHS
+  /// @return List of boundary values (sorted by DOF-ids)
+  std::span<const T> boundary_values(const int rhs_i) const
+  {
+    return std::span<const T>(_boundary_values.data() + _offset_dofdata[rhs_i],
+                              _offset_dofdata[rhs_i + 1]
+                                  - _offset_dofdata[rhs_i]);
   }
 
 protected:

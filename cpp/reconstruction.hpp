@@ -337,9 +337,8 @@ void reconstruct_fluxes_ev(
     std::shared_ptr<BoundaryData<T>> boundary_data)
 {
   // Check input
-  // FIXME - n_bcs from boundary data
   int n_rhs = l.size();
-  int n_bcs = 1;
+  int n_bcs = boundary_data->num_rhs();
   int n_flux = flux_hdiv.size();
 
   if (n_rhs != n_bcs || n_rhs != n_flux)
@@ -352,7 +351,8 @@ void reconstruct_fluxes_ev(
       n_rhs, a.mesh()->topology(), fct_esntbound_prime, fct_esntbound_flux);
 
   /* Initialize problem data */
-  ProblemDataFluxEV<T> problem_data = ProblemDataFluxEV<T>(flux_hdiv, {{}}, l);
+  ProblemDataFluxEV<T> problem_data
+      = ProblemDataFluxEV<T>(flux_hdiv, l, boundary_data);
 
   /* Call equilibration */
   reconstruct_fluxes_patch<T>(a, l_pen, problem_data, fct_type);
@@ -379,11 +379,10 @@ void reconstruct_fluxes_cstm(
     std::shared_ptr<BoundaryData<T>> boundary_data)
 {
   // Check input sizes
-  // FIXME - n_bcs from boundary data
   int n_rhs = rhs_dg.size();
   int n_flux_hdiv = flux_hdiv.size();
   int n_flux_dg = flux_dg.size();
-  int n_bcs = 1;
+  int n_bcs = boundary_data->num_rhs();
 
   if (n_rhs != n_bcs || n_rhs != n_flux_hdiv || n_rhs != n_flux_dg)
   {
@@ -417,7 +416,7 @@ void reconstruct_fluxes_cstm(
 
   /* Initialize essential boundary conditions for reconstructed flux */
   ProblemDataFluxCstm<T> problem_data
-      = ProblemDataFluxCstm<T>(flux_hdiv, flux_dg, rhs_dg);
+      = ProblemDataFluxCstm<T>(flux_hdiv, flux_dg, rhs_dg, boundary_data);
 
   /* Call equilibration */
   if (order_flux == 1)

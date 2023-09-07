@@ -1,21 +1,7 @@
 #pragma once
 
+#include "BoundaryData.hpp"
 #include "ProblemData.hpp"
-
-#include <algorithm>
-#include <cmath>
-#include <dolfinx/common/IndexMap.h>
-#include <dolfinx/fem/Constant.h>
-#include <dolfinx/fem/DirichletBC.h>
-#include <dolfinx/fem/DofMap.h>
-#include <dolfinx/fem/Form.h>
-#include <dolfinx/fem/utils.h>
-#include <iostream>
-#include <memory>
-#include <numeric>
-#include <span>
-#include <utility>
-#include <vector>
 
 using namespace dolfinx;
 
@@ -34,13 +20,11 @@ public:
   /// @param fluxes   List of list of flux functions for each sub-problem
   /// @param bcs_flux List of list of BCs for each equilibrated flux
   /// @param l        List of all RHS (ufl)
-  ProblemDataFluxEV(
-      std::vector<std::shared_ptr<fem::Function<T>>>& fluxes,
-      const std::vector<
-          std::vector<std::shared_ptr<const fem::DirichletBC<T>>>>& bcs_flux,
-      const std::vector<std::shared_ptr<const fem::Form<T>>>& l)
-      : ProblemData<T>(fluxes, bcs_flux, l), _begin_hat(fluxes.size(), 0),
-        _begin_fluxdg(fluxes.size(), 0)
+  ProblemDataFluxEV(std::vector<std::shared_ptr<fem::Function<T>>>& fluxes,
+                    const std::vector<std::shared_ptr<const fem::Form<T>>>& l,
+                    std::shared_ptr<BoundaryData<T>> boundary_data)
+      : ProblemData<T>(fluxes, {{}}, l), _boundary_data(boundary_data),
+        _begin_hat(fluxes.size(), 0), _begin_fluxdg(fluxes.size(), 0)
   {
   }
 
@@ -181,12 +165,13 @@ public:
     this->_data_coef[this->_offset_coef[index] + offset_local] = value;
   }
 
-  /* Getter functions*/
+  /* Getter functions: Flux functions */
   /// Extract flux function
   /// @param index Id of subproblem
   /// @return The flux (fe function)
   fem::Function<T>& flux(int index) const { return *(this->_solfunc[index]); }
 
+  /* Getter functions: Hat function */
   /// Extract begin data hat-function (coefficients) of l_i
   /// @param index Id of linearform
   /// @return Begin of hat-function data of linearform l_i
@@ -198,6 +183,46 @@ public:
   int begin_fluxdg(int index)
   {
     throw std::runtime_error('Coefficients of flux currently unavailable');
+  }
+
+  /* Interface BoundaryData */
+  /// Extract facet-types of all sub-problems
+  /// @return Mdspan of facet-types
+  mdspan_t<const std::int8_t, 2> facet_type() const
+  {
+    return _boundary_data->facet_type();
+  }
+
+  /// Extract boundary identifiers for l_i
+  /// @param index Id of linearform
+  /// @return Boundary identifiers of linearform l_i
+  std::span<std::int8_t> boundary_markers(int index)
+  {
+    return _boundary_data->boundary_markers(index);
+  }
+
+  /// Extract boundary identifiers for l_i (constant version)
+  /// @param index Id of linearform
+  /// @return Boundary identifires of linearform l_i
+  std::span<const std::int8_t> boundary_markers(int index) const
+  {
+    return _boundary_data->boundary_markers(index);
+  }
+
+  /// Extract boundary values for l_i
+  /// @param index Id of linearform
+  /// @return Boundary values of linearform l_i
+  std::span<T> boundary_values(int index)
+  {
+    return _boundary_data->boundary_values(index);
+  }
+
+  /// Extract boundary values for l_i (constant version)
+  /// @param index Id of linearform
+  /// @return Boundary values of linearform l_i
+  std::span<const T> boundary_values(int index) const
+  {
+    return _boundary_data->boundary_values(index);
   }
 
 protected:
@@ -228,6 +253,9 @@ protected:
   }
 
   /* Variables */
+  // The boundary data (equilibration specific)
+  std::shared_ptr<BoundaryData<T>> _boundary_data;
+
   // Infos on constants and coefficients
   std::vector<int> _begin_hat, _begin_fluxdg;
 };
