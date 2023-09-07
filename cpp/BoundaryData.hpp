@@ -60,12 +60,10 @@ public:
 
   /* Getter methods */
   /// Get list of facet types
-  ///
-  /// Facets are marked with respect to facte_type.
-  ///
+  /// (marked with respect to facet_type_eqlb)
   /// @param[in] rhs_i Index of RHS
   /// @return List of facet types (sorted by facet-ids)
-  std::span<std::int8_t> facet_type(int rhs_i)
+  std::span<std::int8_t> facet_type(const int rhs_i)
   {
     return std::span<std::int8_t>(_facet_type.data() + _offset_fctdata[rhs_i],
                                   _offset_fctdata[rhs_i + 1]
@@ -75,7 +73,7 @@ public:
   /// Get list of boundary markers
   /// @param[in] rhs_i Index of RHS
   /// @return List of boundary markers (sorted by DOF-ids)
-  std::span<std::int8_t> boundary_markers(int rhs_i)
+  std::span<std::int8_t> boundary_markers(const int rhs_i)
   {
     return std::span<std::int8_t>(
         _boundary_markers.data() + _offset_dofdata[rhs_i],
@@ -85,7 +83,7 @@ public:
   /// Get list of boundary values
   /// @param[in] rhs_i Index of RHS
   /// @return List of boundary values (sorted by DOF-ids)
-  std::span<T> boundary_values(int rhs_i)
+  std::span<T> boundary_values(const int rhs_i)
   {
     return std::span<T>(_boundary_values.data() + _offset_dofdata[rhs_i],
                         _offset_dofdata[rhs_i + 1] - _offset_dofdata[rhs_i]);
@@ -95,7 +93,7 @@ protected:
   /// Get list of cell local facet ids
   /// @param[in] rhs_i Index of RHS
   /// @return List of cell-local facet ids (sorted by facet-ids)
-  std::span<std::int8_t> local_facet_id(int rhs_i)
+  std::span<std::int8_t> local_facet_id(const int rhs_i)
   {
     return std::span<std::int8_t>(_local_fct_id.data() + _offset_fctdata[rhs_i],
                                   _offset_fctdata[rhs_i + 1]
@@ -105,10 +103,10 @@ protected:
   /// Calculate DOF ids on boundary facet
   /// @param[in] fct Facet id (on current process)
   /// @return List of DOFs on facet
-  std::vector<std::int32_t> boundary_dofs(std::int32_t fct)
+  std::vector<std::int32_t> boundary_dofs(const std::int32_t fct)
   {
     // Get cell adjacent to facet
-    std::int32_t cell = _fct_to_cell->links(fct)[0];
+    const std::int32_t cell = _fct_to_cell->links(fct)[0];
 
     return boundary_dofs(cell, fct);
   }
@@ -117,15 +115,19 @@ protected:
   /// @param[in] cell Cell id (on current process)
   /// @param[in] fct Facet id (on current process)
   /// @return List of DOFs on facet
-  std::vector<std::int32_t> boundary_dofs(std::int32_t cell, std::int32_t fct)
+  std::vector<std::int32_t> boundary_dofs(const std::int32_t cell,
+                                          const std::int32_t fct)
   {
     // Cell-local facet id
-    std::int8_t fct_loc = _local_fct_id[fct];
+    const std::int8_t fct_loc = _local_fct_id[fct];
 
     // Initialise storage for DOFs
-    std::vector<std::int32_t> boundary_dofs(_ndofs_per_fct);
+    std::vector<std::int32_t> storage(_ndofs_per_fct);
 
-    return std::move(boundary_dofs);
+    // Calculate DOFs on facet
+    boundary_dofs(cell, fct_loc, storage);
+
+    return std::move(storage);
   }
 
   /// Calculate DOF ids on boundary facet
@@ -133,10 +135,8 @@ protected:
   /// @param[in] cell Cell id (on current process)
   /// @param[in] fct_loc Cell-local facet id
   /// @param[in,out] boundary_dofs Storage for DOFs on facet
-  void boundary_dofs(std::int32_t cell, std::int8_t fct_loc,
+  void boundary_dofs(const std::int32_t cell, const std::int8_t fct_loc,
                      std::span<std::int32_t> boundary_dofs);
-
-  double calculate_mapping(std::int32_t cell_id);
 
   /* Variable definitions */
   // The boundary conditions

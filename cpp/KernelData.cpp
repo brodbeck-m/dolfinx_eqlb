@@ -395,10 +395,12 @@ KernelDataBC<T>::KernelDataBC(
     std::shared_ptr<const mesh::Mesh> mesh,
     std::shared_ptr<const QuadratureRule> quadrature_rule_fct,
     std::shared_ptr<const fem::FiniteElement> element_flux_hdiv,
-    const int nfluxdofs_per_fct, const bool flux_is_custom)
+    const int nfluxdofs_per_fct, const int nfluxdofs_cell,
+    const bool flux_is_custom)
     : KernelData<T>(mesh, {quadrature_rule_fct}),
       _ndofs_per_fct(nfluxdofs_per_fct),
       _ndofs_fct(this->_nfcts_per_cell * _ndofs_per_fct),
+      _ndofs_cell(nfluxdofs_cell),
       _basix_element_hat(basix::element::create_lagrange(
           mesh::cell_type_to_basix_type(mesh->topology().cell_type()), 1,
           basix::element::lagrange_variant::equispaced, false))
@@ -425,12 +427,12 @@ KernelDataBC<T>::KernelDataBC(
                                _basis_flux_values, false, false);
   _basis_flux = mdspan_t<const double, 5>(_basis_flux_values.data(), shape);
 
-  _mbasis_flux_values.resize(_nipoints_per_fct * _ndofs_fct * this->_gdim);
-  _mbasis_scratch_values.resize(_nipoints_per_fct * _ndofs_fct * this->_gdim);
-  _mbasis_flux = mdspan_t<double, 3>(
-      _mbasis_flux_values.data(), _nipoints_per_fct, _ndofs_fct, this->_gdim);
-  _mbasis_scratch = mdspan_t<double, 3>(
-      _mbasis_flux_values.data(), _nipoints_per_fct, _ndofs_fct, this->_gdim);
+  _mbasis_flux_values.resize(_ndofs_cell * this->_gdim);
+  _mbasis_scratch_values.resize(_ndofs_cell * this->_gdim);
+  _mbasis_flux = mdspan_t<double, 2>(_mbasis_flux_values.data(), _ndofs_cell,
+                                     this->_gdim);
+  _mbasis_scratch = mdspan_t<double, 2>(_mbasis_scratch_values.data(),
+                                        _ndofs_cell, this->_gdim);
 
   // Tabulate projected flux at surface quadrature points
   shape = this->tabulate_basis(basix_element_flux_hdiv,
@@ -459,8 +461,8 @@ KernelDataBC<T>::KernelDataBC(
   using K_t = mdspan_t<const double, 2>;
 
   // Push-forward for shape-functions
-  using u_t = smdspan_t<double, 2>;
-  using U_t = smdspan_t<const double, 2>;
+  using u_t = mdspan_t<double, 2>;
+  using U_t = mdspan_t<const double, 2>;
 
   _push_forward_flux = basix_element_flux_hdiv.map_fn<u_t, U_t, K_t, J_t>();
 
@@ -515,46 +517,36 @@ void KernelDataBC<T>::interpolate_flux(std::span<const T> flux_dofs_bc,
   /* Map shape functions*/
   // Copy shape-functions from reference element
   const int offs_ipnt = lfct_id * _nipoints_per_fct;
+  const int offs_dof = lfct_id * _ndofs_per_fct;
 
   for (std::size_t i_pnt = 0; i_pnt < _nipoints_per_fct; ++i_pnt)
   {
     // Copy shape-functions at current point
+    // TODO - Check if copy on only functions on current facet is enough!
     for (std::size_t i_dof = 0; i_dof < _ndofs_fct; ++i_dof)
     {
       for (std::size_t i_dim = 0; i_dim < this->_gdim; ++i_dim)
       {
-        _mbasis_scratch(i_pnt, i_dof, i_dim)
+        _mbasis_scratch(i_dof, i_dim)
             = _basis_flux(0, 0, offs_ipnt + i_pnt, i_dof, i_dim);
       }
     }
 
     // Apply dof transformation
-    std::span<double> mbasis_scratch_cvalues(
-        _mbasis_scratch_values.data() + i_pnt * _ndofs_fct * this->_gdim,
-        _ndofs_fct * this->_gdim);
-
-    _apply_dof_transformation(mbasis_scratch_cvalues, cell_info, cell_id,
+    _apply_dof_transformation(_mbasis_scratch_values, cell_info, cell_id,
                               this->_gdim);
 
     // Apply push-foreward function
-    smdspan_t<const double, 2> mbasis_scratch_c = stdex::submdspan(
-        _mbasis_scratch, i_pnt, stdex::full_extent, stdex::full_extent);
-    smdspan_t<double, 2> mbasis_flux_c = stdex::submdspan(
-        _mbasis_flux, i_pnt, stdex::full_extent, stdex::full_extent);
+    _push_forward_flux(_mbasis_flux, _mbasis_scratch, J, detJ, K);
 
-    _push_forward_flux(mbasis_flux_c, mbasis_scratch_c, J, detJ, K);
-  }
-
-  /* Evaluate flux */
-  for (std::size_t i_pnt = 0; i_pnt < _nipoints_per_fct; ++i_pnt)
-  {
+    // Evaluate flux
     for (std::size_t i_dim = 0; i_dim < this->_gdim; ++i_dim)
     {
       // Evaluate flux at current point
       T acc = 0;
       for (std::size_t i_dof = 0; i_dof < _ndofs_fct; ++i_dof)
       {
-        acc += flux_dofs_bc[i_dof] * _mbasis_flux(i_pnt, i_dof, i_dim);
+        acc += flux_dofs_bc[i_dof] * _mbasis_flux(offs_dof + i_dof, i_dim);
       }
 
       // Multiply flux with hat function

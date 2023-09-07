@@ -23,13 +23,16 @@ BoundaryData<T>::BoundaryData(
                                   : 0.5 * _flux_degree * (_flux_degree + 1)),
       _num_dofs(V_flux_hdiv->dofmap()->index_map->size_local()
                 + V_flux_hdiv->dofmap()->index_map->num_ghosts()),
+      _fct_to_cell(
+          V_flux_hdiv->mesh()->topology().connectivity(_gdim - 1, _gdim)),
       _quadrature_rule(QuadratureRule(
           V_flux_hdiv->mesh()->topology().cell_type(), 2 * _flux_degree,
           V_flux_hdiv->mesh()->geometry().dim() - 1)),
-      _kernel_data(KernelDataBC<T>(
-          V_flux_hdiv->mesh(),
-          {std::make_shared<QuadratureRule>(_quadrature_rule)},
-          V_flux_hdiv->element(), _ndofs_per_fct, rtflux_is_custom))
+      _kernel_data(
+          KernelDataBC<T>(V_flux_hdiv->mesh(),
+                          {std::make_shared<QuadratureRule>(_quadrature_rule)},
+                          V_flux_hdiv->element(), _ndofs_per_fct,
+                          _ndofs_per_cell, rtflux_is_custom))
 {
   // Resize storage
   _num_bcfcts.resize(_num_rhs);
@@ -60,9 +63,7 @@ BoundaryData<T>::BoundaryData(
   // The mesh
   std::shared_ptr<const mesh::Mesh> mesh = V_flux_hdiv->mesh();
 
-  // Required conductivities
-  std::shared_ptr<const graph::AdjacencyList<std::int32_t>> fct_to_cell
-      = mesh->topology().connectivity(_gdim - 1, _gdim);
+  // Required conductivities.
   std::shared_ptr<const graph::AdjacencyList<std::int32_t>> cell_to_fct
       = mesh->topology().connectivity(_gdim, _gdim - 1);
 
@@ -154,7 +155,7 @@ BoundaryData<T>::BoundaryData(
         std::int32_t fct = boundary_fcts[i_fct];
 
         // Get cell adjacent to facet
-        std::int32_t cell = fct_to_cell->links(fct)[0];
+        std::int32_t cell = _fct_to_cell->links(fct)[0];
 
         // Get cell-local facet id
         std::span<const std::int32_t> fcts_cell = cell_to_fct->links(cell);
@@ -229,15 +230,42 @@ void BoundaryData<T>::calculate_patch_bc(
     std::span<const std::int32_t> bound_fcts,
     std::span<const std::int8_t> patchnode_local)
 {
+  /* Extract data */
+  // The mesh
+  std::shared_ptr<const mesh::Mesh> mesh = _V_flux_hdiv->mesh();
+
+  // The geometry DOFmap
+  const graph::AdjacencyList<std::int32_t>& dofmap_geom
+      = mesh->geometry().dofmap();
+
+  // The node coordinates
+  std::span<const double> node_coordinates = mesh->geometry().x();
+
+  std::vector<double> coordinates_data(mesh->geometry().cmap().dim() * 3);
+  mdspan_t<const double, 2> coordinates(coordinates_data.data(),
+                                        mesh->geometry().cmap().dim(), 3);
+
+  /* Evaluate BCs for all RHS */
   for (std::size_t i_fct = 0; i_fct < bound_fcts.size(); i_fct++)
   {
-    // The facet
+    // Facet and cell
     std::int32_t fct = bound_fcts[i_fct];
-
-    // Evaluate mapping
     std::int32_t cell = _fct_to_cell->links(fct)[0];
-    double detJ = calculate_mapping(cell);
 
+    /* Evaluate mapping */
+    // Extract cell coordinates
+    std::span<const std::int32_t> nodes_cell = dofmap_geom.links(cell);
+    for (std::size_t j = 0; j < nodes_cell.size(); ++j)
+    {
+      std::copy_n(std::next(node_coordinates.begin(), 3 * nodes_cell[j]), 3,
+                  std::next(coordinates_data.begin(), 3 * j));
+    }
+
+    // Calculate J
+    double detJ
+        = _kernel_data.compute_jacobian(_J, _K, _detJ_scratch, coordinates);
+
+    /* Calculate BCs on current facet */
     for (int i_rhs = 0; i_rhs < _num_rhs; ++i_rhs)
     {
       calculate_patch_bc(i_rhs, fct, patchnode_local[i_fct], _J, detJ, _K);
@@ -252,15 +280,15 @@ void BoundaryData<T>::calculate_patch_bc(
 {
   if (facet_type(rhs_i)[fct] == facet_type_eqlb::essnt_dual)
   {
-    /* Extract values */
-    // Local facet id
-    std::int8_t fct_loc = _local_fct_id[fct];
-
-    // Global id of cell
+    // The cell
     std::int32_t cell = _fct_to_cell->links(fct)[0];
 
+    // The facet
+    std::int8_t fct_loc = local_facet_id(rhs_i)[fct];
+
+    /* Extract data */
     // Global DOF ids on facet
-    std::vector<std::int32_t> boundary_dofs_rhs = boundary_dofs(fct);
+    std::vector<std::int32_t> boundary_dofs_fct = boundary_dofs(cell, fct);
 
     // Storage of (patch) boundary values
     std::span<T> boundary_values_rhs = boundary_values(rhs_i);
@@ -275,9 +303,9 @@ void BoundaryData<T>::calculate_patch_bc(
 
     for (std::size_t i = 0; i < _ndofs_per_fct; i++)
     {
-      flux_dofs_bfunc[i] = x_bfunc_rhs[boundary_dofs_rhs[i]];
+      flux_dofs_bfunc[i] = x_bfunc_rhs[boundary_dofs_fct[i]];
 
-      if (std::abs(flux_dofs_bfunc[i]) < 1e-8)
+      if (std::abs(flux_dofs_bfunc[i]) < 1e-7)
       {
         ndofs_zero++;
       }
@@ -300,14 +328,15 @@ void BoundaryData<T>::calculate_patch_bc(
 
       for (std::size_t i = 0; i < _ndofs_per_fct; i++)
       {
-        boundary_values_rhs[boundary_dofs_rhs[i]] = bdofs_patch[i];
+        boundary_values_rhs[boundary_dofs_fct[i]] = bdofs_patch[i];
       }
     }
   }
 }
 
 template <typename T>
-void BoundaryData<T>::boundary_dofs(std::int32_t cell, std::int8_t fct_loc,
+void BoundaryData<T>::boundary_dofs(const std::int32_t cell,
+                                    const std::int8_t fct_loc,
                                     std::span<std::int32_t> boundary_dofs)
 {
   if (_flux_is_discontinous)
@@ -338,37 +367,6 @@ void BoundaryData<T>::boundary_dofs(std::int32_t cell, std::int8_t fct_loc,
       boundary_dofs[i] = dofs_cell[entity_dofs[i]];
     }
   }
-}
-
-template <typename T>
-double BoundaryData<T>::calculate_mapping(std::int32_t cell_id)
-{
-  /* Extract data */
-  // The mesh
-  std::shared_ptr<const mesh::Mesh> mesh = _V_flux_hdiv->mesh();
-
-  // The geometry DOFmap
-  const graph::AdjacencyList<std::int32_t>& dofmap_geom
-      = mesh->geometry().dofmap();
-
-  // The node coordinates
-  std::span<const double> node_coordinates = mesh->geometry().x();
-
-  /* Evaluate the mapping */
-  // Copy node coordinates
-  std::vector<double> coordinates_data(mesh->geometry().cmap().dim() * 3);
-  mdspan_t<const double, 2> coordinates(coordinates_data.data(),
-                                        mesh->geometry().cmap().dim(), 3);
-
-  std::span<const std::int32_t> nodes_cell = dofmap_geom.links(cell_id);
-  for (std::size_t j = 0; j < nodes_cell.size(); ++j)
-  {
-    std::copy_n(std::next(node_coordinates.begin(), 3 * nodes_cell[j]), 3,
-                std::next(coordinates_data.begin(), 3 * j));
-  }
-
-  // Calculate mapping tensors
-  return _kernel_data.compute_jacobian(_J, _K, _detJ_scratch, coordinates);
 }
 
 // ------------------------------------------------------------------------------

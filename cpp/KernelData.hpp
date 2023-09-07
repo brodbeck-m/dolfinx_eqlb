@@ -400,7 +400,8 @@ public:
   KernelDataBC(std::shared_ptr<const mesh::Mesh> mesh,
                std::shared_ptr<const QuadratureRule> quadrature_rule_fct,
                std::shared_ptr<const fem::FiniteElement> element_flux_hdiv,
-               const int nfluxdofs_per_fct, const bool flux_is_custom);
+               const int nfluxdofs_per_fct, const int nfluxdofs_cell,
+               const bool flux_is_custom);
 
   /* Interpolate flux function */
   void interpolate_flux(std::span<const T> flux_ntrace_cur,
@@ -456,7 +457,7 @@ protected:
   // Tabulated shape-functions (H(div) flux)
   std::vector<double> _basis_flux_values;
   mdspan_t<const double, 5> _basis_flux;
-  const int _ndofs_fct, _ndofs_per_fct;
+  const int _ndofs_per_fct, _ndofs_fct, _ndofs_cell;
 
   // Tabulated shape-functions (projected flux, RHS)
   std::vector<double> _basis_projection_values;
@@ -480,9 +481,9 @@ protected:
 
   // Push-forward H(div) shape-functions
   std::vector<double> _mbasis_flux_values, _mbasis_scratch_values;
-  mdspan_t<double, 3> _mbasis_flux, _mbasis_scratch;
+  mdspan_t<double, 2> _mbasis_flux, _mbasis_scratch;
 
-  std::function<void(smdspan_t<double, 2>&, const smdspan_t<const double, 2>&,
+  std::function<void(mdspan_t<double, 2>&, const mdspan_t<const double, 2>&,
                      const mdspan_t<const double, 2>&, double,
                      const mdspan_t<const double, 2>&)>
       _push_forward_flux;
