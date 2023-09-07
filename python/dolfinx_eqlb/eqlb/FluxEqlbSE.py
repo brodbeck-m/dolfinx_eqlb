@@ -1,11 +1,12 @@
 # --- Imports ---
+import numpy as np
 import typing
 
 import basix
 import dolfinx.fem as dfem
 import dolfinx.mesh as dmesh
 
-from dolfinx_eqlb.cpp import reconstruct_fluxes_semiexplt
+from dolfinx_eqlb.cpp import FluxBC, reconstruct_fluxes_semiexplt
 from dolfinx_eqlb.elmtlib import create_hierarchic_rt
 from .FluxEquilibrator import FluxEquilibrator
 
@@ -61,6 +62,16 @@ class FluxEqlbSE(FluxEquilibrator):
             self.list_proj_flux_cpp.append(list_proj_flux[ii]._cpp_object)
             self.list_rhs_cpp.append(list_rhs[ii]._cpp_object)
 
+    def set_boundary_conditions(
+        self,
+        list_bfct_prime: typing.List[np.ndarray],
+        list_bfct_flux: typing.List[np.ndarray],
+        list_bcs_flux: typing.List[typing.List[FluxBC]],
+    ):
+        super(FluxEqlbSE, self).set_boundary_conditions(
+            list_bfct_prime, list_bfct_flux, list_bcs_flux, self.V_flux, True
+        )
+
     def equilibrate_fluxes(self):
         reconstruct_fluxes_semiexplt(
             self.list_flux_cpp,
@@ -68,7 +79,7 @@ class FluxEqlbSE(FluxEquilibrator):
             self.list_rhs_cpp,
             self.list_bfct_prime,
             self.list_bfct_flux,
-            self.list_bcs_flux,
+            self.boundary_data,
         )
 
     def get_recontructed_fluxe(self, subproblem: int):

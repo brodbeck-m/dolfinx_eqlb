@@ -98,8 +98,6 @@ def test_creation_bounddata(mesh_type, degree, rt_space):
         V_flux = dfem.FunctionSpace(geometry.mesh, elmt_flux)
         custom_rt = True
 
-    V_flux_proj = dfem.VectorFunctionSpace(geometry.mesh, ("DG", degree - 1))
-
     boundary_function = dfem.Function(V_flux)
 
     # Initialise reference flux space
@@ -158,7 +156,6 @@ def test_creation_bounddata(mesh_type, degree, rt_space):
             [boundary_function._cpp_object],
             V_flux._cpp_object,
             custom_rt,
-            V_flux_proj._cpp_object,
             [[]],
         )
 

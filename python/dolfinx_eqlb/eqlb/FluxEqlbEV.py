@@ -1,11 +1,12 @@
 # --- Imports ---
+import numpy as np
 import typing
 
 import dolfinx.fem as dfem
 import dolfinx.mesh as dmesh
 import ufl
 
-from dolfinx_eqlb.cpp import reconstruct_fluxes_minimisation
+from dolfinx_eqlb.cpp import FluxBC, reconstruct_fluxes_minimisation
 from .FluxEquilibrator import FluxEquilibrator
 
 
@@ -103,6 +104,16 @@ class FluxEqlbEV(FluxEquilibrator):
             ) * ufl.dx
             self.list_form_l.append(dfem.form(l))
 
+    def set_boundary_conditions(
+        self,
+        list_bfct_prime: typing.List[np.ndarray],
+        list_bfct_flux: typing.List[np.ndarray],
+        list_bcs_flux: typing.List[typing.List[FluxBC]],
+    ):
+        super(FluxEqlbEV, self).set_boundary_conditions(
+            list_bfct_prime, list_bfct_flux, list_bcs_flux, self.V.sub(0), False
+        )
+
     def equilibrate_fluxes(self):
         reconstruct_fluxes_minimisation(
             self.form_a,
@@ -110,8 +121,8 @@ class FluxEqlbEV(FluxEquilibrator):
             self.list_form_l,
             self.list_bfct_prime,
             self.list_bfct_flux,
-            self.list_bcs_flux,
             self.list_flux_cpp,
+            self.boundary_data,
         )
 
     def get_recontructed_fluxe(self, subproblem: int):

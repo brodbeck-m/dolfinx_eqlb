@@ -47,7 +47,6 @@ public:
       std::vector<std::shared_ptr<fem::Function<T>>>& boundary_flux,
       std::shared_ptr<const fem::FunctionSpace> V_flux_hdiv,
       bool rtflux_is_custom,
-      std::shared_ptr<const fem::FunctionSpace> V_flux_l2,
       const std::vector<std::vector<std::int32_t>>& fct_esntbound_prime);
 
   void calculate_patch_bc(std::span<const std::int32_t> bound_fcts,

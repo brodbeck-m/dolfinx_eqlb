@@ -1,5 +1,6 @@
 #pragma once
 
+#include "BoundaryData.hpp"
 #include "KernelData.hpp"
 #include "PatchFluxCstm.hpp"
 #include "PatchFluxEV.hpp"
@@ -261,13 +262,10 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data,
 /// @param fct_esntbound_flux  Facets of essential BCs on flux field
 /// @param bcs_flux            Essential boundary conditions for the flux
 /// @return
-template <typename T>
 graph::AdjacencyList<std::int8_t> mark_mesh_facets(
     const int n_lhs, const mesh::Topology& topology,
     const std::vector<std::vector<std::int32_t>>& fct_esntbound_prime,
-    const std::vector<std::vector<std::int32_t>>& fct_esntbound_flux,
-    const std::vector<std::vector<std::shared_ptr<const fem::DirichletBC<T>>>>&
-        bcs_flux)
+    const std::vector<std::vector<std::int32_t>>& fct_esntbound_flux)
 {
   // Facet dimansion
   const int dim_fct = topology.dim() - 1;
@@ -306,27 +304,11 @@ graph::AdjacencyList<std::int8_t> mark_mesh_facets(
     // FIXME - Parallel computation (input only local facets?)
     if (!fct_esntbound_flux[i].empty())
     {
-      // Check if boundary conditions are set
-      if (bcs_flux[i].empty())
-      {
-        throw std::runtime_error(
-            "Equilibration: Essential BC for flux required");
-      }
-
       // Set markers
       for (const std::int32_t fct : fct_esntbound_flux[0])
       {
         // Set marker facet
         fct_type_i[fct] = 2;
-      }
-    }
-    else
-    {
-      // Check if boundary conditions are set
-      if (!bcs_flux[i].empty())
-      {
-        throw std::runtime_error(
-            "Equilibration: No essential BC for flux required");
       }
     }
   }
@@ -351,30 +333,26 @@ void reconstruct_fluxes_ev(
     const std::vector<std::shared_ptr<const fem::Form<T>>>& l,
     const std::vector<std::vector<std::int32_t>>& fct_esntbound_prime,
     const std::vector<std::vector<std::int32_t>>& fct_esntbound_flux,
-    const std::vector<std::vector<std::shared_ptr<const fem::DirichletBC<T>>>>&
-        bcs_flux,
-    std::vector<std::shared_ptr<fem::Function<T>>>& flux_hdiv)
+    std::vector<std::shared_ptr<fem::Function<T>>>& flux_hdiv,
+    std::shared_ptr<BoundaryData<T>> boundary_data)
 {
   // Check input
-  int n_lhs = l.size();
-  int n_fbp = fct_esntbound_prime.size();
-  int n_fbf = fct_esntbound_flux.size();
-  int n_bcs = bcs_flux.size();
+  // FIXME - n_bcs from boundary data
+  int n_rhs = l.size();
+  int n_bcs = 1;
   int n_flux = flux_hdiv.size();
 
-  if (n_lhs != n_fbp || n_lhs != n_fbf || n_lhs != n_bcs || n_lhs != n_flux)
+  if (n_rhs != n_bcs || n_rhs != n_flux)
   {
     throw std::runtime_error("Equilibration: Input sizes does not match");
   }
 
   /* Facet coloring */
-  graph::AdjacencyList<std::int8_t> fct_type
-      = mark_mesh_facets(n_lhs, a.mesh()->topology(), fct_esntbound_prime,
-                         fct_esntbound_flux, bcs_flux);
+  graph::AdjacencyList<std::int8_t> fct_type = mark_mesh_facets(
+      n_rhs, a.mesh()->topology(), fct_esntbound_prime, fct_esntbound_flux);
 
   /* Initialize problem data */
-  ProblemDataFluxEV<T> problem_data
-      = ProblemDataFluxEV<T>(flux_hdiv, bcs_flux, l);
+  ProblemDataFluxEV<T> problem_data = ProblemDataFluxEV<T>(flux_hdiv, {{}}, l);
 
   /* Call equilibration */
   reconstruct_fluxes_patch<T>(a, l_pen, problem_data, fct_type);
@@ -398,19 +376,16 @@ void reconstruct_fluxes_cstm(
     std::vector<std::shared_ptr<fem::Function<T>>>& rhs_dg,
     const std::vector<std::vector<std::int32_t>>& fct_esntbound_prime,
     const std::vector<std::vector<std::int32_t>>& fct_esntbound_flux,
-    const std::vector<std::vector<std::shared_ptr<const fem::DirichletBC<T>>>>&
-        bcs_flux)
+    std::shared_ptr<BoundaryData<T>> boundary_data)
 {
   // Check input sizes
+  // FIXME - n_bcs from boundary data
   int n_rhs = rhs_dg.size();
-  int n_fbp = fct_esntbound_prime.size();
-  int n_fbf = fct_esntbound_flux.size();
-  int n_bcs = bcs_flux.size();
   int n_flux_hdiv = flux_hdiv.size();
   int n_flux_dg = flux_dg.size();
+  int n_bcs = 1;
 
-  if (n_rhs != n_fbp || n_rhs != n_fbf || n_rhs != n_bcs || n_rhs != n_flux_hdiv
-      || n_rhs != n_flux_dg)
+  if (n_rhs != n_bcs || n_rhs != n_flux_hdiv || n_rhs != n_flux_dg)
   {
     throw std::runtime_error("Equilibration: Input sizes does not match");
   }
@@ -438,7 +413,7 @@ void reconstruct_fluxes_cstm(
   /* Facet coloring */
   graph::AdjacencyList<std::int8_t> fct_type
       = mark_mesh_facets(n_rhs, rhs_dg[0]->function_space()->mesh()->topology(),
-                         fct_esntbound_prime, fct_esntbound_flux, bcs_flux);
+                         fct_esntbound_prime, fct_esntbound_flux);
 
   /* Initialize essential boundary conditions for reconstructed flux */
   ProblemDataFluxCstm<T> problem_data

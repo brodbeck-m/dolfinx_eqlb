@@ -83,17 +83,17 @@ void declare_fluxeqlb(py::module& m)
              l,
          const std::vector<std::vector<std::int32_t>>& fct_esntbound_prime,
          const std::vector<std::vector<std::int32_t>>& fct_esntbound_flux,
-         const std::vector<std::vector<
-             std::shared_ptr<const dolfinx::fem::DirichletBC<double>>>>& bcs1,
          std::vector<std::shared_ptr<dolfinx::fem::Function<double>>>&
-             flux_hdiv)
+             flux_hdiv,
+         std::shared_ptr<BoundaryData<T>> boundary_data)
       {
         reconstruct_fluxes_ev<double>(a, l_pen, l, fct_esntbound_prime,
-                                      fct_esntbound_flux, bcs1, flux_hdiv);
+                                      fct_esntbound_flux, flux_hdiv,
+                                      boundary_data);
       },
       py::arg("a"), py::arg("l_pen"), py::arg("l"),
       py::arg("fct_esntbound_prime"), py::arg("fct_esntbound_prime"),
-      py::arg("bcs"), py::arg("flux_hdiv"),
+      py::arg("flux_hdiv"), py::arg("boundary_data"),
       "Local equilibration of H(div) conforming fluxes, solving patch-wise, "
       "constrained minimisation problems.");
 
@@ -105,16 +105,15 @@ void declare_fluxeqlb(py::module& m)
          std::vector<std::shared_ptr<dolfinx::fem::Function<double>>>& rhs_dg,
          const std::vector<std::vector<std::int32_t>>& fct_esntbound_prime,
          const std::vector<std::vector<std::int32_t>>& fct_esntbound_flux,
-         const std::vector<std::vector<
-             std::shared_ptr<const dolfinx::fem::DirichletBC<double>>>>& bcs)
+         std::shared_ptr<BoundaryData<T>> boundary_data)
       {
         reconstruct_fluxes_cstm<double>(flux_hdiv, flux_dg, rhs_dg,
                                         fct_esntbound_prime, fct_esntbound_flux,
-                                        bcs);
+                                        boundary_data);
       },
       py::arg("flux_hdiv"), py::arg("flux_dg"), py::arg("rhs_dg"),
       py::arg("fct_esntbound_prime"), py::arg("fct_esntbound_prime"),
-      py::arg("bcs"),
+      py::arg("boundary_data"),
       "Local equilibration of H(div) conforming fluxes, using an explicit "
       "determination of the flues alongside with an unconstrained ministration "
       "problem on a reduced space.");
@@ -179,18 +178,16 @@ void declare_bcs(py::module& m)
                  std::vector<std::shared_ptr<fem::Function<T>>>& boundary_flux,
                  std::shared_ptr<const fem::FunctionSpace> V_flux_hdiv,
                  bool rtflux_is_custom,
-                 std::shared_ptr<const fem::FunctionSpace> V_flux_l2,
                  const std::vector<std::vector<std::int32_t>>&
                      fct_esntbound_prime)
               {
                 // Return class
                 return BoundaryData<T>(list_bcs, boundary_flux, V_flux_hdiv,
-                                       rtflux_is_custom, V_flux_l2,
-                                       fct_esntbound_prime);
+                                       rtflux_is_custom, fct_esntbound_prime);
               }),
           py::arg("rtflux_is_custom"), py::arg("list_of_bcs"),
           py::arg("list_of_boundary_fluxes"), py::arg("V_flux_hdiv"),
-          py::arg("V_flux_l2"), py::arg("list_bfcts_prime"));
+          py::arg("list_bfcts_prime"));
 }
 
 PYBIND11_MODULE(cpp, m)
