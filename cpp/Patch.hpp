@@ -1,5 +1,7 @@
 #pragma once
 
+#include "utils.hpp"
+
 #include <dolfinx/graph/AdjacencyList.h>
 #include <dolfinx/mesh/Mesh.h>
 #include <dolfinx/mesh/Topology.h>
@@ -26,7 +28,7 @@ public:
   /// @param mesh        The current mesh
   /// @param bfct_type   List with type of all boundary facets
   Patch(int nnodes_proc, std::shared_ptr<const mesh::Mesh> mesh,
-        graph::AdjacencyList<std::int8_t>& bfct_type);
+        mdspan_t<const std::int8_t, 2> bfct_type);
 
   /// Determine maximum patch size
   /// @param nnodes_proc Number of nodes on current processor
@@ -213,7 +215,7 @@ protected:
   int _fct_per_cell;
 
   // Types boundary facets
-  graph::AdjacencyList<std::int8_t>& _bfct_type;
+  mdspan_t<const std::int8_t, 2> _bfct_type;
 
   /* Patch */
   // Central node of patch

@@ -109,9 +109,9 @@ void reconstruct_fluxes_patch(const fem::Form<T>& a, const fem::Form<T>& l_pen,
   const basix::FiniteElement& basix_element_flux
       = function_space->sub(sub0)->element()->basix_element();
 
-  PatchFluxEV patch
-      = PatchFluxEV(n_nodes, a.mesh(), fct_type, a.function_spaces().at(0),
-                    problem_data.flux(0).function_space(), basix_element_flux);
+  PatchFluxEV patch = PatchFluxEV(
+      n_nodes, a.mesh(), problem_data.facet_type(), a.function_spaces().at(0),
+      problem_data.flux(0).function_space(), basix_element_flux);
 
   /* Prepare Assembly */
   // Set kernels
@@ -196,7 +196,7 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data,
   /* Execute equilibration */
   // Initialise patch
   PatchFluxCstm<T, id_flux_order> patch = PatchFluxCstm<T, id_flux_order>(
-      n_nodes, mesh, fct_type, problem_data.fspace_flux_hdiv(),
+      n_nodes, mesh, problem_data.facet_type(), problem_data.fspace_flux_hdiv(),
       problem_data.fspace_flux_dg(), basix_element_rhscg);
 
   // Set quadrature rule

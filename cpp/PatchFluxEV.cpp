@@ -5,7 +5,7 @@ using namespace dolfinx_eqlb;
 
 PatchFluxEV::PatchFluxEV(
     int nnodes_proc, std::shared_ptr<const mesh::Mesh> mesh,
-    graph::AdjacencyList<std::int8_t>& bfct_type,
+    mdspan_t<const std::int8_t, 2> bfct_type,
     const std::shared_ptr<const fem::FunctionSpace> function_space,
     const std::shared_ptr<const fem::FunctionSpace> function_space_fluxhdiv,
     const basix::FiniteElement& basix_element_flux)
