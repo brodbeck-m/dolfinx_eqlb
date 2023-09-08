@@ -65,11 +65,10 @@ class FluxEqlbSE(FluxEquilibrator):
     def set_boundary_conditions(
         self,
         list_bfct_prime: typing.List[np.ndarray],
-        list_bfct_flux: typing.List[np.ndarray],
         list_bcs_flux: typing.List[typing.List[FluxBC]],
     ):
         super(FluxEqlbSE, self).set_boundary_conditions(
-            list_bfct_prime, list_bfct_flux, list_bcs_flux, self.V_flux, True
+            list_bfct_prime, list_bcs_flux, self.V_flux, True
         )
 
     def equilibrate_fluxes(self):
@@ -77,8 +76,6 @@ class FluxEqlbSE(FluxEquilibrator):
             self.list_flux_cpp,
             self.list_proj_flux_cpp,
             self.list_rhs_cpp,
-            self.list_bfct_prime,
-            self.list_bfct_flux,
             self.boundary_data,
         )
 

@@ -28,10 +28,6 @@ class FluxEquilibrator:
         self.list_flux_cpp = []
 
         # --- The BoundaryData ---
-        # List of boundary facets
-        self.list_bfct_prime = None
-        self.list_bfct_flux = None
-
         # List of functions with projected boundary data
         self.list_bfunctions = []
 
@@ -65,7 +61,6 @@ class FluxEquilibrator:
     def set_boundary_conditions(
         self,
         list_bfct_prime: typing.List[np.ndarray],
-        list_bfct_flux: typing.List[np.ndarray],
         list_bcs_flux: typing.List[typing.List[FluxBC]],
         V: dfem.FunctionSpace,
         fluxspace_is_custom: bool,
@@ -91,10 +86,6 @@ class FluxEquilibrator:
 
         for i in range(0, self.n_fluxes):
             self.list_bfunctions[i].x.scatter_forward()
-
-        # To be deprecated
-        self.list_bfct_prime = list_bfct_prime
-        self.list_bfct_flux = list_bfct_flux
 
     def equilibrate_fluxes(self):
         raise NotImplementedError

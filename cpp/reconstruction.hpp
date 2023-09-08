@@ -58,8 +58,7 @@ namespace dolfinx_eqlb
 /// @param flux_dg        Function that holds the projected fluxes
 template <typename T>
 void reconstruct_fluxes_patch(const fem::Form<T>& a, const fem::Form<T>& l_pen,
-                              ProblemDataFluxEV<T>& problem_data,
-                              graph::AdjacencyList<std::int8_t>& fct_type)
+                              ProblemDataFluxEV<T>& problem_data)
 {
   /* Geometry */
   const mesh::Geometry& geometry = a.mesh()->geometry();
@@ -150,8 +149,7 @@ void reconstruct_fluxes_patch(const fem::Form<T>& a, const fem::Form<T>& l_pen,
 /// @param problem_data   The problem data
 /// @param fct_type       Lookup-table for facet-types
 template <typename T, int id_flux_order = 3>
-void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data,
-                              graph::AdjacencyList<std::int8_t>& fct_type)
+void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
 {
   assert(id_flux_order < 0);
 
@@ -249,73 +247,6 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data,
   }
 }
 
-/// Mark facets of entire mesh (internal, neumann, dirichlet)
-///
-/// During the equilibration process, the type of boundary facets is required.
-/// This routine uses the following facet-colors
-///     - Internal fact: 0
-///     - Boundary factet (essential BC primal problem): 1
-///     - Boundary factet (essential BC flux): 2
-///
-/// @param topology            Mesh-topology of the problem
-/// @param fct_esntbound_prime Facets of essential BCs of primal problem
-/// @param fct_esntbound_flux  Facets of essential BCs on flux field
-/// @param bcs_flux            Essential boundary conditions for the flux
-/// @return
-graph::AdjacencyList<std::int8_t> mark_mesh_facets(
-    const int n_lhs, const mesh::Topology& topology,
-    const std::vector<std::vector<std::int32_t>>& fct_esntbound_prime,
-    const std::vector<std::vector<std::int32_t>>& fct_esntbound_flux)
-{
-  // Facet dimansion
-  const int dim_fct = topology.dim() - 1;
-
-  // Initialize data storage
-  std::int32_t nnodes = topology.index_map(dim_fct)->size_local();
-  std::vector<std::int8_t> data_fct_type(nnodes * n_lhs, 0);
-  std::vector<std::int32_t> offsets_fct_type(n_lhs + 1, 0);
-
-  // Create adjacency list
-  std::generate(offsets_fct_type.begin(), offsets_fct_type.end(),
-                [n = 0, nnodes]() mutable { return nnodes * (n++); });
-
-  graph::AdjacencyList<std::int8_t> fct_type
-      = graph::AdjacencyList<std::int8_t>(std::move(data_fct_type),
-                                          std::move(offsets_fct_type));
-
-  // Set data
-  for (std::size_t i = 0; i < n_lhs; ++i)
-  {
-    // Get lookup-table for l_i
-    std::span<std::int8_t> fct_type_i = fct_type.links(i);
-
-    // Mark facets with essential bcs for primal solution
-    // FIXME - Parallel computation (input only local facets?)
-    if (!fct_esntbound_prime[i].empty())
-    {
-      for (const std::int32_t fct : fct_esntbound_prime[0])
-      {
-        // Set marker facet
-        fct_type_i[fct] = 1;
-      }
-    }
-
-    // Mark facets with essential bcs for flux
-    // FIXME - Parallel computation (input only local facets?)
-    if (!fct_esntbound_flux[i].empty())
-    {
-      // Set markers
-      for (const std::int32_t fct : fct_esntbound_flux[0])
-      {
-        // Set marker facet
-        fct_type_i[fct] = 2;
-      }
-    }
-  }
-
-  return std::move(fct_type);
-}
-
 /// Execute flux calculation based on H(div) conforming equilibration
 ///
 /// Equilibration based on local minimization problems. Weak forms
@@ -331,8 +262,6 @@ template <typename T>
 void reconstruct_fluxes_ev(
     const fem::Form<T>& a, const fem::Form<T>& l_pen,
     const std::vector<std::shared_ptr<const fem::Form<T>>>& l,
-    const std::vector<std::vector<std::int32_t>>& fct_esntbound_prime,
-    const std::vector<std::vector<std::int32_t>>& fct_esntbound_flux,
     std::vector<std::shared_ptr<fem::Function<T>>>& flux_hdiv,
     std::shared_ptr<BoundaryData<T>> boundary_data)
 {
@@ -346,16 +275,12 @@ void reconstruct_fluxes_ev(
     throw std::runtime_error("Equilibration: Input sizes does not match");
   }
 
-  /* Facet coloring */
-  graph::AdjacencyList<std::int8_t> fct_type = mark_mesh_facets(
-      n_rhs, a.mesh()->topology(), fct_esntbound_prime, fct_esntbound_flux);
-
   /* Initialize problem data */
   ProblemDataFluxEV<T> problem_data
       = ProblemDataFluxEV<T>(flux_hdiv, l, boundary_data);
 
   /* Call equilibration */
-  reconstruct_fluxes_patch<T>(a, l_pen, problem_data, fct_type);
+  reconstruct_fluxes_patch<T>(a, l_pen, problem_data);
 }
 
 /// Execute flux calculation based on H(div) conforming equilibration
@@ -374,8 +299,6 @@ void reconstruct_fluxes_cstm(
     std::vector<std::shared_ptr<fem::Function<T>>>& flux_hdiv,
     std::vector<std::shared_ptr<fem::Function<T>>>& flux_dg,
     std::vector<std::shared_ptr<fem::Function<T>>>& rhs_dg,
-    const std::vector<std::vector<std::int32_t>>& fct_esntbound_prime,
-    const std::vector<std::vector<std::int32_t>>& fct_esntbound_flux,
     std::shared_ptr<BoundaryData<T>> boundary_data)
 {
   // Check input sizes
@@ -409,11 +332,6 @@ void reconstruct_fluxes_cstm(
         "Equilibration: Degrees of projected flux and RHS have to match");
   }
 
-  /* Facet coloring */
-  graph::AdjacencyList<std::int8_t> fct_type
-      = mark_mesh_facets(n_rhs, rhs_dg[0]->function_space()->mesh()->topology(),
-                         fct_esntbound_prime, fct_esntbound_flux);
-
   /* Initialize essential boundary conditions for reconstructed flux */
   ProblemDataFluxCstm<T> problem_data
       = ProblemDataFluxCstm<T>(flux_hdiv, flux_dg, rhs_dg, boundary_data);
@@ -422,17 +340,17 @@ void reconstruct_fluxes_cstm(
   if (order_flux == 1)
   {
     // Perform equilibration
-    reconstruct_fluxes_patch<T, 1>(problem_data, fct_type);
+    reconstruct_fluxes_patch<T, 1>(problem_data);
   }
   else if (order_flux == 2)
   {
     // Perform equilibration
-    reconstruct_fluxes_patch<T, 2>(problem_data, fct_type);
+    reconstruct_fluxes_patch<T, 2>(problem_data);
   }
   else
   {
     // Perform equilibration
-    reconstruct_fluxes_patch<T>(problem_data, fct_type);
+    reconstruct_fluxes_patch<T>(problem_data);
   }
 }
 

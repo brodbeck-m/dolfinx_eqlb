@@ -81,19 +81,12 @@ void declare_fluxeqlb(py::module& m)
          const dolfinx::fem::Form<double>& l_pen,
          const std::vector<std::shared_ptr<const dolfinx::fem::Form<double>>>&
              l,
-         const std::vector<std::vector<std::int32_t>>& fct_esntbound_prime,
-         const std::vector<std::vector<std::int32_t>>& fct_esntbound_flux,
          std::vector<std::shared_ptr<dolfinx::fem::Function<double>>>&
              flux_hdiv,
          std::shared_ptr<BoundaryData<T>> boundary_data)
-      {
-        reconstruct_fluxes_ev<double>(a, l_pen, l, fct_esntbound_prime,
-                                      fct_esntbound_flux, flux_hdiv,
-                                      boundary_data);
-      },
-      py::arg("a"), py::arg("l_pen"), py::arg("l"),
-      py::arg("fct_esntbound_prime"), py::arg("fct_esntbound_prime"),
-      py::arg("flux_hdiv"), py::arg("boundary_data"),
+      { reconstruct_fluxes_ev<double>(a, l_pen, l, flux_hdiv, boundary_data); },
+      py::arg("a"), py::arg("l_pen"), py::arg("l"), py::arg("flux_hdiv"),
+      py::arg("boundary_data"),
       "Local equilibration of H(div) conforming fluxes, solving patch-wise, "
       "constrained minimisation problems.");
 
@@ -103,16 +96,11 @@ void declare_fluxeqlb(py::module& m)
              flux_hdiv,
          std::vector<std::shared_ptr<dolfinx::fem::Function<double>>>& flux_dg,
          std::vector<std::shared_ptr<dolfinx::fem::Function<double>>>& rhs_dg,
-         const std::vector<std::vector<std::int32_t>>& fct_esntbound_prime,
-         const std::vector<std::vector<std::int32_t>>& fct_esntbound_flux,
-         std::shared_ptr<BoundaryData<T>> boundary_data)
-      {
+         std::shared_ptr<BoundaryData<T>> boundary_data) {
         reconstruct_fluxes_cstm<double>(flux_hdiv, flux_dg, rhs_dg,
-                                        fct_esntbound_prime, fct_esntbound_flux,
                                         boundary_data);
       },
       py::arg("flux_hdiv"), py::arg("flux_dg"), py::arg("rhs_dg"),
-      py::arg("fct_esntbound_prime"), py::arg("fct_esntbound_prime"),
       py::arg("boundary_data"),
       "Local equilibration of H(div) conforming fluxes, using an explicit "
       "determination of the flues alongside with an unconstrained ministration "

@@ -328,7 +328,6 @@ def equilibrate_poisson(
             fct_bcesnt_primal.append(fct_numpy)
 
     # Set Neumann conditions on flux space
-    fct_bcesnt_flux = []
     bc_esnt_flux = []
 
     for list_bc_id in bc_id_neumann:
@@ -339,17 +338,14 @@ def equilibrate_poisson(
                 list_fcts = geometry.facet_function.indices[fct_values == id_flux]
                 fct_numpy = np.concatenate((fct_numpy, list_fcts))
 
-            fct_bcesnt_flux.append(fct_numpy)
-
             raise NotImplementedError("Neumann boundary conditions not supported!")
         else:
-            fct_bcesnt_flux.append([])
             bc_esnt_flux.append([])
 
     # Set equilibrator
     equilibrator = Equilibrator(degree_flux, geometry.mesh, rhs_proj, sig_proj)
     equilibrator.set_boundary_conditions(
-        fct_bcesnt_primal, fct_bcesnt_flux, bc_esnt_flux
+        fct_bcesnt_primal, bc_esnt_flux
     )
 
     # Solve equilibration
