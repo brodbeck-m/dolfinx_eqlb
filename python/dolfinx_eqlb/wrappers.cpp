@@ -77,14 +77,11 @@ void declare_fluxeqlb(py::module& m)
 {
   m.def(
       "reconstruct_fluxes_minimisation",
-      [](const dolfinx::fem::Form<double>& a,
-         const dolfinx::fem::Form<double>& l_pen,
-         const std::vector<std::shared_ptr<const dolfinx::fem::Form<double>>>&
-             l,
-         std::vector<std::shared_ptr<dolfinx::fem::Function<double>>>&
-             flux_hdiv,
+      [](const dolfinx::fem::Form<T>& a, const dolfinx::fem::Form<T>& l_pen,
+         const std::vector<std::shared_ptr<const dolfinx::fem::Form<T>>>& l,
+         std::vector<std::shared_ptr<dolfinx::fem::Function<T>>>& flux_hdiv,
          std::shared_ptr<BoundaryData<T>> boundary_data)
-      { reconstruct_fluxes_ev<double>(a, l_pen, l, flux_hdiv, boundary_data); },
+      { reconstruct_fluxes_ev<T>(a, l_pen, l, flux_hdiv, boundary_data); },
       py::arg("a"), py::arg("l_pen"), py::arg("l"), py::arg("flux_hdiv"),
       py::arg("boundary_data"),
       "Local equilibration of H(div) conforming fluxes, solving patch-wise, "
@@ -92,13 +89,11 @@ void declare_fluxeqlb(py::module& m)
 
   m.def(
       "reconstruct_fluxes_semiexplt",
-      [](std::vector<std::shared_ptr<dolfinx::fem::Function<double>>>&
-             flux_hdiv,
-         std::vector<std::shared_ptr<dolfinx::fem::Function<double>>>& flux_dg,
-         std::vector<std::shared_ptr<dolfinx::fem::Function<double>>>& rhs_dg,
+      [](std::vector<std::shared_ptr<dolfinx::fem::Function<T>>>& flux_hdiv,
+         std::vector<std::shared_ptr<dolfinx::fem::Function<T>>>& flux_dg,
+         std::vector<std::shared_ptr<dolfinx::fem::Function<T>>>& rhs_dg,
          std::shared_ptr<BoundaryData<T>> boundary_data) {
-        reconstruct_fluxes_cstm<double>(flux_hdiv, flux_dg, rhs_dg,
-                                        boundary_data);
+        reconstruct_fluxes_cstm<T>(flux_hdiv, flux_dg, rhs_dg, boundary_data);
       },
       py::arg("flux_hdiv"), py::arg("flux_dg"), py::arg("rhs_dg"),
       py::arg("boundary_data"),
