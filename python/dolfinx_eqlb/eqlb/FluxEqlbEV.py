@@ -6,7 +6,7 @@ import dolfinx.fem as dfem
 import dolfinx.mesh as dmesh
 import ufl
 
-from dolfinx_eqlb.cpp import FluxBC, reconstruct_fluxes_minimisation
+from dolfinx_eqlb.cpp import FluxBC, BoundaryData, reconstruct_fluxes_minimisation
 from .FluxEquilibrator import FluxEquilibrator
 
 
@@ -109,9 +109,27 @@ class FluxEqlbEV(FluxEquilibrator):
         list_bfct_prime: typing.List[np.ndarray],
         list_bcs_flux: typing.List[typing.List[FluxBC]],
     ):
-        super(FluxEqlbEV, self).set_boundary_conditions(
-            list_bfct_prime, list_bcs_flux, self.V.sub(0), False
+        # Check input data
+        if self.n_fluxes != len(list_bfct_prime) | self.n_fluxes != len(list_bcs_flux):
+            raise RuntimeError("Mismatching inputs!")
+
+        # Initialise boundary data
+        list_bfunctions_cpp = []
+
+        for i in range(0, self.n_fluxes):
+            self.list_bfunctions.append(dfem.Function(self.V))
+            list_bfunctions_cpp.append(self.list_bfunctions[i]._cpp_object)
+
+        self.boundary_data = BoundaryData(
+            list_bcs_flux,
+            list_bfunctions_cpp,
+            self.V.sub(0)._cpp_object,
+            False,
+            list_bfct_prime,
         )
+
+        for i in range(0, self.n_fluxes):
+            self.list_bfunctions[i].x.scatter_forward()
 
     def equilibrate_fluxes(self):
         reconstruct_fluxes_minimisation(

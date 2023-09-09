@@ -11,8 +11,7 @@ BoundaryData<T>::BoundaryData(
     bool rtflux_is_custom,
     const std::vector<std::vector<std::int32_t>>& fct_esntbound_prime)
     : _flux_degree(V_flux_hdiv->element()->basix_element().degree()),
-      _boundary_flux(boundary_flux), _num_rhs(list_bcs.size()),
-      _gdim(V_flux_hdiv->mesh()->geometry().dim()),
+      _num_rhs(list_bcs.size()), _gdim(V_flux_hdiv->mesh()->geometry().dim()),
       _num_fcts(
           V_flux_hdiv->mesh()->topology().index_map(_gdim - 1)->size_local()),
       _nfcts_per_cell((_gdim == 2) ? 3 : 4), _V_flux_hdiv(V_flux_hdiv),
@@ -56,8 +55,8 @@ BoundaryData<T>::BoundaryData(
   std::generate(_offset_fctdata.begin(), _offset_fctdata.end(),
                 [n = 0, num_fcts]() mutable { return num_fcts * (n++); });
 
-  _J = mdspan_t<double, 2>(_data_J.data(), _gdim, _gdim);
-  _K = mdspan_t<double, 2>(_data_K.data(), _gdim, _gdim);
+  mdspan_t<double, 2> J(_data_J.data(), _gdim, _gdim);
+  mdspan_t<double, 2> K(_data_K.data(), _gdim, _gdim);
 
   /* Extract required data */
   // The mesh
@@ -116,12 +115,15 @@ BoundaryData<T>::BoundaryData(
   /* Calculate boundary DOFs */
   for (int i_rhs = 0; i_rhs < _num_rhs; ++i_rhs)
   {
+    // Pointer onto DOF vector of boundary function
+    _x_boundary_flux.push_back(boundary_flux[i_rhs]->x());
+
     // Storage of current RHS
     std::span<std::int8_t> facet_type_i = facet_type(i_rhs);
     std::span<std::int8_t> local_fct_id_i = local_facet_id(i_rhs);
     std::span<std::int8_t> boundary_markers_i = boundary_markers(i_rhs);
 
-    std::span<T> x_bvals = _boundary_flux[i_rhs]->x()->mutable_array();
+    std::span<T> x_bvals = boundary_flux[i_rhs]->x()->mutable_array();
 
     // Handle facets with essential BCs on primal problem
     for (std::int32_t fct : fct_esntbound_prime[i_rhs])
@@ -181,7 +183,7 @@ BoundaryData<T>::BoundaryData(
 
         // Calculate mapping tensors
         double detJ
-            = _kernel_data.compute_jacobian(_J, _K, _detJ_scratch, coordinates);
+            = _kernel_data.compute_jacobian(J, K, _detJ_scratch, coordinates);
 
         // Calculate boundary DOFs
         if (bc->projection_required())
@@ -205,7 +207,7 @@ BoundaryData<T>::BoundaryData(
                                    nipoints_per_fct);
 
           _kernel_data.interpolate_flux(flux_ntrace, boundary_values_fct,
-                                        fct_loc, _J, detJ, _K);
+                                        fct_loc, J, detJ, K);
         }
 
         // Apply DOF transformations
@@ -262,13 +264,16 @@ void BoundaryData<T>::calculate_patch_bc(
     }
 
     // Calculate J
+    mdspan_t<double, 2> J(_data_J.data(), _gdim, _gdim);
+    mdspan_t<double, 2> K(_data_K.data(), _gdim, _gdim);
+
     double detJ
-        = _kernel_data.compute_jacobian(_J, _K, _detJ_scratch, coordinates);
+        = _kernel_data.compute_jacobian(J, K, _detJ_scratch, coordinates);
 
     /* Calculate BCs on current facet */
     for (int i_rhs = 0; i_rhs < _num_rhs; ++i_rhs)
     {
-      calculate_patch_bc(i_rhs, fct, patchnode_local[i_fct], _J, detJ, _K);
+      calculate_patch_bc(i_rhs, fct, patchnode_local[i_fct], J, detJ, K);
     }
   }
 }
@@ -294,7 +299,7 @@ void BoundaryData<T>::calculate_patch_bc(
     std::span<T> boundary_values_rhs = boundary_values(rhs_i);
 
     // Storage of (global) boundary values
-    std::span<const T> x_bfunc_rhs = _boundary_flux[rhs_i]->x()->array();
+    std::span<const T> x_bfunc_rhs = _x_boundary_flux[rhs_i]->array();
 
     /* Calculate patch boundary */
     // Extract boundary DOFs without hat-function

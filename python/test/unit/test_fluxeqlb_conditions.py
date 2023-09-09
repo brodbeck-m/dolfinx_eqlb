@@ -209,7 +209,8 @@ def test_equilibration_conditions(mesh_type, degree, bc_type, equilibrator):
                 boundary_id_neumann,
                 dirichlet_functions,
                 neumann_functions,
-            ) = set_arbitrary_bcs(bc_type, V_prime)
+                neumann_projection,
+            ) = set_arbitrary_bcs(bc_type, V_prime, degree, degree_rhs)
 
             # Solve equilibration
             u_prime, sigma_projected = solve_poisson_problem(
@@ -233,6 +234,7 @@ def test_equilibration_conditions(mesh_type, degree, bc_type, equilibrator):
                 [boundary_id_neumann],
                 [boundary_id_dirichlet],
                 [neumann_functions],
+                [neumann_projection],
             )[0]
 
             # --- Check divergence condition ---

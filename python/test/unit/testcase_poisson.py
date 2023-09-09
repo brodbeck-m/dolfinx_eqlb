@@ -11,6 +11,7 @@ import dolfinx.mesh as dmesh
 import ufl
 
 from dolfinx_eqlb.lsolver import local_projection
+from dolfinx_eqlb.eqlb import fluxbc
 
 from python.test.unit.utils import Geometry
 
@@ -146,7 +147,9 @@ def set_manufactured_rhs(
 
 
 # --- Set boundary conditions
-def set_arbitrary_bcs(bc_type: str, V_prime: dfem.FunctionSpace):
+def set_arbitrary_bcs(
+    bc_type: str, V_prime: dfem.FunctionSpace, degree_flux: int, degree_bc: int = 0
+):
     """Set arbitrary dirichlet and neumann BCs
 
     Remark: Dirichlet BCs for primal problem are homogenous.
@@ -155,10 +158,16 @@ def set_arbitrary_bcs(bc_type: str, V_prime: dfem.FunctionSpace):
         bc_type (str):           Type of boundary conditions
                                  (pure_dirichlet, neumann_homogenous, neumann_inhomogenous)
         V_prime (FunctionSpace): The function space of the primal problem
+        degree_flux (int):       Degree of the flux space
+        degree_bc (int):         Polynomial degree of the boundary conditions
 
     Returns:
-        u_D (List[Function]):     List of dirichlet boundary conditions
-        func_neumann (List[ufl]): List of neumann boundary conditions
+        boundary_id_dirichlet (List[int]): List of boundary ids for dirichlet BCs
+        boundary_id_neumann (List[int]):   List of boundary ids for neumann BCs
+        u_D (List[Function]):              List of dirichlet boundary conditions
+        func_neumann (List[ufl]):          List of neumann boundary conditions
+        neumann_projection (List[bool]):   List of booleans indicating wether the neumann
+                                           BCs require projection
     """
     if bc_type == "pure_dirichlet":
         # Set boundary ids
@@ -170,10 +179,58 @@ def set_arbitrary_bcs(bc_type: str, V_prime: dfem.FunctionSpace):
 
         # Empty array of Neumann conditions
         func_neumann = []
+    elif bc_type == "neumann_homogenous":
+        # The mesh
+        domain = V_prime.mesh
+
+        # Set boundary ids
+        boundary_id_dirichlet = [2, 3]
+        boundary_id_neumann = [1, 4]
+
+        # Set homogenous dirichlet boundary conditions
+        u_D = [dfem.Function(V_prime) for i in range(0, len(boundary_id_dirichlet))]
+
+        # Set homogenous dirichlet boundary conditions
+        func_neumann = [
+            dfem.Constant(domain, PETSc.ScalarType(0.0))
+            for i in range(0, len(boundary_id_neumann))
+        ]
+    elif bc_type == "neumann_inhomogenous":
+        # The mesh
+        domain = V_prime.mesh
+
+        # Set boundary ids
+        boundary_id_dirichlet = [2, 3]
+        boundary_id_neumann = [1, 4]
+
+        # Set homogenous dirichlet boundary conditions
+        u_D = [dfem.Function(V_prime) for i in range(0, len(boundary_id_dirichlet))]
+
+        # Set homogenous dirichlet boundary conditions
+        V_bc = dfem.FunctionSpace(domain, ("DG", degree_bc))
+
+        for i in range(0, len(boundary_id_neumann)):
+            # Set random function on boundary
+            func_neumann.append(dfem.Function(V_bc))
+
+            func_neumann[i].x.array[:] = 2 * (
+                np.random.rand(V_bc.dofmap.index_map.size_local) + 0.1
+            )
     else:
         raise ValueError("Not implemented!")
 
-    return boundary_id_dirichlet, boundary_id_neumann, u_D, func_neumann
+    if degree_bc > degree_flux - 1:
+        neumann_projection = [True for i in range(0, len(boundary_id_neumann))]
+    else:
+        neumann_projection = [False for i in range(0, len(boundary_id_neumann))]
+
+    return (
+        boundary_id_dirichlet,
+        boundary_id_neumann,
+        u_D,
+        func_neumann,
+        neumann_projection,
+    )
 
 
 def set_manufactured_bcs(
@@ -195,6 +252,8 @@ def set_manufactured_bcs(
     Returns:
         u_D (List[dolfinx.Function]):      List of dirichlet boundary conditions
         func_neumann (List[ufl]):          List of neumann boundary conditions
+        neumann_projection (List[bool]):   List of booleans indicating wether the neumann
+                                           BCs require projection
     """
 
     # Set dirichlet BCs
@@ -211,7 +270,7 @@ def set_manufactured_bcs(
     for id in boundary_id_neumann:
         func_neumann.append(sigma_ext)
 
-    return u_D, func_neumann
+    return u_D, func_neumann, len(func_neumann) * [True]
 
 
 # --- Solution routines
@@ -260,8 +319,8 @@ def solve_poisson_problem(
         bcs_esnt.append(dfem.dirichletbc(u_dirichlet[i], dofs))
 
     # Set neumann boundary conditions
-    for id in bc_id_neumann:
-        l_prime += ufl.inner(ufl_neumann[id], v) * geometry.ds(id)
+    for i, id in enumerate(bc_id_neumann):
+        l_prime += ufl.inner(ufl_neumann[i], v) * geometry.ds(id)
 
     # Solve problem
     solveoptions = {
@@ -295,6 +354,7 @@ def equilibrate_poisson(
     bc_id_neumann: List[List[int]],
     bc_id_dirichlet: List[List[int]],
     flux_neumann: List[Any],
+    neumann_projection: List[bool],
 ) -> List[dfem.Function]:
     """Equilibrates the fluxes of the primal problem
 
@@ -306,13 +366,18 @@ def equilibrate_poisson(
         rhs_proj (List[dfem.Function]):                List of projected right-hand sides
         bc_id_neumann (List[List[int]]):               List of boundary ids for neumann BCs
         bc_id_dirichlet (List[List[int]]):             List of boundary ids for dirichlet BCs
-        flux_neumann (List[ufl]):                      List of neumann boundary conditions
+        flux_neumann (List[List[ufl]]):                List of neumann boundary conditions
+        neumann_projection (List[List[bool]]):         List of booleans indicating wether the
+                                                       neumann BCs require projection
 
     Returns:
         List[dfem.Function]: List of equilibrated fluxes
     """
     # Extract facet markers
     fct_values = geometry.facet_function.values
+
+    # Set equilibrator
+    equilibrator = Equilibrator(degree_flux, geometry.mesh, rhs_proj, sig_proj)
 
     # Mark dirichlet facets of primal problem
     fct_bcesnt_primal = []
@@ -330,23 +395,27 @@ def equilibrate_poisson(
     # Set Neumann conditions on flux space
     bc_esnt_flux = []
 
-    for list_bc_id in bc_id_neumann:
-        fct_numpy = np.array([], dtype=np.int32)
+    for i in range(0, len(bc_id_neumann)):
+        if len(bc_id_neumann[i]) > 0:
+            list_flux_bc = []
 
-        if len(list_bc_id) > 0:
-            for id_flux in list_bc_id:
+            for j, id_flux in enumerate(bc_id_neumann[i]):
                 list_fcts = geometry.facet_function.indices[fct_values == id_flux]
-                fct_numpy = np.concatenate((fct_numpy, list_fcts))
+                list_flux_bc.append(
+                    fluxbc(
+                        flux_neumann[i][j],
+                        list_fcts,
+                        equilibrator.V_flux,
+                        neumann_projection[i][j],
+                    )
+                )
 
-            raise NotImplementedError("Neumann boundary conditions not supported!")
+            bc_esnt_flux.append(list_flux_bc)
         else:
             bc_esnt_flux.append([])
 
     # Set equilibrator
-    equilibrator = Equilibrator(degree_flux, geometry.mesh, rhs_proj, sig_proj)
-    equilibrator.set_boundary_conditions(
-        fct_bcesnt_primal, bc_esnt_flux
-    )
+    equilibrator.set_boundary_conditions(fct_bcesnt_primal, bc_esnt_flux)
 
     # Solve equilibration
     equilibrator.equilibrate_fluxes()

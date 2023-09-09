@@ -62,30 +62,8 @@ class FluxEquilibrator:
         self,
         list_bfct_prime: typing.List[np.ndarray],
         list_bcs_flux: typing.List[typing.List[FluxBC]],
-        V: dfem.FunctionSpace,
-        fluxspace_is_custom: bool,
     ):
-        # Check input data
-        if self.n_fluxes != len(list_bfct_prime) | self.n_fluxes != len(list_bcs_flux):
-            raise RuntimeError("Missmatching inputs!")
-
-        # Initialise boundary data
-        list_bfunction_cpp = []
-
-        for i in range(0, self.n_fluxes):
-            self.list_bfunctions.append(dfem.Function(self.V_flux))
-            list_bfunction_cpp.append(self.list_bfunctions[i]._cpp_object)
-
-        self.boundary_data = BoundaryData(
-            list_bcs_flux,
-            list_bfunction_cpp,
-            V._cpp_object,
-            fluxspace_is_custom,
-            list_bfct_prime,
-        )
-
-        for i in range(0, self.n_fluxes):
-            self.list_bfunctions[i].x.scatter_forward()
+        raise NotImplementedError
 
     def equilibrate_fluxes(self):
         raise NotImplementedError

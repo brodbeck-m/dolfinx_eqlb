@@ -74,7 +74,11 @@ def test_convrate(degree, bc_type, equilibrator):
         rhs, rhs_projected = set_manufactured_rhs(uext_ufl, geometry.mesh, degree_proj)
 
         # Set boundary conditions
-        dirichlet_functions, neumann_functions = set_manufactured_bcs(
+        (
+            dirichlet_functions,
+            neumann_functions,
+            neumann_projection,
+        ) = set_manufactured_bcs(
             V_prime, boundary_id_dirichlet, boundary_id_neumann, uext_np, sigma_ext_ufl
         )
 
@@ -100,6 +104,7 @@ def test_convrate(degree, bc_type, equilibrator):
             [boundary_id_neumann],
             [boundary_id_dirichlet],
             [neumann_functions],
+            [neumann_projection],
         )[0]
 
         # --- Compute convergence rate ---

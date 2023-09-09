@@ -113,6 +113,21 @@ void equilibrate_flux_constrmin(
     }
   }
 
+  /* Calculate boundary conditions for current patch */
+  if (patch.type(0) != 0)
+  {
+    // Get facet list
+    const int nfcts = patch.nfcts();
+    std::span<const std::int32_t> fcts = patch.fcts();
+
+    // Calculate boundary conditions
+    std::vector<std::int32_t> boundary_fcts{fcts[0], fcts[nfcts - 1]};
+    std::vector<std::int8_t> inode_boundary_fcts{inode_local[0],
+                                                 inode_local[ncells - 1]};
+
+    problem_data.calculate_patch_bc(boundary_fcts, inode_boundary_fcts);
+  }
+
   /* Solve equilibration */
   for (std::size_t i_lhs = 0; i_lhs < problem_data.nlhs(); ++i_lhs)
   {
@@ -181,32 +196,9 @@ void equilibrate_flux_constrmin(
     std::span<const int32_t> dofs_flux_global = patch.dofs_fluxhdiv_global();
 
     // Add local solution
-    if (type_patch == 1 || type_patch == 3)
+    for (std::size_t k = 0; k < patch.ndofs_flux_patch_nz(); ++k)
     {
-      // Flux DOFs within mixed fe-space
-      std::span<const int32_t> dofs_flux_mixed = patch.dofs_fluxhdiv_mixed();
-
-      for (std::size_t k = 0; k < patch.ndofs_flux_patch_nz(); ++k)
-      {
-        std::int32_t dof_flux_glob = dofs_flux_global[k];
-
-        // TODO - Check not necessary when correct BCs are used
-        if (bmarkers[dofs_flux_mixed[k]])
-        {
-          x_flux_hdiv[dof_flux_glob] = u_patch[dofs_flux_patch[k]];
-        }
-        else
-        {
-          x_flux_hdiv[dof_flux_glob] += u_patch[dofs_flux_patch[k]];
-        }
-      }
-    }
-    else
-    {
-      for (std::size_t k = 0; k < patch.ndofs_flux_patch_nz(); ++k)
-      {
-        x_flux_hdiv[dofs_flux_global[k]] += u_patch[dofs_flux_patch[k]];
-      }
+      x_flux_hdiv[dofs_flux_global[k]] += u_patch[dofs_flux_patch[k]];
     }
   }
 

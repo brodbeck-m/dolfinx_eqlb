@@ -14,6 +14,7 @@
 #include <dolfinx/fem/Function.h>
 #include <dolfinx/fem/FunctionSpace.h>
 #include <dolfinx/graph/AdjacencyList.h>
+#include <dolfinx/la/Vector.h>
 #include <dolfinx/mesh/Geometry.h>
 #include <dolfinx/mesh/Mesh.h>
 #include <dolfinx/mesh/Topology.h>
@@ -173,7 +174,7 @@ protected:
 
   /* Variable definitions */
   // The boundary conditions
-  std::vector<std::shared_ptr<fem::Function<T>>>& _boundary_flux;
+  std::vector<std::shared_ptr<const la::Vector<T>>> _x_boundary_flux;
 
   // --- Counters
   // The number of considered RHS
@@ -241,6 +242,5 @@ protected:
   // Geometric mapping
   std::array<double, 9> _data_J, _data_K;
   std::array<double, 18> _detJ_scratch;
-  mdspan_t<double, 2> _J, _K;
 };
 } // namespace dolfinx_eqlb

@@ -550,7 +550,8 @@ void KernelDataBC<T>::interpolate_flux(std::span<const T> flux_dofs_bc,
       }
 
       // Multiply flux with hat function
-      _flux_scratch(i_pnt, i_dim) = acc * _basis_hat(0, 0, i_pnt, hat_id, 0);
+      _flux_scratch(i_pnt, i_dim)
+          = acc * _basis_hat(0, 0, offs_ipnt + i_pnt, hat_id, 0);
     }
   }
 

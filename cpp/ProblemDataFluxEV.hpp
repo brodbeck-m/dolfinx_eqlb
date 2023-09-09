@@ -186,6 +186,13 @@ public:
   }
 
   /* Interface BoundaryData */
+  /// Calculate BCs for patch-problem
+  void calculate_patch_bc(std::span<const std::int32_t> bound_fcts,
+                          std::span<const std::int8_t> patchnode_local)
+  {
+    _boundary_data->calculate_patch_bc(bound_fcts, patchnode_local);
+  }
+
   /// Extract facet-types of all sub-problems
   /// @return Mdspan of facet-types
   mdspan_t<const std::int8_t, 2> facet_type() const
