@@ -698,7 +698,7 @@ void minimise_flux(const mesh::Geometry& geometry,
   u_patch.resize(size_psystem);
 
   // Local solver
-  Eigen::LLT<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic>> solver;
+  Eigen::LLT<Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>> solver;
 
   /* Initialize solution process */
   // Number of nodes on reference cell

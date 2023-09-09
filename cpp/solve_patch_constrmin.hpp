@@ -75,8 +75,7 @@ void equilibrate_flux_constrmin(
   u_patch.resize(ndof_ppatch);
 
   // Local solver
-  Eigen::PartialPivLU<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic>>
-      solver;
+  Eigen::PartialPivLU<Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>> solver;
 
   /* Initialize hat-function and cell-geometries */
   // Required patch-data
