@@ -67,6 +67,7 @@ set(
   StorageStiffness.hpp
   assemble_patch_constrmin.hpp
   assemble_patch_semiexplt.hpp
+  assemble_projection_boundary.hpp
   local_solver.hpp
   reconstruction.hpp
   solve_patch_constrmin.hpp

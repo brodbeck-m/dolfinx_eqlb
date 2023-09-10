@@ -413,6 +413,10 @@ public:
                                 false, false);
   }
 
+  void map_shapefunctions_flux(std::int8_t lfct_id, mdspan_t<double, 3> phi_cur,
+                               mdspan_t<const double, 5> phi_ref,
+                               mdspan_t<const double, 2> J, double detJ);
+
   /* Recover flux from normal-trace */
   mdspan_t<const T, 2> normaltrace_to_flux(std::span<const T> flux_ntrace_cur,
                                            std::int8_t lfct_id,
@@ -421,7 +425,8 @@ public:
     // Perform calculation
     normaltrace_to_vector(flux_ntrace_cur, lfct_id, K);
 
-    return mdspan_t<const T, 2>(_flux_scratch_data.data(), _size_flux_scratch,
+    return mdspan_t<const T, 2>(_flux_scratch_data.data(),
+                                flux_ntrace_cur.size(),
                                 (std::size_t)this->_gdim);
   }
 
@@ -484,10 +489,6 @@ protected:
   mdspan_t<const double, 5> _basis_flux;
   const int _ndofs_per_fct, _ndofs_fct, _ndofs_cell;
 
-  // Tabulated shape-functions (projected flux, RHS)
-  std::vector<double> _basis_projection_values, _mbasis_projection_values;
-  mdspan_t<const double, 5> _basis_projection;
-
   // Tabulated shape-functions (hat-function)
   basix::FiniteElement _basix_element_hat;
   std::vector<double> _basis_hat_values;
@@ -508,8 +509,6 @@ protected:
   // Push-forward H(div) shape-functions
   std::vector<double> _mbasis_flux_values, _mbasis_scratch_values;
   mdspan_t<double, 2> _mbasis_flux, _mbasis_scratch;
-
-  std::vector<double> _mbasis_projection_values;
 
   std::function<void(mdspan_t<double, 2>&, const mdspan_t<const double, 2>&,
                      const mdspan_t<const double, 2>&, double,

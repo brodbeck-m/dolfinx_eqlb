@@ -74,18 +74,18 @@ def fluxbc(
             # Map 1D points to 2D facet
             for i in range(0, neval_per_fct):
                 # Point on facet 0
-                pnts_eval[i, 0] = 1 - qpnts[0]
+                pnts_eval[i, 0] = 1 - qpnts[i]
                 pnts_eval[i, 1] = qpnts[0]
 
                 # Point on facet 1
-                id_fct1 += 1
                 pnts_eval[id_fct1, 0] = 0
-                pnts_eval[id_fct1, 1] = qpnts[0]
+                pnts_eval[id_fct1, 1] = qpnts[i]
+                id_fct1 += 1
 
                 # Point on facet 2
-                id_fct1 += 1
-                pnts_eval[id_fct2, 0] = qpnts[0]
+                pnts_eval[id_fct2, 0] = qpnts[i]
                 pnts_eval[id_fct2, 1] = 0
+                id_fct2 += 1
         else:
             raise NotImplementedError("3D meshes currently not supported")
     else:

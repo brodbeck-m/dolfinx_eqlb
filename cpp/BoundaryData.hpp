@@ -3,6 +3,7 @@
 #include "FluxBC.hpp"
 #include "KernelData.hpp"
 #include "QuadratureRule.hpp"
+#include "assemble_projection_boundary.hpp"
 #include "eigen3/Eigen/Dense"
 #include "eigen3/Eigen/Sparse"
 #include "utils.hpp"
@@ -39,14 +40,6 @@ enum facet_type_eqlb : std::int8_t
   essnt_primal = 1,
   essnt_dual = 2
 };
-
-template <typename T>
-void assemble_projection(mdspan_t<const double, 2> flux_boundary,
-                         mdspan_t<double, 3> phi,
-                         std::span<const double> quadrature_weights,
-                         const double detJ,
-                         Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>& A_e,
-                         Eigen::Matrix<T, Eigen::Dynamic, 1>& L_e);
 
 template <typename T>
 class BoundaryData

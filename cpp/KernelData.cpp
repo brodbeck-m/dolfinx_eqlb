@@ -434,13 +434,6 @@ KernelDataBC<T>::KernelDataBC(
   _mbasis_scratch = mdspan_t<double, 2>(_mbasis_scratch_values.data(),
                                         _ndofs_cell, this->_gdim);
 
-  // Tabulate H(div) flux at surface quadrature points
-  shape = this->tabulate_basis(basix_element_flux_hdiv,
-                               this->_quadrature_rule[0]->points(),
-                               _basis_projection_values, false, false);
-  _basis_projection
-      = mdspan_t<const double, 5>(_basis_projection_values.data(), shape);
-
   // Tabulate hat-function at interpolation points
   shape = this->tabulate_basis(_basix_element_hat, _ipoints, _basis_hat_values,
                                false, false);
@@ -478,6 +471,65 @@ KernelDataBC<T>::KernelDataBC(
   _apply_dof_transformation
       = element_flux_hdiv->get_dof_transformation_function<double>(false, false,
                                                                    false);
+}
+
+template <typename T>
+void KernelDataBC<T>::map_shapefunctions_flux(std::int8_t lfct_id,
+                                              mdspan_t<double, 3> phi_cur,
+                                              mdspan_t<const double, 5> phi_ref,
+                                              mdspan_t<const double, 2> J,
+                                              double detJ)
+{
+  const int offs_pnt = lfct_id * this->_quadrature_rule[0]->num_points(0);
+  const int offs_dof = lfct_id * _ndofs_per_fct;
+
+  // Loop over all evaluation points
+  for (std::size_t i = 0; i < phi_cur.extent(0); ++i)
+  {
+    // Index of the reference shape-functions
+    int i_ref = offs_pnt + i;
+
+    // Loop over all basis functions
+    for (std::size_t j = 0; j < phi_cur.extent(1); ++j)
+    {
+      // Index of the reference shape-functions
+      int j_ref = offs_dof + j;
+
+      // Inverse of the determinenant
+      double inv_detJ = 1.0 / detJ;
+
+      // Evaluate (1/detj) * J * phi^j(x_i)
+      double acc = 0;
+
+      if (phi_cur.extent(2) == 2)
+      {
+        acc = J(0, 0) * phi_ref(0, 0, i_ref, j_ref, 0)
+              + J(0, 1) * phi_ref(0, 0, i_ref, j_ref, 1);
+        phi_cur(i, j, 0) = inv_detJ * acc;
+
+        acc = J(1, 0) * phi_ref(0, 0, i_ref, j_ref, 0)
+              + J(1, 1) * phi_ref(0, 0, i_ref, j_ref, 1);
+        phi_cur(i, j, 1) = inv_detJ * acc;
+      }
+      else
+      {
+        acc = J(0, 0) * phi_ref(0, 0, i_ref, j_ref, 0)
+              + J(0, 1) * phi_ref(0, 0, i_ref, j_ref, 1)
+              + J(0, 2) * phi_ref(0, 0, i_ref, j_ref, 2);
+        phi_cur(i, j, 0) = inv_detJ * acc;
+
+        acc = J(1, 0) * phi_ref(0, 0, i_ref, j_ref, 0)
+              + J(1, 1) * phi_ref(0, 0, i_ref, j_ref, 1)
+              + J(1, 2) * phi_ref(0, 0, i_ref, j_ref, 2);
+        phi_cur(i, j, 1) = inv_detJ * acc;
+
+        acc = J(2, 0) * phi_ref(0, 0, i_ref, j_ref, 0)
+              + J(2, 1) * phi_ref(0, 0, i_ref, j_ref, 1)
+              + J(2, 2) * phi_ref(0, 0, i_ref, j_ref, 2);
+        phi_cur(i, j, 1) = inv_detJ * acc;
+      }
+    }
+  }
 }
 
 template <typename T>

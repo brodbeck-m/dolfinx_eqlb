@@ -78,7 +78,8 @@ def initialise_eval_fe_function(domain: dmesh.Mesh, points: np.ndarray):
 @pytest.mark.parametrize("mesh_type", ["builtin"])
 @pytest.mark.parametrize("degree", [1, 2, 3, 4])
 @pytest.mark.parametrize("rt_space", ["basix", "custom", "subspace"])
-def test_creation_bounddata(mesh_type, degree, rt_space):
+@pytest.mark.parametrize("use_projection", [False, True])
+def test_creation_bounddata(mesh_type, degree, rt_space, use_projection):
     # Create mesh
     n_cells = 5
 
@@ -165,8 +166,8 @@ def test_creation_bounddata(mesh_type, degree, rt_space):
 
         # Create boundary conditions
         list_bcs = []
-        list_bcs.append(fluxbc(ntrace_ufl, list_bfcts[0], V_flux, False))
-        list_bcs.append(fluxbc(ntrace_ufl, list_bfcts[1], V_flux, False))
+        list_bcs.append(fluxbc(ntrace_ufl, list_bfcts[0], V_flux, use_projection))
+        list_bcs.append(fluxbc(ntrace_ufl, list_bfcts[1], V_flux, use_projection))
 
         # Initialise boundary data
         if rt_space == "subspace":
