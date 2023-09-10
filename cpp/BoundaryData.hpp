@@ -20,6 +20,7 @@
 #include <dolfinx/mesh/Topology.h>
 #include <dolfinx/mesh/cell_types.h>
 
+#include <algorithm>
 #include <cmath>
 #include <functional>
 #include <iterator>
@@ -38,6 +39,14 @@ enum facet_type_eqlb : std::int8_t
   essnt_primal = 1,
   essnt_dual = 2
 };
+
+template <typename T>
+void assemble_projection(mdspan_t<const double, 2> flux_boundary,
+                         mdspan_t<double, 3> phi,
+                         std::span<const double> quadrature_weights,
+                         const double detJ,
+                         Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>& A_e,
+                         Eigen::Matrix<T, Eigen::Dynamic, 1>& L_e);
 
 template <typename T>
 class BoundaryData

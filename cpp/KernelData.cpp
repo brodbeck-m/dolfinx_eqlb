@@ -434,7 +434,7 @@ KernelDataBC<T>::KernelDataBC(
   _mbasis_scratch = mdspan_t<double, 2>(_mbasis_scratch_values.data(),
                                         _ndofs_cell, this->_gdim);
 
-  // Tabulate projected flux at surface quadrature points
+  // Tabulate H(div) flux at surface quadrature points
   shape = this->tabulate_basis(basix_element_flux_hdiv,
                                this->_quadrature_rule[0]->points(),
                                _basis_projection_values, false, false);
@@ -448,13 +448,15 @@ KernelDataBC<T>::KernelDataBC(
 
   /* H(div)-flux: Pull back into reference */
   // Initialise scratch
-  _flux_scratch_data.resize(_nipoints_per_fct * this->_gdim);
-  _mflux_scratch_data.resize(_nipoints_per_fct * this->_gdim);
+  _size_flux_scratch
+      = std::max(_nipoints_per_fct, this->_quadrature_rule[0]->num_points(0));
+  _flux_scratch_data.resize(_size_flux_scratch * this->_gdim);
+  _mflux_scratch_data.resize(_size_flux_scratch * this->_gdim);
 
-  _flux_scratch = mdspan_t<T, 2>(_flux_scratch_data.data(), _nipoints_per_fct,
+  _flux_scratch = mdspan_t<T, 2>(_flux_scratch_data.data(), _size_flux_scratch,
                                  this->_gdim);
-  _mflux_scratch = mdspan_t<T, 2>(_mflux_scratch_data.data(), _nipoints_per_fct,
-                                  this->_gdim);
+  _mflux_scratch = mdspan_t<T, 2>(_mflux_scratch_data.data(),
+                                  _size_flux_scratch, this->_gdim);
 
   /* Extract mapping functions */
   using J_t = mdspan_t<const double, 2>;
@@ -486,20 +488,7 @@ void KernelDataBC<T>::interpolate_flux(std::span<const T> flux_ntrace_cur,
                                        mdspan_t<const double, 2> K)
 {
   // Calculate flux within current cell
-  std::span<double> normal_cur(_normal_scratch.data(), this->_gdim);
-  this->physical_fct_normal(normal_cur, K, lfct_id);
-
-  // Calculate flux within current cell
-  for (std::size_t i = 0; i < _nipoints_per_fct; ++i)
-  {
-    int offs = this->_gdim * i;
-
-    // Set flux
-    for (std::size_t j = 0; j < this->_gdim; ++j)
-    {
-      _flux_scratch(i, j) = normal_cur[j] * flux_ntrace_cur[i];
-    }
-  }
+  normaltrace_to_vector(flux_ntrace_cur, lfct_id, K);
 
   // Calculate DOFs based on values at interpolation points
   interpolate_flux(_flux_scratch, flux_dofs, lfct_id, J, detJ, K);
@@ -584,6 +573,28 @@ void KernelDataBC<T>::interpolate_flux(mdspan_t<const T, 2> flux_cur,
     }
 
     flux_dofs[i] = dof;
+  }
+}
+
+template <typename T>
+void KernelDataBC<T>::normaltrace_to_vector(std::span<const T> normaltrace_cur,
+                                            std::int8_t lfct_id,
+                                            mdspan_t<const double, 2> K)
+{
+  // Calculate physical facet normal
+  std::span<double> normal_cur(_normal_scratch.data(), this->_gdim);
+  this->physical_fct_normal(normal_cur, K, lfct_id);
+
+  // Calculate flux within current cell
+  for (std::size_t i = 0; i < normaltrace_cur.size(); ++i)
+  {
+    int offs = this->_gdim * i;
+
+    // Set flux
+    for (std::size_t j = 0; j < this->_gdim; ++j)
+    {
+      _flux_scratch(i, j) = normal_cur[j] * normaltrace_cur[i];
+    }
   }
 }
 

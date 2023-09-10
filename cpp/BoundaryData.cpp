@@ -4,6 +4,67 @@ using namespace dolfinx;
 using namespace dolfinx_eqlb;
 
 template <typename T>
+void assemble_projection(mdspan_t<const double, 2> flux_boundary,
+                         mdspan_t<double, 3> phi,
+                         std::span<const double> quadrature_weights,
+                         const double detJ,
+                         Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>& A_e,
+                         Eigen::Matrix<T, Eigen::Dynamic, 1>& L_e)
+{
+  // The number of quadrature points
+  const int num_qpoints = quadrature_weights.size();
+
+  // Map shape-functions to reference element
+  const int ndofs_per_fct = phi.extent(1);
+
+  // Initialise tangent arrays
+  A_e.setZero();
+  L_e.setZero();
+
+  // Loop over quadrature points
+  const int gdim = flux_boundary.extent(1);
+
+  for (std::size_t iq = 0; iq < num_qpoints; ++iq)
+  {
+    for (std::size_t i = 0; i < ndofs_per_fct; ++i)
+    {
+      // Set RHS
+      T scal_l = 0.0;
+
+      for (std::size_t k = 0; k < gdim; ++k)
+      {
+        scal_l += flux_boundary(iq, k) * phi(iq, i, k);
+      }
+
+      L_e(i) += scal_l * detJ * quadrature_weights[iq];
+
+      for (std::size_t j = i; j < ndofs_per_fct; ++j)
+      {
+        // Calculate mass matrix
+        double scal_m = 0.0;
+
+        for (std::size_t k = 0; k < gdim; ++k)
+        {
+          scal_m += phi(iq, i, k) * phi(iq, j, k);
+        }
+
+        A_e(i, j) += scal_m * detJ * quadrature_weights[iq];
+      }
+    }
+  }
+
+  // Add symmetric entries of mass-matrix
+  for (std::size_t i = 1; i < ndofs_per_fct; ++i)
+  {
+    for (std::size_t j = 0; j < i; ++j)
+    {
+      // Calculate mass matrix
+      A_e(i, j) += A_e(j, i);
+    }
+  }
+}
+
+template <typename T>
 BoundaryData<T>::BoundaryData(
     std::vector<std::vector<std::shared_ptr<FluxBC<T>>>>& list_bcs,
     std::vector<std::shared_ptr<fem::Function<T>>>& boundary_flux,
@@ -62,7 +123,7 @@ BoundaryData<T>::BoundaryData(
   // The mesh
   std::shared_ptr<const mesh::Mesh> mesh = V_flux_hdiv->mesh();
 
-  // Required conductivities.
+  // Required conductivities
   std::shared_ptr<const graph::AdjacencyList<std::int32_t>> cell_to_fct
       = mesh->topology().connectivity(_gdim, _gdim - 1);
 
@@ -100,17 +161,33 @@ BoundaryData<T>::BoundaryData(
   mdspan_t<const double, 2> coordinates(coordinates_data.data(),
                                         mesh->geometry().cmap().dim(), 3);
 
-  // Number of interpolation points per facet
+  // Number of interpolation points
   const int nipoints = _kernel_data.num_interpolation_points();
   const int nipoints_per_fct
       = _kernel_data.num_interpolation_points_per_facet();
 
-  // The boundary kernel
-  std::vector<T> values_bkernel(nipoints);
+  // Number of quadrature points
+  const int nqpoints = _quadrature_rule.num_points();
+  const int nqpoints_per_fct = _quadrature_rule.num_points(0);
+
+  // Storage of normal-traces on boundary
+  std::vector<T> values_bkernel(std::max(nipoints, nqpoints));
 
   // Constants/coefficients for evaluation of boundary kernel
   std::vector<T> constants_belmts, coefficients_belmts;
   std::int32_t cstride_coefficients;
+
+  // Shape-functions (projection)
+  bool initialise_projection = true;
+
+  std::vector<double> basis_projection_values, mbasis_projection_values;
+  mdspan_t<const double, 5> basis_projection;
+  mdspan_t<double, 3> mbasis_projection;
+
+  // Linear equation system (projection)
+  Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic> A_e;
+  Eigen::Matrix<T, Eigen::Dynamic, 1> L_e, u_e;
+  Eigen::LLT<Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>> solver;
 
   /* Calculate boundary DOFs */
   for (int i_rhs = 0; i_rhs < _num_rhs; ++i_rhs)
@@ -185,27 +262,69 @@ BoundaryData<T>::BoundaryData(
         double detJ
             = _kernel_data.compute_jacobian(J, K, _detJ_scratch, coordinates);
 
+        // Evaluate boundary kernel
+        std::fill(values_bkernel.begin(), values_bkernel.end(), 0.0);
+        boundary_kernel(
+            values_bkernel.data(),
+            coefficients_belmts.data() + i_fct * cstride_coefficients,
+            constants_belmts.data(), coordinates_data.data(), nullptr, nullptr);
+
+        std::span<T> flux_ntrace(values_bkernel.data()
+                                     + fct_loc * nipoints_per_fct,
+                                 nipoints_per_fct);
+
         // Calculate boundary DOFs
         if (bc->projection_required())
         {
+          // Initialise projection
+          if (initialise_projection)
+          {
+            // Storage for shape functions
+            std::array<std::size_t, 5> shape
+                = _kernel_data.shapefunctions_flux_qpoints(
+                    _V_flux->element()->basix_element(),
+                    basis_projection_values);
+
+            basis_projection = mdspan_t<const double, 5>(
+                basis_projection_values.data(), shape);
+
+            mbasis_projection_values.resize(nqpoints_per_fct * _ndofs_per_fct
+                                            * _gdim);
+            mbasis_projection
+                = mdspan_t<double, 3>(mbasis_projection_values.data(),
+                                      nqpoints_per_fct, _ndofs_per_fct, _gdim);
+
+            // Storage equation system
+            A_e.resize(_ndofs_per_fct, _ndofs_per_fct);
+            L_e.resize(_ndofs_per_fct);
+            u_e.resize(_ndofs_per_fct);
+
+            // Mark projection as initialised
+            initialise_projection = false;
+          }
+
+          // Extract quadrature weights
+          std::span<const double> quadrature_weights
+              = kernel_data.extract_quadrature_weights(fct_loc);
+
+          // Calculate flux on boundary
+          mdspan_t<const double, 2> flux_vector
+              = kernel_data.normaltrace_to_flux(flux_ntrace, fct_loc, K);
+
+          // Assemble linear system
+          assemble_projection(kernel_data, flux_ntrace, A_e, L_e, fct_loc, J,
+                              detJ, K);
+
+          // Solve linear system
+
+          // Move boundary DOFs into element vector
+
           throw std::runtime_error(
               "Projection for boundary conditions not implemented");
         }
         else
         {
-          // Evaluate boundary condition at interpolation points
-          std::fill(values_bkernel.begin(), values_bkernel.end(), 0.0);
-          boundary_kernel(values_bkernel.data(),
-                          coefficients_belmts.data()
-                              + i_fct * cstride_coefficients,
-                          constants_belmts.data(), coordinates_data.data(),
-                          nullptr, nullptr);
-
           // Perform interpolation
-          std::span<T> flux_ntrace(values_bkernel.data()
-                                       + fct_loc * nipoints_per_fct,
-                                   nipoints_per_fct);
-
           _kernel_data.interpolate_flux(flux_ntrace, boundary_values_fct,
                                         fct_loc, J, detJ, K);
         }

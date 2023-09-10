@@ -403,6 +403,28 @@ public:
                const int nfluxdofs_per_fct, const int nfluxdofs_cell,
                const bool flux_is_custom);
 
+  /* Shape functions (flux) at quadrature points */
+  std::array<std::size_t, 5>
+  shapefunctions_flux_qpoints(const basix::FiniteElement& basix_element,
+                              std::vector<double>& storage)
+  {
+    return this->tabulate_basis(basix_element,
+                                this->_quadrature_rule[0]->points(), storage,
+                                false, false);
+  }
+
+  /* Recover flux from normal-trace */
+  mdspan_t<const T, 2> normaltrace_to_flux(std::span<const T> flux_ntrace_cur,
+                                           std::int8_t lfct_id,
+                                           mdspan_t<const double, 2> K)
+  {
+    // Perform calculation
+    normaltrace_to_vector(flux_ntrace_cur, lfct_id, K);
+
+    return mdspan_t<const T, 2>(_flux_scratch_data.data(), _size_flux_scratch,
+                                (std::size_t)this->_gdim);
+  }
+
   /* Interpolate flux function */
   void interpolate_flux(std::span<const T> flux_ntrace_cur,
                         std::span<T> flux_dofs, std::int8_t lfct_id,
@@ -448,19 +470,22 @@ public:
   int num_interpolation_points_per_facet() const { return _nipoints_per_fct; }
 
 protected:
+  void normaltrace_to_vector(std::span<const T> normaltrace_cur,
+                             std::int8_t lfct_id, mdspan_t<const double, 2> K);
+
   /* Variable definitions */
   // Interpolation data
   std::size_t _nipoints_per_fct, _nipoints;
   std::vector<double> _ipoints, _data_M;
   mdspan_t<const double, 4> _M; // Indices: facet, dof, gdim, points
 
-  // Tabulated shape-functions (H(div) flux)
+  // Tabulated shape-functions H(div) flux (integration points)
   std::vector<double> _basis_flux_values;
   mdspan_t<const double, 5> _basis_flux;
   const int _ndofs_per_fct, _ndofs_fct, _ndofs_cell;
 
   // Tabulated shape-functions (projected flux, RHS)
-  std::vector<double> _basis_projection_values;
+  std::vector<double> _basis_projection_values, _mbasis_projection_values;
   mdspan_t<const double, 5> _basis_projection;
 
   // Tabulated shape-functions (hat-function)
@@ -469,6 +494,7 @@ protected:
   mdspan_t<const double, 5> _basis_hat;
 
   // Pull-back H(div) data
+  std::size_t _size_flux_scratch;
   std::vector<T> _flux_scratch_data, _mflux_scratch_data;
   mdspan_t<T, 2> _flux_scratch, _mflux_scratch;
 
@@ -482,6 +508,8 @@ protected:
   // Push-forward H(div) shape-functions
   std::vector<double> _mbasis_flux_values, _mbasis_scratch_values;
   mdspan_t<double, 2> _mbasis_flux, _mbasis_scratch;
+
+  std::vector<double> _mbasis_projection_values;
 
   std::function<void(mdspan_t<double, 2>&, const mdspan_t<const double, 2>&,
                      const mdspan_t<const double, 2>&, double,
