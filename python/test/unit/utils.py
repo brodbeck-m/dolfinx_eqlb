@@ -8,6 +8,7 @@ import basix
 
 import dolfinx
 import dolfinx.fem as dfem
+import dolfinx.geometry as dgeom
 import dolfinx.mesh as dmesh
 
 import ufl
@@ -86,6 +87,102 @@ def create_unitsquare_gmsh(
 
 def create_quatercircle_gmsh():
     raise NotImplementedError("Not implemented yet")
+
+
+"""
+Point evaluation of fe-functions
+"""
+
+
+def points_boundary_unitsquare(
+    geometry: Geometry, boundary_id: List, npoints_per_fct: int
+) -> np.array:
+    """Creates points on boundary
+    Evaluation points are cerated per call-facet on boundary, while the mesh-nodes itself are excluded.
+
+    Args:
+        geometry:        The Geometry of the domain
+        boundary_id:     List of boundary ids on which the evaluation points are created
+        npoints_per_fct: Number of evaluation points per facet
+
+    Returns:
+        points:         List of evaluation points per boundary id
+    """
+
+    # The number of boundary facets
+    n_bfcts = int(geometry.facet_function.indices.size / 4)
+
+    # Initialise output
+    n_points = len(boundary_id) * n_bfcts * npoints_per_fct
+    n_points_per_boundary = n_bfcts * npoints_per_fct
+    points = np.zeros((n_points, 3), dtype=np.float64)
+
+    # 1D mesh coordinates
+    s_points = np.zeros(n_points_per_boundary)
+
+    for i in range(0, n_bfcts):
+        start_point = 0 + i * (1 / n_bfcts)
+        end_point = start_point + (1 / n_bfcts)
+
+        s_points[i * npoints_per_fct : (i + 1) * npoints_per_fct] = np.linspace(
+            start_point, end_point, npoints_per_fct + 1, endpoint=False
+        )[1:]
+
+    # Push 1D coordinates to 3D
+    for i in range(0, len(boundary_id)):
+        begin = i * n_points_per_boundary
+        end = (i + 1) * n_points_per_boundary
+        if boundary_id[i] == 1:
+            points[begin:end, 0] = 0
+            points[begin:end, 1] = s_points
+        elif boundary_id[i] == 2:
+            points[begin:end, 0] = s_points
+            points[begin:end, 1] = 0
+        elif boundary_id[i] == 3:
+            points[begin:end, 0] = 1
+            points[begin:end, 1] = s_points
+        else:
+            points[begin:end, 0] = s_points
+            points[begin:end, 1] = 1
+
+    return points
+
+
+def initialise_evaluate_function(domain: dmesh.Mesh, points: np.ndarray):
+    """Prepare evaluation of dfem.Function
+    Function evaluation requires list of points and the adjacent cells per
+    processor.
+
+    Args:
+        domain:          The Mesh
+        points:          The points, at which the function
+                         has to be evaluated
+
+
+    Returns:
+        points_on_proc: Evaluation points on each processor
+        cells:          Cell within which the point is located
+    """
+    # The search tree
+    bb_tree = dgeom.BoundingBoxTree(domain, domain.topology.dim)
+
+    # Initialise output
+    cells = []
+    points_on_proc = []
+
+    # Find cells whose bounding-box collide with the the points
+    cell_candidates = dgeom.compute_collisions(bb_tree, points)
+
+    # Choose one of the cells that contains the point
+    colliding_cells = dgeom.compute_colliding_cells(domain, cell_candidates, points)
+    for i, point in enumerate(points):
+        if len(colliding_cells.links(i)) > 0:
+            points_on_proc.append(point)
+            cells.append(colliding_cells.links(i)[0])
+
+    points_on_proc = np.array(points_on_proc, dtype=np.float64)
+
+    return points_on_proc, cells
 
 
 """

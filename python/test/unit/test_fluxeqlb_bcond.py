@@ -5,81 +5,35 @@ import pytest
 
 import basix
 import dolfinx
+from dolfinx.mesh import CellType, DiagonalType
 import dolfinx.mesh as dmesh
 import dolfinx.fem as dfem
-import dolfinx.geometry as dgeom
 import ufl
 
 from dolfinx_eqlb.cpp import BoundaryData
 
 from dolfinx_eqlb.elmtlib import create_hierarchic_rt
 from dolfinx_eqlb.lsolver import local_projection
-from dolfinx_eqlb.eqlb import fluxbc, FluxEqlbEV, FluxEqlbSE
+from dolfinx_eqlb.eqlb import fluxbc
 
-from utils import Geometry, create_unitsquare_builtin, create_unitsquare_gmsh
-from testcase_poisson import (
-    set_arbitrary_rhs,
-    solve_poisson_problem,
-    equilibrate_poisson,
+from utils import (
+    create_unitsquare_builtin,
+    create_unitsquare_gmsh,
+    points_boundary_unitsquare,
+    initialise_evaluate_function,
 )
 
-""" Utility routines """
-
-
-def initialise_fct_list(geometry: Geometry, npoints_per_fct: int):
-    # Extract boundary facets
-    fcts_1 = geometry.facet_function.indices[geometry.facet_function.values == 1]
-    fcts_4 = geometry.facet_function.indices[geometry.facet_function.values == 4]
-
-    n_fcts = fcts_1.size
-
-    # Initialise test-nodes
-    n_cpoints = n_fcts * (npoints_per_fct)
-    s_points = np.zeros(n_cpoints)
-
-    for i in range(0, n_fcts):
-        start_point = 0 + i * (1 / n_fcts)
-        end_point = start_point + (1 / n_fcts)
-
-        s_points[i * npoints_per_fct : (i + 1) * npoints_per_fct] = np.linspace(
-            start_point, end_point, npoints_per_fct + 1, endpoint=False
-        )[1:]
-
-    points = np.zeros((2 * n_cpoints, 3))
-    points[:n_cpoints, 1] = s_points
-    points[n_cpoints:, 0] = s_points
-    points[n_cpoints:, 1] = 1.0
-
-    return [fcts_1, fcts_4], points
-
-
-def initialise_eval_fe_function(domain: dmesh.Mesh, points: np.ndarray):
-    bb_tree = dgeom.BoundingBoxTree(domain, domain.topology.dim)
-
-    cells = []
-    points_on_proc = []
-    # Find cells whose bounding-box collide with the the points
-    cell_candidates = dgeom.compute_collisions(bb_tree, points)
-    # Choose one of the cells that contains the point
-    colliding_cells = dgeom.compute_colliding_cells(domain, cell_candidates, points)
-    for i, point in enumerate(points):
-        if len(colliding_cells.links(i)) > 0:
-            points_on_proc.append(point)
-            cells.append(colliding_cells.links(i)[0])
-
-    points_on_proc = np.array(points_on_proc, dtype=np.float64)
-
-    return points_on_proc, cells
-
-
-""" Test for boundary conditions """
+""" Test calculation of boundary conditions for
+    a.) The polynomial case p<=deg(RT_k)-1 (with and without projection)
+    b.) The non-polynomial case only with projection
+"""
 
 
 @pytest.mark.parametrize("mesh_type", ["builtin"])
 @pytest.mark.parametrize("degree", [1, 2, 3, 4])
 @pytest.mark.parametrize("rt_space", ["basix", "custom", "subspace"])
 @pytest.mark.parametrize("use_projection", [False, True])
-def test_creation_bounddata(mesh_type, degree, rt_space, use_projection):
+def test_boundary_data_polynomial(mesh_type, degree, rt_space, use_projection):
     # Create mesh
     n_cells = 5
 
@@ -123,9 +77,11 @@ def test_creation_bounddata(mesh_type, degree, rt_space, use_projection):
     V_ref = dfem.VectorFunctionSpace(geometry.mesh, ("DG", degree - 1))
 
     # Initialise boundary facets and test-points
-    list_bfcts, points_eval = initialise_fct_list(geometry, degree)
+    list_boundary_ids = [1, 4]
+    points_eval = points_boundary_unitsquare(geometry, list_boundary_ids, degree + 1)
+    plist_eval, clist_eval = initialise_evaluate_function(geometry.mesh, points_eval)
+
     npoints_eval = int(points_eval.shape[0] / 2)
-    plist_eval, clist_eval = initialise_eval_fe_function(geometry.mesh, points_eval)
 
     # Set boundary degree
     for deg in range(0, degree):
@@ -139,14 +95,14 @@ def test_creation_bounddata(mesh_type, degree, rt_space, use_projection):
             func_2 = dfem.Function(V_scal)
             func_2.x.array[:] = 0
         else:
-            V_vec = dfem.VectorFunctionSpace(geometry.mesh, ("CG", deg))
+            V_vec = dfem.VectorFunctionSpace(geometry.mesh, ("P", deg))
             func_1 = dfem.Function(V_vec)
             func_1.x.array[:] = 2 * (
                 np.random.rand(V_vec.dofmap.bs * V_vec.dofmap.index_map.size_local)
                 + 0.1
             )
 
-            V_scal = dfem.FunctionSpace(geometry.mesh, ("CG", deg))
+            V_scal = dfem.FunctionSpace(geometry.mesh, ("P", deg))
             func_2 = dfem.Function(V_scal)
             func_2.x.array[:] = 3 * (
                 np.random.rand(V_scal.dofmap.index_map.size_local) + 0.3
@@ -166,8 +122,15 @@ def test_creation_bounddata(mesh_type, degree, rt_space, use_projection):
 
         # Create boundary conditions
         list_bcs = []
-        list_bcs.append(fluxbc(ntrace_ufl, list_bfcts[0], V_flux, use_projection))
-        list_bcs.append(fluxbc(ntrace_ufl, list_bfcts[1], V_flux, use_projection))
+
+        for id in list_boundary_ids:
+            # Get boundary facets
+            bfcts = geometry.facet_function.indices[
+                geometry.facet_function.values == id
+            ]
+
+            # Create instance of FluxBC
+            list_bcs.append(fluxbc(ntrace_ufl, bfcts, V_flux, use_projection))
 
         # Initialise boundary data
         if rt_space == "subspace":
@@ -204,91 +167,106 @@ def test_creation_bounddata(mesh_type, degree, rt_space, use_projection):
         assert np.allclose(val_bfunc[npoints_eval:, 1], val_ref[npoints_eval:, 1])
 
 
-@pytest.mark.parametrize("mesh_type", ["builtin"])
 @pytest.mark.parametrize("degree", [1, 2, 3, 4])
-@pytest.mark.parametrize("equilibrator", [FluxEqlbEV])
-def test_patch_bc(mesh_type, degree, equilibrator):
+def test_boundary_data_general(degree):
+    # --- Calculate boundary conditions (2D)
     # Create mesh
-    if mesh_type == "builtin":
-        geometry = create_unitsquare_builtin(
-            3, dmesh.CellType.triangle, dmesh.DiagonalType.crossed
-        )
-    elif mesh_type == "gmsh":
-        raise NotImplementedError("GMSH mesh not implemented yet")
-    else:
-        raise ValueError("Unknown mesh type")
-
-    # Initialise boundary facets and test-points
-    list_bfcts, points_eval = initialise_fct_list(geometry, degree)
-    npoints_eval = int(points_eval.shape[0] / 2)
-    plist_eval, clist_eval = initialise_eval_fe_function(geometry.mesh, points_eval)
-
-    # FunctionSpace of primal problem
-    V_prime = dfem.FunctionSpace(geometry.mesh, ("CG", degree))
-
-    # Determine degree of projected quantities (primal flux, RHS)
-    degree_proj = degree - 1
-
-    # Set RHS
-    rhs, rhs_projected = set_arbitrary_rhs(
-        geometry.mesh, degree_proj, degree_projection=degree_proj
+    n_cells = 5
+    geometry = create_unitsquare_builtin(
+        n_cells, CellType.triangle, DiagonalType.crossed
     )
 
-    for degree_bc in range(0, degree):
-        # Set function space
-        V_ref = dfem.VectorFunctionSpace(geometry.mesh, ("DG", degree_bc))
+    # Initialise connectivity
+    geometry.mesh.topology.create_connectivity(1, 2)
+    geometry.mesh.topology.create_connectivity(2, 1)
 
-        # Set boundary conditions
-        x_ufl = ufl.SpatialCoordinate(geometry.mesh)
+    # Initialise flux space
+    elmt_flux = basix.ufl_wrapper.BasixElement(
+        create_hierarchic_rt(basix.CellType.triangle, degree, True)
+    )
+    V_flux = dfem.FunctionSpace(geometry.mesh, elmt_flux)
 
-        if degree_bc == 0:
-            ntrace_ufl = dfem.Constant(geometry.mesh, PETSc.ScalarType(0.15))
-        else:
-            ntrace_ufl = (
-                0.2 * ((x_ufl[0] ** degree_bc) + (x_ufl[1] ** degree_bc)) + 0.15
-            )
+    boundary_function = dfem.Function(V_flux)
 
-        boundary_id_dirichlet = [2, 3]
-        boundary_id_neumann = [1, 4]
-        dirichlet_functions = [dfem.Function(V_prime), dfem.Function(V_prime)]
-        neumann_functions = [ntrace_ufl, ntrace_ufl]
-        neumann_projection = [False, False]
+    # Initialise test-points/ function evaluation
+    points_eval = points_boundary_unitsquare(geometry, [1, 4], degree)
+    plist_eval, clist_eval = initialise_evaluate_function(geometry.mesh, points_eval)
 
-        # Solve equilibration
-        u_prime, sigma_projected = solve_poisson_problem(
-            V_prime,
-            geometry,
-            boundary_id_neumann,
-            boundary_id_dirichlet,
-            rhs,
-            neumann_functions,
-            dirichlet_functions,
-            degree_projection=degree_proj,
+    npoints_eval = int(points_eval.shape[0] / 2)
+
+    # set ufl-repr. of normal-trace on boundary
+    x_ufl = ufl.SpatialCoordinate(geometry.mesh)
+
+    ntrace_ufl_1 = ufl.sin(4 * ufl.pi * x_ufl[1]) * ufl.exp(-x_ufl[1])
+    ntrace_ufl_4 = ufl.cos(6 * ufl.pi * x_ufl[0]) * ufl.exp(-x_ufl[0])
+
+    # Create boundary conditions
+    list_bcs = []
+
+    bfcts_1 = geometry.facet_function.indices[geometry.facet_function.values == 1]
+    list_bcs.append(fluxbc(ntrace_ufl_1, bfcts_1, V_flux, True))
+
+    bfcts_4 = geometry.facet_function.indices[geometry.facet_function.values == 4]
+    list_bcs.append(fluxbc(ntrace_ufl_4, bfcts_4, V_flux, True))
+
+    # Initialise boundary data
+    boundary_data = BoundaryData(
+        [list_bcs],
+        [boundary_function._cpp_object],
+        V_flux._cpp_object,
+        True,
+        [[]],
+    )
+
+    # Evaluate BCs on control points
+    val_bfunc = boundary_function.eval(plist_eval, clist_eval)
+
+    # --- Calculate reference solution (1D)
+    # Create mesh
+    domain_1d = dmesh.create_unit_interval(MPI.COMM_WORLD, n_cells)
+
+    # Initialise reference space
+    V_ref = dfem.FunctionSpace(domain_1d, ("DG", degree - 1))
+
+    # Initialise test-points/ function evaluation
+    points_eval_1D = np.zeros((npoints_eval, 3))
+    points_eval_1D[:, 0] = points_eval[0:npoints_eval, 1]
+    plist_eval, clist_eval = initialise_evaluate_function(domain_1d, points_eval_1D)
+
+    # Reference function 1D
+    ntrace_ufl_1d = []
+    s_ufl = ufl.SpatialCoordinate(domain_1d)[0]
+
+    ntrace_ufl_1d.append(-ufl.sin(4 * ufl.pi * s_ufl) * ufl.exp(-s_ufl))
+    ntrace_ufl_1d.append(ufl.cos(6 * ufl.pi * s_ufl) * ufl.exp(-s_ufl))
+
+    # Projection into reference space
+    u = ufl.TrialFunction(V_ref)
+    v = ufl.TestFunction(V_ref)
+
+    dvol = ufl.Measure(
+        "dx", domain=domain_1d, metadata={"quadrature_degree": 2 * degree}
+    )
+
+    a = ufl.inner(u, v) * dvol
+
+    for i in range(0, len(ntrace_ufl_1d)):
+        # Solve 1D projection
+        l = ufl.inner(ntrace_ufl_1d[i], v) * dvol
+
+        problem = dfem.petsc.LinearProblem(
+            a, l, bcs=[], petsc_options={"ksp_type": "preonly", "pc_type": "lu"}
         )
+        refsol = problem.solve()
 
-        # Solve equilibration
-        sigma_eq = equilibrate_poisson(
-            equilibrator,
-            degree,
-            geometry,
-            [sigma_projected],
-            [rhs_projected],
-            [boundary_id_neumann],
-            [boundary_id_dirichlet],
-            [neumann_functions],
-            [neumann_projection],
-        )[0]
-
-        # Exact boundary conditions
-        bc_ref = ufl.as_vector([-ntrace_ufl, ntrace_ufl])
-        refsol = local_projection(V_ref, [bc_ref], quadrature_degree=2 * degree)[0]
-
-        # Evaluate boundary values
-        val_eqlbflux = sigma_eq.eval(plist_eval, clist_eval)
+        # Evaluate reference solution
         val_ref = refsol.eval(plist_eval, clist_eval)
 
-        assert np.allclose(val_eqlbflux[:npoints_eval, 0], val_ref[:npoints_eval, 0])
-        assert np.allclose(val_eqlbflux[npoints_eval:, 1], val_ref[npoints_eval:, 1])
+        # Compare boundary-condition and reference solution
+        if i == 0:
+            assert np.allclose(val_bfunc[:npoints_eval, 0], val_ref[:, 0])
+        else:
+            assert np.allclose(val_bfunc[npoints_eval:, 1], val_ref[:, 0])
 
 
 if __name__ == "__main__":
