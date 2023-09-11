@@ -56,7 +56,7 @@ def fluxbc(
     if requires_projection:
         # Quadrature degree
         if quadrature_degree is None:
-            qdegree = 2 * flux_degree
+            qdegree = 2 * (flux_degree - 1)
         else:
             qdegree = quadrature_degree
 
@@ -157,9 +157,9 @@ def boundarydata(
     # Set (default) quadrature degree
     degree_flux = V.element.basix_element.degree
     if quadrature_degree is None:
-        qdegree = 2 * degree_flux
+        qdegree = 2 * (degree_flux - 1)
     else:
-        if quadrature_degree < 2 * degree_flux:
+        if quadrature_degree < 2 * (degree_flux - 1):
             raise RuntimeError("Quadrature has to be at least 2*k!")
         else:
             qdegree = quadrature_degree
