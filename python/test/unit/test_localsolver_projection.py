@@ -384,7 +384,7 @@ def test_localprojection_ufl_Hdiv(cell, family_basix, n_elmt, degree, test_func)
         quad_deg = None
 
         # Create rhs-function
-        elmt_rhs = ufl.VectorElement("CG", msh.ufl_cell(), degree)
+        elmt_rhs = ufl.VectorElement("P", msh.ufl_cell(), degree)
         V_rhs = dfem.FunctionSpace(msh, elmt_rhs)
         func = dfem.Function(V_rhs)
 

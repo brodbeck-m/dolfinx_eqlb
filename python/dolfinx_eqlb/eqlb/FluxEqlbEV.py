@@ -63,7 +63,7 @@ class FluxEqlbEV(FluxEquilibrator):
 
         # --- Create function-spaces
         # Definition of finite elements
-        P_hat = ufl.FiniteElement("CG", msh.ufl_cell(), 1)
+        P_hat = ufl.FiniteElement("P", msh.ufl_cell(), 1)
         P_flux = ufl.FiniteElement("RT", msh.ufl_cell(), self.degree_flux)
         P_DG = ufl.FiniteElement("DG", msh.ufl_cell(), self.degree_flux - 1)
 

@@ -1,4 +1,5 @@
 import numpy as np
+from petsc4py import PETSc
 import pytest
 
 import basix
@@ -9,7 +10,12 @@ import ufl
 from dolfinx_eqlb.eqlb import FluxEqlbEV, FluxEqlbSE
 from dolfinx_eqlb.lsolver import local_projection
 
-from utils import create_unitsquare_builtin, create_unitsquare_gmsh
+from utils import (
+    create_unitsquare_builtin,
+    create_unitsquare_gmsh,
+    points_boundary_unitsquare,
+    initialise_evaluate_function,
+)
 from testcase_poisson import (
     set_arbitrary_rhs,
     set_arbitrary_bcs,
@@ -193,7 +199,7 @@ def test_equilibration_conditions(mesh_type, degree, bc_type, equilibrator):
     for degree_prime in range(1, degree + 1):
         for degree_rhs in range(0, degree):
             # Set function space
-            V_prime = dfem.FunctionSpace(geometry.mesh, ("CG", degree_prime))
+            V_prime = dfem.FunctionSpace(geometry.mesh, ("P", degree_prime))
 
             # Determine degree of projected quantities (primal flux, RHS)
             degree_proj = max(degree_prime - 1, degree_rhs)
@@ -243,6 +249,98 @@ def test_equilibration_conditions(mesh_type, degree, bc_type, equilibrator):
             # --- Check jump condition (only required for semi-explicit equilibrator)
             if equilibrator == FluxEqlbSE:
                 check_jump_condition(sigma_eq, sigma_projected)
+
+
+@pytest.mark.parametrize("mesh_type", ["builtin"])
+@pytest.mark.parametrize("degree", [1, 2, 3, 4])
+@pytest.mark.parametrize("equilibrator", [FluxEqlbEV])
+def test_equilibration_boundary_condition(mesh_type, degree, equilibrator):
+    # Create mesh
+    if mesh_type == "builtin":
+        geometry = create_unitsquare_builtin(
+            3, dmesh.CellType.triangle, dmesh.DiagonalType.crossed
+        )
+    elif mesh_type == "gmsh":
+        raise NotImplementedError("GMSH mesh not implemented yet")
+    else:
+        raise ValueError("Unknown mesh type")
+
+    # Initialise boundary facets and test-points
+    points_eval = points_boundary_unitsquare(geometry, [1, 4], degree + 1)
+
+    npoints_per_boundary = int(points_eval.shape[0] / 2)
+    plist_eval, clist_eval = initialise_evaluate_function(geometry.mesh, points_eval)
+
+    # FunctionSpace of primal problem
+    V_prime = dfem.FunctionSpace(geometry.mesh, ("P", degree))
+
+    # Determine degree of projected quantities (primal flux, RHS)
+    degree_proj = degree - 1
+
+    # Set RHS
+    rhs, rhs_projected = set_arbitrary_rhs(
+        geometry.mesh, degree_proj, degree_projection=degree_proj
+    )
+
+    for degree_bc in range(0, degree):
+        # Set function space
+        V_ref = dfem.VectorFunctionSpace(geometry.mesh, ("DG", degree_bc))
+
+        # Set boundary conditions
+        x_ufl = ufl.SpatialCoordinate(geometry.mesh)
+
+        if degree_bc == 0:
+            ntrace_ufl = dfem.Constant(geometry.mesh, PETSc.ScalarType(0.15))
+        else:
+            ntrace_ufl = (
+                0.2 * ((x_ufl[0] ** degree_bc) + (x_ufl[1] ** degree_bc)) + 0.15
+            )
+
+        boundary_id_dirichlet = [2, 3]
+        boundary_id_neumann = [1, 4]
+        dirichlet_functions = [dfem.Function(V_prime), dfem.Function(V_prime)]
+        neumann_functions = [ntrace_ufl, ntrace_ufl]
+        neumann_projection = [False, False]
+
+        # Solve equilibration
+        u_prime, sigma_projected = solve_poisson_problem(
+            V_prime,
+            geometry,
+            boundary_id_neumann,
+            boundary_id_dirichlet,
+            rhs,
+            neumann_functions,
+            dirichlet_functions,
+            degree_projection=degree_proj,
+        )
+
+        # Solve equilibration
+        sigma_eq = equilibrate_poisson(
+            equilibrator,
+            degree,
+            geometry,
+            [sigma_projected],
+            [rhs_projected],
+            [boundary_id_neumann],
+            [boundary_id_dirichlet],
+            [neumann_functions],
+            [neumann_projection],
+        )[0]
+
+        # Exact boundary conditions
+        bc_ref = ufl.as_vector([-ntrace_ufl, ntrace_ufl])
+        refsol = local_projection(V_ref, [bc_ref], quadrature_degree=2 * degree)[0]
+
+        # Evaluate boundary values
+        val_eqlbflux = sigma_eq.eval(plist_eval, clist_eval)
+        val_ref = refsol.eval(plist_eval, clist_eval)
+
+        assert np.allclose(
+            val_eqlbflux[:npoints_per_boundary, 0], val_ref[:npoints_per_boundary, 0]
+        )
+        assert np.allclose(
+            val_eqlbflux[npoints_per_boundary:, 1], val_ref[npoints_per_boundary:, 1]
+        )
 
 
 if __name__ == "__main__":

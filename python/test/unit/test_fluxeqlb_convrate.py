@@ -65,7 +65,7 @@ def test_convrate(degree, bc_type, equilibrator):
         sigma_ext_ufl = exact_flux_ufl_poisson(x)
 
         # Set function space
-        V_prime = dfem.FunctionSpace(geometry.mesh, ("CG", degree))
+        V_prime = dfem.FunctionSpace(geometry.mesh, ("P", degree))
 
         # Determine degree of projected quantities (primal flux, RHS)
         degree_proj = degree - 1
