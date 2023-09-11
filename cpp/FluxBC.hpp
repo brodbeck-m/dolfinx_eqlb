@@ -56,13 +56,17 @@ public:
   }
 
   /* Getter functions */
-  /// Return the flux function space
-  /// @param[out] projection_id The projection id
-  bool projection_required() const { return _projection_required; }
-
   /// Return the number of boundary facets
   /// @param[out] nfcts The number of boundary facets
   std::int32_t num_facets() const { return _nfcts; }
+
+  /// Return the number of point evaluations per facet
+  /// @param[out] num_eval The number of point evaluations per facet
+  int num_eval_per_facet() const { return _cstide_eval; }
+
+  /// Return if projection is required
+  /// @param[out] projection_id The projection id
+  bool projection_required() const { return _projection_required; }
 
   /// Return list of boundary facets
   /// @param[out] fcts The list of boundary facets

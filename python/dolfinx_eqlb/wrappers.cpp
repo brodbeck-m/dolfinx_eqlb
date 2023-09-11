@@ -160,17 +160,18 @@ void declare_bcs(py::module& m)
               [](std::vector<std::vector<std::shared_ptr<FluxBC<T>>>>& list_bcs,
                  std::vector<std::shared_ptr<fem::Function<T>>>& boundary_flux,
                  std::shared_ptr<const fem::FunctionSpace> V_flux_hdiv,
-                 bool rtflux_is_custom,
+                 bool rtflux_is_custom, int quadrature_degree,
                  const std::vector<std::vector<std::int32_t>>&
                      fct_esntbound_prime)
               {
                 // Return class
                 return BoundaryData<T>(list_bcs, boundary_flux, V_flux_hdiv,
-                                       rtflux_is_custom, fct_esntbound_prime);
+                                       rtflux_is_custom, quadrature_degree,
+                                       fct_esntbound_prime);
               }),
-          py::arg("rtflux_is_custom"), py::arg("list_of_bcs"),
-          py::arg("list_of_boundary_fluxes"), py::arg("V_flux_hdiv"),
-          py::arg("list_bfcts_prime"));
+          py::arg("list_of_bcs"), py::arg("list_of_boundary_fluxes"),
+          py::arg("V_flux_hdiv"), py::arg("rtflux_is_custom"),
+          py::arg("quadrature_degree"), py::arg("list_bfcts_prime"));
 }
 
 PYBIND11_MODULE(cpp, m)

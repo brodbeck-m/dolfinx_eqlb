@@ -10,11 +10,9 @@ import dolfinx.mesh as dmesh
 import dolfinx.fem as dfem
 import ufl
 
-from dolfinx_eqlb.cpp import BoundaryData
-
 from dolfinx_eqlb.elmtlib import create_hierarchic_rt
 from dolfinx_eqlb.lsolver import local_projection
-from dolfinx_eqlb.eqlb import fluxbc
+from dolfinx_eqlb.eqlb import fluxbc, boundarydata
 
 from utils import (
     create_unitsquare_builtin,
@@ -134,18 +132,18 @@ def test_boundary_data_polynomial(mesh_type, degree, rt_space, use_projection):
 
         # Initialise boundary data
         if rt_space == "subspace":
-            boundary_data = BoundaryData(
+            boundary_data = boundarydata(
                 [list_bcs],
-                [boundary_function._cpp_object],
-                V.sub(0)._cpp_object,
+                [boundary_function],
+                V.sub(0),
                 custom_rt,
                 [[]],
             )
         else:
-            boundary_data = BoundaryData(
+            boundary_data = boundarydata(
                 [list_bcs],
-                [boundary_function._cpp_object],
-                V_flux._cpp_object,
+                [boundary_function],
+                V_flux,
                 custom_rt,
                 [[]],
             )
@@ -204,18 +202,23 @@ def test_boundary_data_general(degree):
     list_bcs = []
 
     bfcts_1 = geometry.facet_function.indices[geometry.facet_function.values == 1]
-    list_bcs.append(fluxbc(ntrace_ufl_1, bfcts_1, V_flux, True))
+    list_bcs.append(
+        fluxbc(ntrace_ufl_1, bfcts_1, V_flux, True, quadrature_degree=3 * degree)
+    )
 
     bfcts_4 = geometry.facet_function.indices[geometry.facet_function.values == 4]
-    list_bcs.append(fluxbc(ntrace_ufl_4, bfcts_4, V_flux, True))
+    list_bcs.append(
+        fluxbc(ntrace_ufl_4, bfcts_4, V_flux, True, quadrature_degree=3 * degree)
+    )
 
     # Initialise boundary data
-    boundary_data = BoundaryData(
+    boundary_data = boundarydata(
         [list_bcs],
-        [boundary_function._cpp_object],
-        V_flux._cpp_object,
+        [boundary_function],
+        V_flux,
         True,
         [[]],
+        quadrature_degree=3 * degree,
     )
 
     # Evaluate BCs on control points
@@ -245,7 +248,7 @@ def test_boundary_data_general(degree):
     v = ufl.TestFunction(V_ref)
 
     dvol = ufl.Measure(
-        "dx", domain=domain_1d, metadata={"quadrature_degree": 2 * degree}
+        "dx", domain=domain_1d, metadata={"quadrature_degree": 3 * degree}
     )
 
     a = ufl.inner(u, v) * dvol

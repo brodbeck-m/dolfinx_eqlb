@@ -8,7 +8,7 @@ BoundaryData<T>::BoundaryData(
     std::vector<std::vector<std::shared_ptr<FluxBC<T>>>>& list_bcs,
     std::vector<std::shared_ptr<fem::Function<T>>>& boundary_flux,
     std::shared_ptr<const fem::FunctionSpace> V_flux_hdiv,
-    bool rtflux_is_custom,
+    bool rtflux_is_custom, int quadrature_degree,
     const std::vector<std::vector<std::int32_t>>& fct_esntbound_prime)
     : _flux_degree(V_flux_hdiv->element()->basix_element().degree()),
       _num_rhs(list_bcs.size()), _gdim(V_flux_hdiv->mesh()->geometry().dim()),
@@ -25,7 +25,7 @@ BoundaryData<T>::BoundaryData(
       _fct_to_cell(
           V_flux_hdiv->mesh()->topology().connectivity(_gdim - 1, _gdim)),
       _quadrature_rule(QuadratureRule(
-          V_flux_hdiv->mesh()->topology().cell_type(), 2 * _flux_degree,
+          V_flux_hdiv->mesh()->topology().cell_type(), quadrature_degree,
           V_flux_hdiv->mesh()->geometry().dim() - 1)),
       _kernel_data(
           KernelDataBC<T>(V_flux_hdiv->mesh(),
@@ -150,6 +150,22 @@ BoundaryData<T>::BoundaryData(
     // Handle facets with essential BCs on dual problem
     for (std::shared_ptr<FluxBC<T>> bc : list_bcs[i_rhs])
     {
+      // Check input
+      const int req_eval_per_fct
+          = (bc->projection_required()) ? nqpoints_per_fct : nipoints_per_fct;
+
+      // Check input
+      if (req_eval_per_fct != bc->num_eval_per_facet())
+      {
+        std::cout << "req_eval_per_fct: " << req_eval_per_fct << std::endl;
+        std::cout << "nqpoints_per_fct: " << nqpoints_per_fct << std::endl;
+        std::cout << "nipoints_per_fct: " << nipoints_per_fct << std::endl;
+        std::cout << "num_eval_per_facet: " << bc->num_eval_per_facet()
+                  << std::endl;
+        throw std::runtime_error("BoundaryData: Number of evaluation points "
+                                 "(FluxBC) does not match!");
+      }
+
       // Adjust number of boundary facets
       _num_bcfcts[i_rhs] += bc->num_facets();
 
@@ -210,6 +226,13 @@ BoundaryData<T>::BoundaryData(
         // Calculate boundary DOFs
         if (bc->projection_required())
         {
+          // Check input
+          if (nqpoints_per_fct != bc->num_eval_per_facet())
+          {
+            throw std::runtime_error(
+                "BoundaryData: Quadrature degree of FluxBC does nor match!");
+          }
+
           // Normal-trace on boundary facet
           std::span<T> flux_ntrace(values_bkernel.data()
                                        + fct_loc * nqpoints_per_fct,
@@ -279,6 +302,13 @@ BoundaryData<T>::BoundaryData(
         }
         else
         {
+          // Check input
+          if (nipoints_per_fct != bc->num_eval_per_facet())
+          {
+            throw std::runtime_error(
+                "BoundaryData: FunctionSpace of FluxBC does not match!");
+          }
+
           // Normal-trace on boundary facet
           std::span<T> flux_ntrace(values_bkernel.data()
                                        + fct_loc * nipoints_per_fct,

@@ -10,7 +10,7 @@ import dolfinx.fem as dfem
 import dolfinx.mesh as dmesh
 import ufl
 
-from dolfinx_eqlb.cpp import FluxBC
+from dolfinx_eqlb.cpp import FluxBC, BoundaryData
 
 ffi = cffi.FFI()
 
@@ -20,6 +20,7 @@ def fluxbc(
     facets: np.ndarray,
     V: dfem.FunctionSpace,
     requires_projection: typing.Optional[bool] = True,
+    quadrature_degree: typing.Optional[int] = None,
 ) -> FluxBC:
     """Create a representation of Dirichlet boundary for reconstructed flux spaces
 
@@ -30,6 +31,7 @@ def fluxbc(
         facets:              The boundary facets
         V:                   The function space of the reconstructed flux
         requires_projection: Specifies if boundary values have to be projected into appropriate P space
+        quadrature_degree:   Degree of quadrature rule for projection
     """
     # --- Extract required data
     # The mesh
@@ -53,7 +55,10 @@ def fluxbc(
     # Evaluation points of boundary function
     if requires_projection:
         # Quadrature degree
-        qdegree = 2 * flux_degree
+        if quadrature_degree is None:
+            qdegree = 2 * flux_degree
+        else:
+            qdegree = quadrature_degree
 
         # Create appropriate quadrature rule
         qpnts, _ = basix.make_quadrature(fct_type, qdegree)
@@ -127,9 +132,46 @@ def fluxbc(
         V._cpp_object,
         facets,
         ffi.cast("uintptr_t", ffi.addressof(ufcx_form)),
-        neval_per_fct,
+        int(pnts_eval.shape[0] / nfcts_per_cell),
         requires_projection,
         coefficients_cpp,
         positions,
         constants_cpp,
+    )
+
+
+def boundarydata(
+    flux_conditions: typing.List[typing.List[FluxBC]],
+    boundary_data: typing.List[dfem.Function],
+    V: dfem.FunctionSpace,
+    custom_rt: bool,
+    dirichlet_factes: typing.List[np.ndarray],
+    quadrature_degree: typing.Optional[int] = None,
+):
+    # Check input
+    n_rhs = len(flux_conditions)
+
+    if (n_rhs != len(boundary_data)) or (n_rhs != len(dirichlet_factes)):
+        raise RuntimeError("Size of input data does not match!")
+
+    # Set (default) quadrature degree
+    degree_flux = V.element.basix_element.degree
+    if quadrature_degree is None:
+        qdegree = 2 * degree_flux
+    else:
+        if quadrature_degree < 2 * degree_flux:
+            raise RuntimeError("Quadrature has to be at least 2*k!")
+        else:
+            qdegree = quadrature_degree
+
+    # Extract cpp-objects from boundary data
+    boundary_data_cpp = [f._cpp_object for f in boundary_data]
+
+    return BoundaryData(
+        flux_conditions,
+        boundary_data_cpp,
+        V._cpp_object,
+        custom_rt,
+        qdegree,
+        dirichlet_factes,
     )
