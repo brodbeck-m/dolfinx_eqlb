@@ -152,7 +152,8 @@ def set_arbitrary_bcs(
 ):
     """Set arbitrary dirichlet and neumann BCs
 
-    Remark: Dirichlet BCs for primal problem are homogenous.
+    Remarks:
+         1.) Dirichlet BCs for primal problem are homogenous.
 
     Args:
         bc_type (str):           Type of boundary conditions
@@ -179,7 +180,7 @@ def set_arbitrary_bcs(
 
         # Empty array of Neumann conditions
         func_neumann = []
-    elif bc_type == "neumann_homogenous":
+    elif bc_type == "neumann_hom":
         # The mesh
         domain = V_prime.mesh
 
@@ -195,7 +196,7 @@ def set_arbitrary_bcs(
             dfem.Constant(domain, PETSc.ScalarType(0.0))
             for i in range(0, len(boundary_id_neumann))
         ]
-    elif bc_type == "neumann_inhomogenous":
+    elif bc_type == "neumann_inhom":
         # The mesh
         domain = V_prime.mesh
 
@@ -208,21 +209,18 @@ def set_arbitrary_bcs(
 
         # Set homogenous dirichlet boundary conditions
         V_bc = dfem.FunctionSpace(domain, ("DG", degree_bc))
+        f_bc = dfem.Function(V_bc)
+        f_bc.x.array[:] = 2 * (np.random.rand(V_bc.dofmap.index_map.size_local) + 0.1)
 
-        for i in range(0, len(boundary_id_neumann)):
-            # Set random function on boundary
-            func_neumann.append(dfem.Function(V_bc))
-
-            func_neumann[i].x.array[:] = 2 * (
-                np.random.rand(V_bc.dofmap.index_map.size_local) + 0.1
-            )
+        func_neumann = [f_bc for i in range(0, len(boundary_id_neumann))]
     else:
         raise ValueError("Not implemented!")
 
-    if degree_bc > degree_flux - 1:
-        neumann_projection = [True for i in range(0, len(boundary_id_neumann))]
-    else:
+    # Specify if projection is required
+    if degree_bc < degree_flux - 1:
         neumann_projection = [False for i in range(0, len(boundary_id_neumann))]
+    else:
+        neumann_projection = [True for i in range(0, len(boundary_id_neumann))]
 
     return (
         boundary_id_dirichlet,
@@ -355,7 +353,7 @@ def equilibrate_poisson(
     bc_id_dirichlet: List[List[int]],
     flux_neumann: List[Any],
     neumann_projection: List[bool],
-) -> List[dfem.Function]:
+):
     """Equilibrates the fluxes of the primal problem
 
     Args:
@@ -372,6 +370,8 @@ def equilibrate_poisson(
 
     Returns:
         List[dfem.Function]: List of equilibrated fluxes
+        List[dfem.Function]: List boundary-functions
+                             (functions, containing the correct boundary values)
     """
     # Extract facet markers
     fct_values = geometry.facet_function.values
@@ -420,4 +420,4 @@ def equilibrate_poisson(
     # Solve equilibration
     equilibrator.equilibrate_fluxes()
 
-    return equilibrator.list_flux
+    return equilibrator.list_flux, equilibrator.list_bfunctions

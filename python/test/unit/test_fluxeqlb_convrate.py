@@ -95,7 +95,7 @@ def test_convrate(degree, bc_type, equilibrator):
         )
 
         # Solve equilibration
-        sigma_eq = equilibrate_poisson(
+        sigma_eq, _ = equilibrate_poisson(
             equilibrator,
             degree,
             geometry,
@@ -105,7 +105,7 @@ def test_convrate(degree, bc_type, equilibrator):
             [boundary_id_dirichlet],
             [neumann_functions],
             [neumann_projection],
-        )[0]
+        )
 
         # --- Compute convergence rate ---
         data_convstudy[i, 0] = 1 / n_elmt
@@ -113,11 +113,14 @@ def test_convrate(degree, bc_type, equilibrator):
         # Calculate error
         if equilibrator == FluxEqlbSE:
             data_convstudy[i, 1] = flux_error(
-                sigma_eq + sigma_projected, sigma_ext_ufl, error_hdiv0, uex_is_ufl=True
+                sigma_eq[0] + sigma_projected,
+                sigma_ext_ufl,
+                error_hdiv0,
+                uex_is_ufl=True,
             )
         else:
             data_convstudy[i, 1] = flux_error(
-                sigma_eq, sigma_ext_ufl, error_hdiv0, uex_is_ufl=True
+                sigma_eq[0], sigma_ext_ufl, error_hdiv0, uex_is_ufl=True
             )
 
     # Calculate convergence rate

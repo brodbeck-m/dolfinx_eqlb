@@ -1,6 +1,7 @@
 import numpy as np
 from petsc4py import PETSc
 import pytest
+from typing import Any, List
 
 import basix
 import dolfinx.mesh as dmesh
@@ -24,6 +25,60 @@ from testcase_poisson import (
 )
 
 """ Utility routines """
+
+
+def check_boundary_conditions(
+    sigma_eq: dfem.Function,
+    boundary_function: dfem.Function,
+    facet_function: Any,
+    boundary_facets: List[int],
+):
+    # Check if flux-space is discontinous
+    flux_is_dg = sigma_eq.function_space.element.basix_element.discontinuous
+
+    # Get boundary DOFs and check values
+    if flux_is_dg:
+        # Initialise storage of DOFs
+        boundary_dofs_eflux = np.array([], dtype=np.int32)
+
+        for id in boundary_facets:
+            raise NotImplementedError(
+                "Determination of DOFs for DG-spaces not implemented"
+            )
+
+        # Check boundary DOFs
+        assert np.allclose(
+            sigma_eq.x.array[boundary_dofs_eflux],
+            boundary_function.x.array[boundary_dofs_eflux],
+        )
+    else:
+        # Initialise storage of DOFs
+        boundary_dofs_eflux = np.array([], dtype=np.int32)
+        boundary_dofs_data = np.array([], dtype=np.int32)
+
+        for id in boundary_facets:
+            # Get factes
+            fcts = facet_function.indices[facet_function.values == id]
+
+            # Get DOFs (equilibrated flux)
+            boundary_dofs_eflux = np.append(
+                boundary_dofs_eflux,
+                dfem.locate_dofs_topological(sigma_eq.function_space, 1, fcts),
+            )
+
+            # Get DOFs (boundary function --> mixed space!)
+            boundary_dofs_data = np.append(
+                boundary_dofs_data,
+                dfem.locate_dofs_topological(
+                    boundary_function.function_space.sub(0), 1, fcts
+                ),
+            )
+
+        # Check boundary DOFs
+        assert np.allclose(
+            sigma_eq.x.array[boundary_dofs_eflux],
+            boundary_function.x.array[boundary_dofs_data],
+        )
 
 
 def check_divergence_condition(
@@ -184,8 +239,8 @@ Check if equilibrated flux
 @pytest.mark.parametrize("mesh_type", ["builtin"])
 @pytest.mark.parametrize("degree", [1, 2, 3, 4])
 @pytest.mark.parametrize("bc_type", ["pure_dirichlet"])
-@pytest.mark.parametrize("equilibrator", [FluxEqlbEV, FluxEqlbSE])
-def test_equilibration_conditions(mesh_type, degree, bc_type, equilibrator):
+@pytest.mark.parametrize("equilibrator", [FluxEqlbSE])
+def test_equilibration_conditions_legacy(mesh_type, degree, bc_type, equilibrator):
     # Create mesh
     if mesh_type == "builtin":
         geometry = create_unitsquare_builtin(
@@ -231,7 +286,7 @@ def test_equilibration_conditions(mesh_type, degree, bc_type, equilibrator):
             )
 
             # Solve equilibration
-            sigma_eq = equilibrate_poisson(
+            sigma_eq, _ = equilibrate_poisson(
                 equilibrator,
                 degree,
                 geometry,
@@ -241,20 +296,21 @@ def test_equilibration_conditions(mesh_type, degree, bc_type, equilibrator):
                 [boundary_id_dirichlet],
                 [neumann_functions],
                 [neumann_projection],
-            )[0]
+            )
 
             # --- Check divergence condition ---
-            check_divergence_condition(sigma_eq, sigma_projected, rhs_projected)
+            check_divergence_condition(sigma_eq[0], sigma_projected, rhs_projected)
 
             # --- Check jump condition (only required for semi-explicit equilibrator)
             if equilibrator == FluxEqlbSE:
-                check_jump_condition(sigma_eq, sigma_projected)
+                check_jump_condition(sigma_eq[0], sigma_projected)
 
 
 @pytest.mark.parametrize("mesh_type", ["builtin"])
 @pytest.mark.parametrize("degree", [1, 2, 3, 4])
+@pytest.mark.parametrize("bc_type", ["pure_dirichlet", "neumann_hom", "neumann_inhom"])
 @pytest.mark.parametrize("equilibrator", [FluxEqlbEV])
-def test_equilibration_boundary_condition(mesh_type, degree, equilibrator):
+def test_equilibration_conditions(mesh_type, degree, bc_type, equilibrator):
     # Create mesh
     if mesh_type == "builtin":
         geometry = create_unitsquare_builtin(
@@ -265,82 +321,76 @@ def test_equilibration_boundary_condition(mesh_type, degree, equilibrator):
     else:
         raise ValueError("Unknown mesh type")
 
-    # Initialise boundary facets and test-points
-    points_eval = points_boundary_unitsquare(geometry, [1, 4], degree + 1)
+    # Initialise loop over degree of boundary flux
+    if bc_type != "neumann_inhom":
+        degree_max_rhs = 1
+    else:
+        degree_max_rhs = degree
 
-    npoints_per_boundary = int(points_eval.shape[0] / 2)
-    plist_eval, clist_eval = initialise_evaluate_function(geometry.mesh, points_eval)
+    # Perform tests
+    for degree_bc in range(0, degree_max_rhs):
+        for degree_prime in range(1, degree + 1):
+            for degree_rhs in range(0, degree):
+                # Set function space
+                V_prime = dfem.FunctionSpace(geometry.mesh, ("P", degree_prime))
 
-    # FunctionSpace of primal problem
-    V_prime = dfem.FunctionSpace(geometry.mesh, ("P", degree))
+                # Determine degree of projected quantities (primal flux, RHS)
+                degree_proj = max(degree_prime - 1, degree_rhs)
 
-    # Determine degree of projected quantities (primal flux, RHS)
-    degree_proj = degree - 1
+                # Set RHS
+                rhs, rhs_projected = set_arbitrary_rhs(
+                    geometry.mesh, degree_rhs, degree_projection=degree_proj
+                )
 
-    # Set RHS
-    rhs, rhs_projected = set_arbitrary_rhs(
-        geometry.mesh, degree_proj, degree_projection=degree_proj
-    )
+                # Set boundary conditions
+                (
+                    boundary_id_dirichlet,
+                    boundary_id_neumann,
+                    dirichlet_functions,
+                    neumann_functions,
+                    neumann_projection,
+                ) = set_arbitrary_bcs(bc_type, V_prime, degree, degree_bc)
 
-    for degree_bc in range(0, degree):
-        # Set function space
-        V_ref = dfem.VectorFunctionSpace(geometry.mesh, ("DG", degree_bc))
+                # Solve primal problem
+                u_prime, sigma_projected = solve_poisson_problem(
+                    V_prime,
+                    geometry,
+                    boundary_id_neumann,
+                    boundary_id_dirichlet,
+                    rhs,
+                    neumann_functions,
+                    dirichlet_functions,
+                    degree_projection=degree_proj,
+                )
 
-        # Set boundary conditions
-        x_ufl = ufl.SpatialCoordinate(geometry.mesh)
+                # Solve equilibration
+                sigma_eq, boundary_dofvalues = equilibrate_poisson(
+                    equilibrator,
+                    degree,
+                    geometry,
+                    [sigma_projected],
+                    [rhs_projected],
+                    [boundary_id_neumann],
+                    [boundary_id_dirichlet],
+                    [neumann_functions],
+                    [neumann_projection],
+                )
 
-        if degree_bc == 0:
-            ntrace_ufl = dfem.Constant(geometry.mesh, PETSc.ScalarType(0.15))
-        else:
-            ntrace_ufl = (
-                0.2 * ((x_ufl[0] ** degree_bc) + (x_ufl[1] ** degree_bc)) + 0.15
-            )
+                # --- Check boundary conditions ---
+                if bc_type != "pure_dirichlet":
+                    check_boundary_conditions(
+                        sigma_eq[0],
+                        boundary_dofvalues[0],
+                        geometry.facet_function,
+                        boundary_id_neumann,
+                    )
 
-        boundary_id_dirichlet = [2, 3]
-        boundary_id_neumann = [1, 4]
-        dirichlet_functions = [dfem.Function(V_prime), dfem.Function(V_prime)]
-        neumann_functions = [ntrace_ufl, ntrace_ufl]
-        neumann_projection = [False, False]
+                # --- Check divergence condition ---
+                check_divergence_condition(sigma_eq[0], sigma_projected, rhs_projected)
 
-        # Solve equilibration
-        u_prime, sigma_projected = solve_poisson_problem(
-            V_prime,
-            geometry,
-            boundary_id_neumann,
-            boundary_id_dirichlet,
-            rhs,
-            neumann_functions,
-            dirichlet_functions,
-            degree_projection=degree_proj,
-        )
-
-        # Solve equilibration
-        sigma_eq = equilibrate_poisson(
-            equilibrator,
-            degree,
-            geometry,
-            [sigma_projected],
-            [rhs_projected],
-            [boundary_id_neumann],
-            [boundary_id_dirichlet],
-            [neumann_functions],
-            [neumann_projection],
-        )[0]
-
-        # Exact boundary conditions
-        bc_ref = ufl.as_vector([-ntrace_ufl, ntrace_ufl])
-        refsol = local_projection(V_ref, [bc_ref], quadrature_degree=2 * degree)[0]
-
-        # Evaluate boundary values
-        val_eqlbflux = sigma_eq.eval(plist_eval, clist_eval)
-        val_ref = refsol.eval(plist_eval, clist_eval)
-
-        assert np.allclose(
-            val_eqlbflux[:npoints_per_boundary, 0], val_ref[:npoints_per_boundary, 0]
-        )
-        assert np.allclose(
-            val_eqlbflux[npoints_per_boundary:, 1], val_ref[npoints_per_boundary:, 1]
-        )
+                # --- Check jump condition (only required for semi-explicit equilibrator)
+                if equilibrator == FluxEqlbSE:
+                    check_jump_condition(sigma_eq[0], sigma_projected)
 
 
 if __name__ == "__main__":
