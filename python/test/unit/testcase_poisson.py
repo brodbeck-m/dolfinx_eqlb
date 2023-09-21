@@ -318,7 +318,7 @@ def solve_poisson_problem(
 
     # Set neumann boundary conditions
     for i, id in enumerate(bc_id_neumann):
-        l_prime += ufl.inner(ufl_neumann[i], v) * geometry.ds(id)
+        l_prime -= ufl.inner(ufl_neumann[i], v) * geometry.ds(id)
 
     # Solve problem
     solveoptions = {

@@ -157,11 +157,6 @@ BoundaryData<T>::BoundaryData(
       // Check input
       if (req_eval_per_fct != bc->num_eval_per_facet())
       {
-        std::cout << "req_eval_per_fct: " << req_eval_per_fct << std::endl;
-        std::cout << "nqpoints_per_fct: " << nqpoints_per_fct << std::endl;
-        std::cout << "nipoints_per_fct: " << nipoints_per_fct << std::endl;
-        std::cout << "num_eval_per_facet: " << bc->num_eval_per_facet()
-                  << std::endl;
         throw std::runtime_error("BoundaryData: Number of evaluation points "
                                  "(FluxBC) does not match!");
       }
