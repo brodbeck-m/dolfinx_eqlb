@@ -585,7 +585,7 @@ void KernelDataBC<T>::interpolate_flux(std::span<const T> flux_dofs_bc,
     {
       // Evaluate flux at current point
       T acc = 0;
-      for (std::size_t i_dof = 0; i_dof < _ndofs_fct; ++i_dof)
+      for (std::size_t i_dof = 0; i_dof < _ndofs_per_fct; ++i_dof)
       {
         acc += flux_dofs_bc[i_dof] * _mbasis_flux(offs_dof + i_dof, i_dim);
       }

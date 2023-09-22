@@ -50,11 +50,10 @@ sdisc_nelmt = 1
 
 # Equilibration (type EV or SemiExplt)
 eqlb_type = "EV"
-# eqlb_type = "SemiExplt"
 eqlb_fluxorder = 2
 
 # Type of manufactured solution
-extsol_type = 4
+extsol_type = 5
 
 # Linear algebra
 lgs_solver = "cg"
@@ -64,7 +63,7 @@ convstudy_nref = 9
 convstudy_reffct = 2
 
 # Timing
-timing_nretry = 1
+timing_nretry = 3
 
 # --- Manufactured solution ---
 # Primal problem (trigonometric): Homogenous boundary conditions
@@ -838,6 +837,12 @@ for i_timing in range(0, timing_nretry):
             [fct_bcesnt_primal], [bc_esnt_flux], quadrature_degree=3 * eqlb_fluxorder
         )
         extime["eqlb_setup"] += time.perf_counter()
+        # print(
+        #     "Bound max: {}, Bound min: {}".format(
+        #         max(equilibrator.list_bfunctions[0].x.array[:]),
+        #         min(equilibrator.list_bfunctions[0].x.array[:]),
+        #     )
+        # )
 
         # Solve equilibration
         extime["eqlb_solve"] -= time.perf_counter()

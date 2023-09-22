@@ -14,8 +14,6 @@ from dolfinx_eqlb.lsolver import local_projection
 from utils import (
     create_unitsquare_builtin,
     create_unitsquare_gmsh,
-    points_boundary_unitsquare,
-    initialise_evaluate_function,
 )
 from testcase_poisson import (
     set_arbitrary_rhs,
