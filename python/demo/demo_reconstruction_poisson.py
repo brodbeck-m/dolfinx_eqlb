@@ -45,12 +45,12 @@ from dolfinx_eqlb.lsolver import local_projection
 
 # --- Input parameters
 # Spacial discretisation
-sdisc_eorder = 3
+sdisc_eorder = 1
 sdisc_nelmt = 1
 
 # Equilibration (type EV or SemiExplt)
 eqlb_type = "EV"
-eqlb_fluxorder = 4
+eqlb_fluxorder = 2
 
 # Type of manufactured solution
 extsol_type = 5
