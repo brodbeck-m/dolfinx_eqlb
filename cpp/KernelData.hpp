@@ -388,10 +388,10 @@ template <typename T>
 class KernelDataBC : public KernelData<T>
 {
 public:
-  /// Kernel data basic constructor
+  /// Kernel data for calculation of patch boundary-conditions
   ///
-  /// Generates data required for calculating patch specific boundary conditions
-  /// during equilibration.
+  /// Holds the required surface-quadrature rule, calculates required mappings,
+  /// interpolates from a flux function and calculates DOFs of a flux-function.
   ///
   /// @param[in] mesh                 The mesh
   /// @param[in] quadrature_rule_fct  The quadrature rule on the cell facets
@@ -403,7 +403,13 @@ public:
                const int nfluxdofs_per_fct, const int nfluxdofs_cell,
                const bool flux_is_custom);
 
-  /* Shape functions (flux) at quadrature points */
+  /* Tabulate/map shape-function sof the flux-space */
+
+  /// Tabulates a basix_element at the surface-quadrature points
+  /// @param[in] basix_element The Basix element
+  /// @param[in,out] storage   Stoarge vector for the tabulates shape-functions
+  /// @param[out] shape_vector The shape for creating an mdspan of the tabulated
+  /// functions
   std::array<std::size_t, 5>
   shapefunctions_flux_qpoints(const basix::FiniteElement& basix_element,
                               std::vector<double>& storage)
@@ -413,11 +419,35 @@ public:
                                 false, false);
   }
 
+  /// Map flux-functions from refrence to current cell
+  ///
+  /// Aplies the contra-variant Piola mapping to the shape-functions of the
+  /// flux. The here performed mapping is restriced to the shape-functions of
+  /// one cell facet. All other functions will be neglected.
+  ///
+  /// @param[in] lfct_id      The cell-local Id of the facet
+  /// @param[in, out] phi_cur The shape-function on the current cell
+  /// @param[in] phi_ref      The shape-functions on the reference cell
+  /// @param[in] J            The Jacobina
+  /// @param[in] detJ         The determinant of the Jacobian
   void map_shapefunctions_flux(std::int8_t lfct_id, mdspan_t<double, 3> phi_cur,
                                mdspan_t<const double, 5> phi_ref,
                                mdspan_t<const double, 2> J, double detJ);
 
-  /* Recover flux from normal-trace */
+  /* Calculate flux DOFs based on different inputs */
+
+  /// Calculates a flux (vector) from a given normal-trace on a cell-facet
+  ///
+  /// Takes over a list of normal-traces at (multiple) points and return the
+  /// flux-vectors calculates from facet_normal x trace, where the facte_normal
+  /// has a magnitude of 1.
+  ///
+  /// @param[in] flux_ntrace_cur The vector of flux normal-traces within the
+  ///                            current cell
+  /// @param[in] lfct_id         The cell-local Id of the facet
+  /// @param[in] K               The inverse of the Jacobian
+  /// @param[out] flux_vector    A List of flux-vectors recovered from the
+  ///                            normal-trace
   mdspan_t<const T, 2> normaltrace_to_flux(std::span<const T> flux_ntrace_cur,
                                            std::int8_t lfct_id,
                                            mdspan_t<const double, 2> K)
@@ -430,12 +460,42 @@ public:
                                 (std::size_t)this->_gdim);
   }
 
-  /* Interpolate flux function */
+  /// Calculates flux DOFs based on the normal-trace
+  ///
+  /// Claculates flux DOFs on a cell facet based on given normal-trace,
+  /// evaluated at the required interpolation points of the flux-space.
+  ///
+  /// @param[in] flux_ntrace_cur The flux normal-trace on the interpolation
+  ///                            points
+  /// @param[in, out] flux_dofs  The calculated flux DOFs on the facet
+  /// @param[in] lfct_id         The (cell-local) Id of the facet
+  /// @param[in] J               The Jacobi matrix of the mapping function
+  /// @param[in] detJ            The determinant of the Jacobi matrix
+  /// @param[in] K               The inverse of the Jacobi matrix
   void interpolate_flux(std::span<const T> flux_ntrace_cur,
                         std::span<T> flux_dofs, std::int8_t lfct_id,
                         mdspan_t<const double, 2> J, double detJ,
                         mdspan_t<const double, 2> K);
 
+  /// Calculates boundary DOFs for a patch problem
+  ///
+  /// Calculates the boundary DOFs for a patrch problem from the boundary DOFs
+  /// where the hat-function is neglected by inteprolating boundary_function x
+  /// hat_function.
+  ///
+  /// @param[in] flux_dofs_bc         The boundary DOFs without consideration of
+  ///                                 the hat-function
+  /// @param[in] cell_id              Vector with Ids of the boundary cells
+  /// @param[in] lfct_id              Vector with the (cell-local) Ids of the
+  ///                                 boundary facets
+  /// @param[in] hat_id               Vector of (cell-local) Ids of the
+  ///                                 patch-central node
+  /// @param[in] cell_info            The informatios required for DOF
+  ///                                 transformations on a cell
+  /// @param[in] J                    The Jacobi matrix of the mapping function
+  /// @param[in] detJ                 The determinant of the Jacobi matrix
+  /// @param[in] K                    The inverse of the Jacobi matrix
+  /// @param[out] flux_dofs_patch     The boundary DOFs for a patch-problem
   std::vector<T> interpolate_flux(std::span<const T> flux_dofs_bc,
                                   std::int32_t cell_id, std::int8_t lfct_id,
                                   std::int8_t hat_id,
@@ -453,6 +513,27 @@ public:
     return std::move(flux_dofs_patch);
   }
 
+  /// Calculates boundary DOFs for a patch problem
+  ///
+  /// Calculates the boundary DOFs for a patrch problem from the boundary DOFs
+  /// where the hat-function is neglected by inteprolating boundary_function x
+  /// hat_function.
+  ///
+  /// This routine should be called where performace is relevant!
+  ///
+  /// @param[in] flux_dofs_bc         The boundary DOFs without consideration of
+  ///                                 the hat-function
+  /// @param[in, out] flux_dofs_patch The boundary DOFs for a patch-problem
+  /// @param[in] cell_id              Vector with Ids of the boundary cells
+  /// @param[in] lfct_id              Vector with the (cell-local) Ids of the
+  ///                                 boundary facets
+  /// @param[in] hat_id               Vector of (cell-local) Ids of the
+  ///                                 patch-central node
+  /// @param[in] cell_info            The informatios required for DOF
+  ///                                 transformations on a cell
+  /// @param[in] J                    The Jacobi matrix of the mapping function
+  /// @param[in] detJ                 The determinant of the Jacobi matrix
+  /// @param[in] K                    The inverse of the Jacobi matrix
   void interpolate_flux(std::span<const T> flux_dofs_bc,
                         std::span<T> flux_dofs_patch, std::int32_t cell_id,
                         std::int8_t lfct_id, std::int8_t hat_id,
@@ -460,12 +541,26 @@ public:
                         mdspan_t<const double, 2> J, double detJ,
                         mdspan_t<const double, 2> K);
 
+  /// Calculates flux-DOFs from flux-vector at the interpolation points
+  ///
+  /// Calculates flux DOFs on one cell facte from the flux-values (on the
+  /// current cell) on the interpolation points of the flux-space.
+  ///
+  /// @param[in] flux_cur             The flux (current cell) on the
+  ///                                 interpolation points
+  /// @param[in, out] flux_dofs_patch The calculated flux DOFs
+  /// @param[in] lfct_id              The (cell-local) Id of the facet on which
+  ///                                 the DOFs are calculated
+  /// @param[in] J                    The Jacobi matrix of the mapping function
+  /// @param[in] detJ                 The determinant of the Jacobi matrix
+  /// @param[in] K                    The inverse of the Jacobi matrix
   void interpolate_flux(mdspan_t<const T, 2> flux_cur,
                         std::span<T> flux_dofs_patch, std::int8_t lfct_id,
                         mdspan_t<const double, 2> J, double detJ,
                         mdspan_t<const double, 2> K);
 
   /* Getter methods: Interpolation */
+
   /// Extract number of interpolation points
   /// @return Number of interpolation points
   int num_interpolation_points() const { return _nipoints; }
@@ -479,6 +574,7 @@ protected:
                              std::int8_t lfct_id, mdspan_t<const double, 2> K);
 
   /* Variable definitions */
+
   // Interpolation data
   std::size_t _nipoints_per_fct, _nipoints;
   std::vector<double> _ipoints, _data_M;

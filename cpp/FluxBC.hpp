@@ -38,6 +38,24 @@ class FluxBC
   using scalar_value_type_t = typename scalar_value_type<T>::value_type;
 
 public:
+  /// Temporary storage of boundary conditions
+  ///
+  /// Passes the boundary conditions for the flux-space from the python
+  /// interface to the c++ level. The precompiled normal-trace of the flux is
+  /// stored, together with the boundary facets an some informations, required
+  /// for calculation the boundary DOFs therefrom.
+  ///
+  /// @param function_space            The collapsed flux FunctionSpace
+  /// @param boundary_facets           The mesh-facets on which the flux is
+  ///                                  prescribed
+  /// @param boundary_value            The pre-complied normal-trace of the flux
+  /// @param n_bceval_per_fct          Number of evaluations per facet
+  /// @param projection_required       Id if projection of the normal-trace into
+  ///                                  the DG_(k-1) space is required
+  /// @param coefficients              The vector of coefficient data
+  /// @param positions_of_coefficients The positions each data set within the
+  ///                                  extracted vector of coefficients.
+  /// @param constants                 The constants
   FluxBC(std::shared_ptr<const fem::FunctionSpace> function_space,
          const std::vector<std::int32_t>& boundary_facets,
          std::function<void(T*, const T*, const T*, const scalar_value_type_t*,

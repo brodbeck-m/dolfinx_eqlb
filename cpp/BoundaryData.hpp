@@ -45,6 +45,25 @@ template <typename T>
 class BoundaryData
 {
 public:
+  /// Storage and handling of boundary data
+  ///
+  /// Takes over a list of FluxBCs and evaluates therefrom the flux DOFs (within
+  /// RT_k, k>=1) on the Neumann boundary of the primal problem. If the degree
+  /// of the boundary expression is higher than k-1, a facet-local projection
+  /// into the DG_(k-1) is performed.
+  /// For the following equilibration the patch-wise boundary conditions are
+  /// provided by evaluation the boundary DOFs from bflux x hat_function.
+  ///
+  /// @param list_bcs            Vector of Vectors with FluxBCs (one per RHS)
+  /// @param boundary_flux       Vector with FE-Functions (one per RHS) within
+  ///                            which the boundary conditions are stored
+  /// @param V_flux_hdiv         The flux FunctionSpace (a sub-space, if
+  ///                            equilibration is based on a mixed problem)
+  /// @param rtflux_is_custom    Id if the used RT-space is created from the
+  ///                            modifed RT definition
+  /// @param quadrature_degree   Degree for surface quadrature
+  /// @param fct_esntbound_prime List of facets, where essential BCs are applied
+  ///                            on the primal problem
   BoundaryData(
       std::vector<std::vector<std::shared_ptr<FluxBC<T>>>>& list_bcs,
       std::vector<std::shared_ptr<fem::Function<T>>>& boundary_flux,
@@ -52,9 +71,29 @@ public:
       bool rtflux_is_custom, int quadrature_degree,
       const std::vector<std::vector<std::int32_t>>& fct_esntbound_prime);
 
+  /// Calculate the boundary DOFs for a patch problem
+  ///
+  /// Evaluates RT-DOFs on boundary_flux x hat_function. Before the evaluation
+  /// of the boundary DOFs the required mappings are calculated. This function
+  /// should be called once for alle equilibrated RHS.
+  ///
+  /// @param[in] bound_fcts      The boundary-facets of the (boundary-) patch
+  /// @param[in] patchnode_local The element-local id of the patch-central node
   void calculate_patch_bc(std::span<const std::int32_t> bound_fcts,
                           std::span<const std::int8_t> patchnode_local);
 
+  /// Calculate the boundary DOFs for a patch problem
+  ///
+  /// Evaluates RT-DOFs on boundary_flux x hat_function. The required mappings
+  /// have to be provided. This function has to be called separately for each
+  /// equilibrated RHS.
+  ///
+  /// @param rhs_i           The Id of the equilibrated RHS
+  /// @param bound_fcts      The boundary-facets of the (boundary-) patch
+  /// @param patchnode_local The element-local id of the patch-central node
+  /// @param J               The Jacobian of the mapping function
+  /// @param detJ            The determinant of the Jacobian
+  /// @param K               The inverse of the Jacobian
   void calculate_patch_bc(const int rhs_i, const std::int32_t bound_fcts,
                           const std::int8_t patchnode_local,
                           mdspan_t<const double, 2> J, const double detJ,
