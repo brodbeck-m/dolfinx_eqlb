@@ -45,12 +45,12 @@ from dolfinx_eqlb.lsolver import local_projection
 
 # --- Input parameters
 # Spacial discretisation
-sdisc_eorder = 1
+sdisc_eorder = 3
 sdisc_nelmt = 1
 
 # Equilibration (type EV or SemiExplt)
 eqlb_type = "EV"
-eqlb_fluxorder = 2
+eqlb_fluxorder = 4
 
 # Type of manufactured solution
 extsol_type = 5
@@ -809,12 +809,16 @@ for i_timing in range(0, timing_nretry):
         solve_poisson_primal(solver, L, u_prime)
         extime["prime_solve"] += time.perf_counter()
 
+        print("Primal problem solved")
+
         # Project fluxes into DG-space
         extime["prime_project"] -= time.perf_counter()
         sig_proj, rhs_proj = projection_primal(
             sdisc_eorder, eqlb_fluxorder, u_prime, rhs_prime, eqlb_type, mult_rhs=False
         )
         extime["prime_project"] += time.perf_counter()
+
+        print("Projection completed")
 
         # # --- Equilibrate flux
         extime["eqlb_setup"] -= time.perf_counter()
@@ -837,12 +841,6 @@ for i_timing in range(0, timing_nretry):
             [fct_bcesnt_primal], [bc_esnt_flux], quadrature_degree=3 * eqlb_fluxorder
         )
         extime["eqlb_setup"] += time.perf_counter()
-        # print(
-        #     "Bound max: {}, Bound min: {}".format(
-        #         max(equilibrator.list_bfunctions[0].x.array[:]),
-        #         min(equilibrator.list_bfunctions[0].x.array[:]),
-        #     )
-        # )
 
         # Solve equilibration
         extime["eqlb_solve"] -= time.perf_counter()
