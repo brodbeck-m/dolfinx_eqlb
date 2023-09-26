@@ -37,25 +37,6 @@ def exact_solution_poisson(pkt):
     return lambda x: pkt.sin(2 * pkt.pi * x[0]) * pkt.cos(2 * pkt.pi * x[1])
 
 
-def exact_flux_np_poisson(x):
-    """Exact flux
-    flux_ext = -Grad[sin(2*pi * x) * cos(2*pi * y)]
-
-    Args:
-        x
-    Returns:
-        The exact flux at spacial positions x as numpy array
-    """
-    # Initialize flux
-    sig = np.zeros((2, x.shape[1]), dtype=PETSc.ScalarType)
-
-    # Set flux
-    sig[0] = -2 * np.pi * np.cos(2 * np.pi * x[0]) * np.cos(2 * np.pi * x[1])
-    sig[1] = 2 * np.pi * np.sin(2 * np.pi * x[0]) * np.sin(2 * np.pi * x[1])
-
-    return sig
-
-
 def exact_flux_ufl_poisson(x):
     """Exact flux
     flux_ext = -Grad[sin(2*pi * x) * cos(2*pi * y)]
@@ -66,6 +47,17 @@ def exact_flux_ufl_poisson(x):
         The exact flux at spacial positions x as ufl expression
     """
     return -ufl.grad(exact_solution_poisson(ufl)(x))
+
+
+def exact_flux_ntrace(flux_ext, bound_id):
+    if bound_id == 1:
+        return -flux_ext[0]
+    elif bound_id == 2:
+        return -flux_ext[1]
+    elif bound_id == 3:
+        return flux_ext[0]
+    else:
+        return flux_ext[1]
 
 
 # --- Set right-hand side
@@ -264,11 +256,13 @@ def set_manufactured_bcs(
 
     # Set neumann BCs
     func_neumann = []
+    neumann_projection = []
 
     for id in boundary_id_neumann:
-        func_neumann.append(sigma_ext)
+        func_neumann.append(exact_flux_ntrace(sigma_ext, id))
+        neumann_projection.append(True)
 
-    return u_D, func_neumann, len(func_neumann) * [True]
+    return u_D, func_neumann, neumann_projection
 
 
 # --- Solution routines
