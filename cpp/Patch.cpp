@@ -1,22 +1,13 @@
 #include "Patch.hpp"
-#include <algorithm>
-#include <dolfinx/graph/AdjacencyList.h>
-#include <dolfinx/mesh/Mesh.h>
-#include <dolfinx/mesh/Topology.h>
-#include <iostream>
-#include <memory>
-#include <span>
-#include <vector>
 
 using namespace dolfinx;
+using namespace dolfinx_eqlb;
 
-namespace dolfinx_adaptivity::equilibration
-{
 Patch::Patch(int nnodes_proc, std::shared_ptr<const mesh::Mesh> mesh,
-             graph::AdjacencyList<std::int8_t>& bfct_type)
+             mdspan_t<const std::int8_t, 2> bfct_type)
     : _mesh(mesh), _bfct_type(bfct_type), _dim(mesh->geometry().dim()),
-      _dim_fct(mesh->geometry().dim() - 1), _type(bfct_type.num_nodes(), 0),
-      _npatches(bfct_type.num_nodes())
+      _dim_fct(mesh->geometry().dim() - 1), _type(bfct_type.extent(0), 0),
+      _npatches(bfct_type.extent(0))
 {
   // Initialize connectivities
   _node_to_cell = _mesh->topology().connectivity(0, _dim);
@@ -94,17 +85,15 @@ std::pair<std::int32_t, std::int32_t> Patch::initialize_patch(int node_i)
       std::int32_t fct_ef = -1;
       std::int32_t fct_ep = -1;
 
-      std::span<std::int8_t> bfct_type_i = _bfct_type.links(i);
-
       // Check for boundary facets (id=1->esnt_prime, id=2, esnt_flux)
       for (std::int32_t id_fct : fcts)
       {
-        if (bfct_type_i[id_fct] == 1)
+        if (_bfct_type(i, id_fct) == 1)
         {
           // Mark first facet for DOFmap construction
           fct_ep = id_fct;
         }
-        else if (bfct_type_i[id_fct] == 2)
+        else if (_bfct_type(i, id_fct) == 2)
         {
           // Mark first facet for DOFmap construction
           fct_ef = id_fct;
@@ -362,5 +351,3 @@ Patch::next_facet_triangle(std::int32_t cell_i,
 
   return fct_next;
 }
-
-} // namespace dolfinx_adaptivity::equilibration

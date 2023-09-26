@@ -1,21 +1,15 @@
 #pragma once
 
 #include "Patch.hpp"
-#include <algorithm>
+
 #include <basix/finite-element.h>
+#include <dolfinx/fem/DofMap.h>
 #include <dolfinx/fem/FiniteElement.h>
 #include <dolfinx/fem/FunctionSpace.h>
-#include <dolfinx/graph/AdjacencyList.h>
-#include <dolfinx/mesh/Mesh.h>
-#include <dolfinx/mesh/Topology.h>
-#include <iostream>
-#include <memory>
-#include <span>
-#include <vector>
 
 using namespace dolfinx;
 
-namespace dolfinx_adaptivity::equilibration
+namespace dolfinx_eqlb
 {
 class PatchFluxEV : public Patch
 {
@@ -30,7 +24,7 @@ public:
   /// @param bfct_type   List with type of all boundary facets
   PatchFluxEV(
       int nnodes_proc, std::shared_ptr<const mesh::Mesh> mesh,
-      graph::AdjacencyList<std::int8_t>& bfct_type,
+      mdspan_t<const std::int8_t, 2> bfct_type,
       const std::shared_ptr<const fem::FunctionSpace> function_space,
       const std::shared_ptr<const fem::FunctionSpace> function_space_fluxhdiv,
       const basix::FiniteElement& basix_element_flux);
@@ -223,4 +217,4 @@ protected:
   int _ndof_elmt_nz, _ndof_flux_nz, _ndof_patch_nz, _ndof_fluxhdiv;
 };
 
-} // namespace dolfinx_adaptivity::equilibration
+} // namespace dolfinx_eqlb

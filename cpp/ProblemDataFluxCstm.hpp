@@ -1,26 +1,19 @@
 #pragma once
 
-#include "ProblemData.hpp"
-#include "ProblemDataFluxEV.hpp"
+#include "BoundaryData.hpp"
+#include "utils.hpp"
 
-#include <algorithm>
-#include <cmath>
-#include <dolfinx/common/IndexMap.h>
-#include <dolfinx/fem/Constant.h>
-#include <dolfinx/fem/DirichletBC.h>
-#include <dolfinx/fem/DofMap.h>
-#include <dolfinx/fem/Form.h>
-#include <dolfinx/fem/utils.h>
-#include <iostream>
+#include <dolfinx/fem/Function.h>
+#include <dolfinx/fem/FunctionSpace.h>
+#include <dolfinx/mesh/Mesh.h>
+
 #include <memory>
-#include <numeric>
 #include <span>
-#include <utility>
 #include <vector>
 
 using namespace dolfinx;
 
-namespace dolfinx_adaptivity::equilibration
+namespace dolfinx_eqlb
 {
 template <typename T>
 class ProblemDataFluxCstm
@@ -37,9 +30,10 @@ public:
   /// @param rhs_dg    List of list of projected right-hand-sides
   ProblemDataFluxCstm(std::vector<std::shared_ptr<fem::Function<T>>>& fluxes,
                       std::vector<std::shared_ptr<fem::Function<T>>>& fluxes_dg,
-                      std::vector<std::shared_ptr<fem::Function<T>>>& rhs_dg)
+                      std::vector<std::shared_ptr<fem::Function<T>>>& rhs_dg,
+                      std::shared_ptr<BoundaryData<T>> boundary_data)
       : _nrhs(fluxes.size()), _flux_hdiv(fluxes), _flux_dg(fluxes_dg),
-        _rhs_dg(rhs_dg)
+        _rhs_dg(rhs_dg), _boundary_data(boundary_data)
   {
     /* Resize storage for solution of flux minimisation */
     // Number of flux-DOFs on current processor
@@ -59,7 +53,7 @@ public:
 
   /* Setter functions*/
 
-  /* Getter functions*/
+  /* Getter functions: General */
   /// Extract number of equilibrated fluxes
   /// @return Number of equilibrated fluxes
   int nrhs() const { return _nrhs; }
@@ -71,6 +65,7 @@ public:
     return _flux_hdiv[0]->function_space()->mesh();
   }
 
+  /* Getter functions: Functions ans FunctionSpaces */
   /// Extract FunctionSpace of H(div) flux
   /// @return The FunctionSpace
   std::shared_ptr<const fem::FunctionSpace> fspace_flux_hdiv() const
@@ -125,6 +120,46 @@ public:
                               _offset_x[index + 1] - _offset_x[index]);
   }
 
+  /* Interface BoundaryData */
+  /// Extract facet-types of all sub-problems
+  /// @return Mdspan of facet-types
+  mdspan_t<const std::int8_t, 2> facet_type() const
+  {
+    return _boundary_data->facet_type();
+  }
+
+  /// Extract boundary identifiers for l_i
+  /// @param index Id of linearform
+  /// @return Boundary identifiers of linearform l_i
+  std::span<std::int8_t> boundary_markers(int index)
+  {
+    return _boundary_data->boundary_markers(index);
+  }
+
+  /// Extract boundary identifiers for l_i (constant version)
+  /// @param index Id of linearform
+  /// @return Boundary identifires of linearform l_i
+  std::span<const std::int8_t> boundary_markers(int index) const
+  {
+    return _boundary_data->boundary_markers(index);
+  }
+
+  /// Extract boundary values for l_i
+  /// @param index Id of linearform
+  /// @return Boundary values of linearform l_i
+  std::span<T> boundary_values(int index)
+  {
+    return _boundary_data->boundary_values(index);
+  }
+
+  /// Extract boundary values for l_i (constant version)
+  /// @param index Id of linearform
+  /// @return Boundary values of linearform l_i
+  std::span<const T> boundary_values(int index) const
+  {
+    return _boundary_data->boundary_values(index);
+  }
+
 protected:
   /* Variables */
   // Number of equilibrations
@@ -133,8 +168,11 @@ protected:
   // Fe functions of projected flux and RHS
   std::vector<std::shared_ptr<fem::Function<T>>>&_flux_hdiv, _flux_dg, _rhs_dg;
 
+  // The boundary data
+  std::shared_ptr<BoundaryData<T>> _boundary_data;
+
   // Intermediate storage of minimisation setp
   std::vector<T> _x_fhdiv_minimisation;
   std::vector<std::int32_t> _offset_x;
 };
-} // namespace dolfinx_adaptivity::equilibration
+} // namespace dolfinx_eqlb

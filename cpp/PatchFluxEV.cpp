@@ -1,17 +1,11 @@
 #include "PatchFluxEV.hpp"
-#include "Patch.hpp"
-#include <dolfinx/fem/DofMap.h>
-#include <dolfinx/fem/FunctionSpace.h>
-#include <dolfinx/graph/AdjacencyList.h>
-#include <iostream>
 
 using namespace dolfinx;
+using namespace dolfinx_eqlb;
 
-namespace dolfinx_adaptivity::equilibration
-{
 PatchFluxEV::PatchFluxEV(
     int nnodes_proc, std::shared_ptr<const mesh::Mesh> mesh,
-    graph::AdjacencyList<std::int8_t>& bfct_type,
+    mdspan_t<const std::int8_t, 2> bfct_type,
     const std::shared_ptr<const fem::FunctionSpace> function_space,
     const std::shared_ptr<const fem::FunctionSpace> function_space_fluxhdiv,
     const basix::FiniteElement& basix_element_flux)
@@ -302,4 +296,3 @@ void PatchFluxEV::create_subdofmap(int node_i)
   // std::cout << "\n";
   // throw std::exception();
 }
-} // namespace dolfinx_adaptivity::equilibration

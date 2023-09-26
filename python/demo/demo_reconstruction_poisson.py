@@ -29,7 +29,6 @@ Different problem setups:
 """
 
 import numpy as np
-import math
 from mpi4py import MPI
 import petsc4py
 from petsc4py import PETSc
@@ -41,19 +40,20 @@ import dolfinx.mesh as dmesh
 import ufl
 import time
 
-from dolfinx_eqlb import equilibration, lsolver
+from dolfinx_eqlb.eqlb import fluxbc, FluxEqlbEV, FluxEqlbSE
+from dolfinx_eqlb.lsolver import local_projection
 
 # --- Input parameters
 # Spacial discretisation
-sdisc_eorder = 2
+sdisc_eorder = 1
 sdisc_nelmt = 1
 
 # Equilibration (type EV or SemiExplt)
-eqlb_type = "SemiExplt"
-eqlb_fluxorder = 3
+eqlb_type = "EV"
+eqlb_fluxorder = 2
 
 # Type of manufactured solution
-extsol_type = 1
+extsol_type = 5
 
 # Linear algebra
 lgs_solver = "cg"
@@ -63,7 +63,7 @@ convstudy_nref = 9
 convstudy_reffct = 2
 
 # Timing
-timing_nretry = 1
+timing_nretry = 3
 
 # --- Manufactured solution ---
 # Primal problem (trigonometric): Homogenous boundary conditions
@@ -84,7 +84,7 @@ def ext_flux_1(x):
     return sig
 
 
-# Primal problem (trigonometric): Inhomogenous boundary conditions
+# Primal problem (trigonometric): Inhomogeneous boundary conditions
 
 
 def ext_sol_2(pkt):
@@ -116,6 +116,25 @@ def ext_flux_3(x):
     sig[1] = -x[1]
 
     return sig
+
+
+# Calculate Flux (ufl)
+def exact_flux(u_ext_ufl):
+    return lambda x: -ufl.grad(u_ext_ufl(x))
+
+
+def exact_flux_ntrace(u_ext_ufl, msh, bound_id):
+    flux_ext = exact_flux(u_ext_ufl)
+    x_ufl = ufl.SpatialCoordinate(msh)
+
+    if bound_id == 1:
+        return -flux_ext(x_ufl)[0]
+    elif bound_id == 2:
+        return -flux_ext(x_ufl)[1]
+    elif bound_id == 3:
+        return flux_ext(x_ufl)[0]
+    else:
+        return flux_ext(x_ufl)[1]
 
 
 # --- Setup primal problem ---
@@ -190,10 +209,13 @@ def assemble_poisson_primal(
     # Apply dirichlet conditions
     bc_esnt = []
 
-    for dir_id in boundid_prime_dir:
-        facets = facet_tag.indices[facet_tag.values == dir_id]
-        dofs = dfem.locate_dofs_topological(V_u, 1, facets)
-        bc_esnt.append(dfem.dirichletbc(uD, dofs))
+    if len(boundid_prime_dir) > 0:
+        for dir_id in boundid_prime_dir:
+            facets = facet_tag.indices[facet_tag.values == dir_id]
+            dofs = dfem.locate_dofs_topological(V_u, 1, facets)
+            bc_esnt.append(dfem.dirichletbc(uD, dofs))
+    else:
+        raise ValueError("Solution of system without dirichlet-condition not possible")
 
     # --- Assemble linear system ---
     # Assemble stiffness matrix
@@ -275,7 +297,7 @@ def projection_primal(eorder, fluxorder, u_prime, rhs_prime, eqlb_type, mult_rhs
 
     if mult_rhs:
         # Projection
-        list_proj = lsolver.local_projector(
+        list_proj = local_projection(
             V_rhs_proj, [-u_prime.dx(0), -u_prime.dx(1), rhs_prime]
         )
 
@@ -287,13 +309,42 @@ def projection_primal(eorder, fluxorder, u_prime, rhs_prime, eqlb_type, mult_rhs
         return sig_proj, list_proj[2]
     else:
         # Projection
-        sig_proj = lsolver.local_projector(V_flux_proj, [-ufl.grad(u_prime)])
-        rhs_proj = lsolver.local_projector(V_rhs_proj, [rhs_prime])
+        sig_proj = local_projection(V_flux_proj, [-ufl.grad(u_prime)])
+        rhs_proj = local_projection(V_rhs_proj, [rhs_prime])
 
         return sig_proj[0], rhs_proj[0]
 
 
 # --- Equilibration ---
+def setup_equilibration(
+    V_flux, facet_tag, u_ext_ufl, boundid_prime_dir, boundid_prime_vn
+):
+    # The mesh
+    msh = V_flux.mesh
+
+    # Mark boundary facets of primal problem
+    fct_bcesnt_primal = np.array([], dtype=np.int32)
+    for id in boundid_prime_dir:
+        list_fcts = facet_tag.indices[facet_tag.values == id]
+        fct_bcesnt_primal = np.concatenate((fct_bcesnt_primal, list_fcts))
+
+    # Set flux-boundaries
+    bc_esnt_flux = []
+
+    # Set boundary conditions
+    for id in boundid_prime_vn:
+        list_fcts = facet_tag.indices[facet_tag.values == id]
+        bc_esnt_flux.append(
+            fluxbc(
+                exact_flux_ntrace(u_ext_ufl, msh, id),
+                list_fcts,
+                V_flux,
+                requires_projection=True,
+                quadrature_degree=3 * eqlb_fluxorder,
+            )
+        )
+
+    return fct_bcesnt_primal, bc_esnt_flux
 
 
 def setup_equilibration_ev(
@@ -649,7 +700,7 @@ if extsol_type == 1:
     # Function handles for u_ext/sig_ext
     u_ext_np = ext_sol_1(np)
     u_ext_ufl = ext_sol_1(ufl)
-    sig_ext = ext_flux_1
+    sig_ext_np = ext_flux_1
 
     # Set dirichlet-ids
     boundid_prime_dir = [1, 2, 3, 4]
@@ -658,7 +709,7 @@ elif extsol_type == 2:
     # Function handles for u_ext/sig_ext
     u_ext_np = ext_sol_1(np)
     u_ext_ufl = ext_sol_1(ufl)
-    sig_ext = ext_flux_1
+    sig_ext_np = ext_flux_1
 
     # Set dirichlet-ids
     boundid_prime_dir = [1, 2]
@@ -667,7 +718,7 @@ elif extsol_type == 3:
     # Function handles for u_ext/sig_ext
     u_ext_np = ext_sol_2(np)
     u_ext_ufl = ext_sol_2(ufl)
-    sig_ext = ext_flux_2
+    sig_ext_np = ext_flux_2
 
     # Set dirichlet-ids
     boundid_prime_dir = [1, 2, 3, 4]
@@ -676,7 +727,7 @@ elif extsol_type == 4:
     # Function handles for u_ext/sig_ext
     u_ext_np = ext_sol_2(np)
     u_ext_ufl = ext_sol_2(ufl)
-    sig_ext = ext_flux_2
+    sig_ext_np = ext_flux_2
 
     # Set dirichlet-ids
     boundid_prime_dir = [1, 3]
@@ -685,7 +736,7 @@ elif extsol_type == 5:
     # Function handles for u_ext/sig_ext
     u_ext_np = ext_sol_2(np)
     u_ext_ufl = ext_sol_2(ufl)
-    sig_ext = ext_flux_2
+    sig_ext_np = ext_flux_2
 
     # Set dirichlet-ids
     boundid_prime_dir = [2, 4]
@@ -694,7 +745,7 @@ elif extsol_type == 6:
     # Function handles for u_ext/sig_ext
     u_ext_np = ext_sol_3(np)
     u_ext_ufl = ext_sol_3(ufl)
-    sig_ext = ext_flux_3
+    sig_ext_np = ext_flux_3
 
     # Set dirichlet-ids
     boundid_prime_dir = [1, 2, 3, 4]
@@ -703,7 +754,7 @@ elif extsol_type == 7:
     # Function handles for u_ext/sig_ext
     u_ext_np = ext_sol_3(np)
     u_ext_ufl = ext_sol_3(ufl)
-    sig_ext = ext_flux_3
+    sig_ext_np = ext_flux_3
 
     # Set dirichlet-ids
     boundid_prime_dir = [2, 4]
@@ -711,11 +762,13 @@ elif extsol_type == 7:
 else:
     raise RuntimeError("No such solution option!")
 
+sig_ext_ufl = exact_flux(u_ext_ufl)
+
 # Initilaise equlibrator
 if eqlb_type == "EV":
-    Equilibrator = equilibration.EquilibratorEV
+    Equilibrator = FluxEqlbEV
 elif eqlb_type == "SemiExplt":
-    Equilibrator = equilibration.EquilibratorSemiExplt
+    Equilibrator = FluxEqlbSE
 else:
     raise RuntimeError("No such equilibrator option!")
 
@@ -756,6 +809,8 @@ for i_timing in range(0, timing_nretry):
         solve_poisson_primal(solver, L, u_prime)
         extime["prime_solve"] += time.perf_counter()
 
+        print("Primal problem solved")
+
         # Project fluxes into DG-space
         extime["prime_project"] -= time.perf_counter()
         sig_proj, rhs_proj = projection_primal(
@@ -763,36 +818,27 @@ for i_timing in range(0, timing_nretry):
         )
         extime["prime_project"] += time.perf_counter()
 
+        print("Projection completed")
+
         # # --- Equilibrate flux
         extime["eqlb_setup"] -= time.perf_counter()
         # Initialize equilibrator
         equilibrator = Equilibrator(eqlb_fluxorder, msh, [rhs_proj], [sig_proj])
 
         # Identify boundaries and set essential flux-bcs
-        if eqlb_type == "EV":
-            fct_bcesnt_primal, fct_bcesnt_flux, bc_esnt_flux = setup_equilibration_ev(
-                equilibrator.V,
-                equilibrator.V_flux,
-                facets,
-                sig_ext,
-                boundid_prime_dir,
-                boundid_prime_vn,
-            )
-        else:
-            (
-                fct_bcesnt_primal,
-                fct_bcesnt_flux,
-                bc_esnt_flux,
-            ) = setup_equilibration_semiexplt(
-                equilibrator.V_flux,
-                facets,
-                sig_ext,
-                boundid_prime_dir,
-                boundid_prime_vn,
-            )
+        (
+            fct_bcesnt_primal,
+            bc_esnt_flux,
+        ) = setup_equilibration(
+            equilibrator.V_flux,
+            facets,
+            u_ext_ufl,
+            boundid_prime_dir,
+            boundid_prime_vn,
+        )
 
         equilibrator.set_boundary_conditions(
-            [fct_bcesnt_primal], [fct_bcesnt_flux], [bc_esnt_flux]
+            [fct_bcesnt_primal], [bc_esnt_flux], quadrature_degree=3 * eqlb_fluxorder
         )
         extime["eqlb_setup"] += time.perf_counter()
 
@@ -813,7 +859,7 @@ for i_timing in range(0, timing_nretry):
         if i_timing == 0:
             # Evaluate exakt flux
             vD = dfem.Function(equilibrator.V_flux)
-            vD.interpolate(sig_ext)
+            vD.interpolate(sig_ext_np)
 
             # Set function names
             u_prime.name = "u_prime"

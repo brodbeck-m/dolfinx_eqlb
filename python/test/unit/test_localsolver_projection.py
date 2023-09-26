@@ -11,7 +11,12 @@ import dolfinx.fem as dfem
 
 import ufl
 
-from dolfinx_eqlb import lsolver
+from dolfinx_eqlb.lsolver import (
+    local_solver_lu,
+    local_solver_cholesky,
+    local_solver_cg,
+    local_projection,
+)
 
 
 """Utility functions"""
@@ -312,8 +317,7 @@ def test_localprojection_ufl_vector(cell, is_vectorvalued, n_elmt, degree, test_
     proj_global = problem.solve()
 
     # Calculate local projection
-    # lsolver.local_solver_cholesky([proj_local], dfem.form(a), [dfem.form(l)])
-    proj_local = lsolver.local_projector(V, [f_rhs], quadrature_degree=quad_deg)
+    proj_local = local_projection(V, [f_rhs], quadrature_degree=quad_deg)
 
     # Compare solutions
     assert np.allclose(proj_global.vector.array, proj_local[0].vector.array)
@@ -380,7 +384,7 @@ def test_localprojection_ufl_Hdiv(cell, family_basix, n_elmt, degree, test_func)
         quad_deg = None
 
         # Create rhs-function
-        elmt_rhs = ufl.VectorElement("CG", msh.ufl_cell(), degree)
+        elmt_rhs = ufl.VectorElement("P", msh.ufl_cell(), degree)
         V_rhs = dfem.FunctionSpace(msh, elmt_rhs)
         func = dfem.Function(V_rhs)
 
@@ -414,8 +418,7 @@ def test_localprojection_ufl_Hdiv(cell, family_basix, n_elmt, degree, test_func)
     proj_global = problem.solve()
 
     # Calculate local projection
-    # lsolver.local_solver_cholesky([proj_local], dfem.form(a), [dfem.form(l)])
-    proj_local = lsolver.local_projector(V, [func], quadrature_degree=quad_deg)
+    proj_local = local_projection(V, [func], quadrature_degree=quad_deg)
 
     # Compare solutions
     assert np.allclose(proj_global.vector.array, proj_local[0].vector.array)
@@ -459,11 +462,11 @@ def test_localprojection_solvers(type_solver):
     form_l = dfem.form(l)
 
     if type_solver == "lu":
-        lsolver.local_solver_lu([proj_local], form_a, [form_l])
+        local_solver_lu([proj_local], form_a, [form_l])
     elif type_solver == "cholesky":
-        lsolver.local_solver_cholesky([proj_local], form_a, [form_l])
+        local_solver_cholesky([proj_local], form_a, [form_l])
     elif type_solver == "cg":
-        lsolver.local_solver_cg([proj_local], form_a, [form_l])
+        local_solver_cg([proj_local], form_a, [form_l])
     else:
         assert False
 

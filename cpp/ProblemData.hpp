@@ -1,13 +1,18 @@
 #pragma once
 
-#include <algorithm>
-#include <cmath>
+#include "utils.hpp"
+
 #include <dolfinx/common/IndexMap.h>
 #include <dolfinx/fem/Constant.h>
 #include <dolfinx/fem/DirichletBC.h>
 #include <dolfinx/fem/DofMap.h>
 #include <dolfinx/fem/Form.h>
+#include <dolfinx/fem/Function.h>
+#include <dolfinx/fem/FunctionSpace.h>
 #include <dolfinx/fem/utils.h>
+
+#include <algorithm>
+#include <cmath>
 #include <iostream>
 #include <memory>
 #include <numeric>
@@ -17,7 +22,7 @@
 
 using namespace dolfinx;
 
-namespace dolfinx_adaptivity::equilibration
+namespace dolfinx_eqlb
 {
 template <typename T>
 class ProblemData
@@ -71,7 +76,7 @@ public:
       const fem::Form<T>& l_i = *(l[i]);
 
       // Get sizes (constants, boundary conditions)
-      std::int32_t size_cnst_i = size_constants(l_i);
+      std::int32_t size_cnst_i = size_constants_data<T>(l_i.constants());
 
       if (!id_no_bcs)
       {
@@ -219,7 +224,7 @@ public:
       _l[i] = l[i];
 
       // Get sizes (constants, boundary conditions)
-      std::int32_t size_cnst_i = size_constants(l_i);
+      std::int32_t size_cnst_i = size_constants_data<T>(l_i.constants());
 
       // Increment overall size
       size_cnst += size_cnst_i;
@@ -342,42 +347,15 @@ public:
 
 protected:
   /* Handle constants */
-  std::int32_t size_constants(const fem::Form<T>& l_i)
-  {
-    // Extract constants
-    const std::vector<std::shared_ptr<const fem::Constant<T>>>& constants_i
-        = l_i.constants();
-
-    // Get overall size
-    std::int32_t size
-        = std::accumulate(constants_i.cbegin(), constants_i.cend(), 0,
-                          [](std::int32_t sum, auto& constant)
-                          { return sum + constant->value.size(); });
-
-    return size;
-  }
-
   void set_data_constants()
   {
     for (std::size_t i = 0; i < _nlhs; ++i)
     {
-      // Extract data for l_i
+      // The linear form l_i
       const fem::Form<T>& l_i = *(_l[i]);
 
-      const std::vector<std::shared_ptr<const fem::Constant<T>>>& constants_i
-          = l_i.constants();
-
-      std::span<T> data_cnst = constants(i);
-
       // Extract data
-      std::int32_t offset = 0;
-      for (auto& constant : constants_i)
-      {
-        const std::vector<T>& value = constant->value;
-        std::copy(value.begin(), value.end(),
-                  std::next(data_cnst.begin(), offset));
-        offset += value.size();
-      }
+      extract_constants_data<T>(l_i.constants(), constants(i));
     }
   }
 
@@ -503,4 +481,4 @@ protected:
   // Offset
   std::vector<std::int32_t> _offset_bc;
 };
-} // namespace dolfinx_adaptivity::equilibration
+} // namespace dolfinx_eqlb

@@ -5,20 +5,12 @@
 #include <basix/finite-element.h>
 #include <dolfinx/fem/FiniteElement.h>
 #include <dolfinx/fem/FunctionSpace.h>
-#include <dolfinx/graph/AdjacencyList.h>
-#include <dolfinx/mesh/Mesh.h>
-#include <dolfinx/mesh/Topology.h>
 
-#include <algorithm>
 #include <cassert>
-#include <iostream>
-#include <memory>
-#include <span>
-#include <vector>
 
 using namespace dolfinx;
 
-namespace dolfinx_adaptivity::equilibration
+namespace dolfinx_eqlb
 {
 template <typename T, int id_flux_order = 3>
 class PatchFluxCstm : public Patch
@@ -39,7 +31,7 @@ public:
   ///                                entity_closure_dofs)
   PatchFluxCstm(
       int nnodes_proc, std::shared_ptr<const mesh::Mesh> mesh,
-      graph::AdjacencyList<std::int8_t>& bfct_type,
+      mdspan_t<const std::int8_t, 2> bfct_type,
       const std::shared_ptr<const fem::FunctionSpace> function_space_fluxhdiv,
       const std::shared_ptr<const fem::FunctionSpace> function_space_fluxdg,
       const basix::FiniteElement& basix_element_fluxdg)
@@ -859,4 +851,4 @@ protected:
   std::vector<std::int8_t> _localid_fct;
 };
 
-} // namespace dolfinx_adaptivity::equilibration
+} // namespace dolfinx_eqlb
