@@ -192,26 +192,28 @@ void minimisation_kernel(mdspan2_t Te, KernelDataEqlb<T>& kernel_data,
 /// [1] Bertrand, F.; Carstensen, C.; Gräßle, B. & Tran, N. T.:
 ///     Stabilization-free HHO a posteriori error control, 2022
 ///
-/// @tparam T              The scalar type
-/// @tparam id_flux_order  The flux order (1->RT1, 2->RT2, 3->general)
-/// @tparam asmbl_systmtrx Flag if entire tangent or only load vector is
-///                        assembled
-/// @param A_patch         The patch system matrix (mass matrix)
-/// @param L_patch         The patch load vector
-/// @param patch           The patch
-/// @param kernel_data     The kernel data
-/// @param dofmap_patch    The patch dofmap
-///                        ([dof_local, dof_patch, dof_global,prefactor] x cell
-///                        x dofs_per_cell)
-/// @param coefficients    Flux DOFs on cells
-/// @param coordinate_dofs The coordinates of patch cells
-/// @param type_patch      The patch type
+/// @tparam T               The scalar type
+/// @tparam id_flux_order   The flux order (1->RT1, 2->RT2, 3->general)
+/// @tparam asmbl_systmtrx  Flag if entire tangent or only load vector is
+///                         assembled
+/// @param A_patch          The patch system matrix (mass matrix)
+/// @param L_patch          The patch load vector
+/// @param patch            The patch
+/// @param kernel_data      The kernel data
+/// @param dofmap_patch     The patch dofmap
+///                         ([dof_local, dof_patch, dof_global,prefactor] x cell
+///                         x dofs_per_cell)
+/// @param boundary_markers The boundary markers (1 is DOF is on flux boundary)
+/// @param coefficients     Flux DOFs on cells
+/// @param coordinate_dofs  The coordinates of patch cells
+/// @param type_patch       The patch type
 template <typename T, int id_flux_order = 3, bool asmbl_systmtrx = true>
 void assemble_minimisation(
     Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>& A_patch,
     Eigen::Matrix<T, Eigen::Dynamic, 1>& L_patch,
     PatchFluxCstm<T, id_flux_order>& patch, KernelDataEqlb<T>& kernel_data,
-    mdspan_t<std::int32_t, 3> dofmap_patch, std::span<T> coefficients,
+    mdspan_t<std::int32_t, 3> dofmap_patch,
+    std::span<const std::int8_t> boundary_markers, std::span<T> coefficients,
     std::span<double> coordinate_dofs, const int type_patch)
 {
   assert(id_flux_order < 0);
@@ -378,30 +380,91 @@ void assemble_minimisation(
     // Assemble linear- and bilinear form
     if constexpr (id_flux_order == 1)
     {
-      // Assemble linar form
-      L_patch(0) += Te(1, 0);
-
-      if constexpr (asmbl_systmtrx)
+      if ((type_patch == 1) || (type_patch == 3))
       {
-        // Assemble bilinear form
-        A_patch(0, 0) += Te(0, 0);
+        // Assemble linar form
+        L_patch(0) = 0;
+
+        if constexpr (asmbl_systmtrx)
+        {
+          // Assemble bilinear form
+          A_patch(0, 0) = 1;
+        }
+      }
+      else
+      {
+        // Assemble linar form
+        L_patch(0) += Te(1, 0);
+
+        if constexpr (asmbl_systmtrx)
+        {
+          // Assemble bilinear form
+          A_patch(0, 0) += Te(0, 0);
+        }
       }
     }
     else
     {
-      for (std::size_t i = 0; i < ndofs_nz; ++i)
+      if ((type_patch == 1) || (type_patch == 3))
       {
-        std::int32_t dof_i = dofmap_cell(1, i + 1);
-
-        // Assemble load vector
-        L_patch(dof_i) += Te(index_load, i);
-
-        // Assemble bilinear form
-        if constexpr (asmbl_systmtrx)
+        for (std::size_t i = 0; i < ndofs_nz; ++i)
         {
-          for (std::size_t j = 0; j < ndofs_nz; ++j)
+          std::int32_t dof_i = dofmap_cell(1, i + 1);
+          std::int8_t bmarker_i = boundary_markers[dof_i];
+
+          // Assemble load vector
+          if (bmarker_i)
           {
-            A_patch(dof_i, dofmap_cell(1, j + 1)) += Te(i, j);
+            L_patch(dof_i) = 0;
+          }
+          else
+          {
+            L_patch(dof_i) += Te(index_load, i);
+          }
+
+          // Assemble bilinear form
+          if constexpr (asmbl_systmtrx)
+          {
+            if (bmarker_i)
+            {
+              A_patch(dof_i, dof_i) = 1;
+            }
+            else
+            {
+              for (std::size_t j = 0; j < ndofs_nz; ++j)
+              {
+                std::int32_t dof_j = dofmap_cell(1, j + 1);
+                std::int8_t bmarker_j = boundary_markers[dof_j];
+
+                if (bmarker_j)
+                {
+                  A_patch(dof_i, dof_j) = 0;
+                }
+                else
+                {
+                  A_patch(dof_i, dof_j) += Te(i, j);
+                }
+              }
+            }
+          }
+        }
+      }
+      else
+      {
+        for (std::size_t i = 0; i < ndofs_nz; ++i)
+        {
+          std::int32_t dof_i = dofmap_cell(1, i + 1);
+
+          // Assemble load vector
+          L_patch(dof_i) += Te(index_load, i);
+
+          // Assemble bilinear form
+          if constexpr (asmbl_systmtrx)
+          {
+            for (std::size_t j = 0; j < ndofs_nz; ++j)
+            {
+              A_patch(dof_i, dofmap_cell(1, j + 1)) += Te(i, j);
+            }
           }
         }
       }

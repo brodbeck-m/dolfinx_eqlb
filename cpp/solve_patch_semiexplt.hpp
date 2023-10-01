@@ -896,6 +896,9 @@ void minimise_flux(const mesh::Geometry& geometry,
                                          (std::size_t)ncells,
                                          (std::size_t)ndofs_cell_local);
 
+  // Marker boundary DOFs
+  std::vector<std::int8_t> boundary_markers(size_psystem, false);
+
   /* Storage cell geometries and DOFmap*/
   // Initialisations
   const int cstride_geom = 3 * nnodes_cell;
@@ -944,6 +947,31 @@ void minimise_flux(const mesh::Geometry& geometry,
     copy_cell_data<T, 1>(cells, flux_dofmap, x_flux_dhdiv, coefficients,
                          ndofs_flux, 1);
 
+    /* Set bounday markers */
+    if (type_patch == 1 || type_patch == 3)
+    {
+      // Unset all prvious markers
+      std::fill(boundary_markers.begin(), boundary_markers.end(), false);
+
+      // Set boundary markers
+      boundary_markers[0] = true;
+
+      if constexpr (id_flux_order > 1)
+      {
+        for (std::size_t i = 1; i < ndofs_flux_fct; ++i)
+        {
+          // Mark boundary DOFs on facet 0
+          boundary_markers[i] = 1;
+
+          // Mark boundary DOFs on facet ncells
+          if (type_patch == 1)
+          {
+            boundary_markers[ncells * (ndofs_flux_fct - 1) + i] = true;
+          }
+        }
+      }
+    }
+
     /* Perform minimisation */
     if (i_rhs == 0)
     {
@@ -953,8 +981,8 @@ void minimise_flux(const mesh::Geometry& geometry,
 
       // Assemble tangents
       assemble_minimisation<T, id_flux_order, true>(
-          A_patch, L_patch, patch, kernel_data, dofmap_patch, coefficients,
-          coordinate_dofs, type_patch);
+          A_patch, L_patch, patch, kernel_data, dofmap_patch, boundary_markers,
+          coefficients, coordinate_dofs, type_patch);
 
       // Factorization of system matrix
       if constexpr (id_flux_order > 1)

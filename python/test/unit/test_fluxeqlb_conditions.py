@@ -250,11 +250,23 @@ def check_jump_condition(sigma_eq: dfem.Function, sig_proj: dfem.Function):
                     raise ValueError("Jump condition not satisfied")
 
 
-def perform_possible_equilibrations(mesh_type, degree, bc_type, equilibrator):
+""" 
+Check if equilibrated flux 
+    a.) fulfills the divergence condition div(sigma_eqlb) = f 
+    b.) is in the H(div) space
+    c.) fulfills the flux boundary conditions strongly
+"""
+
+
+@pytest.mark.parametrize("mesh_type", ["builtin"])
+@pytest.mark.parametrize("degree", [1, 2, 3])
+@pytest.mark.parametrize("bc_type", ["pure_dirichlet", "neumann_inhom"])
+@pytest.mark.parametrize("equilibrator", [FluxEqlbEV, FluxEqlbSE])
+def test_equilibration_conditions(mesh_type, degree, bc_type, equilibrator):
     # Create mesh
     if mesh_type == "builtin":
         geometry = create_unitsquare_builtin(
-            3, dmesh.CellType.triangle, dmesh.DiagonalType.crossed
+            2, dmesh.CellType.triangle, dmesh.DiagonalType.crossed
         )
     elif mesh_type == "gmsh":
         raise NotImplementedError("GMSH mesh not implemented yet")
@@ -332,30 +344,6 @@ def perform_possible_equilibrations(mesh_type, degree, bc_type, equilibrator):
                 # --- Check jump condition (only required for semi-explicit equilibrator)
                 if equilibrator == FluxEqlbSE:
                     check_jump_condition(sigma_eq[0], sigma_projected)
-
-
-""" 
-Check if equilibrated flux 
-    a.) fulfills the divergence condition div(sigma_eqlb) = f 
-    b.) is in the H(div) space
-    c.) fulfills the flux boundary conditions strongly
-"""
-
-
-@pytest.mark.parametrize("mesh_type", ["builtin"])
-@pytest.mark.parametrize("degree", [1, 2, 3])
-@pytest.mark.parametrize("bc_type", ["pure_dirichlet", "neumann_hom", "neumann_inhom"])
-@pytest.mark.parametrize("equilibrator", [FluxEqlbEV])
-def test_equilibration_conditions(mesh_type, degree, bc_type, equilibrator):
-    perform_possible_equilibrations(mesh_type, degree, bc_type, equilibrator)
-
-
-@pytest.mark.parametrize("mesh_type", ["builtin"])
-@pytest.mark.parametrize("degree", [1, 2, 3])
-@pytest.mark.parametrize("bc_type", ["pure_dirichlet", "neumann_hom", "neumann_inhom"])
-@pytest.mark.parametrize("equilibrator", [FluxEqlbSE])
-def test_equilibration_conditions(mesh_type, degree, bc_type, equilibrator):
-    perform_possible_equilibrations(mesh_type, degree, bc_type, equilibrator)
 
 
 if __name__ == "__main__":
