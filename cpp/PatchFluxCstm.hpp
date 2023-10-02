@@ -138,8 +138,6 @@ public:
       std::int32_t offs_f, offs_fhdiv_fct, offs_fhdiv_cell, offs_fdg_fct;
 
       // Extract data, set offsets for data storage and set +/- cells on facet
-      std::int32_t cell_puls, cell_minus;
-
       if (_type[0] > 0)
       {
         // Extract cell_i

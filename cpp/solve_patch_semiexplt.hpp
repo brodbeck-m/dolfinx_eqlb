@@ -111,10 +111,10 @@ void copy_cell_data(std::span<const std::int32_t> cells,
 
 /// Calculate prefactor of vector-values DOFs on facet
 /// General: Explicit formulas assume that RT-Functions are calculated based on
-///          outward pointing normals. This is not the case in FenicsX.
+///          outward pointing normals. This is not the case in FEniCSx.
 ///          Therefore transformation +1 resp. -1 is necessary.
 /// Determination: Orientation of facet-normal on reference cell is stored
-///                within basix. Correction required, as during contra-variant
+///                within Basix. Correction required, as during contra-variant
 ///                Piola mapping basis functions stay normal to element edges
 ///                but can change their orientation with respect to the cell
 ///                (inward or outward pointing).This change is identified
@@ -163,6 +163,48 @@ cmdspan2_t extract_mapping_data(const int cell_id, std::span<double> storage)
   const int offset = 4 * cell_id;
 
   return cmdspan2_t(storage.data() + offset, 2, 2);
+}
+
+/// Evaluate jump (projected flux) on internal surface
+/// @tparam T The data type of the Flux
+/// @param[in] ipoint_n            Id of the interpolation point
+/// @param[in] coefficients_G_Tap1 The flux DOFs (cell Tap1)
+/// @param[in] shp_Tap1Ea          The shape functions (cell Tap1, facet Ea)
+/// @param[in] coefficients_G_Ta   The flux DOFs (cell Ta)
+/// @param[in] shp_TaEa            The shape functions (cell Ta, facet Ea)
+/// @param[in] dofs_Ea             The DOFs on facet Ea
+/// @param[in,out] jG_Ea           The evaluated flux jump
+template <typename T>
+void calculate_jump(std::size_t ipoint_n,
+                    std::span<const T> coefficients_G_Tap1,
+                    mdspan_t<const double, 2> shp_Tap1Ea,
+                    std::span<const T> coefficients_G_Ta,
+                    mdspan_t<const double, 2> shp_TaEa,
+                    std::span<const std::int32_t> dofs_Ea, std::span<T> jG_Ea)
+{
+  // Number of DOFs per facet
+  const int ndofs_projflux_fct = dofs_Ea.size() / 2;
+
+  // Initialise jump with zero
+  std::fill(jG_Ea.begin(), jG_Ea.end(), 0.0);
+
+  // Evaluate jump at
+  for (std::size_t i = 0; i < ndofs_projflux_fct; ++i)
+  {
+    // Local and global IDs of first DOF on facet
+    int id_Ta = dofs_Ea[i + ndofs_projflux_fct];
+    int id_Tap1 = dofs_Ea[i];
+    int offs_Ta = 2 * id_Ta;
+    int offs_Tap1 = 2 * id_Tap1;
+
+    // Evaluate jump
+    // jump = (flux_proj_Tap1 - flux_proj_Ta)
+    jG_Ea[0] += coefficients_G_Tap1[offs_Tap1] * shp_Tap1Ea(ipoint_n, id_Tap1)
+                - coefficients_G_Ta[offs_Ta] * shp_TaEa(ipoint_n, id_Ta);
+    jG_Ea[1]
+        += coefficients_G_Tap1[offs_Tap1 + 1] * shp_Tap1Ea(ipoint_n, id_Tap1)
+           - coefficients_G_Ta[offs_Ta + 1] * shp_TaEa(ipoint_n, id_Ta);
+  }
 }
 
 /// Step 1: Calculate fluxes with jump/divergence condition on patch
@@ -235,7 +277,7 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
       coefficients_G_Ta(ndofs_projflux, 0);
 
   // Storage of inter-facet jumps
-  std::array<T, 2> jG_Ea;
+  std::array<T, 2> jG_Ea, data_jG_E0, data_jG_mapped_E0;
 
   const int size_jump = dim * nipoints_facet;
   std::vector<T> data_jG_Eam1(size_jump, 0);
@@ -247,18 +289,34 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
 
   /* Initialise storage */
   // Jacobian J, inverse K and determinant detJ
+  bool store_J = false, store_K = false;
   std::vector<double> storage_detJ(ncells, 0);
-  std::vector<double> storage_K;
+  std::vector<double> storage_J, storage_K;
 
   // Initialise storage only required for higher order cases
   if constexpr (id_flux_order > 1)
   {
     // Inverse of the Jacobian
+    store_K = true;
     storage_K.resize(ncells * 4);
 
     // Storage of DOFs
     c_ta_div.resize(ndofs_flux_cell_div);
     cj_ta_ea.resize(ndofs_flux_fct - 1);
+  }
+
+  if (patch.type(0) != 0)
+  {
+    // Jacobian
+    store_J = true;
+    storage_J.resize(ncells * 4);
+
+    if (store_K == false)
+    {
+      // Inverse of the Jacobian
+      store_K = true;
+      storage_K.resize(ncells * 4);
+    }
   }
 
   /* Storage cell geometries/ normal orientation */
@@ -295,8 +353,13 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
 
     const double detJ = storage_detJ[index];
 
-    // Storage of inverse Jacobian
-    if (id_flux_order > 1)
+    // Storage of (inverse) Jacobian
+    if (store_J)
+    {
+      store_mapping_data(index, storage_J, J);
+    }
+
+    if (store_K)
     {
       store_mapping_data(index, storage_K, K);
     }
@@ -351,13 +414,21 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
     std::span<const T> x_rhs_proj
         = problem_data.projected_rhs(i_rhs).x()->array();
 
-    // Initialise coefficients_G
+    // Boundary DOFs
+    std::span<const T> boundary_values;
+    if (type_patch == 1 || type_patch == 3)
+    {
+      boundary_values = problem_data.boundary_values(i_rhs);
+    }
+
+    /* Calculate sigma_tilde */
+    // Initialisations
     copy_cell_data<T, 2>(x_flux_proj, fluxdg_dofmap.links(cells[0]),
                          coefficients_G_Tap1, 2);
 
-    /* Calculate sigma_tilde */
     c_tam1_eam1 = 0.0;
 
+    // Loop over all cells
     for (std::size_t a = 1; a < ncells + 1; ++a)
     {
       // Set id for accessing storage
@@ -369,10 +440,28 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
       // Cell-local id of patch-central node
       std::int8_t node_i_Ta = patch.inode_local(a);
 
+      // Check if facet is on boundary
+      bool fct_on_boundary
+          = ((type_patch > 0) && (a == 1 || a == ncells)) ? true : false;
+
+      // Check if bcs have to be applied
+      bool fct_has_bc = ((fct_on_boundary && type_patch == 1)
+                         || (a == 1 && type_patch == 3))
+                            ? true
+                            : false;
+
       /* Extract required data */
+      // Local facet IDs
+      std::int8_t fl_TaEam1, fl_TaEa;
+      std::tie(fl_TaEam1, fl_TaEa) = patch.fctid_local(a);
+      std::int8_t fl_Tap1Ea = patch.fctid_local(a, a + 1);
+
       // Isoparametric mapping
       const double detJ = storage_detJ[id_a];
       const double sign_detJ = (detJ > 0.0) ? 1.0 : -1.0;
+
+      // DOFs (cell-local) projected flux on facet Ea
+      std::span<const std::int32_t> dofs_Ea = patch.dofs_projflux_fct(a);
 
       // Coefficient arrays
       std::swap(coefficients_G_Ta, coefficients_G_Tap1);
@@ -382,15 +471,7 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
       copy_cell_data<T, 1>(x_rhs_proj, rhs_dofmap.links(c_a), coefficients_f,
                            1);
 
-      /* DOFs from facet integrals */
-      // Local facet ids
-      std::int8_t fl_TaEam1, fl_TaEa;
-      std::tie(fl_TaEam1, fl_TaEa) = patch.fctid_local(a);
-      std::int8_t fl_Tap1Ea = patch.fctid_local(a, a + 1);
-
-      // DOFs (cell local) projected flux on facet Ea
-      std::span<const std::int32_t> dofs_Ea = patch.dofs_projflux_fct(a);
-
+      /* Tabulate shape functions */
       // Shape functions RHS
       s_cmdspan2_t shp_TaEa = kernel_data.shapefunctions_fct_rhs(fl_TaEa);
       s_cmdspan2_t shp_Tap1Ea = kernel_data.shapefunctions_fct_rhs(fl_Tap1Ea);
@@ -399,51 +480,173 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
       s_cmdspan2_t hat_TaEam1 = kernel_data.shapefunctions_fct_hat(fl_TaEam1);
       s_cmdspan2_t hat_TaEa = kernel_data.shapefunctions_fct_hat(fl_TaEa);
 
-      // Quadrature loop
+      /* Prepare data for inclusion of flux BCs */
+      // DOFs on facet E0
+      std::span<const std::int32_t> dofs_local_E0, dofs_global_E0;
+
+      // Tabulated shape functions on facet E0
+      s_cmdspan2_t shp_TaEam1;
+
+      if (fct_has_bc && (a == 1))
+      {
+        // DOFs (cell-local) projected flux on facet E0
+        dofs_local_E0 = patch.dofs_projflux_fct(1);
+
+        // DOFs (global) projected flux on facet E0
+        dofs_global_E0 = patch.dofs_flux_fct_global(1, 0);
+
+        // Tabulate shape functions RHS on facet 0
+        shp_TaEam1 = kernel_data.shapefunctions_fct_rhs(fl_TaEam1);
+      }
+
+      /* DOFs from interpolation */
+      // Initialisation
       c_ta_eam1 = -c_tam1_eam1;
       std::fill(cj_ta_ea.begin(), cj_ta_ea.end(), 0.0);
 
+      // Consider flux BCs
+      if (fct_has_bc)
+      {
+        // Get (global) boundary facet/DOFs
+        std::span<const std::int32_t> bdofs_global;
+        std::int32_t bfct_global;
+        if (a == 1)
+        {
+          bdofs_global = patch.dofs_flux_fct_global(1, 0);
+          bfct_global = patch.fct(0);
+        }
+        else
+        {
+          bdofs_global = patch.dofs_flux_fct_global(a, a);
+          bfct_global = patch.fct(a + 1);
+        }
+
+        // Calculate patch bcs
+        std::int8_t node_i_Ta = patch.inode_local(a);
+        mdspan_t<const double, 2> J = extract_mapping_data(0, storage_J);
+        mdspan_t<const double, 2> K = extract_mapping_data(0, storage_K);
+
+        problem_data.calculate_patch_bc(i_rhs, bfct_global, node_i_Ta, J, detJ,
+                                        K);
+
+        // Contribution to c_ta_eam1
+        if (a == 1)
+        {
+          c_ta_eam1
+              += prefactor_dof(id_a, 0) * boundary_values[bdofs_global[0]];
+        }
+
+        // Contribution to cj_ta_ea
+        if constexpr (id_flux_order > 1)
+        {
+          if constexpr (id_flux_order == 2)
+          {
+            x_flux_dhdiv[bdofs_global[1]] += boundary_values[bdofs_global[1]];
+          }
+          else
+          {
+            for (std::size_t j = 1; j < ndofs_flux_fct; ++j)
+            {
+              std::int32_t dof = bdofs_global[j];
+
+              x_flux_dhdiv[dof] += boundary_values[dof];
+            }
+          }
+        }
+      }
+
+      // Interpolate DOFs
       for (std::size_t n = 0; n < nipoints_facet; ++n)
       {
         // Global index of Tap1
         std::int32_t c_ap1 = (a < ncells) ? cells[id_a + 1] : cells[0];
 
         // Interpolate jump at quadrature point
-        std::fill(jG_Ea.begin(), jG_Ea.end(), 0.0);
-
-        if (type_patch > 0 && a == ncells)
+        if (fct_on_boundary)
         {
-          for (std::size_t i = 0; i < ndofs_projflux_fct; ++i)
+          if (a == 1)
           {
-            // Local and global IDs of first DOF on facet
-            int s_Tap1 = dofs_Ea[i];
-            int s_Ta = dofs_Ea[i + ndofs_projflux_fct];
+            // Handle BCs on facet 0
+            if (fct_has_bc)
+            {
+              // Evaluate jump
+              for (std::size_t i = 0; i < ndofs_projflux_fct; ++i)
+              {
+                // Local and global IDs of first DOF on facet
+                int id_Ta = dofs_local_E0[i + ndofs_projflux_fct];
+                int offs_Ta = 2 * id_Ta;
 
-            // Evaluate jump
-            // jump = flux_proj_Ta on boundary!
-            jG_Ea[0] = coefficients_G_Ta[s_Ta] * shp_TaEa(n, s_Ta);
-            jG_Ea[1] = coefficients_G_Ta[s_Ta + 1] * shp_TaEa(n, s_Ta);
+                // Evaluate jump
+                jG_Eam1(n, 0)
+                    -= coefficients_G_Ta[offs_Ta] * shp_TaEam1(n, id_Ta);
+                jG_Eam1(n, 1)
+                    -= coefficients_G_Ta[offs_Ta + 1] * shp_TaEam1(n, id_Ta);
+              }
+
+              // Evaluate higher order DOFs on boundary facet
+              if constexpr (id_flux_order > 1)
+              {
+                // Extract mapping data
+                mdspan_t<const double, 2> J
+                    = extract_mapping_data(id_a, storage_J);
+                mdspan_t<const double, 2> K
+                    = extract_mapping_data(id_a, storage_K);
+
+                // Pull back flux to reference cell
+                mdspan_t<T, 2> jG_E0(data_jG_E0.data(), 1, dim);
+                mdspan_t<T, 2> jG_mapped_E0(data_jG_mapped_E0.data(), 1, dim);
+
+                jG_E0(0, 0) = jG_Eam1(n, 0) * hat_TaEam1(n, node_i_Ta);
+                jG_E0(0, 1) = jG_Eam1(n, 1) * hat_TaEam1(n, node_i_Ta);
+
+                kernel_data.pull_back_flux(jG_mapped_E0, jG_E0, J, detJ, K);
+
+                // Evaluate higher-order DOFs on facet E0
+                if constexpr (id_flux_order == 2)
+                {
+                  x_flux_dhdiv[dofs_global_E0[1]]
+                      += M(fl_TaEam1, 1, 0, n) * jG_mapped_E0(0, 0)
+                         + M(fl_TaEam1, 1, 1, n) * jG_mapped_E0(0, 1);
+                }
+                else
+                {
+                  // Evaluate facet DOFs
+                  for (std::size_t j = 1; j < ndofs_flux_fct; ++j)
+                  {
+                    x_flux_dhdiv[dofs_global_E0[j]]
+                        += M(fl_TaEam1, j, 0, n) * jG_mapped_E0(0, 0)
+                           + M(fl_TaEam1, j, 1, n) * jG_mapped_E0(0, 1);
+                  }
+                }
+              }
+            }
+
+            // Evaluate jump on facet E1
+            calculate_jump<T>(n, coefficients_G_Tap1, shp_Tap1Ea,
+                              coefficients_G_Ta, shp_TaEa, dofs_Ea, jG_Ea);
+          }
+          else
+          {
+            // Evaluate jump on facet En
+            double pfctr = (fct_has_bc) ? -1.0 : 1.0;
+
+            for (std::size_t i = 0; i < ndofs_projflux_fct; ++i)
+            {
+              // Local and global IDs of first DOF on facet
+              int id_Ta = dofs_Ea[i + ndofs_projflux_fct];
+              int offs_Ta = 2 * id_Ta;
+
+              // Jump
+              double sshp_TaEa = pfctr * shp_TaEa(n, id_Ta);
+              jG_Ea[0] += coefficients_G_Ta[offs_Ta] * sshp_TaEa;
+              jG_Ea[1] += coefficients_G_Ta[offs_Ta + 1] * sshp_TaEa;
+            }
           }
         }
         else
         {
-          // Interpolate jump
-          for (std::size_t i = 0; i < ndofs_projflux_fct; ++i)
-          {
-            // Local and global IDs of first DOF on facet
-            int id_Tap1 = dofs_Ea[i];
-            int id_Ta = dofs_Ea[i + ndofs_projflux_fct];
-            int offs_Tap1 = 2 * id_Tap1;
-            int offs_Ta = 2 * id_Ta;
-
-            // Evaluate jump
-            // jump = (flux_proj_Tap1 - flux_proj_Ta)
-            jG_Ea[0] += coefficients_G_Tap1[offs_Tap1] * shp_Tap1Ea(n, id_Tap1)
-                        - coefficients_G_Ta[offs_Ta] * shp_TaEa(n, id_Ta);
-            jG_Ea[1]
-                += coefficients_G_Tap1[offs_Tap1 + 1] * shp_Tap1Ea(n, id_Tap1)
-                   - coefficients_G_Ta[offs_Ta + 1] * shp_TaEa(n, id_Ta);
-          }
+          calculate_jump<T>(n, coefficients_G_Tap1, shp_Tap1Ea,
+                            coefficients_G_Ta, shp_TaEa, dofs_Ea, jG_Ea);
         }
 
         // Evaluate facet DOFs
@@ -477,24 +680,6 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
         // Store jump
         jG_Eam1(n, 0) = jG_Ea[0];
         jG_Eam1(n, 1) = jG_Ea[1];
-      }
-
-      // Treatment of facet 0
-      if (a == 1)
-      {
-        if (type_patch == 0 | type_patch == 2)
-        {
-          // Set c_ta_eam1 to zero
-          c_ta_eam1 = 0.0;
-        }
-        else if (type_patch == 1)
-        {
-          throw std::runtime_error("Equilibration: Neumann BCs not supported!");
-        }
-        else
-        {
-          throw std::runtime_error("Equilibration: Neumann BCs not supported!");
-        }
       }
 
       /* DOFs from cell integrals */
@@ -711,6 +896,9 @@ void minimise_flux(const mesh::Geometry& geometry,
                                          (std::size_t)ncells,
                                          (std::size_t)ndofs_cell_local);
 
+  // Marker boundary DOFs
+  std::vector<std::int8_t> boundary_markers(size_psystem, false);
+
   /* Storage cell geometries and DOFmap*/
   // Initialisations
   const int cstride_geom = 3 * nnodes_cell;
@@ -759,6 +947,31 @@ void minimise_flux(const mesh::Geometry& geometry,
     copy_cell_data<T, 1>(cells, flux_dofmap, x_flux_dhdiv, coefficients,
                          ndofs_flux, 1);
 
+    /* Set bounday markers */
+    if (type_patch == 1 || type_patch == 3)
+    {
+      // Unset all prvious markers
+      std::fill(boundary_markers.begin(), boundary_markers.end(), false);
+
+      // Set boundary markers
+      boundary_markers[0] = true;
+
+      if constexpr (id_flux_order > 1)
+      {
+        for (std::size_t i = 1; i < ndofs_flux_fct; ++i)
+        {
+          // Mark boundary DOFs on facet 0
+          boundary_markers[i] = 1;
+
+          // Mark boundary DOFs on facet ncells
+          if (type_patch == 1)
+          {
+            boundary_markers[ncells * (ndofs_flux_fct - 1) + i] = true;
+          }
+        }
+      }
+    }
+
     /* Perform minimisation */
     if (i_rhs == 0)
     {
@@ -768,8 +981,8 @@ void minimise_flux(const mesh::Geometry& geometry,
 
       // Assemble tangents
       assemble_minimisation<T, id_flux_order, true>(
-          A_patch, L_patch, patch, kernel_data, dofmap_patch, coefficients,
-          coordinate_dofs, type_patch);
+          A_patch, L_patch, patch, kernel_data, dofmap_patch, boundary_markers,
+          coefficients, coordinate_dofs, type_patch);
 
       // Factorization of system matrix
       if constexpr (id_flux_order > 1)

@@ -121,6 +121,16 @@ public:
   }
 
   /* Interface BoundaryData */
+  /// Calculate BCs for patch-problem
+  void calculate_patch_bc(const int rhs_i, const std::int32_t bound_fcts,
+                          const std::int8_t patchnode_local,
+                          mdspan_t<const double, 2> J, const double detJ,
+                          mdspan_t<const double, 2> K)
+  {
+    _boundary_data->calculate_patch_bc(rhs_i, bound_fcts, patchnode_local, J,
+                                       detJ, K);
+  }
+
   /// Extract facet-types of all sub-problems
   /// @return Mdspan of facet-types
   mdspan_t<const std::int8_t, 2> facet_type() const
