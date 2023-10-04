@@ -43,7 +43,7 @@ BoundaryData<T>::BoundaryData(
 
   std::int32_t size_fctdata = _num_rhs * _num_fcts;
   _local_fct_id.resize(size_fctdata);
-  _facet_type.resize(size_fctdata, facet_type_eqlb::internal);
+  _facet_type.resize(size_fctdata, PatchFacetType::internal);
   _offset_fctdata.resize(_num_rhs + 1);
 
   // Set offsets
@@ -144,7 +144,7 @@ BoundaryData<T>::BoundaryData(
     for (std::int32_t fct : fct_esntbound_prime[i_rhs])
     {
       // Set facet type
-      facet_type_i[fct] = facet_type_eqlb::essnt_primal;
+      facet_type_i[fct] = PatchFacetType::essnt_primal;
     }
 
     // Handle facets with essential BCs on dual problem
@@ -318,7 +318,7 @@ BoundaryData<T>::BoundaryData(
         apply_inverse_dof_transform(boundary_values, cell_info, cell, 1);
 
         // Set values and markers
-        facet_type_i[fct] = facet_type_eqlb::essnt_dual;
+        facet_type_i[fct] = PatchFacetType::essnt_dual;
         local_fct_id_i[fct] = fct_loc;
 
         for (std::size_t i = 0; i < _ndofs_per_fct; ++i)
@@ -387,7 +387,7 @@ void BoundaryData<T>::calculate_patch_bc(
     const int rhs_i, const std::int32_t fct, const std::int8_t hat_id,
     mdspan_t<const double, 2> J, const double detJ, mdspan_t<const double, 2> K)
 {
-  if (facet_type(rhs_i)[fct] == facet_type_eqlb::essnt_dual)
+  if (facet_type(rhs_i)[fct] == PatchFacetType::essnt_dual)
   {
     // The cell
     std::int32_t cell = _fct_to_cell->links(fct)[0];

@@ -112,6 +112,8 @@ public:
     // Initialize patch
     auto [fct_i, c_fct_loop] = initialize_patch(node_i);
 
+    const bool patch_on_boundary = is_on_boundary();
+
     // Set number of DOFs on patch
     const int bs_fluxdg = _function_space_fluxdg->dofmap()->bs();
 
@@ -138,7 +140,7 @@ public:
       std::int32_t offs_f, offs_fhdiv_fct, offs_fhdiv_cell, offs_fdg_fct;
 
       // Extract data, set offsets for data storage and set +/- cells on facet
-      if (_type[0] > 0)
+      if (patch_on_boundary)
       {
         // Extract cell_i
         cell_i = _cells[ii];
@@ -303,7 +305,7 @@ public:
     }
 
     // Handle last boundary facet (boundary patches)
-    if (_type[0] > 0)
+    if (patch_on_boundary)
     {
       // Get local id of facet
       std::int8_t id_fct_loc = get_fctid_local(fct_i, cell_i);
@@ -468,7 +470,7 @@ public:
   /// @return cell
   std::int32_t cell(int cell_i)
   {
-    if (_type[0] != 0)
+    if (_type[0] != PatchType::internal)
     {
       int celli = cellid_patch_to_data(cell_i);
       return _cells[celli];
@@ -532,7 +534,7 @@ public:
   {
     int ifct, offst;
 
-    if (_type[0] == 0)
+    if (_type[0] == PatchType::internal)
     {
       if (fct_i == 0 || fct_i == _ncells)
       {
@@ -591,17 +593,6 @@ public:
           throw std::runtime_error("Cell not adjacent to facet");
         }
       }
-      // if (fct_i == (_ncells + 1))
-      // {
-      //   if (cell_i == fct_i - 1)
-      //   {
-      //     offst = 0;
-      //   }
-      //   else
-      //   {
-      //     throw std::runtime_error("Cell not adjacent to facet");
-      //   }
-      // }
       else
       {
         if (cell_i == fct_i)
@@ -631,7 +622,7 @@ public:
 
     int fcti, fctim1;
 
-    if ((cell_i == 1) && (_type[0] == 0))
+    if ((cell_i == 1) && (_type[0] == PatchType::internal))
     {
       fcti = 0;
       fctim1 = _ncells - 1;
@@ -799,7 +790,7 @@ protected:
   {
     int ifct = fct_i;
 
-    if (_type[0] == 0)
+    if (_type[0] == PatchType::internal)
     {
       ifct = (fct_i == 0) ? _ncells - 1 : fct_i - 1;
     }

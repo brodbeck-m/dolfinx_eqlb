@@ -6,7 +6,8 @@ using namespace dolfinx_eqlb;
 Patch::Patch(int nnodes_proc, std::shared_ptr<const mesh::Mesh> mesh,
              mdspan_t<const std::int8_t, 2> bfct_type)
     : _mesh(mesh), _bfct_type(bfct_type), _dim(mesh->geometry().dim()),
-      _dim_fct(mesh->geometry().dim() - 1), _type(bfct_type.extent(0), 0),
+      _dim_fct(mesh->geometry().dim() - 1),
+      _type(bfct_type.extent(0), PatchType::internal),
       _npatches(bfct_type.extent(0))
 {
   // Initialize connectivities
@@ -65,7 +66,7 @@ std::pair<std::int32_t, std::int32_t> Patch::initialize_patch(int node_i)
   set_fcts_sorted(fcts);
 
   // Initialize type of patch
-  std::fill(_type.begin(), _type.end(), 0);
+  std::fill(_type.begin(), _type.end(), PatchType::internal);
   _equal_patches = true;
 
   // Initialize first facet
@@ -76,8 +77,6 @@ std::pair<std::int32_t, std::int32_t> Patch::initialize_patch(int node_i)
 
   if (_nfcts > _ncells)
   {
-    int count_type = 0;
-
     // Determine patch types
     for (int i = _npatches - 1; i >= 0; --i)
     {
@@ -88,12 +87,12 @@ std::pair<std::int32_t, std::int32_t> Patch::initialize_patch(int node_i)
       // Check for boundary facets (id=1->esnt_prime, id=2, esnt_flux)
       for (std::int32_t id_fct : fcts)
       {
-        if (_bfct_type(i, id_fct) == 1)
+        if (_bfct_type(i, id_fct) == PatchFacetType::essnt_primal)
         {
           // Mark first facet for DOFmap construction
           fct_ep = id_fct;
         }
-        else if (_bfct_type(i, id_fct) == 2)
+        else if (_bfct_type(i, id_fct) == PatchFacetType::essnt_dual)
         {
           // Mark first facet for DOFmap construction
           fct_ef = id_fct;
@@ -103,17 +102,21 @@ std::pair<std::int32_t, std::int32_t> Patch::initialize_patch(int node_i)
       // Set patch type
       if (fct_ef < 0)
       {
-        _type[i] = 2;
-        count_type += 2;
+        _type[i] = PatchType::bound_essnt_primal;
 
         // Start patch construction on dirichlet facet
         fct_first = fct_ep;
       }
       else
       {
-        int type = (fct_ep < 0) ? 1 : 3;
-        _type[i] = type;
-        count_type += type;
+        if (fct_ep < 0)
+        {
+          _type[i] = PatchType::bound_essnt_dual;
+        }
+        else
+        {
+          _type[i] = PatchType::bound_mixed;
+        }
 
         // Start patch construction on neumann facet
         fct_first = fct_ef;
@@ -121,7 +124,8 @@ std::pair<std::int32_t, std::int32_t> Patch::initialize_patch(int node_i)
     }
 
     // Check if all patches have the same type
-    if (count_type / _type[0] == _npatches && count_type % _type[0] == 0)
+    if (std::adjacent_find(_type.begin(), _type.end(), std::not_equal_to<>())
+        == _type.end())
     {
       _equal_patches = false;
     }
@@ -151,7 +155,7 @@ Patch::fcti_to_celli(int id_l, int c_fct, std::int32_t fct_i,
   std::span<const std::int32_t> fct_cell_i, fct_cell_im1;
 
   // Cells adjacent to current facet and local facet IDs
-  if (_type[id_l] > 0 && c_fct == 0)
+  if (_type[id_l] != PatchType::internal && c_fct == 0)
   {
     cell_i = cell_fct_i[0];
     cell_im1 = cell_i;
@@ -193,7 +197,7 @@ Patch::fcti_to_celli(int id_l, int c_fct, std::int32_t fct_i,
       = next_facet_triangle(cell_i, fct_cell_i, id_fct_loc_ci);
 
   // Store relevant data
-  if (_type[id_l] > 0)
+  if (_type[id_l] != PatchType::internal)
   {
     _cells[c_fct] = cell_i;
     _inodes_local[c_fct] = id_node_loc_ci;

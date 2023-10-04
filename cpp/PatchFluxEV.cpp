@@ -48,6 +48,8 @@ void PatchFluxEV::create_subdofmap(int node_i)
   // Initialize patch
   auto [fct_i, c_fct_loop] = initialize_patch(node_i);
 
+  const bool patch_on_boundary = is_on_boundary();
+
   // Set number of DOFs on patch
   const int ndof_cell = _ndof_flux_cell + _ndof_cons_cell;
   const int ndof_fct = _fct_per_cell * _ndof_flux_fct;
@@ -80,7 +82,7 @@ void PatchFluxEV::create_subdofmap(int node_i)
     // Offset flux DOFs ond second facet elmt_(i-1)
     std::int32_t offs_f;
 
-    if (_type[0] > 0)
+    if (patch_on_boundary)
     {
       // Extract cell_i
       cell_i = _cells[ii];
@@ -201,7 +203,7 @@ void PatchFluxEV::create_subdofmap(int node_i)
   }
 
   // Handle last boundary facet (boundary patches)
-  if (_type[0] > 0)
+  if (patch_on_boundary)
   {
     // Get local id of facet
     std::int8_t id_fct_loc = get_fctid_local(fct_i, cell_i);

@@ -7,6 +7,7 @@
 #include <dolfinx/mesh/Topology.h>
 
 #include <algorithm>
+#include <functional>
 #include <iostream>
 #include <memory>
 #include <span>
@@ -16,12 +17,28 @@ using namespace dolfinx;
 
 namespace dolfinx_eqlb
 {
+
+enum PatchFacetType : std::int8_t
+{
+  internal = 0,
+  essnt_primal = 1,
+  essnt_dual = 2
+};
+
+enum class PatchType : std::int8_t
+{
+  internal = 0,
+  bound_essnt_dual = 1,
+  bound_essnt_primal = 2,
+  bound_mixed = 3
+};
+
 class Patch
 {
 public:
   /// Create storage of patch data
   ///
-  /// Storage is designed for the maximum patch size occuring within
+  /// Storage is designed for the maximum patch size occurring within
   /// the current mesh.
   ///
   /// @param nnodes_proc Numbe rof nodes on current processor
@@ -55,11 +72,34 @@ public:
   /// Return patch type
   /// @param index Index of equilibrated flux
   /// @return Type of the patch
-  int type(int index) { return _type[index]; }
+  PatchType type(int index) { return _type[index]; }
 
-  /// Return type-realtion
+  /// Return type-relation
   /// @return Type relation of different LHS
   std::int8_t equal_patch_types() { return _equal_patches; }
+
+  /// Check if patch is internal
+  /// @return True if patch is internal
+  bool is_internal() { return _type[0] == PatchType::internal; }
+
+  /// Check if patch is on boundary
+  /// @return True if patch is internal
+  bool is_on_boundary() { return _type[0] != PatchType::internal; }
+
+  /// Check if patch requires flux BCs
+  /// @return True if patch requires flux BCs
+  bool requires_flux_bcs(int index)
+  {
+    if (_type[index] == PatchType::bound_essnt_dual
+        || _type[index] == PatchType::bound_mixed)
+    {
+      return true;
+    }
+    else
+    {
+      return false;
+    }
+  }
 
   /// Return number of facets per cell
   /// @return Number of facets per cell
@@ -222,7 +262,7 @@ protected:
   int _nodei;
 
   // Type of patch
-  std::vector<int> _type;
+  std::vector<PatchType> _type;
   int _npatches;
 
   // Id if all patches are equal;

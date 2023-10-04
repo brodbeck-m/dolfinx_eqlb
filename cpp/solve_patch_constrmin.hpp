@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Patch.hpp"
 #include "PatchFluxEV.hpp"
 #include "ProblemDataFluxEV.hpp"
 #include "StorageStiffness.hpp"
@@ -113,7 +114,7 @@ void equilibrate_flux_constrmin(
   }
 
   /* Calculate boundary conditions for current patch */
-  if (patch.type(0) != 0)
+  if (patch.is_on_boundary())
   {
     // Get facet list
     const int nfcts = patch.nfcts();
@@ -146,10 +147,7 @@ void equilibrate_flux_constrmin(
         = problem_data.boundary_markers(i_lhs);
     std::span<const T> bvalues = problem_data.boundary_values(i_lhs);
 
-    /* Extract patch informations */
-    // Type patch
-    const int type_patch = patch.type(i_lhs);
-
+    /* Solve equilibration on current patch */
     // Assemble system
     if (i_lhs == 0)
     {

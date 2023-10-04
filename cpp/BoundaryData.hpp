@@ -2,6 +2,7 @@
 
 #include "FluxBC.hpp"
 #include "KernelData.hpp"
+#include "Patch.hpp"
 #include "QuadratureRule.hpp"
 #include "assemble_projection_boundary.hpp"
 #include "eigen3/Eigen/Dense"
@@ -34,13 +35,6 @@ using namespace dolfinx;
 
 namespace dolfinx_eqlb
 {
-enum facet_type_eqlb : std::int8_t
-{
-  internal = 0,
-  essnt_primal = 1,
-  essnt_dual = 2
-};
-
 template <typename T>
 class BoundaryData
 {
@@ -106,7 +100,7 @@ public:
 
   /* Getter methods */
   /// Get list of facet types
-  /// (marked with respect to facet_type_eqlb)
+  /// (marked with respect to PatchFacetType)
   /// @param[in] rhs_i Index of RHS
   /// @return List of facet types (sorted by facet-ids)
   std::span<std::int8_t> facet_type(const int rhs_i)
@@ -117,7 +111,7 @@ public:
   }
 
   /// Get list of facet types
-  /// (marked with respect to facet_type_eqlb)
+  /// (marked with respect to PatchFacetType)
   /// @return List of all facet types (sorted by facet-ids)
   mdspan_t<const std::int8_t, 2> facet_type()
   {

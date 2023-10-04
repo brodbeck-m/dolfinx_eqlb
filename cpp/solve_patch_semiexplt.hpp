@@ -1,6 +1,7 @@
 #pragma once
 
 #include "KernelData.hpp"
+#include "Patch.hpp"
 #include "PatchFluxCstm.hpp"
 #include "ProblemDataFluxCstm.hpp"
 #include "assemble_patch_semiexplt.hpp"
@@ -305,7 +306,7 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
     cj_ta_ea.resize(ndofs_flux_fct - 1);
   }
 
-  if (patch.type(0) != 0)
+  if (patch.is_on_boundary())
   {
     // Jacobian
     store_J = true;
@@ -397,7 +398,7 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
   {
     /* Extract data */
     // Patch type
-    int type_patch = patch.type(i_rhs);
+    PatchType type_patch = patch.type(i_rhs);
 
     // Solution vector (flux, picewise-H(div))
     std::span<T> x_flux_dhdiv = problem_data.flux(i_rhs).x()->mutable_array();
@@ -416,7 +417,7 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
 
     // Boundary DOFs
     std::span<const T> boundary_values;
-    if (type_patch == 1 || type_patch == 3)
+    if (patch.requires_flux_bcs(i_rhs))
     {
       boundary_values = problem_data.boundary_values(i_rhs);
     }
@@ -442,13 +443,15 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
 
       // Check if facet is on boundary
       bool fct_on_boundary
-          = ((type_patch > 0) && (a == 1 || a == ncells)) ? true : false;
+          = ((patch.is_on_boundary()) && (a == 1 || a == ncells)) ? true
+                                                                  : false;
 
       // Check if bcs have to be applied
-      bool fct_has_bc = ((fct_on_boundary && type_patch == 1)
-                         || (a == 1 && type_patch == 3))
-                            ? true
-                            : false;
+      bool fct_has_bc
+          = ((fct_on_boundary && type_patch == PatchType::bound_essnt_dual)
+             || (a == 1 && type_patch == PatchType::bound_mixed))
+                ? true
+                : false;
 
       /* Extract required data */
       // Local facet IDs
@@ -935,7 +938,7 @@ void minimise_flux(const mesh::Geometry& geometry,
   {
     /* Extract data */
     // Patch type
-    const int type_patch = patch.type(i_rhs);
+    PatchType type_patch = patch.type(i_rhs);
 
     // Solution vector (flux, picewise-H(div))
     std::span<const T> x_flux_dhdiv = problem_data.flux(i_rhs).x()->array();
@@ -948,7 +951,7 @@ void minimise_flux(const mesh::Geometry& geometry,
                          ndofs_flux, 1);
 
     /* Set bounday markers */
-    if (type_patch == 1 || type_patch == 3)
+    if (patch.requires_flux_bcs(i_rhs))
     {
       // Unset all prvious markers
       std::fill(boundary_markers.begin(), boundary_markers.end(), false);
@@ -964,7 +967,7 @@ void minimise_flux(const mesh::Geometry& geometry,
           boundary_markers[i] = 1;
 
           // Mark boundary DOFs on facet ncells
-          if (type_patch == 1)
+          if (type_patch == PatchType::bound_essnt_dual)
           {
             boundary_markers[ncells * (ndofs_flux_fct - 1) + i] = true;
           }

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "KernelData.hpp"
+#include "Patch.hpp"
 #include "PatchFluxCstm.hpp"
 #include "eigen3/Eigen/Dense"
 #include "utils.hpp"
@@ -214,7 +215,7 @@ void assemble_minimisation(
     PatchFluxCstm<T, id_flux_order>& patch, KernelDataEqlb<T>& kernel_data,
     mdspan_t<std::int32_t, 3> dofmap_patch,
     std::span<const std::int8_t> boundary_markers, std::span<T> coefficients,
-    std::span<double> coordinate_dofs, const int type_patch)
+    std::span<double> coordinate_dofs, const PatchType type_patch)
 {
   assert(id_flux_order < 0);
 
@@ -291,7 +292,7 @@ void assemble_minimisation(
           dofmap_cell(0, 3) = fdofs_fct_local[iea];
 
           // Patch-local DOFs of first-order facet moments
-          if ((type_patch == 0) && (a == ncells))
+          if ((type_patch == PatchType::internal) && (a == ncells))
           {
             dofmap_cell(1, 2) = a;
             dofmap_cell(1, 3) = 1;
@@ -312,7 +313,7 @@ void assemble_minimisation(
           const int offs_e = ndofs_per_fct - 1;
           int offs_ea, offs_eam1;
 
-          if ((type_patch == 0) && (a == ncells))
+          if ((type_patch == PatchType::internal) && (a == ncells))
           {
             offs_eam1 = (a - 1) * (ndofs_per_fct - 1) - 1;
             offs_ea = -1;
@@ -380,7 +381,8 @@ void assemble_minimisation(
     // Assemble linear- and bilinear form
     if constexpr (id_flux_order == 1)
     {
-      if ((type_patch == 1) || (type_patch == 3))
+      if ((type_patch == PatchType::bound_essnt_dual)
+          || (type_patch == PatchType::bound_mixed))
       {
         // Assemble linar form
         L_patch(0) = 0;
@@ -405,7 +407,8 @@ void assemble_minimisation(
     }
     else
     {
-      if ((type_patch == 1) || (type_patch == 3))
+      if ((type_patch == PatchType::bound_essnt_dual)
+          || (type_patch == PatchType::bound_mixed))
       {
         for (std::size_t i = 0; i < ndofs_nz; ++i)
         {
