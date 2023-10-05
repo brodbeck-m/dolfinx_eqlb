@@ -137,8 +137,9 @@ void reconstruct_fluxes_patch(const fem::Form<T>& a, const fem::Form<T>& l_pen,
 }
 
 /// Calculation of patch contributions to flux
+///
 /// Equilibration procedure is based on an explicitly calculated flux and an
-/// unconstrained minimisation problem on an patch-wise divergence-free H(div)
+/// unconstrained minimisation problem on a patch-wise divergence-free H(div)
 /// space (see [1]).
 ///
 /// [1] Bertrand, F.; Carstensen, C.; Gräßle, B. & Tran, N. T.:

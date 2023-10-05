@@ -47,6 +47,39 @@ public:
   Patch(int nnodes_proc, std::shared_ptr<const mesh::Mesh> mesh,
         mdspan_t<const std::int8_t, 2> bfct_type);
 
+  /// Construction of a sub-DOFmap on each patch
+  ///
+  /// Determines type of patch and creates sorted DOFmap. Sorting of
+  /// facets/elements/DOFs follows [1,2]. The sub-DOFmap is created for
+  /// sub-problem 0. If patch- type differs between different patches, use
+  /// recreate_subdofmap for sub-problem i>0.
+  ///
+  /// [1] Moldenhauer, M.: Stress reconstructionand a-posteriori error
+  ///     estimationfor elasticity (PhdThesis)
+  /// [2] Bertrand, F.; Carstensen, C.; Gräßle, B. & Tran, N. T.:
+  ///     Stabilization-free HHO a posteriori error control, 2022
+  ///
+  /// @param node_i Processor-local id of current node
+  void create_subdofmap(int node_i)
+  {
+    throw std::runtime_error("Patch-DOFmap not implemented!");
+  }
+
+  /// Recreate sub-DOFmap on each patch
+  ///
+  /// Change of RHS can change boundary conditions. This may require a
+  /// reversed patch-orientation.
+  ///
+  /// @param[in] index
+  /// @param[out] was_recreated true if patch-DOFmap was recreated
+  bool recreate_subdofmap(int index);
+
+  /// Implement reversion of patch orientation
+  void reverse_patch_orientation()
+  {
+    throw std::runtime_error("Reversion of patch-DOFmap not implemented!");
+  }
+
   /// Determine maximum patch size
   /// @param nnodes_proc Number of nodes on current processor
   void set_max_patch_size(int nnodes_proc);

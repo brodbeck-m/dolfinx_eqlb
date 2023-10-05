@@ -31,6 +31,54 @@ Patch::Patch(int nnodes_proc, std::shared_ptr<const mesh::Mesh> mesh,
   _fct_per_cell = _cell_to_fct->links(0).size();
 }
 
+bool Patch::recreate_subdofmap(int index)
+{
+  if (index == 0)
+  {
+    // Patch was cerated for index == 0 --> Do nothing
+    return false;
+  }
+  else
+  {
+    if (_equal_patches)
+    {
+      // All RHS have equal patch-types --> Do nothing
+      return false;
+    }
+    else if (_type[index - 1] == _type[index])
+    {
+      // Two sequential RHS have equal patch-types --> Do nothing
+      return false;
+    }
+    else if (requires_flux_bcs(index - 1) && requires_flux_bcs(index))
+    {
+      // Two sequential RHS require flux BCs --> Do nothing
+      return false;
+    }
+    else if ((requires_flux_bcs(index - 1))
+             && (_type[index] == PatchType::bound_essnt_primal))
+    {
+      // Switch to patch with primal BCs (orientation arbitrary) --> Do nothing
+      return false;
+    }
+    else
+    {
+      // Check if facet[0] has flux BCs
+      if (_bfct_type(index, _fcts[0]) == PatchFacetType::essnt_dual)
+      {
+        // facet zero requires flux BCs --> Do nothing
+        return false;
+      }
+      else
+      {
+        reverse_patch_orientation();
+
+        return true;
+      }
+    }
+  }
+}
+
 void Patch::set_max_patch_size(int nnodes_proc)
 {
   // Initialization

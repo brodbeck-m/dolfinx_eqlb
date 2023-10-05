@@ -31,16 +31,18 @@ PatchFluxEV::PatchFluxEV(
   _ndof_flux_nz = _ndof_flux - (_fct_per_cell - 2) * _ndof_flux_fct;
 
   /* Reserve storage of DOFmaps */
-  int len_adjacency = _ncells_max * _ndof_elmt_nz;
+  const int len_adjacency = _ncells_max * _ndof_elmt_nz;
+  const int len_adjacency_flux
+      = _ncells_max * _ndof_flux_cell + (_ncells_max + 1) * _ndof_flux_fct;
 
   _dofsnz_elmt.resize(len_adjacency);
   _dofsnz_patch.resize(len_adjacency);
   _dofsnz_global.resize(len_adjacency);
   _offset_dofmap.resize(_ncells_max + 1);
 
-  _list_dofsnz_patch_fluxhdiv.resize(_ncells_max * _ndof_flux_nz);
-  _list_dofsnz_global_fluxhdiv.resize(_ncells_max * _ndof_flux_nz);
-  _list_dofsnz_mixed_fluxhdiv.resize(_ncells_max * _ndof_flux_nz);
+  _list_dofsnz_patch_fluxhdiv.resize(len_adjacency_flux);
+  _list_dofsnz_global_fluxhdiv.resize(len_adjacency_flux);
+  _list_dofsnz_mixed_fluxhdiv.resize(len_adjacency_flux);
 }
 
 void PatchFluxEV::create_subdofmap(int node_i)
@@ -297,4 +299,76 @@ void PatchFluxEV::create_subdofmap(int node_i)
   // }
   // std::cout << "\n";
   // throw std::exception();
+}
+
+void PatchFluxEV::reverse_patch_orientation()
+{
+  // Determine number of copied storage blocks
+  const int nblocks_cell = (_ncells % 2) ? (_ncells - 1) / 2 : _ncells / 2;
+
+  // Calculate size DOF storage
+  const int size_storage_dofs = _ncells * _ndof_elmt_nz;
+  const int size_storage_dofs_flux
+      = _nfcts * _ndof_flux_fct + _ncells * _ndof_flux_cell;
+
+  // Reverse cell and facet lists
+  std::span<std::int32_t> cells(_cells.data(), _ncells);
+  std::span<std::int32_t> fcts(_fcts.data(), _nfcts);
+
+  std::reverse(cells.begin(), cells.end());
+  std::reverse(fcts.begin(), fcts.end());
+
+  // Reverse blocked DOFmap data
+  for (std::size_t i = 0; i < nblocks_cell; ++i)
+  {
+    // Element-local/ Global DOFs (mixed problem)
+    reverse_blocked_data(_dofsnz_elmt, _dofsnz_global, size_storage_dofs,
+                         _ndof_elmt_nz, i, 0, 0);
+
+    // Global DOFs flux-space
+    reverse_blocked_data(_list_dofsnz_mixed_fluxhdiv,
+                         size_storage_dofs_flux - _ndof_flux_fct,
+                         _ndof_flux_cell, i, _ndof_flux_fct, 0);
+
+    // Global DOFs flux-space
+    reverse_blocked_data(_list_dofsnz_mixed_fluxhdiv,
+                         size_storage_dofs_flux + _ndof_flux_cell,
+                         _ndof_flux_fct, i, 0, _ndof_flux_cell);
+  }
+
+  reverse_blocked_data(_list_dofsnz_mixed_fluxhdiv,
+                       size_storage_dofs_flux + _ndof_flux_cell, _ndof_flux_fct,
+                       nblocks_cell, 0, _ndof_flux_cell);
+
+  // Reverse facet data in DOFmap per cell
+  std::int32_t temp;
+
+  for (std::size_t i = 0; i < _ncells; ++i)
+  {
+    int offs1_base_mixed = i * _ndof_elmt_nz;
+    int offs2_base_mixed = offs1_base_mixed + _ndof_flux_fct;
+
+    for (std::size_t i = 0; i < _ndof_flux_fct; ++i)
+    {
+      // Calculate offset
+      int offs1_mixed = offs1_base_mixed + i;
+      int offs2_mixed = offs2_base_mixed + i;
+
+      // --- Element-local DOFs mixed problem
+      // Copy data to temporary storage
+      temp = _dofsnz_elmt[offs1_mixed];
+
+      // Exchange data of blocks
+      _dofsnz_elmt[offs1_mixed] = _dofsnz_elmt[offs2_mixed];
+      _dofsnz_elmt[offs2_mixed] = temp;
+
+      // --- Global DOFs mixed problem
+      // Copy data to temporary storage
+      temp = _dofsnz_global[offs1_mixed];
+
+      // Exchange data of blocks
+      _dofsnz_global[offs1_mixed] = _dofsnz_global[offs2_mixed];
+      _dofsnz_global[offs2_mixed] = temp;
+    }
+  }
 }
