@@ -137,6 +137,10 @@ void equilibrate_flux_constrmin(
   /* Solve equilibration */
   for (std::size_t i_lhs = 0; i_lhs < problem_data.nlhs(); ++i_lhs)
   {
+    /* Recalculate DOFmap */
+    // Recreate patch DOFmap (only done if required)
+    bool patch_was_recreated = patch.recreate_subdofmap(i_lhs);
+
     /* Extract data for current LHS */
     // Integration kernel
     const auto& kernel_l = problem_data.kernel(i_lhs);
@@ -154,11 +158,27 @@ void equilibrate_flux_constrmin(
     std::span<const T> bvalues = problem_data.boundary_values(i_lhs);
 
     /* Solve equilibration on current patch */
-    // Recreate patch DOFmap (only done if required)
-    bool patch_was_recreated = patch.recreate_subdofmap(i_lhs);
+    // Check assembly type
+    bool assemble_entire_system = false;
+
+    if (i_lhs == 0 || patch_was_recreated)
+    {
+      assemble_entire_system = true;
+    }
+    else
+    {
+      if (patch.is_on_boundary())
+      {
+        // Check if patch requires penalty
+        if (patch.type(i_lhs) != patch.type(i_lhs - 1))
+        {
+          assemble_entire_system = true;
+        }
+      }
+    }
 
     // Assemble system
-    if ((i_lhs == 0) || patch_was_recreated)
+    if (assemble_entire_system)
     {
       // Initialize tangents
       A_patch.setZero();
