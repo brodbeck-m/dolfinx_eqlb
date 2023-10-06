@@ -140,7 +140,11 @@ def set_manufactured_rhs(
 
 # --- Set boundary conditions
 def set_arbitrary_bcs(
-    bc_type: str, V_prime: dfem.FunctionSpace, degree_flux: int, degree_bc: int = 0
+    bc_type: str,
+    V_prime: dfem.FunctionSpace,
+    degree_flux: int,
+    degree_bc: int = 0,
+    neumann_ids: List[int] = None,
 ):
     """Set arbitrary dirichlet and neumann BCs
 
@@ -153,6 +157,7 @@ def set_arbitrary_bcs(
         V_prime (FunctionSpace): The function space of the primal problem
         degree_flux (int):       Degree of the flux space
         degree_bc (int):         Polynomial degree of the boundary conditions
+        neumann_ids (List[int]): List of boundary ids for neumann BCs
 
     Returns:
         boundary_id_dirichlet (List[int]): List of boundary ids for dirichlet BCs
@@ -177,8 +182,12 @@ def set_arbitrary_bcs(
         domain = V_prime.mesh
 
         # Set boundary ids
-        boundary_id_dirichlet = [2, 3]
-        boundary_id_neumann = [1, 4]
+        if neumann_ids is None:
+            boundary_id_dirichlet = [2, 3]
+            boundary_id_neumann = [1, 4]
+        else:
+            boundary_id_dirichlet = [i for i in range(1, 5) if i not in neumann_ids]
+            boundary_id_neumann = neumann_ids
 
         # Set homogenous dirichlet boundary conditions
         u_D = [dfem.Function(V_prime) for i in range(0, len(boundary_id_dirichlet))]
@@ -193,8 +202,12 @@ def set_arbitrary_bcs(
         domain = V_prime.mesh
 
         # Set boundary ids
-        boundary_id_dirichlet = [2, 3]
-        boundary_id_neumann = [1, 4]
+        if neumann_ids is None:
+            boundary_id_dirichlet = [2, 3]
+            boundary_id_neumann = [1, 4]
+        else:
+            boundary_id_dirichlet = [i for i in range(1, 5) if i not in neumann_ids]
+            boundary_id_neumann = neumann_ids
 
         # Set homogenous dirichlet boundary conditions
         u_D = [dfem.Function(V_prime) for i in range(0, len(boundary_id_dirichlet))]

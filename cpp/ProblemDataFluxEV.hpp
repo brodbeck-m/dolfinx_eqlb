@@ -23,7 +23,7 @@ public:
   ProblemDataFluxEV(std::vector<std::shared_ptr<fem::Function<T>>>& fluxes,
                     const std::vector<std::shared_ptr<const fem::Form<T>>>& l,
                     std::shared_ptr<BoundaryData<T>> boundary_data)
-      : ProblemData<T>(fluxes, {{}}, l), _boundary_data(boundary_data),
+      : ProblemData<T>(fluxes, {}, l), _boundary_data(boundary_data),
         _begin_hat(fluxes.size(), 0), _begin_fluxdg(fluxes.size(), 0)
   {
   }
