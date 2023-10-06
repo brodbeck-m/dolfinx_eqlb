@@ -125,57 +125,110 @@ std::pair<std::int32_t, std::int32_t> Patch::initialize_patch(int node_i)
 
   if (_nfcts > _ncells)
   {
-    // Determine patch types
-    for (int i = _npatches - 1; i >= 0; --i)
+    /* Determine patch type: i_rhs = 0 */
+    std::array<std::int32_t, 2> fct_ef = {-1, -1};
+    std::array<std::int32_t, 2> fct_ep = {-1, -1};
+
+    // Check for boundary facets
+    for (std::int32_t id_fct : fcts)
     {
-      // Initializations
-      std::int32_t fct_ef = -1;
-      std::int32_t fct_ep = -1;
-
-      // Check for boundary facets (id=1->esnt_prime, id=2, esnt_flux)
-      for (std::int32_t id_fct : fcts)
+      if (_bfct_type(0, id_fct) == PatchFacetType::essnt_primal)
       {
-        if (_bfct_type(i, id_fct) == PatchFacetType::essnt_primal)
+        // Mark first facet for DOFmap construction
+        if (fct_ep[0] < 0)
         {
-          // Mark first facet for DOFmap construction
-          fct_ep = id_fct;
-        }
-        else if (_bfct_type(i, id_fct) == PatchFacetType::essnt_dual)
-        {
-          // Mark first facet for DOFmap construction
-          fct_ef = id_fct;
-        }
-      }
-
-      // Set patch type
-      if (fct_ef < 0)
-      {
-        _type[i] = PatchType::bound_essnt_primal;
-
-        // Start patch construction on dirichlet facet
-        fct_first = fct_ep;
-      }
-      else
-      {
-        if (fct_ep < 0)
-        {
-          _type[i] = PatchType::bound_essnt_dual;
+          fct_ep[0] = id_fct;
         }
         else
         {
-          _type[i] = PatchType::bound_mixed;
+          fct_ep[1] = id_fct;
         }
-
-        // Start patch construction on neumann facet
-        fct_first = fct_ef;
+      }
+      else if (_bfct_type(0, id_fct) == PatchFacetType::essnt_dual)
+      {
+        // Mark first facet for DOFmap construction
+        if (fct_ef[0] < 0)
+        {
+          fct_ef[0] = id_fct;
+        }
+        else
+        {
+          fct_ef[1] = id_fct;
+        }
       }
     }
 
-    // Check if all patches have the same type
-    if (std::adjacent_find(_type.begin(), _type.end(), std::not_equal_to<>())
-        == _type.end())
+    // Set patch type
+    if (fct_ef[0] < 0)
     {
-      _equal_patches = false;
+      _type[0] = PatchType::bound_essnt_primal;
+
+      // Start patch construction on dirichlet facet
+      fct_first = fct_ep[0];
+    }
+    else
+    {
+      if (fct_ep[0] < 0)
+      {
+        _type[0] = PatchType::bound_essnt_dual;
+      }
+      else
+      {
+        _type[0] = PatchType::bound_mixed;
+      }
+
+      // Start patch construction on neumann facet
+      fct_first = fct_ef[0];
+    }
+
+    /* Set types of following RHS */
+    if (_bfct_type.extent(0) > 1)
+    {
+      for (std::size_t i_rhs = 1; i_rhs < _bfct_type.extent(0); ++i_rhs)
+      {
+        // Extract (global) Ids of first and last facet
+        std::int32_t fct_0, fct_n;
+
+        if (_type[0] == PatchType::bound_essnt_primal)
+        {
+          fct_0 = fct_ep[0];
+          fct_n = fct_ep[1];
+        }
+        else if (_type[0] == PatchType::bound_essnt_dual)
+        {
+          fct_0 = fct_ef[0];
+          fct_n = fct_ef[1];
+        }
+        else
+        {
+          fct_0 = fct_ef[0];
+          fct_n = fct_ep[0];
+        }
+
+        // Identify patch type of current RHS
+        if (_bfct_type(i_rhs, fct_0) == _bfct_type(i_rhs, fct_n))
+        {
+          if (_bfct_type(i_rhs, fct_0) == PatchFacetType::essnt_primal)
+          {
+            _type[i_rhs] = PatchType::bound_essnt_primal;
+          }
+          else
+          {
+            _type[i_rhs] = PatchType::bound_essnt_dual;
+          }
+        }
+        else
+        {
+          _type[i_rhs] = PatchType::bound_mixed;
+        }
+      }
+
+      // Check if all patches have the same type
+      if (std::adjacent_find(_type.begin(), _type.end(), std::not_equal_to<>())
+          == _type.end())
+      {
+        _equal_patches = false;
+      }
     }
   }
 
