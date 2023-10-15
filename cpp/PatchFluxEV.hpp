@@ -30,9 +30,23 @@ public:
       const std::shared_ptr<const fem::FunctionSpace> function_space_fluxhdiv,
       const basix::FiniteElement& basix_element_flux);
 
+  /* Overload functions from base-class */
   void create_subdofmap(int node_i);
 
-  void reverse_patch_orientation();
+  bool recreate_subdofmap(int index)
+  {
+    // Check if reversion is required
+    bool reverse_patch = reversion_required(index);
+
+    if (reverse_patch)
+    {
+      reverse_orientation();
+    }
+
+    return reverse_patch;
+  }
+
+  void reverse_orientation();
 
   /* Setter functions */
 

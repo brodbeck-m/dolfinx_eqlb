@@ -137,10 +137,6 @@ void equilibrate_flux_constrmin(
   /* Solve equilibration */
   for (std::size_t i_lhs = 0; i_lhs < problem_data.nlhs(); ++i_lhs)
   {
-    /* Recalculate DOFmap */
-    // Recreate patch DOFmap (only done if required)
-    bool patch_was_recreated = patch.recreate_subdofmap(i_lhs);
-
     /* Extract data for current LHS */
     // Integration kernel
     const auto& kernel_l = problem_data.kernel(i_lhs);
@@ -158,10 +154,10 @@ void equilibrate_flux_constrmin(
     std::span<const T> bvalues = problem_data.boundary_values(i_lhs);
 
     /* Solve equilibration on current patch */
-    // Check assembly type
+    // Check if assembly of entire system is required
     bool assemble_entire_system = false;
 
-    if (i_lhs == 0 || patch_was_recreated)
+    if (i_lhs == 0)
     {
       assemble_entire_system = true;
     }
@@ -169,8 +165,10 @@ void equilibrate_flux_constrmin(
     {
       if (patch.is_on_boundary())
       {
-        // Check if patch requires penalty
-        if (patch.type(i_lhs) != patch.type(i_lhs - 1))
+        PatchType patch_i = patch.type(i_lhs);
+
+        if (patch_i != patch.type(i_lhs - 1)
+            || patch_i == PatchType::bound_mixed)
         {
           assemble_entire_system = true;
         }

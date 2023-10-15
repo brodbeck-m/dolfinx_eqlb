@@ -42,7 +42,7 @@ BoundaryData<T>::BoundaryData(
   _offset_dofdata.resize(_num_rhs + 1);
 
   std::int32_t size_fctdata = _num_rhs * _num_fcts;
-  _local_fct_id.resize(size_fctdata);
+  _local_fct_id.resize(_num_fcts);
   _facet_type.resize(size_fctdata, PatchFacetType::internal);
   _offset_fctdata.resize(_num_rhs + 1);
 
@@ -135,7 +135,6 @@ BoundaryData<T>::BoundaryData(
 
     // Storage of current RHS
     std::span<std::int8_t> facet_type_i = facet_type(i_rhs);
-    std::span<std::int8_t> local_fct_id_i = local_facet_id(i_rhs);
     std::span<std::int8_t> boundary_markers_i = boundary_markers(i_rhs);
 
     std::span<T> x_bvals = boundary_flux[i_rhs]->x()->mutable_array();
@@ -319,7 +318,7 @@ BoundaryData<T>::BoundaryData(
 
         // Set values and markers
         facet_type_i[fct] = PatchFacetType::essnt_dual;
-        local_fct_id_i[fct] = fct_loc;
+        _local_fct_id[fct] = fct_loc;
 
         for (std::size_t i = 0; i < _ndofs_per_fct; ++i)
         {
@@ -393,7 +392,7 @@ void BoundaryData<T>::calculate_patch_bc(
     std::int32_t cell = _fct_to_cell->links(fct)[0];
 
     // The facet
-    std::int8_t fct_loc = local_facet_id(rhs_i)[fct];
+    std::int8_t fct_loc = _local_fct_id[fct];
 
     /* Extract data */
     // Global DOF ids on facet

@@ -159,16 +159,6 @@ public:
   }
 
 protected:
-  /// Get list of cell local facet ids
-  /// @param[in] rhs_i Index of RHS
-  /// @return List of cell-local facet ids (sorted by facet-ids)
-  std::span<std::int8_t> local_facet_id(const int rhs_i)
-  {
-    return std::span<std::int8_t>(_local_fct_id.data() + _offset_fctdata[rhs_i],
-                                  _offset_fctdata[rhs_i + 1]
-                                      - _offset_fctdata[rhs_i]);
-  }
-
   /// Calculate DOF ids on boundary facet
   /// @param[in] fct Facet id (on current process)
   /// @return List of DOFs on facet

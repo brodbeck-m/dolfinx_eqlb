@@ -49,8 +49,7 @@ def test_equilibration_multi_rhs(degree, equilibrator):
     list_boundary_values = []
 
     # Set different boundary conditions
-    # list_boundary_ids = [[1, 4], [1, 3], [2, 4]]
-    list_boundary_ids = [[2], [3]]
+    list_boundary_ids = [[1, 4], [1, 3], [2], [1, 3, 4]]
 
     # Solve equilibrations
     for bids in list_boundary_ids:
@@ -69,7 +68,7 @@ def test_equilibration_multi_rhs(degree, equilibrator):
             neumann_functions,
             neumann_projection,
         ) = set_arbitrary_bcs(
-            "neumann_hom", V_prime, degree, degree_bc=(degree - 1), neumann_ids=bids
+            "neumann_inhom", V_prime, degree, degree_bc=(degree - 1), neumann_ids=bids
         )
 
         list_bound_id_neumann.append(boundary_id_neumann)

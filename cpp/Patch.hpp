@@ -70,14 +70,22 @@ public:
   /// Change of RHS can change boundary conditions. This may require a
   /// reversed patch-orientation.
   ///
-  /// @param[in] index
+  /// @param[in] index          Index of sub-problem
   /// @param[out] was_recreated true if patch-DOFmap was recreated
-  bool recreate_subdofmap(int index);
+  bool recreate_subdofmap(int index)
+  {
+    throw std::runtime_error("Recreation of patch-DOFmap not implemented!");
+  }
+
+  /// Check if reversion of patch is required
+  /// @param[in] index     Index of sub-problem
+  /// @param[out] required true if reversion is required
+  bool reversion_required(int index);
 
   /// Implement reversion of patch orientation
-  void reverse_patch_orientation()
+  void reverse_orientation()
   {
-    throw std::runtime_error("Reversion of patch-DOFmap not implemented!");
+    throw std::runtime_error("Reversion of the patch not implemented!");
   }
 
   /// Determine maximum patch size

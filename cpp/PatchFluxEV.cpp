@@ -301,7 +301,7 @@ void PatchFluxEV::create_subdofmap(int node_i)
   // throw std::exception();
 }
 
-void PatchFluxEV::reverse_patch_orientation()
+void PatchFluxEV::reverse_orientation()
 {
   // Determine number of copied storage blocks
   const int nblocks_cell = (_ncells % 2) ? (_ncells - 1) / 2 : _ncells / 2;
