@@ -447,11 +447,34 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
                                                                   : false;
 
       // Check if bcs have to be applied
-      bool fct_has_bc
-          = ((fct_on_boundary && type_patch == PatchType::bound_essnt_dual)
-             || (a == 1 && type_patch == PatchType::bound_mixed))
-                ? true
-                : false;
+      bool fct_has_bc = false;
+
+      if (fct_on_boundary == true)
+      {
+        if (type_patch == PatchType::bound_essnt_dual)
+        {
+          fct_has_bc = true;
+        }
+        else if (type_patch == PatchType::bound_mixed)
+        {
+          if (a == 1)
+          {
+            fct_has_bc = patch.requires_flux_bcs(i_rhs, 0);
+          }
+          else if (a == ncells)
+          {
+            fct_has_bc = patch.requires_flux_bcs(i_rhs, ncells);
+          }
+          else
+          {
+            fct_has_bc = false;
+          }
+        }
+        else
+        {
+          fct_has_bc = false;
+        }
+      }
 
       /* Extract required data */
       // Local facet IDs
@@ -493,7 +516,7 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
       if (fct_has_bc && (a == 1))
       {
         // DOFs (cell-local) projected flux on facet E0
-        dofs_local_E0 = patch.dofs_projflux_fct(1);
+        dofs_local_E0 = patch.dofs_projflux_fct(0);
 
         // DOFs (global) projected flux on facet E0
         dofs_global_E0 = patch.dofs_flux_fct_global(1, 0);
@@ -521,7 +544,7 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
         else
         {
           bdofs_global = patch.dofs_flux_fct_global(a, a);
-          bfct_global = patch.fct(a + 1);
+          bfct_global = patch.fct(a);
         }
 
         // Calculate patch bcs
@@ -581,9 +604,9 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
 
                 // Evaluate jump
                 jG_Eam1(n, 0)
-                    -= coefficients_G_Ta[offs_Ta] * shp_TaEam1(n, id_Ta);
+                    += coefficients_G_Ta[offs_Ta] * shp_TaEam1(n, id_Ta);
                 jG_Eam1(n, 1)
-                    -= coefficients_G_Ta[offs_Ta + 1] * shp_TaEam1(n, id_Ta);
+                    += coefficients_G_Ta[offs_Ta + 1] * shp_TaEam1(n, id_Ta);
               }
 
               // Evaluate higher order DOFs on boundary facet
@@ -599,8 +622,8 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
                 mdspan_t<T, 2> jG_E0(data_jG_E0.data(), 1, dim);
                 mdspan_t<T, 2> jG_mapped_E0(data_jG_mapped_E0.data(), 1, dim);
 
-                jG_E0(0, 0) = jG_Eam1(n, 0) * hat_TaEam1(n, node_i_Ta);
-                jG_E0(0, 1) = jG_Eam1(n, 1) * hat_TaEam1(n, node_i_Ta);
+                jG_E0(0, 0) = -jG_Eam1(n, 0) * hat_TaEam1(n, node_i_Ta);
+                jG_E0(0, 1) = -jG_Eam1(n, 1) * hat_TaEam1(n, node_i_Ta);
 
                 kernel_data.pull_back_flux(jG_mapped_E0, jG_E0, J, detJ, K);
 
@@ -632,6 +655,7 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
           {
             // Evaluate jump on facet En
             double pfctr = (fct_has_bc) ? -1.0 : 1.0;
+            std::fill(jG_Ea.begin(), jG_Ea.end(), 0.0);
 
             for (std::size_t i = 0; i < ndofs_projflux_fct; ++i)
             {

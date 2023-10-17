@@ -142,6 +142,22 @@ public:
     }
   }
 
+  /// Checks if flux BCs have to be applied on fact
+  /// @param index The id of the RHS
+  /// @param fct   The (patch-local) facet id
+  /// @return True if BCs on the flux field are required
+  bool requires_flux_bcs(int index, int fct_id)
+  {
+    if (_bfct_type(index, _fcts[fct_id]) == PatchFacetType::essnt_dual)
+    {
+      return true;
+    }
+    else
+    {
+      return false;
+    }
+  }
+
   /// Return number of facets per cell
   /// @return Number of facets per cell
   int fcts_per_cell() { return _fct_per_cell; }
