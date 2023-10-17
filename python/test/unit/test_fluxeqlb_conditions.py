@@ -79,7 +79,7 @@ def check_boundary_conditions(
         # Get DOFs (equilibrated flux)
         boundary_dofs_eflux = np.append(
             boundary_dofs_eflux,
-            dfem.locate_dofs_topological(sigma_eq.function_space, 1, fcts),
+            dfem.locate_dofs_topological(sigma.function_space, 1, fcts),
         )
 
         # Get DOFs (boundary function)
