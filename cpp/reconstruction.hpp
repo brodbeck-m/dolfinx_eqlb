@@ -210,7 +210,7 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
       mesh, std::make_shared<QuadratureRule>(quadrature_rule),
       basix_element_fluxhdiv, basix_element_rhs, basix_element_hat);
 
-  // Step 1: Explicite calculation of sigma_tilde
+  // Step 1: Explicit calculation of sigma_tilde
   for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
   {
     // Create Sub-DOFmap
@@ -222,7 +222,9 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
   }
 
   // Step 2 : Minimise reconstructed flux
+  // std::vector<std::int32_t> lnodes{2, 5, 6, 11, 4};
   for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
+  // for (auto i_node : lnodes)
   {
     // Create Sub-DOFmap
     patch.create_subdofmap(i_node);
