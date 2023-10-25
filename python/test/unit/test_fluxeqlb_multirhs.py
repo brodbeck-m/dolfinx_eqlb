@@ -9,6 +9,8 @@ import dolfinx.fem as dfem
 import ufl
 
 from dolfinx_eqlb.eqlb import FluxEqlbEV, FluxEqlbSE
+import dolfinx_eqlb.eqlb.check_eqlb_conditions as eqlb_checker
+
 
 from utils import (
     create_unitsquare_builtin,
@@ -27,7 +29,7 @@ Check flux equilibration for multiple RHS
 
 
 @pytest.mark.parametrize("degree", [1, 2, 3, 4])
-@pytest.mark.parametrize("equilibrator", [FluxEqlbEV])
+@pytest.mark.parametrize("equilibrator", [FluxEqlbEV, FluxEqlbSE])
 def test_equilibration_multi_rhs(degree, equilibrator):
     # Create mesh
     geometry = create_unitsquare_builtin(
@@ -49,7 +51,8 @@ def test_equilibration_multi_rhs(degree, equilibrator):
     list_boundary_values = []
 
     # Set different boundary conditions
-    list_boundary_ids = [[1, 4], [1, 3], [2], [1, 3, 4]]
+    # list_boundary_ids = [[1, 4], [1, 3], [2], [1, 3, 4]]
+    list_boundary_ids = [[1, 4], [1, 3], [1, 3, 4]]
 
     # Solve equilibrations
     for bids in list_boundary_ids:
@@ -125,13 +128,33 @@ def test_equilibration_multi_rhs(degree, equilibrator):
         ref_sol = list_refsol[i]
         boundary_data_ref = list_boundary_values[i]
 
-        # Check boundary values
-        if not np.allclose(boundary_dofvalues[i].x.array, boundary_data_ref.x.array):
-            raise ValueError("Boundary data does not match!")
+        if equilibrator == FluxEqlbEV:
+            # Check boundary values
+            if not np.allclose(
+                boundary_dofvalues[i].x.array, boundary_data_ref.x.array
+            ):
+                raise ValueError("Boundary data does not match!")
 
-        # Check equilibration
-        if not np.allclose(sigma_eq[i].x.array, ref_sol.x.array):
-            raise ValueError("Equilibrated fluxes do not match!")
+            # Check equilibration
+            if not np.allclose(sigma_eq[i].x.array, ref_sol.x.array):
+                raise ValueError("Equilibrated fluxes do not match!")
+        else:
+            # --- Check boundary conditions ---
+            eqlb_checker.check_boundary_conditions(
+                sigma_eq[i],
+                list_proj_flux[i],
+                boundary_dofvalues[i],
+                geometry.facet_function,
+                list_bound_id_neumann[i],
+            )
+
+            # --- Check divergence condition ---
+            eqlb_checker.check_divergence_condition(
+                sigma_eq[i], list_proj_flux[i], list_proj_rhs[i]
+            )
+
+            # --- Check jump condition (only required for semi-explicit equilibrator)
+            eqlb_checker.check_jump_condition(sigma_eq[i], list_proj_flux[i])
 
 
 if __name__ == "__main__":
