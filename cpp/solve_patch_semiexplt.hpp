@@ -1110,6 +1110,14 @@ void minimise_flux(const mesh::Geometry& geometry,
           }
         }
       }
+
+      std::cout << "i_rhs, node, fct_0: " << i_rhs << ", " << patch.node_i()
+                << ", " << patch.fct(0) << std::endl;
+      for (auto m : boundary_markers)
+      {
+        std::cout << unsigned(m) << ", ";
+      }
+      std::cout << "\n";
     }
 
     /* Perform minimisation */
@@ -1124,7 +1132,8 @@ void minimise_flux(const mesh::Geometry& geometry,
     {
       if (patch.is_on_boundary())
       {
-        if (patch.type(i_rhs) != patch.type(i_rhs - 1) || reversion_required)
+        if (patch.type(i_rhs) != patch.type(i_rhs - 1)
+            || patch.type(i_rhs) == PatchType::bound_mixed)
         {
           assemble_entire_system = true;
         }

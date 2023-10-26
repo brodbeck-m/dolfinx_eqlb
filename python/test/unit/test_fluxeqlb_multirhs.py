@@ -51,8 +51,7 @@ def test_equilibration_multi_rhs(degree, equilibrator):
     list_boundary_values = []
 
     # Set different boundary conditions
-    # list_boundary_ids = [[1, 4], [1, 3], [2], [1, 3, 4]]
-    list_boundary_ids = [[1, 4], [1, 3], [1, 3, 4]]
+    list_boundary_ids = [[1, 4], [1, 3], [2], [1, 3, 4]]
 
     # Solve equilibrations
     for bids in list_boundary_ids:
