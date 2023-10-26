@@ -565,13 +565,6 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
         {
           c_ta_eam1
               += prefactor_dof(id_a, 0) * boundary_values[bdofs_global[0]];
-          // std::cout << "a, fct_has_bc, DOF, value, prefactor: " << a << ", "
-          //           << fct_has_bc << ", " << bdofs_global[0] << ", "
-          //           << boundary_values[bdofs_global[0]] << ", "
-          //           << prefactor_dof(id_a, 0) << std::endl;
-
-          // Test!
-          c_t1_e0 -= prefactor_dof(id_a, 0) * boundary_values[bdofs_global[0]];
         }
 
         // Contribution to cj_ta_ea
@@ -595,11 +588,6 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
         // Handle mixed patch with E_0 on dirichlet boundary
         if (reversion_required)
         {
-          // std::cout << "a, fct_has_bc, requires_reversion, DOF, prefactor: "
-          //           << a << ", " << fct_has_bc << ", " << reversion_required
-          //           << ", " << bdofs_global[0] << ", "
-          //           << boundary_values[bdofs_global[0]] << ", "
-          //           << prefactor_dof(id_a, 1) << std::endl;
           c_t1_e0 -= prefactor_dof(id_a, 1) * boundary_values[bdofs_global[0]];
         }
       }
@@ -723,9 +711,6 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
               mdspan_t<T, 2> jG_En(jG_Ea.data(), 1, dim);
               mdspan_t<T, 2> jG_mapped_En(data_jG_mapped_E0.data(), 1, dim);
 
-              // std::cout << "P3 --> Flux on facet E0: " << jG_En(0, 0) << ", "
-              //           << jG_En(0, 1) << std::endl;
-
               kernel_data.pull_back_flux(jG_mapped_En, jG_En, J, detJ, K);
 
               // Evaluate boundary contribution
@@ -749,12 +734,6 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
         c_ta_eam1 -= fct_int;
 
         c_t1_e0 += fct_int;
-
-        // std::cout << "jump fct a=" << a << ": " << jG_Eam1(n, 0) << ", "
-        //           << jG_Eam1(n, 1) << std::endl;
-        // std::cout << "prefactor, detj, facet integral: "
-        //           << prefactor_dof(id_a, 0) << ", " << detJ << ", "
-        //           << hat_TaEam1(n, node_i_Ta) * aux << std::endl;
 
         if constexpr (id_flux_order > 1)
         {
@@ -792,8 +771,6 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
         c_ta_ea = vol_int - c_ta_eam1;
 
         c_t1_e0 += vol_int;
-        // std::cout << "f, Volume integral: " << coefficients_f[0] << ", "
-        //           << coefficients_f[0] * (std::fabs(detJ) / 6) << std::endl;
       }
       else
       {
@@ -835,8 +812,6 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
           const double aux
               = (f - div_g) * shp_hat(n, node_i_Ta) * weights[n] * detJ;
           const double vol_int = aux * sign_detJ;
-
-          // std::cout << "Volume integral: " << vol_int << std::endl;
 
           // Evaluate facet DOF
           c_ta_ea += vol_int;
@@ -917,11 +892,6 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
         }
       }
 
-      // std::cout << "a, c_ta_eam1, c_ta_ea, c_t1_e0: " << a << ", "
-      //           << x_flux_dhdiv[gdofs_fct[0]] << ", "
-      //           << x_flux_dhdiv[gdofs_fct[ndofs_flux_fct]] << ", " << c_t1_e0
-      //           << std::endl;
-
       // Update c_tam1_eam1
       c_tam1_eam1 = c_ta_ea;
     }
@@ -941,11 +911,6 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
         x_flux_dhdiv[gdofs_fct[0]] += prefactor_dof(id_a, 0) * c_t1_e0;
         x_flux_dhdiv[gdofs_fct[ndofs_flux_fct]]
             -= prefactor_dof(id_a, 1) * c_t1_e0;
-
-        // std::cout << "After reversion --> a, c_ta_eam1, c_ta_ea: " << a << ",
-        // "
-        //           << x_flux_dhdiv[gdofs_fct[0]] << ", "
-        //           << x_flux_dhdiv[gdofs_fct[ndofs_flux_fct]] << std::endl;
       }
     }
   }
@@ -1112,14 +1077,6 @@ void minimise_flux(const mesh::Geometry& geometry,
           }
         }
       }
-
-      std::cout << "i_rhs, node, fct_0: " << i_rhs << ", " << patch.node_i()
-                << ", " << patch.fct(0) << std::endl;
-      for (auto m : boundary_markers)
-      {
-        std::cout << unsigned(m) << ", ";
-      }
-      std::cout << "\n";
     }
 
     /* Perform minimisation */

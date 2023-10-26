@@ -222,9 +222,7 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
   }
 
   // Step 2 : Minimise reconstructed flux
-  // std::vector<std::int32_t> lnodes{2, 5, 6, 11, 4};
   for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
-  // for (auto i_node : lnodes)
   {
     // Create Sub-DOFmap
     patch.create_subdofmap(i_node);
