@@ -285,7 +285,7 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
   mdspan_t<T, 2> jG_Eam1(data_jG_Eam1.data(), nipoints_facet, dim);
 
   // History array for c_tam1_eam1
-  T c_ta_ea, c_ta_eam1, c_tam1_eam1;
+  T c_ta_ea = 0, c_ta_eam1 = 0, c_tam1_eam1 = 0, c_t1_e0 = 0;
   std::vector<T> c_ta_div, cj_ta_ea;
 
   /* Initialise storage */
@@ -302,21 +302,21 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
     storage_K.resize(ncells * 4);
 
     // Storage of DOFs
-    c_ta_div.resize(ndofs_flux_cell_div);
-    cj_ta_ea.resize(ndofs_flux_fct - 1);
+    c_ta_div.resize(ndofs_flux_cell_div, 0);
+    cj_ta_ea.resize(ndofs_flux_fct - 1, 0);
   }
 
   if (patch.is_on_boundary())
   {
     // Jacobian
     store_J = true;
-    storage_J.resize(ncells * 4);
+    storage_J.resize(ncells * 4, 0);
 
     if (store_K == false)
     {
       // Inverse of the Jacobian
       store_K = true;
-      storage_K.resize(ncells * 4);
+      storage_K.resize(ncells * 4, 0);
     }
   }
 
@@ -400,6 +400,9 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
     // Patch type
     PatchType type_patch = patch.type(i_rhs);
 
+    // Check if reversion is requierd
+    bool reversion_required = patch.reversion_required(i_rhs);
+
     // Solution vector (flux, picewise-H(div))
     std::span<T> x_flux_dhdiv = problem_data.flux(i_rhs).x()->mutable_array();
 
@@ -416,18 +419,20 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
         = problem_data.projected_rhs(i_rhs).x()->array();
 
     // Boundary DOFs
-    std::span<const T> boundary_values;
-    if (patch.requires_flux_bcs(i_rhs))
-    {
-      boundary_values = problem_data.boundary_values(i_rhs);
-    }
+    std::span<const T> boundary_values = problem_data.boundary_values(i_rhs);
 
     /* Calculate sigma_tilde */
     // Initialisations
     copy_cell_data<T, 2>(x_flux_proj, fluxdg_dofmap.links(cells[0]),
                          coefficients_G_Tap1, 2);
 
-    c_tam1_eam1 = 0.0;
+    // Reinitialise history storage
+    if (i_rhs > 0)
+    {
+      c_tam1_eam1 = 0.0;
+      c_t1_e0 = 0.0;
+      std::fill(data_jG_Eam1.begin(), data_jG_Eam1.end(), 0.0);
+    }
 
     // Loop over all cells
     for (std::size_t a = 1; a < ncells + 1; ++a)
@@ -447,11 +452,34 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
                                                                   : false;
 
       // Check if bcs have to be applied
-      bool fct_has_bc
-          = ((fct_on_boundary && type_patch == PatchType::bound_essnt_dual)
-             || (a == 1 && type_patch == PatchType::bound_mixed))
-                ? true
-                : false;
+      bool fct_has_bc = false;
+
+      if (fct_on_boundary == true)
+      {
+        if (type_patch == PatchType::bound_essnt_dual)
+        {
+          fct_has_bc = true;
+        }
+        else if (type_patch == PatchType::bound_mixed)
+        {
+          if (a == 1)
+          {
+            fct_has_bc = patch.requires_flux_bcs(i_rhs, 0);
+          }
+          else if (a == ncells)
+          {
+            fct_has_bc = patch.requires_flux_bcs(i_rhs, ncells);
+          }
+          else
+          {
+            fct_has_bc = false;
+          }
+        }
+        else
+        {
+          fct_has_bc = false;
+        }
+      }
 
       /* Extract required data */
       // Local facet IDs
@@ -490,10 +518,10 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
       // Tabulated shape functions on facet E0
       s_cmdspan2_t shp_TaEam1;
 
-      if (fct_has_bc && (a == 1))
+      if ((a == 1) && (fct_has_bc || type_patch == PatchType::bound_mixed))
       {
         // DOFs (cell-local) projected flux on facet E0
-        dofs_local_E0 = patch.dofs_projflux_fct(1);
+        dofs_local_E0 = patch.dofs_projflux_fct(0);
 
         // DOFs (global) projected flux on facet E0
         dofs_global_E0 = patch.dofs_flux_fct_global(1, 0);
@@ -521,7 +549,7 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
         else
         {
           bdofs_global = patch.dofs_flux_fct_global(a, a);
-          bfct_global = patch.fct(a + 1);
+          bfct_global = patch.fct(a);
         }
 
         // Calculate patch bcs
@@ -556,6 +584,12 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
             }
           }
         }
+
+        // Handle mixed patch with E_0 on dirichlet boundary
+        if (reversion_required)
+        {
+          c_t1_e0 -= prefactor_dof(id_a, 1) * boundary_values[bdofs_global[0]];
+        }
       }
 
       // Interpolate DOFs
@@ -570,7 +604,7 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
           if (a == 1)
           {
             // Handle BCs on facet 0
-            if (fct_has_bc)
+            if (fct_has_bc || type_patch == PatchType::bound_mixed)
             {
               // Evaluate jump
               for (std::size_t i = 0; i < ndofs_projflux_fct; ++i)
@@ -581,9 +615,9 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
 
                 // Evaluate jump
                 jG_Eam1(n, 0)
-                    -= coefficients_G_Ta[offs_Ta] * shp_TaEam1(n, id_Ta);
+                    += coefficients_G_Ta[offs_Ta] * shp_TaEam1(n, id_Ta);
                 jG_Eam1(n, 1)
-                    -= coefficients_G_Ta[offs_Ta + 1] * shp_TaEam1(n, id_Ta);
+                    += coefficients_G_Ta[offs_Ta + 1] * shp_TaEam1(n, id_Ta);
               }
 
               // Evaluate higher order DOFs on boundary facet
@@ -599,8 +633,17 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
                 mdspan_t<T, 2> jG_E0(data_jG_E0.data(), 1, dim);
                 mdspan_t<T, 2> jG_mapped_E0(data_jG_mapped_E0.data(), 1, dim);
 
-                jG_E0(0, 0) = jG_Eam1(n, 0) * hat_TaEam1(n, node_i_Ta);
-                jG_E0(0, 1) = jG_Eam1(n, 1) * hat_TaEam1(n, node_i_Ta);
+                if ((type_patch == PatchType::bound_mixed)
+                    && (fct_has_bc == false))
+                {
+                  jG_E0(0, 0) = jG_Eam1(n, 0) * hat_TaEam1(n, node_i_Ta);
+                  jG_E0(0, 1) = jG_Eam1(n, 1) * hat_TaEam1(n, node_i_Ta);
+                }
+                else
+                {
+                  jG_E0(0, 0) = -jG_Eam1(n, 0) * hat_TaEam1(n, node_i_Ta);
+                  jG_E0(0, 1) = -jG_Eam1(n, 1) * hat_TaEam1(n, node_i_Ta);
+                }
 
                 kernel_data.pull_back_flux(jG_mapped_E0, jG_E0, J, detJ, K);
 
@@ -622,6 +665,14 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
                   }
                 }
               }
+
+              // Handle mixed patch with E_0 on dirichlet boundary
+              if (fct_has_bc == false)
+              {
+                // Unset jump on facet E0
+                jG_Eam1(n, 0) = 0.0;
+                jG_Eam1(n, 1) = 0.0;
+              }
             }
 
             // Evaluate jump on facet E1
@@ -632,6 +683,7 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
           {
             // Evaluate jump on facet En
             double pfctr = (fct_has_bc) ? -1.0 : 1.0;
+            std::fill(jG_Ea.begin(), jG_Ea.end(), 0.0);
 
             for (std::size_t i = 0; i < ndofs_projflux_fct; ++i)
             {
@@ -644,6 +696,28 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
               jG_Ea[0] += coefficients_G_Ta[offs_Ta] * sshp_TaEa;
               jG_Ea[1] += coefficients_G_Ta[offs_Ta + 1] * sshp_TaEa;
             }
+
+            // Add boundary contribution to c_t1_e0
+            // (required for mixed patch with facte E0 on dirichlet boundary)
+            if (reversion_required)
+            {
+              // Extract mapping data
+              mdspan_t<const double, 2> J
+                  = extract_mapping_data(id_a, storage_J);
+              mdspan_t<const double, 2> K
+                  = extract_mapping_data(id_a, storage_K);
+
+              // Pull back flux to reference cell
+              mdspan_t<T, 2> jG_En(jG_Ea.data(), 1, dim);
+              mdspan_t<T, 2> jG_mapped_En(data_jG_mapped_E0.data(), 1, dim);
+
+              kernel_data.pull_back_flux(jG_mapped_En, jG_En, J, detJ, K);
+
+              // Evaluate boundary contribution
+              T aux = M(fl_TaEa, 0, 0, n) * jG_mapped_En(0, 0)
+                      + M(fl_TaEa, 0, 1, n) * jG_mapped_En(0, 1);
+              c_t1_e0 -= prefactor_dof(id_a, 1) * hat_TaEa(n, node_i_Ta) * aux;
+            }
           }
         }
         else
@@ -653,9 +727,13 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
         }
 
         // Evaluate facet DOFs
-        T aux = M_mapped(id_a, 0, 0, n) * jG_Eam1(n, 0)
-                + M_mapped(id_a, 0, 1, n) * jG_Eam1(n, 1);
-        c_ta_eam1 -= prefactor_dof(id_a, 0) * hat_TaEam1(n, node_i_Ta) * aux;
+        const T aux = M_mapped(id_a, 0, 0, n) * jG_Eam1(n, 0)
+                      + M_mapped(id_a, 0, 1, n) * jG_Eam1(n, 1);
+        const T fct_int
+            = prefactor_dof(id_a, 0) * hat_TaEam1(n, node_i_Ta) * aux;
+        c_ta_eam1 -= fct_int;
+
+        c_t1_e0 += fct_int;
 
         if constexpr (id_flux_order > 1)
         {
@@ -689,7 +767,10 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
       if constexpr (id_flux_order == 1)
       {
         // Set DOF on facet Ea
-        c_ta_ea = coefficients_f[0] * (std::fabs(detJ) / 6) - c_ta_eam1;
+        T vol_int = coefficients_f[0] * (std::fabs(detJ) / 6);
+        c_ta_ea = vol_int - c_ta_eam1;
+
+        c_t1_e0 += vol_int;
       }
       else
       {
@@ -730,9 +811,13 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
           // Auxiliary data
           const double aux
               = (f - div_g) * shp_hat(n, node_i_Ta) * weights[n] * detJ;
+          const double vol_int = aux * sign_detJ;
 
           // Evaluate facet DOF
-          c_ta_ea += aux * sign_detJ;
+          c_ta_ea += vol_int;
+
+          // Contribution to c_t1_e0
+          c_t1_e0 += vol_int;
 
           // Evaluate cell DOFs
           if constexpr (id_flux_order == 2)
@@ -765,30 +850,23 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
       }
 
       /* Store DOFs to global solution vector */
-      if constexpr (id_flux_order == 1)
-      {
-        // Extract global DOF ids
-        std::span<const std::int32_t> gdofs_flux
-            = patch.dofs_flux_fct_global(a);
+      // Global DOF ids
+      std::span<const std::int32_t> gdofs_fct = patch.dofs_flux_fct_global(a);
 
-        // Set DOF values
-        x_flux_dhdiv[gdofs_flux[0]] += prefactor_dof(id_a, 0) * c_ta_eam1;
-        x_flux_dhdiv[gdofs_flux[1]] += prefactor_dof(id_a, 1) * c_ta_ea;
-      }
-      else
+      // Set zero order DOFs
+      x_flux_dhdiv[gdofs_fct[0]] += prefactor_dof(id_a, 0) * c_ta_eam1;
+      x_flux_dhdiv[gdofs_fct[ndofs_flux_fct]]
+          += prefactor_dof(id_a, 1) * c_ta_ea;
+
+      if constexpr (id_flux_order > 1)
       {
         // Global DOF ids
-        std::span<const std::int32_t> gdofs_fct = patch.dofs_flux_fct_global(a);
         std::span<const std::int32_t> gdofs_cell
             = patch.dofs_flux_cell_global(a);
 
         if constexpr (id_flux_order == 2)
         {
-          // Set DOF values facet Eam1
-          x_flux_dhdiv[gdofs_fct[0]] += prefactor_dof(id_a, 0) * c_ta_eam1;
-
-          // Set DOF values facet Ea
-          x_flux_dhdiv[gdofs_fct[2]] += prefactor_dof(id_a, 1) * c_ta_ea;
+          // Set higher-order DOFs on facets
           x_flux_dhdiv[gdofs_fct[3]] += cj_ta_ea[0];
 
           // Set DOFs on cell
@@ -797,11 +875,6 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
         }
         else
         {
-          // Set zero-order DOFs on facets
-          x_flux_dhdiv[gdofs_fct[0]] += prefactor_dof(id_a, 0) * c_ta_eam1;
-          x_flux_dhdiv[gdofs_fct[ndofs_flux_fct]]
-              += prefactor_dof(id_a, 1) * c_ta_ea;
-
           // Set higher-order DOFs on facets
           for (std::size_t i = 1; i < ndofs_flux_fct; ++i)
           {
@@ -822,13 +895,34 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
       // Update c_tam1_eam1
       c_tam1_eam1 = c_ta_ea;
     }
+
+    /* Correct zero-order DOFs on reversed patch */
+    if (reversion_required)
+    {
+      for (std::size_t a = 1; a < ncells + 1; ++a)
+      {
+        // Set id for accessing storage
+        std::size_t id_a = a - 1;
+
+        // Global DOF ids
+        std::span<const std::int32_t> gdofs_fct = patch.dofs_flux_fct_global(a);
+
+        // Set zero-order DOFs on facets
+        x_flux_dhdiv[gdofs_fct[0]] += prefactor_dof(id_a, 0) * c_t1_e0;
+        x_flux_dhdiv[gdofs_fct[ndofs_flux_fct]]
+            -= prefactor_dof(id_a, 1) * c_t1_e0;
+      }
+    }
   }
 }
 
 // Step 2: Minimise flux on patch-wise ansatz space
 ///
-/// Minimises the in step 1 calculated flux in an patch-wise, divergence-free
-/// H(div) space. Explicite ansatz for such a space see [1, Lemma 12].
+/// Minimises the in step 1 calculated flux in an patch-wise,
+/// divergence-free H(div) space. Explicite ansatz for such a space see [1,
+/// Lemma 12]. The DOFs are therefore locally numbered as follows:
+///
+/// dofs_patch = [d0, d^l_E0, ..., d^l_En, d^r_T1, ..., d^r_Tn]
 ///
 /// [1] Bertrand, F.; Carstensen, C.; Gräßle, B. & Tran, N. T.:
 ///     Stabilization-free HHO a posteriori error control, 2022
@@ -893,7 +987,8 @@ void minimise_flux(const mesh::Geometry& geometry,
   int nnodes_cell = kernel_data.nnodes_cell();
 
   // Storage DOFmap
-  // dim: (dof_local, dof_patch, dof_global, prefactor) x cell x dofs_per_cell
+  // dim: (dof_local, dof_patch, dof_global, pfctr) x cell x dofs_per_cell
+  // Soring per cell: [d^0_Eam1, d^0_Ea, d^l_Eam1, d^l_Ea, d^r_Ta]
   std::vector<std::int32_t> ddofmap_patch(4 * ncells * ndofs_cell_local, 0);
   mdspan_t<std::int32_t, 3> dofmap_patch(ddofmap_patch.data(), 4,
                                          (std::size_t)ncells,
@@ -923,14 +1018,6 @@ void minimise_flux(const mesh::Geometry& geometry,
         coordinate_dofs.data() + index * cstride_geom, cstride_geom);
     std::span<const std::int32_t> x_dofs = x_dofmap.links(c);
     copy_cell_data<double, 3>(x, x_dofs, coordinate_dofs_e, 3);
-
-    /* DOF transformation */
-    std::tie(fctloc_eam1, fctloc_ea) = patch.fctid_local(index + 1);
-    std::tie(noutward_eam1, noutward_ea)
-        = kernel_data.fct_normal_is_outward(fctloc_eam1, fctloc_ea);
-
-    dofmap_patch(3, index, 0) = (noutward_eam1) ? 1 : -1;
-    dofmap_patch(3, index, 1) = (noutward_ea) ? 1 : -1;
   }
 
   /* Perform minimisation */
@@ -939,6 +1026,9 @@ void minimise_flux(const mesh::Geometry& geometry,
     /* Extract data */
     // Patch type
     PatchType type_patch = patch.type(i_rhs);
+
+    // Check if reversion is requierd
+    bool reversion_required = patch.reversion_required(i_rhs);
 
     // Solution vector (flux, picewise-H(div))
     std::span<const T> x_flux_dhdiv = problem_data.flux(i_rhs).x()->array();
@@ -951,9 +1041,10 @@ void minimise_flux(const mesh::Geometry& geometry,
                          ndofs_flux, 1);
 
     /* Set bounday markers */
+    // (Required, as DOFs of H(div=0) space has non-global DOF ordering)
     if (patch.requires_flux_bcs(i_rhs))
     {
-      // Unset all prvious markers
+      // Unset all previous markers
       std::fill(boundary_markers.begin(), boundary_markers.end(), false);
 
       // Set boundary markers
@@ -963,20 +1054,53 @@ void minimise_flux(const mesh::Geometry& geometry,
       {
         for (std::size_t i = 1; i < ndofs_flux_fct; ++i)
         {
-          // Mark boundary DOFs on facet 0
-          boundary_markers[i] = 1;
-
-          // Mark boundary DOFs on facet ncells
           if (type_patch == PatchType::bound_essnt_dual)
           {
+            // Mark DOFs on facet E0 and En
+            boundary_markers[i] = true;
             boundary_markers[ncells * (ndofs_flux_fct - 1) + i] = true;
+          }
+          else
+          {
+            if (reversion_required)
+            {
+              // Mark DOFs in facet En
+              // (Mixed patch with reversed order)
+              boundary_markers[ncells * (ndofs_flux_fct - 1) + i] = true;
+            }
+            else
+            {
+              // Mark DOFs in facet E0
+              // (Mixed patch with original order)
+              boundary_markers[i] = true;
+            }
           }
         }
       }
     }
 
     /* Perform minimisation */
+    // Check if assembly of entire system is required
+    bool assemble_entire_system = false;
+
     if (i_rhs == 0)
+    {
+      assemble_entire_system = true;
+    }
+    else
+    {
+      if (patch.is_on_boundary())
+      {
+        if (patch.type(i_rhs) != patch.type(i_rhs - 1)
+            || patch.type(i_rhs) == PatchType::bound_mixed)
+        {
+          assemble_entire_system = true;
+        }
+      }
+    }
+
+    // Assemble system
+    if (assemble_entire_system)
     {
       // Initialize tangents
       A_patch.setZero();
@@ -995,17 +1119,13 @@ void minimise_flux(const mesh::Geometry& geometry,
     }
     else
     {
-      if (patch.equal_patch_types())
-      {
-        // Assemble only vector
-        throw std::runtime_error("Not Implemented!");
-      }
-      else
-      {
-        // Recreate patch and reassemble entire system
-        // Careful with DOF prefactors!
-        throw std::runtime_error("Not Implemented!");
-      }
+      // Initialise linear form
+      L_patch.setZero();
+
+      // Assemble linear form
+      assemble_minimisation<T, id_flux_order, false>(
+          A_patch, L_patch, patch, kernel_data, dofmap_patch, boundary_markers,
+          coefficients, coordinate_dofs, type_patch);
     }
 
     // Solve system
@@ -1039,8 +1159,6 @@ void minimise_flux(const mesh::Geometry& geometry,
     }
 
     // Move patch-wise solution to global solution vector
-    T crr = 1.0;
-
     for (std::size_t a = 1; a < ncells + 1; ++a)
     {
       int id_a = a - 1;
@@ -1048,7 +1166,7 @@ void minimise_flux(const mesh::Geometry& geometry,
       for (std::size_t i = 0; i < ndofs_cell_local; ++i)
       {
         // Overall correction factor (facet orientation and ansatz space)
-        crr = crr_fct[i] * dofmap_patch(3, id_a, i);
+        T crr = crr_fct[i] * dofmap_patch(3, id_a, i);
 
         // Apply correction
         x_minimisation[dofmap_patch(2, id_a, i)]

@@ -31,16 +31,17 @@ PatchFluxEV::PatchFluxEV(
   _ndof_flux_nz = _ndof_flux - (_fct_per_cell - 2) * _ndof_flux_fct;
 
   /* Reserve storage of DOFmaps */
-  int len_adjacency = _ncells_max * _ndof_elmt_nz;
+  const int len_adjacency = _ncells_max * _ndof_elmt_nz;
+  const int len_adjacency_flux
+      = _ncells_max * _ndof_flux_cell + (_ncells_max + 1) * _ndof_flux_fct;
 
   _dofsnz_elmt.resize(len_adjacency);
   _dofsnz_patch.resize(len_adjacency);
   _dofsnz_global.resize(len_adjacency);
   _offset_dofmap.resize(_ncells_max + 1);
 
-  _list_dofsnz_patch_fluxhdiv.resize(_ncells_max * _ndof_flux_nz);
-  _list_dofsnz_global_fluxhdiv.resize(_ncells_max * _ndof_flux_nz);
-  _list_dofsnz_mixed_fluxhdiv.resize(_ncells_max * _ndof_flux_nz);
+  _list_dofsnz_patch_fluxhdiv.resize(len_adjacency_flux);
+  _list_dofsnz_global_fluxhdiv.resize(len_adjacency_flux);
 }
 
 void PatchFluxEV::create_subdofmap(int node_i)
@@ -141,7 +142,6 @@ void PatchFluxEV::create_subdofmap(int node_i)
       // Calculate global DOFs of H(div) confomring flux
       _list_dofsnz_patch_fluxhdiv[offs_l] = dof_patch;
       _list_dofsnz_global_fluxhdiv[offs_l] = fdofs[ldof_cell_i];
-      _list_dofsnz_mixed_fluxhdiv[offs_l] = gdof_cell_i;
 
       // Increment id of patch-local DOFs
       dof_patch += 1;
@@ -170,7 +170,6 @@ void PatchFluxEV::create_subdofmap(int node_i)
       // Calculate global DOFs of H(div) conforming flux
       _list_dofsnz_patch_fluxhdiv[offs_l] = dof_patch;
       _list_dofsnz_global_fluxhdiv[offs_l] = fdofs[ndof_fct + jj];
-      _list_dofsnz_mixed_fluxhdiv[offs_l] = gdof_cell_i;
 
       // Increment id of patch-local DOFs
       dof_patch += 1;
@@ -229,7 +228,6 @@ void PatchFluxEV::create_subdofmap(int node_i)
       // Calculate global DOFs of H(div) confomring flux
       _list_dofsnz_patch_fluxhdiv[offs_l] = dof_patch;
       _list_dofsnz_global_fluxhdiv[offs_l] = fdofs[ldof_cell_i];
-      _list_dofsnz_mixed_fluxhdiv[offs_l] = gdof_cell_i;
 
       // Increment id of patch-local DOFs
       dof_patch += 1;
@@ -240,61 +238,4 @@ void PatchFluxEV::create_subdofmap(int node_i)
       _fcts[_nfcts - 1] = fct_i;
     }
   }
-
-  // // Output Debug
-  // std::cout << "Cells: " << std::endl;
-  // for (auto e : _cells)
-  // {
-  //   std::cout << e << " ";
-  // }
-  // std::cout << "\n";
-  // std::cout << "\n DOFs patch: " << std::endl;
-  // for (std::int8_t jj = 0; jj < _ncells; ++jj)
-  // {
-  //   auto list = dofs_patch(jj);
-
-  //   for (auto e : list)
-  //   {
-  //     std::cout << e << " ";
-  //   }
-  //   std::cout << "\n";
-  // }
-  // std::cout << "\n DOFs global (from local): " << std::endl;
-  // const graph::AdjacencyList<std::int32_t>& dofs0
-  //     = _function_space->dofmap()->list();
-  // for (std::int8_t jj = 0; jj < _ncells; ++jj)
-  // {
-  //   auto list = dofs_elmt(jj);
-  //   auto cell_i = _cells[jj];
-
-  //   for (auto e : list)
-  //   {
-  //     std::cout << dofs0.links(cell_i)[e] << " ";
-  //   }
-  //   std::cout << "\n";
-  // }
-  // std::cout << "\n DOFs global: " << std::endl;
-  // for (std::int8_t jj = 0; jj < _ncells; ++jj)
-  // {
-  //   auto list = dofs_global(jj);
-
-  //   for (auto e : list)
-  //   {
-  //     std::cout << e << " ";
-  //   }
-  //   std::cout << "\n";
-  // }
-  // std::cout << "\n DOFs flux (patch): " << std::endl;
-  // for (std::int8_t jj = 0; jj < _ndof_fluxhdiv; ++jj)
-  // {
-  //   std::cout << _list_dofsnz_patch_fluxhdiv[jj] << " ";
-  // }
-  // std::cout << "\n";
-  // std::cout << "\n DOFs flux (global): " << std::endl;
-  // for (std::int8_t jj = 0; jj < _ndof_fluxhdiv; ++jj)
-  // {
-  //   std::cout << _list_dofsnz_global_fluxhdiv[jj] << " ";
-  // }
-  // std::cout << "\n";
-  // throw std::exception();
 }

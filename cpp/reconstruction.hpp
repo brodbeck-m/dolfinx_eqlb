@@ -137,8 +137,9 @@ void reconstruct_fluxes_patch(const fem::Form<T>& a, const fem::Form<T>& l_pen,
 }
 
 /// Calculation of patch contributions to flux
+///
 /// Equilibration procedure is based on an explicitly calculated flux and an
-/// unconstrained minimisation problem on an patch-wise divergence-free H(div)
+/// unconstrained minimisation problem on a patch-wise divergence-free H(div)
 /// space (see [1]).
 ///
 /// [1] Bertrand, F.; Carstensen, C.; Gräßle, B. & Tran, N. T.:
@@ -209,7 +210,7 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
       mesh, std::make_shared<QuadratureRule>(quadrature_rule),
       basix_element_fluxhdiv, basix_element_rhs, basix_element_hat);
 
-  // Step 1: Explicite calculation of sigma_tilde
+  // Step 1: Explicit calculation of sigma_tilde
   for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
   {
     // Create Sub-DOFmap

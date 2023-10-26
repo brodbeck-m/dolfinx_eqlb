@@ -64,9 +64,20 @@ void equilibrate_flux_constrmin(
     fem::FEkernel<T> auto kernel_lpen, ProblemDataFluxEV<T>& problem_data,
     StorageStiffness<T>& storage_stiffness)
 {
+  /* Extract required data */
+  // Cells on patch
+  const int ncells = patch.ncells();
+  std::span<const std::int32_t> cells = patch.cells();
+
+  // DOFs per patch
+  const int ndof_patch = patch.ndofs_patch();
+
+  // Patch-central node
+  std::span<const std::int8_t> inode_local = patch.inodes_local();
+
   /* Initialize Patch-LGS */
   // Patch arrays
-  const int ndof_ppatch = patch.ndofs_patch() + 1;
+  const int ndof_ppatch = ndof_patch + 1;
 
   Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic> A_patch;
   Eigen::Matrix<T, Eigen::Dynamic, 1> L_patch, u_patch;
@@ -79,11 +90,6 @@ void equilibrate_flux_constrmin(
   Eigen::PartialPivLU<Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>> solver;
 
   /* Initialize hat-function and cell-geometries */
-  // Required patch-data
-  std::span<const std::int32_t> cells = patch.cells();
-  const int ncells = patch.ncells();
-  std::span<const std::int8_t> inode_local = patch.inodes_local();
-
   // Get geometry data
   const graph::AdjacencyList<std::int32_t>& x_dofmap = geometry.dofmap();
   std::span<const fem::impl::scalar_value_type_t<T>> x = geometry.x();
@@ -148,11 +154,30 @@ void equilibrate_flux_constrmin(
     std::span<const T> bvalues = problem_data.boundary_values(i_lhs);
 
     /* Solve equilibration on current patch */
-    // Assemble system
+    // Check if assembly of entire system is required
+    bool assemble_entire_system = false;
+
     if (i_lhs == 0)
     {
-      // Get cells
-      std::span<const std::int32_t> cells = patch.cells();
+      assemble_entire_system = true;
+    }
+    else
+    {
+      if (patch.is_on_boundary())
+      {
+        PatchType patch_i = patch.type(i_lhs);
+
+        if (patch_i != patch.type(i_lhs - 1)
+            || patch_i == PatchType::bound_mixed)
+        {
+          assemble_entire_system = true;
+        }
+      }
+    }
+
+    // Assemble system
+    if (assemble_entire_system)
+    {
       // Initialize tangents
       A_patch.setZero();
       L_patch.setZero();
@@ -169,16 +194,15 @@ void equilibrate_flux_constrmin(
     }
     else
     {
-      if (patch.equal_patch_types())
-      {
-        // Assemble only vector
-        throw std::runtime_error("Not Implemented!");
-      }
-      else
-      {
-        // Recreate patch and reassemble entire system
-        throw std::runtime_error("Not Implemented!");
-      }
+      // Initialize RHS
+      L_patch.setZero();
+
+      // Assemble tangents
+      assemble_tangents<T, false>(
+          A_patch, L_patch, cells, coordinate_dofs, cstride_geom, patch,
+          dof_transform, dof_transform_to_transpose, cell_info, kernel_a,
+          kernel_lpen, kernel_l, constants_l, coefficients_l, cstride_l,
+          bmarkers, bvalues, storage_stiffness, i_lhs);
     }
 
     // Solve equation system

@@ -18,7 +18,10 @@ using namespace dolfinx;
 
 namespace dolfinx_eqlb
 {
-// Define mdspan types
+// ------------------------------------------------------------------------------
+
+/* Definition of spans */
+
 namespace stdex = std::experimental;
 using mdspan2_t = stdex::mdspan<double, stdex::dextents<std::size_t, 2>>;
 using cmdspan2_t = stdex::mdspan<const double, stdex::dextents<std::size_t, 2>>;
@@ -51,6 +54,9 @@ using smdspan_t
     = stdex::mdspan<T, stdex::dextents<std::size_t, d>, stdex::layout_stride>;
 
 // ------------------------------------------------------------------------------
+
+/* Extract coefficients of a form */
+
 /// Compute size of coefficient data
 /// @tparam T Scalar value type
 /// @param constants Vector with fem::Constant objects
@@ -87,6 +93,9 @@ void extract_constants_data(
 // ------------------------------------------------------------------------------
 
 // ------------------------------------------------------------------------------
+
+/* Extract interpolation data of RT elements */
+
 /// Extract interpolation data of an RT-space on facets
 /// @param[in] basix_element   The Basix element (has to be RT!)
 /// @param[in] flux_is_custom  Flag, if custom flux space is used
@@ -107,6 +116,82 @@ static inline std::pair<std::size_t, std::size_t>
 size_interpolation_data_facet_rt(std::array<std::size_t, 4> shape)
 {
   return {shape[3], shape[0] * shape[3]};
+}
+// ------------------------------------------------------------------------------
+
+// ------------------------------------------------------------------------------
+
+/* Reverse patch-wise DOFmaps */
+template <typename T>
+void reverse_blocked_data(std::vector<T>& dataset_1, const int data_size,
+                          const int block_size, const int block_index,
+                          const int block_offset_pre,
+                          const int block_offset_post)
+{
+  // Initialise temporary storage
+  std::int32_t temp;
+
+  // Copy data-blocks
+  const int size = block_size + block_offset_pre + block_offset_post;
+
+  const int offs_base_front = block_index * size + block_offset_pre;
+  const int offs_base_back
+      = data_size - (block_index + 1) * size + block_offset_pre;
+
+  for (std::size_t i = 0; i < block_size; ++i)
+  {
+    // Calculate offsets
+    int offs_front = offs_base_front + i;
+    int offs_back = offs_base_back + i;
+
+    // --- Handle data-set 1
+    // Copy data to temporary storage
+    temp = dataset_1[offs_front];
+
+    // Exchange data of blocks
+    dataset_1[offs_front] = dataset_1[offs_back];
+    dataset_1[offs_back] = temp;
+  }
+}
+
+template <typename T>
+void reverse_blocked_data(std::vector<T>& dataset_1, std::vector<T>& dataset_2,
+                          const int data_size, const int block_size,
+                          const int block_index, const int block_offset_pre,
+                          const int block_offset_post)
+{
+  // Initialise temporary storage
+  std::int32_t temp;
+
+  // Copy data-blocks
+  const int size = block_size + block_offset_pre + block_offset_post;
+
+  const int offs_base_front = block_index * size + block_offset_pre;
+  const int offs_base_back
+      = data_size - (block_index + 1) * size + block_offset_pre;
+
+  for (std::size_t i = 0; i < block_size; ++i)
+  {
+    // Calculate offsets
+    int offs_front = offs_base_front + i;
+    int offs_back = offs_base_back + i;
+
+    // --- Handle data-set 1
+    // Copy data to temporary storage
+    temp = dataset_1[offs_front];
+
+    // Exchange data of blocks
+    dataset_1[offs_front] = dataset_1[offs_back];
+    dataset_1[offs_back] = temp;
+
+    // --- Handle data-set 2
+    // Copy data to temporary storage
+    temp = dataset_2[offs_front];
+
+    // Exchange data of blocks
+    dataset_2[offs_front] = dataset_2[offs_back];
+    dataset_2[offs_back] = temp;
+  }
 }
 // ------------------------------------------------------------------------------
 

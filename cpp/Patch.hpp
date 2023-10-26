@@ -47,6 +47,34 @@ public:
   Patch(int nnodes_proc, std::shared_ptr<const mesh::Mesh> mesh,
         mdspan_t<const std::int8_t, 2> bfct_type);
 
+  /// Construction of a sub-DOFmap on each patch
+  ///
+  /// Determines type of patch and creates sorted DOFmap. Sorting of
+  /// facets/elements/DOFs follows [1,2]. The sub-DOFmap is created for
+  /// sub-problem 0. If patch- type differs between different patches, use
+  /// recreate_subdofmap for sub-problem i>0.
+  ///
+  /// [1] Moldenhauer, M.: Stress reconstructionand a-posteriori error
+  ///     estimationfor elasticity (PhdThesis)
+  /// [2] Bertrand, F.; Carstensen, C.; Gräßle, B. & Tran, N. T.:
+  ///     Stabilization-free HHO a posteriori error control, 2022
+  ///
+  /// @param node_i Processor-local id of current node
+  void create_subdofmap(int node_i)
+  {
+    throw std::runtime_error("Patch-DOFmap not implemented!");
+  }
+
+  /// Check if reversion of patch is required
+  ///
+  /// Sorting convention of patch: fct_0 is located on the neumann boundary.
+  /// Changing of the RHS can violate this convention. This routine checks
+  /// wether this is the case.
+  ///
+  /// @param[in] index     Index of sub-problem
+  /// @param[out] required true if reversion is required
+  bool reversion_required(int index);
+
   /// Determine maximum patch size
   /// @param nnodes_proc Number of nodes on current processor
   void set_max_patch_size(int nnodes_proc);
@@ -92,6 +120,22 @@ public:
   {
     if (_type[index] == PatchType::bound_essnt_dual
         || _type[index] == PatchType::bound_mixed)
+    {
+      return true;
+    }
+    else
+    {
+      return false;
+    }
+  }
+
+  /// Checks if flux BCs have to be applied on fact
+  /// @param index The id of the RHS
+  /// @param fct   The (patch-local) facet id
+  /// @return True if BCs on the flux field are required
+  bool requires_flux_bcs(int index, int fct_id)
+  {
+    if (_bfct_type(index, _fcts[fct_id]) == PatchFacetType::essnt_dual)
     {
       return true;
     }

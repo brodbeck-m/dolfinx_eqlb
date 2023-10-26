@@ -34,19 +34,20 @@ namespace dolfinx_eqlb
 /// @param kernel_data      The kernel data
 /// @param coefficients     Cell DOFs on flux (after step 1)
 /// @param dofmap           Cell DOFmap
+/// @param fct_orientation  The facet orientation of the cell facets
 /// @param fluxdofs_per_fct Number of flux DOFs per facet
 /// @param coordinate_dofs  The coordinate DOFs of current cell
 template <typename T, int id_flux_order = 3, bool asmbl_systmtrx = true>
 void minimisation_kernel(mdspan2_t Te, KernelDataEqlb<T>& kernel_data,
                          std::span<T> coefficients,
                          smdspan_t<std::int32_t, 2> dofmap,
+                         const std::array<bool, 2>& fct_is_outward,
                          const int fluxdofs_per_fct, cmdspan2_t coordinate_dofs)
 {
   const int index_load = Te.extent(0) - 1;
 
   /* Initialise storage of cell prefactors */
-  std::int32_t prefactor_eam1 = dofmap(3, 0);
-  std::int32_t prefactor_ea = dofmap(3, 1);
+  std::int32_t prefactor_eam1, prefactor_ea;
 
   /* Isoparametric mapping */
   std::array<double, 9> Jb;
@@ -74,8 +75,13 @@ void minimisation_kernel(mdspan2_t Te, KernelDataEqlb<T>& kernel_data,
     // Correct prefactors based on sign of detJ
     if (detJ < 0)
     {
-      prefactor_eam1 = -prefactor_eam1;
-      prefactor_ea = -prefactor_ea;
+      prefactor_eam1 = (fct_is_outward[0]) ? -1 : 1;
+      prefactor_ea = (fct_is_outward[1]) ? -1 : 1;
+    }
+    else
+    {
+      prefactor_eam1 = (fct_is_outward[0]) ? 1 : -1;
+      prefactor_ea = (fct_is_outward[1]) ? 1 : -1;
     }
 
     // Move prefactors to storage
@@ -97,6 +103,11 @@ void minimisation_kernel(mdspan2_t Te, KernelDataEqlb<T>& kernel_data,
         }
       }
     }
+  }
+  else
+  {
+    prefactor_eam1 = dofmap(3, 0);
+    prefactor_ea = dofmap(3, 1);
   }
 
   // Manipulate prefactors
@@ -244,6 +255,10 @@ void assemble_minimisation(
   std::vector<T> dTe(ndofs_nz * (ndofs_nz + 1), 0);
   mdspan2_t Te(dTe.data(), ndofs_nz + 1, ndofs_nz);
 
+  // Initialise storage for facet orientation
+  std::int8_t fctloc_ea, fctloc_eam1;
+  std::array<bool, 2> fct_orientation;
+
   /* Calculation and assembly */
   for (std::size_t a = 1; a < ncells + 1; ++a)
   {
@@ -252,6 +267,11 @@ void assemble_minimisation(
     // Cell coordinates
     cmdspan2_t coordinates_elmt(coordinate_dofs.data() + id_a * cstride_geom,
                                 nnodes_cell, 3);
+
+    // Facet orientation
+    std::tie(fctloc_eam1, fctloc_ea) = patch.fctid_local(a);
+    std::tie(fct_orientation[0], fct_orientation[1])
+        = kernel_data.fct_normal_is_outward(fctloc_eam1, fctloc_ea);
 
     // DOFmap on cell
     smdspan_t<std::int32_t, 2> dofmap_cell = stdex::submdspan(
@@ -375,8 +395,8 @@ void assemble_minimisation(
     // Evaluate linear- and bilinear form
     std::fill(dTe.begin(), dTe.end(), 0);
     minimisation_kernel<T, id_flux_order, asmbl_systmtrx>(
-        Te, kernel_data, coefficients_elmt, dofmap_cell, ndofs_per_fct,
-        coordinates_elmt);
+        Te, kernel_data, coefficients_elmt, dofmap_cell, fct_orientation,
+        ndofs_per_fct, coordinates_elmt);
 
     // Assemble linear- and bilinear form
     if constexpr (id_flux_order == 1)

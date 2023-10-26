@@ -40,9 +40,7 @@ void local_solver(std::vector<std::shared_ptr<fem::Function<T>>>& vec_sol,
   }
 
   // Initilize data of LHS
-  const std::vector<std::vector<std::shared_ptr<const fem::DirichletBC<T>>>>
-      bcs;
-  ProblemData<T> problem_data = ProblemData<T>(vec_sol, bcs, vec_l);
+  ProblemData<T> problem_data = ProblemData<T>(vec_sol, {}, vec_l);
 
   // Prepare cell geometry
   const mesh::Geometry& geometry = a.mesh()->geometry();

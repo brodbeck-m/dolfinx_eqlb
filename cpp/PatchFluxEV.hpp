@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Patch.hpp"
+#include "utils.hpp"
 
 #include <basix/finite-element.h>
 #include <dolfinx/fem/DofMap.h>
@@ -29,26 +30,8 @@ public:
       const std::shared_ptr<const fem::FunctionSpace> function_space_fluxhdiv,
       const basix::FiniteElement& basix_element_flux);
 
-  /// Construction of a sub-DOFmap on each patch
-  ///
-  /// Determines type of patch (0-> internal, 1->bc_neumann, 2->bc_dirichlet
-  /// 3->bc_mixed) and creats sorted DOFmap. Sorting of facets/elements/DOFs
-  /// follows [1,2]. The sub-DOFmap is cearted for sub-problem 0. If patch-
-  /// type differs between different patches, use recreate_subdofmap for
-  /// sub-problem i>0.
-  ///
-  /// [1] Moldenhauer, M.: Stress reconstructionand a-posteriori error
-  ///     estimationfor elasticity (PhdThesis)
-  /// [2] Bertrand, F.; Carstensen, C.; Gräßle, B. & Tran, N. T.:
-  ///     Stabilization-free HHO a posteriori error control, 2022
-  ///
-  /// @param node_i Processor-local id of current node
+  /* Overload functions from base-class */
   void create_subdofmap(int node_i);
-
-  void recreate_subdofmap(int index)
-  {
-    throw std::runtime_error("Equilibration: Multiple LHS not supported");
-  }
 
   /* Setter functions */
 
@@ -113,22 +96,6 @@ public:
   std::span<const std::int32_t> dofs_fluxhdiv_global() const
   {
     return std::span<const std::int32_t>(_list_dofsnz_global_fluxhdiv.data(),
-                                         _ndof_fluxhdiv);
-  }
-
-  /// Extract DOFs (H(div) flux, mixed space) on patch
-  /// @return Global flux-DOFs
-  std::span<std::int32_t> dofs_fluxhdiv_mixed()
-  {
-    return std::span<std::int32_t>(_list_dofsnz_mixed_fluxhdiv.data(),
-                                   _ndof_fluxhdiv);
-  }
-
-  /// Extract DOFs (H(div) flux, mixed space) on patch (const. version)
-  /// @return Global flux-DOFs
-  std::span<const std::int32_t> dofs_fluxhdiv_mixed() const
-  {
-    return std::span<const std::int32_t>(_list_dofsnz_mixed_fluxhdiv.data(),
                                          _ndof_fluxhdiv);
   }
 
@@ -200,12 +167,15 @@ protected:
   const std::vector<std::vector<std::vector<int>>>& _entity_dofs_flux;
 
   // Storage sub-dofmap
+  // Layout: fDOFs -> flux DOFs, cDOFs -> constrained DOFs
+  //         [(fDOF_E0, fDOF_T1, cDOF_T1), ..., (fDOF_Eam1, fDOF_Ta, cDOF_Ta)]
   std::vector<std::int32_t> _dofsnz_elmt, _dofsnz_patch, _dofsnz_global,
       _offset_dofmap;
 
   // Storage DOFs H(div) flux (per patch)
+  // Layout: [(fDOF_E0, fDOF_T1), ..., (fDOF_Eam1, fDOF_Ta), (fDOFs_Ea)]
   std::vector<std::int32_t> _list_dofsnz_patch_fluxhdiv,
-      _list_dofsnz_global_fluxhdiv, _list_dofsnz_mixed_fluxhdiv;
+      _list_dofsnz_global_fluxhdiv;
 
   // Number of DOFs on element (element definition)
   int _ndof_elmt;
