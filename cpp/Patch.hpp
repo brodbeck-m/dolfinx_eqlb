@@ -65,28 +65,15 @@ public:
     throw std::runtime_error("Patch-DOFmap not implemented!");
   }
 
-  /// Recreate sub-DOFmap on each patch
-  ///
-  /// Change of RHS can change boundary conditions. This may require a
-  /// reversed patch-orientation.
-  ///
-  /// @param[in] index          Index of sub-problem
-  /// @param[out] was_recreated true if patch-DOFmap was recreated
-  bool recreate_subdofmap(int index)
-  {
-    throw std::runtime_error("Recreation of patch-DOFmap not implemented!");
-  }
-
   /// Check if reversion of patch is required
+  ///
+  /// Sorting convention of patch: fct_0 is located on the neumann boundary.
+  /// Changing of the RHS can violate this convention. This routine checks
+  /// wether this is the case.
+  ///
   /// @param[in] index     Index of sub-problem
   /// @param[out] required true if reversion is required
   bool reversion_required(int index);
-
-  /// Implement reversion of patch orientation
-  void reverse_orientation()
-  {
-    throw std::runtime_error("Reversion of the patch not implemented!");
-  }
 
   /// Determine maximum patch size
   /// @param nnodes_proc Number of nodes on current processor

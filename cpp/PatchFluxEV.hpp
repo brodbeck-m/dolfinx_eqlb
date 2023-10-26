@@ -33,21 +33,6 @@ public:
   /* Overload functions from base-class */
   void create_subdofmap(int node_i);
 
-  bool recreate_subdofmap(int index)
-  {
-    // Check if reversion is required
-    bool reverse_patch = reversion_required(index);
-
-    if (reverse_patch)
-    {
-      reverse_orientation();
-    }
-
-    return reverse_patch;
-  }
-
-  void reverse_orientation();
-
   /* Setter functions */
 
   /* Getter functions */

@@ -93,20 +93,7 @@ public:
     _localid_fct.resize(2 * (_ncells_max + 1));
   }
 
-  /// Construction of a sub-DOFmap on each patch
-  ///
-  /// Determines type of patch (0-> internal, 1->bc_neumann, 2->bc_dirichlet
-  /// 3->bc_mixed) and creats sorted DOFmap. Sorting of facets/elements/DOFs
-  /// follows [1,2]. The sub-DOFmap is cearted for sub-problem 0. If patch-
-  /// type differs between different patches, use recreate_subdofmap for
-  /// sub-problem i>0.
-  ///
-  /// [1] Moldenhauer, M.: Stress reconstruction and a-posteriori error
-  ///     estimationfor elasticity (PhdThesis)
-  /// [2] Bertrand, F.; Carstensen, C.; Gräßle, B. & Tran, N. T.:
-  ///     Stabilization-free HHO a posteriori error control, 2022
-  ///
-  /// @param node_i Processor-local id of current node
+  /* Overload functions from base-class */
   void create_subdofmap(int node_i)
   {
     // Initialize patch
@@ -382,83 +369,6 @@ public:
       // Set next facet
       _fcts[_nfcts - 1] = fct_i;
     }
-
-    // // Debug
-    // std::cout << "ndof_flux: " << _ndof_flux << std::endl;
-    // std::cout << "ndof_flux_fct: " << _ndof_flux_fct << std::endl;
-    // std::cout << "ndof_flux_cell (div): " << _ndof_flux_div_cell <<
-    // std::endl; std::cout << "ndof_flux_cell (add): " << _ndof_flux_add_cell
-    // << std::endl;
-
-    // std::cout << "ndof_flux_dg: " << _ndof_fluxdg << std::endl;
-    // std::cout << "ndof_flux_dg (fct): " << _ndof_fluxdg_fct << std::endl;
-
-    // std::cout << "Offset fct-dofs (flux-dg): " << std::endl;
-    // for (auto e : _offset_list_fluxdg)
-    // {
-    //   std::cout << e << " ";
-    // }
-    // std::cout << "\n";
-
-    // std::cout << "Cells: " << std::endl;
-    // for (auto e : _cells)
-    // {
-    //   std::cout << e << " ";
-    // }
-    // std::cout << "\n";
-
-    // std::cout << "Facets: " << std::endl;
-    // for (auto e : _fcts)
-    // {
-    //   std::cout << e << " ";
-    // }
-    // std::cout << "\n";
-
-    // std::cout << "Global DOFs flux (H(div)) facet:" << std::endl;
-    // for (std::int8_t i = 0; i < _ncells; ++i)
-    // {
-    //   auto dofs_facet = dofs_flux_fct_global(i);
-    //   for (auto dof : dofs_facet)
-    //   {
-    //     std::cout << dof << " ";
-    //   }
-    //   std::cout << "\n";
-    // }
-
-    // std::cout << "Global DOFs flux (H(div)) cell:" << std::endl;
-    // for (std::int8_t i = 0; i < _ncells; ++i)
-    // {
-    //   auto dofs_cell = dofs_flux_cell_global(i);
-    //   for (auto dof : dofs_cell)
-    //   {
-    //     std::cout << dof << " ";
-    //   }
-    //   std::cout << "\n";
-    // }
-
-    // std::cout << "Global DOFs flux (projected) facet:" << std::endl;
-    // std::cout << "n_fcts: " << _nfcts << std::endl;
-    // for (std::int8_t i = 0; i < _nfcts + 1; ++i)
-    // {
-    //   auto dofs_cell = dofs_projflux_fct(i);
-    //   for (auto dof : dofs_cell)
-    //   {
-    //     std::cout << dof << " ";
-    //   }
-    //   std::cout << "\n";
-    // }
-
-    // std::cout << "Local facet IDs: " << std::endl;
-    // for (auto id : _localid_fct)
-    // {
-    //   std::cout << unsigned(id) << " ";
-    // }
-    // std::cout << "\n";
-  }
-
-  void recreate_subdofmap(int index)
-  {
-    throw std::runtime_error("Equilibration: Multiple LHS not supported");
   }
 
   /* Setter functions */
