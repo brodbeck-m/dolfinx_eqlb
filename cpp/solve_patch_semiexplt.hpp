@@ -955,7 +955,9 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
 ///
 /// Minimises the in step 1 calculated flux in an patch-wise,
 /// divergence-free H(div) space. Explicite ansatz for such a space see [1,
-/// Lemma 12].
+/// Lemma 12]. The DOFs are therefore locally numbered as follows:
+///
+/// dofs_patch = [d0, d^l_E0, ..., d^l_En, d^r_T1, ..., d^r_Tn]
 ///
 /// [1] Bertrand, F.; Carstensen, C.; Gräßle, B. & Tran, N. T.:
 ///     Stabilization-free HHO a posteriori error control, 2022
@@ -1020,8 +1022,8 @@ void minimise_flux(const mesh::Geometry& geometry,
   int nnodes_cell = kernel_data.nnodes_cell();
 
   // Storage DOFmap
-  // dim: (dof_local, dof_patch, dof_global, prefactor) x cell x
-  // dofs_per_cell
+  // dim: (dof_local, dof_patch, dof_global, pfctr) x cell x dofs_per_cell
+  // Soring per cell: [d^0_Eam1, d^0_Ea, d^l_Eam1, d^l_Ea, d^r_Ta]
   std::vector<std::int32_t> ddofmap_patch(4 * ncells * ndofs_cell_local, 0);
   mdspan_t<std::int32_t, 3> dofmap_patch(ddofmap_patch.data(), 4,
                                          (std::size_t)ncells,
