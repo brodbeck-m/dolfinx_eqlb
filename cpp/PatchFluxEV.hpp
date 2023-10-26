@@ -114,22 +114,6 @@ public:
                                          _ndof_fluxhdiv);
   }
 
-  /// Extract DOFs (H(div) flux, mixed space) on patch
-  /// @return Global flux-DOFs
-  std::span<std::int32_t> dofs_fluxhdiv_mixed()
-  {
-    return std::span<std::int32_t>(_list_dofsnz_mixed_fluxhdiv.data(),
-                                   _ndof_fluxhdiv);
-  }
-
-  /// Extract DOFs (H(div) flux, mixed space) on patch (const. version)
-  /// @return Global flux-DOFs
-  std::span<const std::int32_t> dofs_fluxhdiv_mixed() const
-  {
-    return std::span<const std::int32_t>(_list_dofsnz_mixed_fluxhdiv.data(),
-                                         _ndof_fluxhdiv);
-  }
-
   /// Extract patch-local DOFs (collapsed H(div) flux)
   /// @param cell_i Patch-local cell-id
   /// @return Patch-local flux-DOFs
@@ -206,7 +190,7 @@ protected:
   // Storage DOFs H(div) flux (per patch)
   // Layout: [(fDOF_E0, fDOF_T1), ..., (fDOF_Eam1, fDOF_Ta), (fDOFs_Ea)]
   std::vector<std::int32_t> _list_dofsnz_patch_fluxhdiv,
-      _list_dofsnz_global_fluxhdiv, _list_dofsnz_mixed_fluxhdiv;
+      _list_dofsnz_global_fluxhdiv;
 
   // Number of DOFs on element (element definition)
   int _ndof_elmt;

@@ -42,7 +42,6 @@ PatchFluxEV::PatchFluxEV(
 
   _list_dofsnz_patch_fluxhdiv.resize(len_adjacency_flux);
   _list_dofsnz_global_fluxhdiv.resize(len_adjacency_flux);
-  _list_dofsnz_mixed_fluxhdiv.resize(len_adjacency_flux);
 }
 
 void PatchFluxEV::create_subdofmap(int node_i)
@@ -143,7 +142,6 @@ void PatchFluxEV::create_subdofmap(int node_i)
       // Calculate global DOFs of H(div) confomring flux
       _list_dofsnz_patch_fluxhdiv[offs_l] = dof_patch;
       _list_dofsnz_global_fluxhdiv[offs_l] = fdofs[ldof_cell_i];
-      _list_dofsnz_mixed_fluxhdiv[offs_l] = gdof_cell_i;
 
       // Increment id of patch-local DOFs
       dof_patch += 1;
@@ -172,7 +170,6 @@ void PatchFluxEV::create_subdofmap(int node_i)
       // Calculate global DOFs of H(div) conforming flux
       _list_dofsnz_patch_fluxhdiv[offs_l] = dof_patch;
       _list_dofsnz_global_fluxhdiv[offs_l] = fdofs[ndof_fct + jj];
-      _list_dofsnz_mixed_fluxhdiv[offs_l] = gdof_cell_i;
 
       // Increment id of patch-local DOFs
       dof_patch += 1;
@@ -231,7 +228,6 @@ void PatchFluxEV::create_subdofmap(int node_i)
       // Calculate global DOFs of H(div) confomring flux
       _list_dofsnz_patch_fluxhdiv[offs_l] = dof_patch;
       _list_dofsnz_global_fluxhdiv[offs_l] = fdofs[ldof_cell_i];
-      _list_dofsnz_mixed_fluxhdiv[offs_l] = gdof_cell_i;
 
       // Increment id of patch-local DOFs
       dof_patch += 1;
@@ -326,19 +322,10 @@ void PatchFluxEV::reverse_orientation()
                          _ndof_elmt_nz, i, 0, 0);
 
     // Global DOFs flux-space
-    reverse_blocked_data(_list_dofsnz_mixed_fluxhdiv,
-                         size_storage_dofs_flux - _ndof_flux_fct,
-                         _ndof_flux_cell, i, _ndof_flux_fct, 0);
-
-    // Global DOFs flux-space
-    reverse_blocked_data(_list_dofsnz_mixed_fluxhdiv,
+    reverse_blocked_data(_list_dofsnz_global_fluxhdiv,
                          size_storage_dofs_flux + _ndof_flux_cell,
                          _ndof_flux_fct, i, 0, _ndof_flux_cell);
   }
-
-  reverse_blocked_data(_list_dofsnz_mixed_fluxhdiv,
-                       size_storage_dofs_flux + _ndof_flux_cell, _ndof_flux_fct,
-                       nblocks_cell, 0, _ndof_flux_cell);
 
   // Reverse facet data in DOFmap per cell
   std::int32_t temp;
