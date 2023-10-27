@@ -305,26 +305,14 @@ std::int8_t Patch::get_fctid_local(std::int32_t fct_i, std::int32_t cell_i)
   // Get facets on cell
   std::span<const std::int32_t> fct_cell_i = _cell_to_fct->links(cell_i);
 
-  // Initialize local id
-  std::int8_t fct_loc;
-
-  // Get id (cell_local) of fct_i
-  while (fct_cell_i[fct_loc] != fct_i && fct_loc < _fct_per_cell)
-  {
-    fct_loc += 1;
-  }
-
-  // Check for face not on cell
-  assert(fct_loc > _fct_per_cell - 1);
-
-  return fct_loc;
+  return get_fctid_local(fct_i, fct_cell_i);
 }
 
 std::int8_t Patch::get_fctid_local(std::int32_t fct_i,
                                    std::span<const std::int32_t> fct_cell_i)
 {
   // Initialize local id
-  std::int8_t fct_loc;
+  std::int8_t fct_loc = 0;
 
   // Get id (cell_local) of fct_i
   while (fct_cell_i[fct_loc] != fct_i && fct_loc < _fct_per_cell)
@@ -333,7 +321,7 @@ std::int8_t Patch::get_fctid_local(std::int32_t fct_i,
   }
 
   // Check for face not on cell
-  assert(fct_loc > _fct_per_cell - 1);
+  assert(fct_loc < _fct_per_cell);
 
   return fct_loc;
 }
