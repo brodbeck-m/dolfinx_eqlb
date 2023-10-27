@@ -1,7 +1,6 @@
 import numpy as np
 import pytest
 
-import basix
 import dolfinx.mesh as dmesh
 import dolfinx.fem as dfem
 import ufl

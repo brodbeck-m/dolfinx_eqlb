@@ -1,19 +1,16 @@
 # --- Includes ---
 import numpy as np
-from mpi4py import MPI
 from petsc4py import PETSc
 from typing import Any, Callable, List
 
 import dolfinx
 import dolfinx.fem as dfem
-import dolfinx.mesh as dmesh
-
 import ufl
 
 from dolfinx_eqlb.lsolver import local_projection
 from dolfinx_eqlb.eqlb import fluxbc
 
-from python.test.unit.utils import Geometry
+from utils import Geometry
 
 """
 Setup variable test-cases for the poisson problem

@@ -1,12 +1,8 @@
 import numpy as np
-from petsc4py import PETSc
 import pytest
-from typing import Any, List
 
-import basix
 import dolfinx.mesh as dmesh
 import dolfinx.fem as dfem
-import ufl
 
 from dolfinx_eqlb.eqlb import FluxEqlbEV, FluxEqlbSE
 import dolfinx_eqlb.eqlb.check_eqlb_conditions as eqlb_checker

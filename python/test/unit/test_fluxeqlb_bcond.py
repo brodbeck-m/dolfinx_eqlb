@@ -4,7 +4,6 @@ from petsc4py import PETSc
 import pytest
 
 import basix
-import dolfinx
 from dolfinx.mesh import CellType, DiagonalType
 import dolfinx.mesh as dmesh
 import dolfinx.fem as dfem
