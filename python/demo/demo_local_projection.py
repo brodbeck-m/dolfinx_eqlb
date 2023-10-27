@@ -1,6 +1,6 @@
 """ Demo local projection
 
-This demo uses a element local solver to project two non-polynomial 
+This demo uses a element-local solver to project two non-polynomial 
 functions into an element-wise polynomial space.
 
 """
