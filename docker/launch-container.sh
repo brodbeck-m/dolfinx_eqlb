@@ -1,0 +1,1 @@
+docker run -ti --rm -v "$(pwd)":/root/shared -w /root/shared brodbeck-m/dolfinx_eqlb:release
