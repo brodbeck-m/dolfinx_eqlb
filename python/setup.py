@@ -9,7 +9,7 @@ from setuptools.command.build_ext import build_ext
 
 VERSION = "0.0.0"
 
-REQUIREMENTS = []
+REQUIREMENTS = ["fenics-dolfinx==0.6.0", "numpy>=1.21.0"]
 
 
 class CMakeExtension(Extension):

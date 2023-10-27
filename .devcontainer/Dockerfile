@@ -1,5 +1,5 @@
 # Initialize from local docker image
-FROM dolfinx/dolfinx:latest
+FROM dolfinx/dolfinx:v0.6.0-r1
 
 # Update docker container
 RUN export DEBIAN_FRONTEND=noninteractive && \
