@@ -17,7 +17,6 @@ holds. Dirichlet BCs are applied on the boundaries 2 and 4.
 # --- Imports ---
 import numpy as np
 from mpi4py import MPI
-from petsc4py import PETSc
 
 import dolfinx
 import dolfinx.fem as dfem
@@ -124,7 +123,9 @@ def solve_primal_problem(elmt_order_prime, domain, facet_tags, ds):
 
 
 # --- The flux equilibration
-def equilibrate_flux(elmt_order_prime, elmt_order_eqlb, domain, facet_tags, uh_prime):
+def equilibrate_flux(
+    Equilibrator, elmt_order_prime, elmt_order_eqlb, domain, facet_tags, uh_prime
+):
     # Set source term
     x = ufl.SpatialCoordinate(domain)
     f = -ufl.div(ufl.grad(exact_solution(ufl)(x)))
@@ -187,7 +188,7 @@ uh_prime = solve_primal_problem(elmt_order_prime, domain, facet_tags, ds)
 
 # Solve equilibration
 sigma_proj, sigma_eqlb = equilibrate_flux(
-    elmt_order_prime, elmt_order_eqlb, domain, facet_tags, uh_prime
+    Equilibrator, elmt_order_prime, elmt_order_eqlb, domain, facet_tags, uh_prime
 )
 
 # --- Export results to ParaView ---
