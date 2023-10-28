@@ -28,6 +28,24 @@ from dolfinx_eqlb.eqlb import fluxbc, FluxEqlbEV, FluxEqlbSE
 from dolfinx_eqlb.lsolver import local_projection
 
 
+# --- Parameters ---
+# The considered equilibration strategy
+Equilibrator = FluxEqlbSE
+
+# The orders of the FE spaces
+elmt_order_prime = 1
+elmt_order_eqlb = 2
+
+# The mesh resolution
+sdisc_nelmt = 20
+
+
+# --- The exact solution
+def exact_solution(pkt):
+    return lambda x: pkt.sin(2 * pkt.pi * x[0]) * pkt.cos(2 * pkt.pi * x[1])
+
+
+# --- The primal problem
 def create_unit_square_mesh(n_elmt: int):
     domain = dmesh.create_rectangle(
         MPI.COMM_WORLD,
@@ -62,101 +80,115 @@ def create_unit_square_mesh(n_elmt: int):
     return domain, facet_tag, ds
 
 
-def exact_solution(pkt):
-    return lambda x: pkt.sin(2 * pkt.pi * x[0]) * pkt.cos(2 * pkt.pi * x[1])
+def solve_primal_problem(elmt_order_prime, domain, facet_tags, ds):
+    # Set function space (primal problem)
+    V_prime = dfem.FunctionSpace(domain, ("CG", elmt_order_prime))
+
+    # Set trial and test functions
+    u = ufl.TrialFunction(V_prime)
+    v = ufl.TestFunction(V_prime)
+
+    # Set source term
+    x = ufl.SpatialCoordinate(domain)
+    f = -ufl.div(ufl.grad(exact_solution(ufl)(x)))
+
+    # Equation system
+    a = ufl.inner(ufl.grad(u), ufl.grad(v)) * ufl.dx
+    l = f * v * ufl.dx
+
+    # Neumann boundary conditions
+    normal = ufl.FacetNormal(domain)
+    l += ufl.inner(ufl.grad(exact_solution(ufl)(x)), normal) * v * ds(1)
+    l += ufl.inner(ufl.grad(exact_solution(ufl)(x)), normal) * v * ds(3)
+
+    # Dirichlet boundary conditions
+    uD = dfem.Function(V_prime)
+    uD.interpolate(exact_solution(np))
+
+    fcts_essnt = facet_tags.indices[
+        np.logical_or(facet_tags.values == 2, facet_tags.values == 4)
+    ]
+    dofs_essnt = dfem.locate_dofs_topological(V_prime, 1, fcts_essnt)
+    bc_essnt = [dfem.dirichletbc(uD, dofs_essnt)]
+
+    # Solve primal problem
+    problem = dfem.petsc.LinearProblem(
+        a,
+        l,
+        bcs=bc_essnt,
+        petsc_options={"ksp_type": "cg", "ksp_rtol": 1e-10, "ksp_atol": 1e-12},
+    )
+    uh_prime = problem.solve()
+
+    return uh_prime
 
 
-# --- Parameters ---
-# The considered equilibration strategy
-Equilibrator = FluxEqlbSE
+# --- The flux equilibration
+def equilibrate_flux(elmt_order_prime, elmt_order_eqlb, domain, facet_tags, uh_prime):
+    # Set source term
+    x = ufl.SpatialCoordinate(domain)
+    f = -ufl.div(ufl.grad(exact_solution(ufl)(x)))
 
-# The orders of the FE spaces
-elmt_order_prime = 1
-elmt_order_eqlb = 2
+    # Project flux and RHS into required DG space
+    V_rhs_proj = dfem.FunctionSpace(domain, ("DG", elmt_order_eqlb - 1))
+    # (elmt_order_eqlb - 1 would be sufficient but not implemented for semi-explicit eqlb.)
+    V_flux_proj = dfem.VectorFunctionSpace(domain, ("DG", elmt_order_eqlb - 1))
 
-# The mesh resolution
-sdisc_nelmt = 20
+    sigma_proj = local_projection(V_flux_proj, [-ufl.grad(uh_prime)])
+    rhs_proj = local_projection(V_rhs_proj, [f])
 
-# --- Setup problem ---
+    # Initialise equilibrator
+    equilibrator = Equilibrator(elmt_order_eqlb, domain, rhs_proj, sigma_proj)
+
+    # Get facets on essential boundary surfaces
+    fcts_essnt = facet_tags.indices[
+        np.logical_or(facet_tags.values == 2, facet_tags.values == 4)
+    ]
+
+    # Specify flux boundary conditions
+    bc_dual = []
+
+    bc_dual.append(
+        fluxbc(
+            ufl.grad(exact_solution(ufl)(x))[0],
+            facet_tags.indices[facet_tags.values == 1],
+            equilibrator.V_flux,
+            requires_projection=True,
+            quadrature_degree=3 * elmt_order_eqlb,
+        )
+    )
+
+    bc_dual.append(
+        fluxbc(
+            -ufl.grad(exact_solution(ufl)(x))[0],
+            facet_tags.indices[facet_tags.values == 3],
+            equilibrator.V_flux,
+            requires_projection=True,
+            quadrature_degree=3 * elmt_order_eqlb,
+        )
+    )
+
+    equilibrator.set_boundary_conditions(
+        [fcts_essnt], [bc_dual], quadrature_degree=3 * elmt_order_eqlb
+    )
+
+    # Solve equilibration
+    equilibrator.equilibrate_fluxes()
+
+    return sigma_proj[0], equilibrator.list_flux[0]
+
+
+# --- Execute calculation ---
 # Create mesh
 domain, facet_tags, ds = create_unit_square_mesh(sdisc_nelmt)
 
-# Set function space (primal problem)
-V_prime = dfem.FunctionSpace(domain, ("CG", elmt_order_prime))
-
-# --- Solve primal problem ---
-# Trial and test function
-u = ufl.TrialFunction(V_prime)
-v = ufl.TestFunction(V_prime)
-
-# Set source term
-x = ufl.SpatialCoordinate(domain)
-f = -ufl.div(ufl.grad(exact_solution(ufl)(x)))
-
-# Equation system
-a = ufl.inner(ufl.grad(u), ufl.grad(v)) * ufl.dx
-l = f * v * ufl.dx
-
-# Neumann boundary conditions
-normal = ufl.FacetNormal(domain)
-l += ufl.inner(ufl.grad(exact_solution(ufl)(x)), normal) * v * ds(1)
-l += ufl.inner(ufl.grad(exact_solution(ufl)(x)), normal) * v * ds(3)
-
-# Dirichlet boundary conditions
-uD = dfem.Function(V_prime)
-uD.interpolate(exact_solution(np))
-
-fcts_essnt = facet_tags.indices[
-    np.logical_or(facet_tags.values == 2, facet_tags.values == 4)
-]
-dofs_essnt = dfem.locate_dofs_topological(V_prime, 1, fcts_essnt)
-bc_essnt = [dfem.dirichletbc(uD, dofs_essnt)]
-
 # Solve primal problem
-problem = dfem.petsc.LinearProblem(a, l, bcs=bc_essnt, petsc_options={"ksp_type": "cg"})
-uh_prime = problem.solve()
-
-# --- Solve equilibration ---
-# Project flux and RHS into required DG space
-V_rhs_proj = dfem.FunctionSpace(domain, ("DG", elmt_order_eqlb - 1))
-# (elmt_order_eqlb - 1 would be sufficient but not implemented for semi-explicit eqlb.)
-V_flux_proj = dfem.VectorFunctionSpace(domain, ("DG", elmt_order_eqlb - 1))
-
-sigma_proj = local_projection(V_flux_proj, [-ufl.grad(uh_prime)])
-rhs_proj = local_projection(V_rhs_proj, [f])
-
-# Initialise equilibrator
-equilibrator = Equilibrator(elmt_order_eqlb, domain, rhs_proj, sigma_proj)
-
-# Specify flux boundary conditions
-bc_dual = []
-
-bc_dual.append(
-    fluxbc(
-        ufl.grad(exact_solution(ufl)(x))[0],
-        facet_tags.indices[facet_tags.values == 1],
-        equilibrator.V_flux,
-        requires_projection=True,
-        quadrature_degree=3 * elmt_order_eqlb,
-    )
-)
-
-bc_dual.append(
-    fluxbc(
-        -ufl.grad(exact_solution(ufl)(x))[0],
-        facet_tags.indices[facet_tags.values == 3],
-        equilibrator.V_flux,
-        requires_projection=True,
-        quadrature_degree=3 * elmt_order_eqlb,
-    )
-)
-
-equilibrator.set_boundary_conditions(
-    [fcts_essnt], [bc_dual], quadrature_degree=3 * elmt_order_eqlb
-)
+uh_prime = solve_primal_problem(elmt_order_prime, domain, facet_tags, ds)
 
 # Solve equilibration
-equilibrator.equilibrate_fluxes()
+sigma_proj, sigma_eqlb = equilibrate_flux(
+    elmt_order_prime, elmt_order_eqlb, domain, facet_tags, uh_prime
+)
 
 # --- Export results to ParaView ---
 # Project flux into appropriate DG space
@@ -165,26 +197,24 @@ v_dg_ref = dfem.VectorFunctionSpace(domain, ("DG", elmt_order_prime))
 
 sigma_ref = local_projection(
     v_dg_ref,
-    [-ufl.grad(exact_solution(ufl)(x))],
+    [-ufl.grad(exact_solution(ufl)(ufl.SpatialCoordinate(domain)))],
     quadrature_degree=8,
 )
 
 if Equilibrator == FluxEqlbEV:
-    sigma_eqlb = local_projection(V_dg_hdiv, equilibrator.list_flux)
+    sigma_eqlb_dg = local_projection(V_dg_hdiv, sigma_eqlb)
 else:
-    sigma_eqlb = local_projection(
-        V_dg_hdiv, [equilibrator.list_flux[0] + sigma_proj[0]]
-    )
+    sigma_eqlb_dg = local_projection(V_dg_hdiv, [sigma_eqlb + sigma_proj])
 
 # Export primal solution
 uh_prime.name = "u"
-sigma_proj[0].name = "sigma_proj"
-sigma_eqlb[0].name = "sigma_eqlb"
+sigma_proj.name = "sigma_proj"
+sigma_eqlb_dg[0].name = "sigma_eqlb"
 sigma_ref[0].name = "sigma_ref"
 
 outfile = dolfinx.io.XDMFFile(MPI.COMM_WORLD, "demo_equilibration.xdmf", "w")
 outfile.write_mesh(domain)
 outfile.write_function(uh_prime, 1)
 outfile.write_function(sigma_ref[0], 1)
-outfile.write_function(sigma_proj[0], 1)
-outfile.write_function(sigma_eqlb[0], 1)
+outfile.write_function(sigma_proj, 1)
+outfile.write_function(sigma_eqlb_dg[0], 1)
