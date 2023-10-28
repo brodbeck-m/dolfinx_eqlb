@@ -66,17 +66,6 @@ def exact_solution(pkt):
     return lambda x: pkt.sin(2 * pkt.pi * x[0]) * pkt.cos(2 * pkt.pi * x[1])
 
 
-def exact_flux(x):
-    # Initialize flux
-    sig = np.zeros((2, x.shape[1]), dtype=PETSc.ScalarType)
-
-    # Set flux
-    sig[0] = -2 * np.pi * np.cos(2 * np.pi * x[0]) * np.cos(2 * np.pi * x[1])
-    sig[1] = 2 * np.pi * np.sin(2 * np.pi * x[0]) * np.sin(2 * np.pi * x[1])
-
-    return sig
-
-
 # --- Parameters ---
 # The considered equilibration strategy
 Equilibrator = FluxEqlbSE
@@ -129,8 +118,9 @@ uh_prime = problem.solve()
 
 # --- Solve equilibration ---
 # Project flux and RHS into required DG space
-V_flux_proj = dfem.VectorFunctionSpace(domain, ("DG", elmt_order_prime - 1))
-V_rhs_proj = dfem.FunctionSpace(domain, ("DG", elmt_order_prime - 1))
+V_rhs_proj = dfem.FunctionSpace(domain, ("DG", elmt_order_eqlb - 1))
+# (elmt_order_eqlb - 1 would be sufficient but not implemented for semi-explicit eqlb.)
+V_flux_proj = dfem.VectorFunctionSpace(domain, ("DG", elmt_order_eqlb - 1))
 
 sigma_proj = local_projection(V_flux_proj, [-ufl.grad(uh_prime)])
 rhs_proj = local_projection(V_rhs_proj, [f])
