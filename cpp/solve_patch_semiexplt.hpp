@@ -405,6 +405,7 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
 
     // Solution vector (flux, picewise-H(div))
     std::span<T> x_flux_dhdiv = problem_data.flux(i_rhs).x()->mutable_array();
+    std::span<T> x_minimisation = problem_data.x_minimisation(i_rhs);
 
     // Projected primal flux
     const graph::AdjacencyList<std::int32_t>& fluxdg_dofmap
@@ -858,6 +859,10 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
       x_flux_dhdiv[gdofs_fct[ndofs_flux_fct]]
           += prefactor_dof(id_a, 1) * c_ta_ea;
 
+      x_minimisation[gdofs_fct[0]] = prefactor_dof(id_a, 0) * c_ta_eam1;
+      x_minimisation[gdofs_fct[ndofs_flux_fct]]
+          = prefactor_dof(id_a, 1) * c_ta_ea;
+
       if constexpr (id_flux_order > 1)
       {
         // Global DOF ids
@@ -868,13 +873,18 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
         {
           // Set higher-order DOFs on facets
           x_flux_dhdiv[gdofs_fct[3]] += cj_ta_ea[0];
+          x_minimisation[gdofs_fct[3]] = cj_ta_ea[0];
 
           // Set DOFs on cell
           x_flux_dhdiv[gdofs_cell[0]] += c_ta_div[0];
           x_flux_dhdiv[gdofs_cell[1]] += c_ta_div[1];
+
+          x_minimisation[gdofs_cell[0]] = c_ta_div[0];
+          x_minimisation[gdofs_cell[1]] = c_ta_div[1];
         }
         else
         {
+          throw std::runtime_error("Currently unavailable");
           // Set higher-order DOFs on facets
           for (std::size_t i = 1; i < ndofs_flux_fct; ++i)
           {
@@ -899,6 +909,7 @@ void calc_fluxtilde_explt(const mesh::Geometry& geometry,
     /* Correct zero-order DOFs on reversed patch */
     if (reversion_required)
     {
+      throw std::runtime_error("Currently unavailable");
       for (std::size_t a = 1; a < ncells + 1; ++a)
       {
         // Set id for accessing storage
@@ -1031,13 +1042,14 @@ void minimise_flux(const mesh::Geometry& geometry,
     bool reversion_required = patch.reversion_required(i_rhs);
 
     // Solution vector (flux, picewise-H(div))
-    std::span<const T> x_flux_dhdiv = problem_data.flux(i_rhs).x()->array();
+    // std::span<const T> x_flux_dhdiv = problem_data.flux(i_rhs).x()->array();
+    std::span<T> x_flux_dhdiv = problem_data.flux(i_rhs).x()->mutable_array();
 
     // Stoarge result minimisation
     std::span<T> x_minimisation = problem_data.x_minimisation(i_rhs);
 
     // Set coefficients (copy solution data into flattend structure)
-    copy_cell_data<T, 1>(cells, flux_dofmap, x_flux_dhdiv, coefficients,
+    copy_cell_data<T, 1>(cells, flux_dofmap, x_minimisation, coefficients,
                          ndofs_flux, 1);
 
     /* Set bounday markers */
@@ -1169,7 +1181,7 @@ void minimise_flux(const mesh::Geometry& geometry,
         T crr = crr_fct[i] * dofmap_patch(3, id_a, i);
 
         // Apply correction
-        x_minimisation[dofmap_patch(2, id_a, i)]
+        x_flux_dhdiv[dofmap_patch(2, id_a, i)]
             += crr * u_patch(dofmap_patch(1, id_a, i));
       }
     }

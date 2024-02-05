@@ -219,33 +219,38 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
     // Calculate coefficients per patch
     calc_fluxtilde_explt<T, id_flux_order>(mesh->geometry(), patch,
                                            problem_data, kernel_data);
-  }
-
-  // Step 2 : Minimise reconstructed flux
-  for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
-  {
-    // Create Sub-DOFmap
-    patch.create_subdofmap(i_node);
 
     // Solve minimisation on current patch
     minimise_flux<T, id_flux_order>(mesh->geometry(), patch, problem_data,
                                     kernel_data);
   }
 
+  // // Step 2 : Minimise reconstructed flux
+  // for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
+  // {
+  //   // Create Sub-DOFmap
+  //   patch.create_subdofmap(i_node);
+
+  //   // Solve minimisation on current patch
+  //   minimise_flux<T, id_flux_order>(mesh->geometry(), patch, problem_data,
+  //                                   kernel_data);
+  // }
+
   // Step 3: Combine results step 1 and 2
-  for (std::size_t i_rhs = 0; i_rhs < problem_data.nrhs(); ++i_rhs)
-  {
-    // DOFs H(div) flux
-    std::span<T> x_flux_dhdiv = problem_data.flux(i_rhs).x()->mutable_array();
+  // for (std::size_t i_rhs = 0; i_rhs < problem_data.nrhs(); ++i_rhs)
+  // {
+  //   // DOFs H(div) flux
+  //   std::span<T> x_flux_dhdiv =
+  //   problem_data.flux(i_rhs).x()->mutable_array();
 
-    // Result minimisation
-    std::span<const T> x_minimisation = problem_data.x_minimisation(i_rhs);
+  //   // Result minimisation
+  //   std::span<const T> x_minimisation = problem_data.x_minimisation(i_rhs);
 
-    for (std::size_t i = 0; i < x_minimisation.size(); ++i)
-    {
-      x_flux_dhdiv[i] += x_minimisation[i];
-    }
-  }
+  //   for (std::size_t i = 0; i < x_minimisation.size(); ++i)
+  //   {
+  //     x_flux_dhdiv[i] += x_minimisation[i];
+  //   }
+  // }
 }
 
 /// Execute flux calculation based on H(div) conforming equilibration
