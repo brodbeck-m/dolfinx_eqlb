@@ -69,6 +69,7 @@ set(
   assemble_patch_semiexplt.hpp
   assemble_projection_boundary.hpp
   local_solver.hpp
+  minimise_flux.hpp
   reconstruction.hpp
   solve_patch_constrmin.hpp
   solve_patch_semiexplt.hpp

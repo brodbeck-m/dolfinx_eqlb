@@ -121,78 +121,117 @@ size_interpolation_data_facet_rt(std::array<std::size_t, 4> shape)
 
 // ------------------------------------------------------------------------------
 
-/* Reverse patch-wise DOFmaps */
-template <typename T>
-void reverse_blocked_data(std::vector<T>& dataset_1, const int data_size,
-                          const int block_size, const int block_index,
-                          const int block_offset_pre,
-                          const int block_offset_post)
+/* Copy data into flatted storage */
+
+/// Copy cell data from global storage into flattened array (per cell)
+/// @param data_global The global data storage
+/// @param dofs_cell   The DOFs on current cell
+/// @param data_cell   The flattened storage of current cell
+/// @param bs_data     Block size of data
+template <typename T, int _bs_data = 1>
+void copy_cell_data(std::span<const T> data_global,
+                    std::span<const std::int32_t> dofs_cell,
+                    std::span<T> data_cell, const int bs_data)
 {
-  // Initialise temporary storage
-  std::int32_t temp;
-
-  // Copy data-blocks
-  const int size = block_size + block_offset_pre + block_offset_post;
-
-  const int offs_base_front = block_index * size + block_offset_pre;
-  const int offs_base_back
-      = data_size - (block_index + 1) * size + block_offset_pre;
-
-  for (std::size_t i = 0; i < block_size; ++i)
+  for (std::size_t j = 0; j < dofs_cell.size(); ++j)
   {
-    // Calculate offsets
-    int offs_front = offs_base_front + i;
-    int offs_back = offs_base_back + i;
-
-    // --- Handle data-set 1
-    // Copy data to temporary storage
-    temp = dataset_1[offs_front];
-
-    // Exchange data of blocks
-    dataset_1[offs_front] = dataset_1[offs_back];
-    dataset_1[offs_back] = temp;
+    if constexpr (_bs_data == 1)
+    {
+      std::copy_n(std::next(data_global.begin(), dofs_cell[j]), 1,
+                  std::next(data_cell.begin(), j));
+    }
+    else if constexpr (_bs_data == 2)
+    {
+      std::copy_n(std::next(data_global.begin(), 2 * dofs_cell[j]), 2,
+                  std::next(data_cell.begin(), 2 * j));
+    }
+    else if constexpr (_bs_data == 3)
+    {
+      std::copy_n(std::next(data_global.begin(), 3 * dofs_cell[j]), 3,
+                  std::next(data_cell.begin(), 3 * j));
+    }
+    else
+    {
+      std::copy_n(std::next(data_global.begin(), bs_data * dofs_cell[j]),
+                  bs_data, std::next(data_cell.begin(), bs_data * j));
+    }
   }
 }
 
-template <typename T>
-void reverse_blocked_data(std::vector<T>& dataset_1, std::vector<T>& dataset_2,
-                          const int data_size, const int block_size,
-                          const int block_index, const int block_offset_pre,
-                          const int block_offset_post)
+/// Copy cell data from global storage into flattened array (per patch)
+/// @param cells        List of cells on patch
+/// @param dofmap_data  DOFmap of data
+/// @param data_global  The global data storage
+/// @param data_cell    The flattened storage of current patch
+/// @param cstride_data Number of data-points per cell
+/// @param bs_data      Block size of data
+template <typename T, int _bs_data = 4>
+void copy_cell_data(std::span<const std::int32_t> cells,
+                    const graph::AdjacencyList<std::int32_t>& dofmap_data,
+                    std::span<const T> data_global, std::vector<T>& data_cell,
+                    const int cstride_data, const int bs_data)
 {
-  // Initialise temporary storage
-  std::int32_t temp;
-
-  // Copy data-blocks
-  const int size = block_size + block_offset_pre + block_offset_post;
-
-  const int offs_base_front = block_index * size + block_offset_pre;
-  const int offs_base_back
-      = data_size - (block_index + 1) * size + block_offset_pre;
-
-  for (std::size_t i = 0; i < block_size; ++i)
+  for (std::size_t index = 0; index < cells.size(); ++index)
   {
-    // Calculate offsets
-    int offs_front = offs_base_front + i;
-    int offs_back = offs_base_back + i;
+    // Extract cell
+    std::int32_t c = cells[index];
 
-    // --- Handle data-set 1
-    // Copy data to temporary storage
-    temp = dataset_1[offs_front];
+    // DOFs on current cell
+    std::span<const std::int32_t> data_dofs = dofmap_data.links(c);
 
-    // Exchange data of blocks
-    dataset_1[offs_front] = dataset_1[offs_back];
-    dataset_1[offs_back] = temp;
-
-    // --- Handle data-set 2
-    // Copy data to temporary storage
-    temp = dataset_2[offs_front];
-
-    // Exchange data of blocks
-    dataset_2[offs_front] = dataset_2[offs_back];
-    dataset_2[offs_back] = temp;
+    // Copy DOFs into flattend storage
+    std::span<T> data_dofs_e(data_cell.data() + index * cstride_data,
+                             cstride_data);
+    if constexpr (_bs_data == 1)
+    {
+      copy_cell_data<T, 1>(data_global, data_dofs, data_dofs_e, bs_data);
+    }
+    else if constexpr (_bs_data == 2)
+    {
+      copy_cell_data<T, 2>(data_global, data_dofs, data_dofs_e, bs_data);
+    }
+    else if constexpr (_bs_data == 3)
+    {
+      copy_cell_data<T, 3>(data_global, data_dofs, data_dofs_e, bs_data);
+    }
+    else
+    {
+      copy_cell_data<T>(data_global, data_dofs, data_dofs_e, bs_data);
+    }
   }
 }
+
+/* Store maping data (J, K) per patch */
+
+// /// Store mapping data (Jacobian or its inverse) in flattened array
+// /// @param cell_id The patch-local index of a cell
+// /// @param storage The flattened storage
+// /// @param matrix  The matrix (J, K) on the current cell
+// void store_mapping_data(
+//     const int cell_id, std::span<double> storage,
+//     stdex::mdspan<double, stdex::dextents<std::size_t, 2>> matrix)
+// {
+//   // Set offset
+//   const int offset = 4 * cell_id;
+
+//   storage[offset] = matrix(0, 0);
+//   storage[offset + 1] = matrix(0, 1);
+//   storage[offset + 2] = matrix(1, 0);
+//   storage[offset + 3] = matrix(1, 1);
+// }
+
+// /// Extract mapping data (Jacobian or its inverse) from flattened array
+// /// @param cell_id The patch-local index of a cell
+// /// @param storage The flattened storage
+// /// @return        The matrix (J, K) on the current cell
+// cmdspan2_t extract_mapping_data(const int cell_id, std::span<double> storage)
+// {
+//   // Set offset
+//   const int offset = 4 * cell_id;
+
+//   return cmdspan2_t(storage.data() + offset, 2, 2);
+// }
+
 // ------------------------------------------------------------------------------
 
 } // namespace dolfinx_eqlb

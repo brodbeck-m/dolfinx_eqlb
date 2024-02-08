@@ -217,12 +217,8 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
     patch.create_subdofmap(i_node);
 
     // Calculate coefficients per patch
-    calc_fluxtilde_explt<T, id_flux_order>(mesh->geometry(), patch,
-                                           problem_data, kernel_data);
-
-    // Solve minimisation on current patch
-    minimise_flux<T, id_flux_order>(mesh->geometry(), patch, problem_data,
-                                    kernel_data);
+    equilibrate_flux_semiexplt<T, id_flux_order>(mesh->geometry(), patch,
+                                                 problem_data, kernel_data);
   }
 
   // // Step 2 : Minimise reconstructed flux
