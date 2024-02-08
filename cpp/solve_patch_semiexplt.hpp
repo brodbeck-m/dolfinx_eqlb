@@ -306,6 +306,8 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
       c_tam1_eam1 = 0.0;
       c_t1_e0 = 0.0;
       std::fill(data_jG_Eam1.begin(), data_jG_Eam1.end(), 0.0);
+      std::fill(data_coefficients_flux.begin(), data_coefficients_flux.end(),
+                0.0);
     }
 
     // Loop over all cells
@@ -398,7 +400,7 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
         pflux_ldofs_E0 = patch.dofs_projflux_fct(0);
 
         // DOFs (cell-local) equilibrated flux on facet E0
-        ldofs_E0 = patch.dofs_flux_fct_global(1, 0);
+        ldofs_E0 = patch.dofs_flux_fct_local(1, 0);
 
         // Tabulate shape functions RHS on facet 0
         shp_TaEam1 = kernel_data.shapefunctions_fct_rhs(fl_TaEam1);
