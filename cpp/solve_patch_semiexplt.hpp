@@ -97,21 +97,23 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
                                 ProblemDataFluxCstm<T>& problem_data,
                                 KernelDataEqlb<T>& kernel_data)
 {
-  /* Geometry data */
+  /* Extract data */
+  // Spacial dimension
   const int dim = 2;
+
+  // The geometry
   const graph::AdjacencyList<std::int32_t>& x_dofmap = geometry.dofmap();
   std::span<const double> x = geometry.x();
 
-  /* Extract Data */
-  // Cells on patch
+  // The patch
   std::span<const std::int32_t> cells = patch.cells();
   const int ncells = patch.ncells();
   const int nfcts = patch.nfcts();
 
-  // Geometry of cells
-  int nnodes_cell = kernel_data.nnodes_cell();
+  // Nodes constructing one element
+  const int nnodes_cell = kernel_data.nnodes_cell();
 
-  // Number of DOFs
+  // DOF-counts function spaces
   const int degree_flux_rt = patch.degree_raviart_thomas();
   const int ndofs_flux = patch.ndofs_flux();
   const int ndofs_flux_fct = patch.ndofs_flux_fct();
@@ -120,63 +122,19 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
   const int ndofs_projflux_fct = patch.ndofs_fluxdg_fct();
   const int ndofs_rhs = patch.ndofs_rhs_cell();
 
-  // Interpolation matrix (reference cell)
-  mdspan_t<const double, 4> M = kernel_data.interpl_matrix_facte();
-
-  /* Initialise solution process */
-  // Jacobian J, inverse K and determinant detJ
-  std::array<double, 9> Jb;
-  mdspan2_t J(Jb.data(), 2, 2);
-  std::array<double, 9> Kb;
-  mdspan2_t K(Kb.data(), 2, 2);
+  /* Initialise Mappings */
+  // Representation/Storage isoparametric mapping
+  std::array<double, 9> Jb, Kb;
+  mdspan2_t J(Jb.data(), 2, 2), K(Kb.data(), 2, 2);
   std::array<double, 18> detJ_scratch;
 
-  // Interpolation data
-  // (Structure M_mapped: cells x dofs x dim x points)
-  // (DOF zero on facet Eam1, higher order DOFs on Ea)
-  const int nipoints_facet = kernel_data.nipoints_facet();
-
-  std::vector<double> data_M_mapped(
-      ncells * nipoints_facet * ndofs_flux_fct * 2, 0);
-  mdspan_t<double, 4> M_mapped(data_M_mapped.data(), ncells, ndofs_flux_fct, 2,
-                               nipoints_facet);
-
-  // Coefficient arrays for RHS/ projected flux
-  std::vector<T> coefficients_f(ndofs_rhs, 0),
-      coefficients_G_Tap1(ndofs_projflux, 0),
-      coefficients_G_Ta(ndofs_projflux, 0),
-      data_coefficients_flux(ncells * ndofs_flux, 0);
-
-  mdspan_t<T, 2> coefficients_flux(data_coefficients_flux.data(), ncells,
-                                   ndofs_flux);
-
-  // Storage of inter-facet jumps
-  std::array<T, 2> jG_Ea, data_jG_E0, data_jG_mapped_E0;
-
-  const int size_jump = dim * nipoints_facet;
-  std::vector<T> data_jG_Eam1(size_jump, 0);
-  mdspan_t<T, 2> jG_Eam1(data_jG_Eam1.data(), nipoints_facet, dim);
-
-  // History array for c_tam1_eam1
-  T c_ta_ea = 0, c_ta_eam1 = 0, c_tam1_eam1 = 0, c_t1_e0 = 0;
-  std::vector<T> c_ta_div, cj_ta_ea;
-
-  /* Initialise storage */
-  // Jacobian J, inverse K and determinant detJ
   bool store_J = false, store_K = false;
-  std::vector<double> storage_detJ(ncells, 0);
-  std::vector<double> storage_J, storage_K;
+  std::vector<double> storage_detJ(ncells, 0), storage_J, storage_K;
 
-  // Initialise storage only required for higher order cases
   if constexpr (id_flux_order > 1)
   {
-    // Inverse of the Jacobian
     store_K = true;
     storage_K.resize(ncells * 4);
-
-    // Storage of DOFs
-    c_ta_div.resize(ndofs_flux_cell_div, 0);
-    cj_ta_ea.resize(ndofs_flux_fct - 1, 0);
   }
 
   if (patch.is_on_boundary())
@@ -193,16 +151,61 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
     }
   }
 
-  /* Storage cell geometries/ normal orientation */
-  // Initialisations
+  // Storage cell geometry
   const int cstride_geom = 3 * nnodes_cell;
-  std::vector<double> coordinate_dofs(ncells * cstride_geom, 0);
+  std::vector<double> coordinate_dofs_e(cstride_geom, 0);
 
+  // Storage pre-factors (due to orientation of the normal)
   std::int8_t fctloc_ea, fctloc_eam1;
   bool noutward_ea, noutward_eam1;
   std::vector<double> dprefactor_dof(ncells * 2, 1.0);
   mdspan2_t prefactor_dof(dprefactor_dof.data(), ncells, 2);
 
+  // Calculate mapping and pre-factors on cells of patch
+
+  /* The patch-wise solution */
+  std::vector<T> dcoefficients_flux(ncells * ndofs_flux, 0);
+  mdspan_t<T, 2> coefficients_flux(dcoefficients_flux.data(), ncells,
+                                   ndofs_flux);
+
+  /* Initialise Step 1 */
+  // The interpolation matrix (reference cell)
+  mdspan_t<const double, 4> M = kernel_data.interpl_matrix_facte();
+
+  const int nipoints_facet = kernel_data.nipoints_facet();
+
+  // The mapped interpolation matrix
+  // (Structure M_mapped: cells x dofs x dim x points)
+  // (DOF zero on facet Eam1, higher order DOFs on Ea)
+  std::vector<double> dM_mapped(ncells * nipoints_facet * ndofs_flux_fct * 2,
+                                0);
+  mdspan_t<double, 4> M_mapped(dM_mapped.data(), ncells, ndofs_flux_fct, 2,
+                               nipoints_facet);
+
+  // Coefficient arrays for RHS/ projected flux
+  std::vector<T> coefficients_f(ndofs_rhs, 0),
+      coefficients_G_Tap1(ndofs_projflux, 0),
+      coefficients_G_Ta(ndofs_projflux, 0);
+
+  // Flux-jumps over facets
+  std::array<T, 2> jG_Ea, djG_E0, djG_mapped_E0;
+
+  std::vector<T> djG_Eam1(dim * nipoints_facet, 0);
+  mdspan_t<T, 2> jG_Eam1(djG_Eam1.data(), nipoints_facet, dim);
+
+  // Storage for cell-wise solution
+  T c_ta_ea = 0, c_ta_eam1 = 0, c_tam1_eam1 = 0, c_t1_e0 = 0;
+  std::vector<T> c_ta_div, cj_ta_ea;
+
+  if constexpr (id_flux_order > 1)
+  {
+    c_ta_div.resize(ndofs_flux_cell_div, 0);
+    cj_ta_ea.resize(ndofs_flux_fct - 1, 0);
+  }
+
+  /* Initialise Step 2 */
+
+  /* Pre-evaluate repeatedly used cell data */
   for (std::size_t index = 0; index < ncells; ++index)
   {
     // Index using patch nomenclature
@@ -211,9 +214,7 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
     // Get current cell
     std::int32_t c = cells[index];
 
-    /* Copy cell geometry */
-    std::span<double> coordinate_dofs_e(
-        coordinate_dofs.data() + index * cstride_geom, cstride_geom);
+    // Copy points of current cell
     std::span<const std::int32_t> x_dofs = x_dofmap.links(c);
     copy_cell_data<double, 3>(x, x_dofs, coordinate_dofs_e, 3);
 
@@ -305,9 +306,8 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
     {
       c_tam1_eam1 = 0.0;
       c_t1_e0 = 0.0;
-      std::fill(data_jG_Eam1.begin(), data_jG_Eam1.end(), 0.0);
-      std::fill(data_coefficients_flux.begin(), data_coefficients_flux.end(),
-                0.0);
+      std::fill(djG_Eam1.begin(), djG_Eam1.end(), 0.0);
+      std::fill(dcoefficients_flux.begin(), dcoefficients_flux.end(), 0.0);
     }
 
     // Loop over all cells
@@ -514,8 +514,8 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
                     = extract_mapping_data(id_a, storage_K);
 
                 // Pull back flux to reference cell
-                mdspan_t<T, 2> jG_E0(data_jG_E0.data(), 1, dim);
-                mdspan_t<T, 2> jG_mapped_E0(data_jG_mapped_E0.data(), 1, dim);
+                mdspan_t<T, 2> jG_E0(djG_E0.data(), 1, dim);
+                mdspan_t<T, 2> jG_mapped_E0(djG_mapped_E0.data(), 1, dim);
 
                 if ((type_patch == PatchType::bound_mixed)
                     && (fct_has_bc == false))
@@ -599,7 +599,7 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
 
               // Pull back flux to reference cell
               mdspan_t<T, 2> jG_En(jG_Ea.data(), 1, dim);
-              mdspan_t<T, 2> jG_mapped_En(data_jG_mapped_E0.data(), 1, dim);
+              mdspan_t<T, 2> jG_mapped_En(djG_mapped_E0.data(), 1, dim);
 
               kernel_data.pull_back_flux(jG_mapped_En, jG_En, J, detJ, K);
 
