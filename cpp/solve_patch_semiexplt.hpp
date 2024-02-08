@@ -118,6 +118,7 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
   const int ndofs_flux = patch.ndofs_flux();
   const int ndofs_flux_fct = patch.ndofs_flux_fct();
   const int ndofs_flux_cell_div = patch.ndofs_flux_cell_div();
+  const int ndofs_flux_cell_add = patch.ndofs_flux_cell_add();
   const int ndofs_projflux = patch.ndofs_fluxdg_cell();
   const int ndofs_projflux_fct = patch.ndofs_fluxdg_fct();
   const int ndofs_rhs = patch.ndofs_rhs_cell();
@@ -204,8 +205,23 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
   }
 
   /* Initialise Step 2 */
+  // Number of DOFs on patch-wise H(div=0) space
+  const int ndof_hdivz = 1 + degree_flux_rt * nfcts
+                         + 0.5 * degree_flux_rt * (degree_flux_rt - 1) * ncells;
+
+  // The equation system for the minimisation step
+  Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic> A_patch;
+  Eigen::Matrix<T, Eigen::Dynamic, 1> L_patch, u_patch;
+
+  A_patch.resize(ndof_hdivz, ndof_hdivz);
+  L_patch.resize(ndof_hdivz);
+  u_patch.resize(ndof_hdivz);
+
+  // Local solver (Cholesky decomposition)
+  Eigen::LLT<Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>> solver;
 
   /* Pre-evaluate repeatedly used cell data */
+  // Jacobi transformation and interpolation matrix
   for (std::size_t index = 0; index < ncells; ++index)
   {
     // Index using patch nomenclature
@@ -270,6 +286,13 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
       }
     }
   }
+
+  // DOFmap for minimisation
+  std::vector<std::int32_t> ddofmap_minms = set_flux_dofmap<T, id_flux_order>(
+      patch, kernel_data.fct_normal_is_outward(), storage_detJ);
+  mdspan_t<const std::int32_t, 3> dofmap_minms(
+      ddofmap_minms.data(), 4, (std::size_t)ncells,
+      (std::size_t)(2 * ndofs_flux_fct + ndofs_flux_cell_add));
 
   /* Evaluate DOFs of sigma_tilde (for each flux separately) */
   for (std::size_t i_rhs = 0; i_rhs < problem_data.nrhs(); ++i_rhs)
@@ -865,7 +888,8 @@ template <typename T, int id_flux_order = 3>
 void minimise_flux(const mesh::Geometry& geometry,
                    PatchFluxCstm<T, id_flux_order>& patch,
                    ProblemDataFluxCstm<T>& problem_data,
-                   KernelDataEqlb<T>& kernel_data)
+                   KernelDataEqlb<T>& kernel_data,
+                   std::span<const std::int32_t> ddofmap_test)
 {
   assert(id_flux_order < 0);
 
@@ -1064,6 +1088,13 @@ void minimise_flux(const mesh::Geometry& geometry,
     else
     {
       u_patch = solver.solve(L_patch);
+    }
+
+    if ((!(std::equal(ddofmap_test.begin(), ddofmap_test.end(),
+                      ddofmap_patch.begin())))
+        || (ddofmap_patch.size() != ddofmap_test.size()))
+    {
+      std::cout << "Error: DOFmap does not match" << std::endl;
     }
 
     /* Apply correction onto flux */

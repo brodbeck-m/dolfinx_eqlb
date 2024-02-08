@@ -86,6 +86,13 @@ public:
   }
 
   /// Returns id if cell-normal points outward
+  /// @param[out] is_outward Direction indicator (true->outward)
+  const std::vector<bool>& fct_normal_is_outward() const
+  {
+    return _fct_normal_out;
+  }
+
+  /// Returns id if cell-normal points outward
   /// @param[in] id_fct      The cell-local facet id
   /// @param[out] is_outward Direction indicator (true->outward)
   bool fct_normal_is_outward(std::int8_t id_fct)

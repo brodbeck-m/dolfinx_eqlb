@@ -68,9 +68,10 @@ cmdspan2_t extract_mapping_data(const int cell_id,
 /* Minimise fluxes without constraint */
 
 template <typename T, int id_flux_order = 3>
-std::vector<std::int32_t> set_flux_dofmap(
-    const PatchType type_patch, PatchFluxCstm<T, id_flux_order>& patch,
-    std::span<bool> facet_orientation, std::span<const double> storage_J)
+std::vector<std::int32_t>
+set_flux_dofmap(PatchFluxCstm<T, id_flux_order>& patch,
+                const std::vector<bool>& facet_orientation,
+                std::span<const double> storage_detJ)
 {
   // Patch data
   const int ncells = patch.ncells();
@@ -92,11 +93,14 @@ std::vector<std::int32_t> set_flux_dofmap(
   // Loop over cells
   for (std::size_t a = 1; a < ncells + 1; ++a)
   {
+    // Set id for accessing storage
+    int id_a = a - 1;
+
     // Get facet orientations
     std::tie(fctloc_eam1, fctloc_ea) = patch.fctid_local(a);
 
     // Prefactors due to facet orientation
-    if (storage_J[a - 1] < 0)
+    if (storage_detJ[a - 1] < 0)
     {
       prefactor_eam1 = (facet_orientation[fctloc_eam1]) ? -1 : 1;
       prefactor_ea = (facet_orientation[fctloc_ea]) ? -1 : 1;
@@ -113,42 +117,44 @@ std::vector<std::int32_t> set_flux_dofmap(
 
     /* Set DOFmap */
     // DOFs associated with d_0 (cell-local, patch-local, global) and prefactors
-    dofmap_patch(0, a, 0) = ldofs_fct[0];
-    dofmap_patch(1, a, 0) = 0;
-    dofmap_patch(2, a, 0) = gdofs_fct[0];
-    dofmap_patch(3, a, 0) = prefactor_eam1;
+    dofmap_patch(0, id_a, 0) = ldofs_fct[0];
+    dofmap_patch(1, id_a, 0) = 0;
+    dofmap_patch(2, id_a, 0) = gdofs_fct[0];
+    dofmap_patch(3, id_a, 0) = prefactor_eam1;
 
-    dofmap_patch(0, a, 1) = ldofs_fct[ndofs_flux_fct];
-    dofmap_patch(1, a, 1) = 0;
-    dofmap_patch(2, a, 1) = gdofs_fct[ndofs_flux_fct];
-    dofmap_patch(3, a, 1) = prefactor_ea;
+    dofmap_patch(0, id_a, 1) = ldofs_fct[ndofs_flux_fct];
+    dofmap_patch(1, id_a, 1) = 0;
+    dofmap_patch(2, id_a, 1) = gdofs_fct[ndofs_flux_fct];
+    dofmap_patch(3, id_a, 1) = prefactor_ea;
 
     // Set higher order DOFs
     if constexpr (id_flux_order > 1)
     {
+      const PatchType type_patch = patch.type(0);
+
       if constexpr (id_flux_order == 2)
       {
         int iea = ndofs_flux_fct + 1;
 
         // DOFs d^l_E (cell-local, global) and prefactors
-        dofmap_patch(0, a, 2) = ldofs_fct[1];
-        dofmap_patch(2, a, 2) = gdofs_fct[1];
-        dofmap_patch(3, a, 2) = prefactor_eam1;
+        dofmap_patch(0, id_a, 2) = ldofs_fct[1];
+        dofmap_patch(2, id_a, 2) = gdofs_fct[1];
+        dofmap_patch(3, id_a, 2) = prefactor_eam1;
 
-        dofmap_patch(0, a, 3) = ldofs_fct[iea];
-        dofmap_patch(2, a, 3) = gdofs_fct[iea];
-        dofmap_patch(3, a, 3) = prefactor_ea;
+        dofmap_patch(0, id_a, 3) = ldofs_fct[iea];
+        dofmap_patch(2, id_a, 3) = gdofs_fct[iea];
+        dofmap_patch(3, id_a, 3) = prefactor_ea;
 
         // Patch-local DOFs d^l_E
         if ((type_patch == PatchType::internal) && (a == ncells))
         {
-          dofmap_patch(1, a, 2) = a;
-          dofmap_patch(1, a, 3) = 1;
+          dofmap_patch(1, id_a, 2) = a;
+          dofmap_patch(1, id_a, 3) = 1;
         }
         else
         {
-          dofmap_patch(1, a, 2) = a;
-          dofmap_patch(1, a, 3) = 1 + a;
+          dofmap_patch(1, id_a, 2) = a;
+          dofmap_patch(1, id_a, 3) = 1 + a;
         }
       }
       else
@@ -174,15 +180,15 @@ std::vector<std::int32_t> set_flux_dofmap(
           int iea = i + offs_e;
 
           // DOFs d^l_E (cell-local, patch-local, global) and prefactors
-          dofmap_patch(0, a, i) = ldofs_fct[ieam1];
-          dofmap_patch(1, a, i) = offs_eam1 + i;
-          dofmap_patch(2, a, i) = gdofs_fct[ieam1];
-          dofmap_patch(3, a, i) = prefactor_eam1;
+          dofmap_patch(0, id_a, i) = ldofs_fct[ieam1];
+          dofmap_patch(1, id_a, i) = offs_eam1 + i;
+          dofmap_patch(2, id_a, i) = gdofs_fct[ieam1];
+          dofmap_patch(3, id_a, i) = prefactor_eam1;
 
-          dofmap_patch(0, a, iea) = ldofs_fct[iea];
-          dofmap_patch(1, a, iea) = offs_ea + i;
-          dofmap_patch(2, a, iea) = gdofs_fct[iea];
-          dofmap_patch(3, a, iea) = prefactor_ea;
+          dofmap_patch(0, id_a, iea) = ldofs_fct[iea];
+          dofmap_patch(1, id_a, iea) = offs_ea + i;
+          dofmap_patch(2, id_a, iea) = gdofs_fct[iea];
+          dofmap_patch(3, id_a, iea) = prefactor_ea;
         }
 
         // Set cell DOFs
@@ -200,12 +206,12 @@ std::vector<std::int32_t> set_flux_dofmap(
           int offs_dmp2 = ndofs_flux_cell_div + i;
 
           // DOFs d^r_T (cell-local, patch-local, global)
-          dofmap_patch(0, a, offs_dmp1) = ldofs_cell[offs_dmp2];
-          dofmap_patch(1, a, offs_dmp1) = offs_ta + i;
-          dofmap_patch(2, a, offs_dmp1) = gdofs_cell[offs_dmp2];
+          dofmap_patch(0, id_a, offs_dmp1) = ldofs_cell[offs_dmp2];
+          dofmap_patch(1, id_a, offs_dmp1) = offs_ta + i;
+          dofmap_patch(2, id_a, offs_dmp1) = gdofs_cell[offs_dmp2];
 
           // Initialise prefactors
-          dofmap_patch(3, a, offs_dmp1) = 1;
+          dofmap_patch(3, id_a, offs_dmp1) = 1;
         }
       }
     }
