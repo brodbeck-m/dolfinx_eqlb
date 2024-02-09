@@ -368,10 +368,10 @@ void kernel_fluxmin(mdspan_t<double, 2> Te, KernelDataEqlb<T>& kernel_data,
     }
 
     // Manipulate shape function for coefficient d_0
-    phi(iq, dofmap(0, 1), 0) = dofmap(3, 1)
+    phi(iq, dofmap(0, 1), 0) = dofmap(4, 1)
                                * (dofmap(3, 0) * phi(iq, dofmap(0, 0), 0)
                                   - dofmap(3, 1) * phi(iq, dofmap(0, 1), 0));
-    phi(iq, dofmap(0, 1), 1) = dofmap(3, 1)
+    phi(iq, dofmap(0, 1), 1) = dofmap(4, 1)
                                * (dofmap(3, 0) * phi(iq, dofmap(0, 0), 1)
                                   - dofmap(3, 1) * phi(iq, dofmap(0, 1), 1));
 
@@ -380,7 +380,7 @@ void kernel_fluxmin(mdspan_t<double, 2> Te, KernelDataEqlb<T>& kernel_data,
     {
       // Auxilary variables
       std::size_t ip1 = i + 1;
-      double alpha = dofmap(3, ip1) * quadrature_weights[iq] * std::fabs(detJ);
+      double alpha = dofmap(4, ip1) * quadrature_weights[iq] * std::fabs(detJ);
 
       // Linear form
       Te(index_load, i) -= (phi(iq, dofmap(0, ip1), 0) * sigtilde_q[0]
@@ -397,7 +397,7 @@ void kernel_fluxmin(mdspan_t<double, 2> Te, KernelDataEqlb<T>& kernel_data,
                       + phi(iq, dofmap(0, ip1), 1) * phi(iq, dofmap(0, jp1), 1);
 
           // Bilinear form
-          Te(i, j) += sp * dofmap(3, jp1) * alpha;
+          Te(i, j) += sp * dofmap(4, jp1) * alpha;
         }
       }
     }
