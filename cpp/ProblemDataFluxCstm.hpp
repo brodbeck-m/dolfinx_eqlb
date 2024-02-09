@@ -35,20 +35,6 @@ public:
       : _nrhs(fluxes.size()), _flux_hdiv(fluxes), _flux_dg(fluxes_dg),
         _rhs_dg(rhs_dg), _boundary_data(boundary_data)
   {
-    /* Resize storage for solution of flux minimisation */
-    // Number of flux-DOFs on current processor
-    const std::int32_t num_dofs_flux
-        = fluxes[0]->function_space()->dofmap()->index_map->size_local()
-          + fluxes[0]->function_space()->dofmap()->index_map->num_ghosts();
-
-    // Calculate offset
-    _offset_x.resize(_nrhs + 1, 0);
-    std::generate(_offset_x.begin(), _offset_x.end(),
-                  [n = 0, num_dofs_flux]() mutable
-                  { return num_dofs_flux * (n++); });
-
-    // Initialise storage
-    _x_fhdiv_minimisation.resize(num_dofs_flux * _nrhs, 0);
   }
 
   /* Setter functions*/
@@ -101,24 +87,6 @@ public:
   /// @param index Id of subproblem
   /// @return The projected RHS (fe function)
   fem::Function<T>& projected_rhs(int index) { return *(_rhs_dg[index]); }
-
-  /// Intermediate storage for solution of minimisation step
-  /// @param index Id of subproblem
-  /// @return The DOF vector
-  std::span<T> x_minimisation(int index)
-  {
-    return std::span<T>(_x_fhdiv_minimisation.data() + _offset_x[index],
-                        _offset_x[index + 1] - _offset_x[index]);
-  }
-
-  /// Intermediate storage for solution of minimisation step
-  /// @param index Id of subproblem
-  /// @return The DOF vector
-  std::span<const T> x_minimisation(int index) const
-  {
-    return std::span<const T>(_x_fhdiv_minimisation.data() + _offset_x[index],
-                              _offset_x[index + 1] - _offset_x[index]);
-  }
 
   /* Interface BoundaryData */
   /// Calculate BCs for patch-problem
@@ -180,9 +148,5 @@ protected:
 
   // The boundary data
   std::shared_ptr<BoundaryData<T>> _boundary_data;
-
-  // Intermediate storage of minimisation setp
-  std::vector<T> _x_fhdiv_minimisation;
-  std::vector<std::int32_t> _offset_x;
 };
 } // namespace dolfinx_eqlb

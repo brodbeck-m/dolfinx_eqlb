@@ -192,7 +192,7 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
       basix_element_rhs.cell_type(), 1, basix_element_rhs.lagrange_variant(),
       false);
 
-  /* Execute equilibration */
+  /* Equilibration */
   // Initialise patch
   PatchFluxCstm<T, id_flux_order> patch = PatchFluxCstm<T, id_flux_order>(
       n_nodes, mesh, problem_data.facet_type(), problem_data.fspace_flux_hdiv(),
@@ -210,41 +210,15 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
       mesh, std::make_shared<QuadratureRule>(quadrature_rule),
       basix_element_fluxhdiv, basix_element_rhs, basix_element_hat);
 
-  // Step 1: Explicit calculation of sigma_tilde
+  // Execute equilibration
   for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
   {
     // Create Sub-DOFmap
     patch.create_subdofmap(i_node);
 
     // Calculate coefficients per patch
-    calc_fluxtilde_explt<T, id_flux_order>(mesh->geometry(), patch,
-                                           problem_data, kernel_data);
-  }
-
-  // Step 2 : Minimise reconstructed flux
-  for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
-  {
-    // Create Sub-DOFmap
-    patch.create_subdofmap(i_node);
-
-    // Solve minimisation on current patch
-    minimise_flux<T, id_flux_order>(mesh->geometry(), patch, problem_data,
-                                    kernel_data);
-  }
-
-  // Step 3: Combine results step 1 and 2
-  for (std::size_t i_rhs = 0; i_rhs < problem_data.nrhs(); ++i_rhs)
-  {
-    // DOFs H(div) flux
-    std::span<T> x_flux_dhdiv = problem_data.flux(i_rhs).x()->mutable_array();
-
-    // Result minimisation
-    std::span<const T> x_minimisation = problem_data.x_minimisation(i_rhs);
-
-    for (std::size_t i = 0; i < x_minimisation.size(); ++i)
-    {
-      x_flux_dhdiv[i] += x_minimisation[i];
-    }
+    equilibrate_flux_semiexplt<T, id_flux_order>(mesh->geometry(), patch,
+                                                 problem_data, kernel_data);
   }
 }
 

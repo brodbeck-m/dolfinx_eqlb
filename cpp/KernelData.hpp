@@ -86,6 +86,13 @@ public:
   }
 
   /// Returns id if cell-normal points outward
+  /// @param[out] is_outward Direction indicator (true->outward)
+  const std::vector<bool>& fct_normal_is_outward() const
+  {
+    return _fct_normal_out;
+  }
+
+  /// Returns id if cell-normal points outward
   /// @param[in] id_fct      The cell-local facet id
   /// @param[out] is_outward Direction indicator (true->outward)
   bool fct_normal_is_outward(std::int8_t id_fct)
@@ -230,7 +237,8 @@ public:
   /// @param J     The Jacobian
   /// @param detJ  The determinant of the Jacobian
   /// @return Array of shape functions (current cell)
-  smdspan_t<double, 3> shapefunctions_flux(mdspan2_t J, double detJ)
+  smdspan_t<double, 3> shapefunctions_flux(mdspan_t<const double, 2> J,
+                                           const double detJ)
   {
     // Map shape functions
     contravariant_piola_mapping(
@@ -354,7 +362,8 @@ protected:
   /// @param detJ The determinant of the Jacobian matrix
   void contravariant_piola_mapping(smdspan_t<double, 3> phi_cur,
                                    smdspan_t<const double, 3> phi_ref,
-                                   mdspan2_t J, double detJ);
+                                   mdspan_t<const double, 2> J,
+                                   const double detJ);
 
   /* Variable definitions */
   // Interpolation data
