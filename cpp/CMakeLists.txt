@@ -66,7 +66,6 @@ set(
   QuadratureRule.hpp
   StorageStiffness.hpp
   assemble_patch_constrmin.hpp
-  assemble_patch_semiexplt.hpp
   assemble_projection_boundary.hpp
   local_solver.hpp
   minimise_flux.hpp

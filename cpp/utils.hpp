@@ -201,37 +201,6 @@ void copy_cell_data(std::span<const std::int32_t> cells,
   }
 }
 
-/* Store maping data (J, K) per patch */
-
-// /// Store mapping data (Jacobian or its inverse) in flattened array
-// /// @param cell_id The patch-local index of a cell
-// /// @param storage The flattened storage
-// /// @param matrix  The matrix (J, K) on the current cell
-// void store_mapping_data(
-//     const int cell_id, std::span<double> storage,
-//     stdex::mdspan<double, stdex::dextents<std::size_t, 2>> matrix)
-// {
-//   // Set offset
-//   const int offset = 4 * cell_id;
-
-//   storage[offset] = matrix(0, 0);
-//   storage[offset + 1] = matrix(0, 1);
-//   storage[offset + 2] = matrix(1, 0);
-//   storage[offset + 3] = matrix(1, 1);
-// }
-
-// /// Extract mapping data (Jacobian or its inverse) from flattened array
-// /// @param cell_id The patch-local index of a cell
-// /// @param storage The flattened storage
-// /// @return        The matrix (J, K) on the current cell
-// cmdspan2_t extract_mapping_data(const int cell_id, std::span<double> storage)
-// {
-//   // Set offset
-//   const int offset = 4 * cell_id;
-
-//   return cmdspan2_t(storage.data() + offset, 2, 2);
-// }
-
 // ------------------------------------------------------------------------------
 
 } // namespace dolfinx_eqlb

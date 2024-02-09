@@ -344,7 +344,7 @@ void KernelDataEqlb<T>::tabulate_hat_basis(
 template <typename T>
 void KernelDataEqlb<T>::contravariant_piola_mapping(
     smdspan_t<double, 3> phi_cur, smdspan_t<const double, 3> phi_ref,
-    mdspan2_t J, double detJ)
+    mdspan_t<const double, 2> J, const double detJ)
 {
   // Loop over all evaluation points
   for (std::size_t i = 0; i < phi_ref.extent(0); ++i)
