@@ -27,18 +27,6 @@ from dolfinx_eqlb.eqlb import fluxbc, FluxEqlbEV, FluxEqlbSE
 from dolfinx_eqlb.lsolver import local_projection
 
 
-# --- Parameters ---
-# The considered equilibration strategy
-Equilibrator = FluxEqlbSE
-
-# The orders of the FE spaces
-elmt_order_prime = 1
-elmt_order_eqlb = 2
-
-# The mesh resolution
-sdisc_nelmt = 20
-
-
 # --- The exact solution
 def exact_solution(pkt):
     return lambda x: pkt.sin(2 * pkt.pi * x[0]) * pkt.cos(2 * pkt.pi * x[1])
@@ -179,43 +167,55 @@ def equilibrate_flux(
     return sigma_proj[0], equilibrator.list_flux[0]
 
 
-# --- Execute calculation ---
-# Create mesh
-domain, facet_tags, ds = create_unit_square_mesh(sdisc_nelmt)
+if __name__ == '__main__':
+    # --- Parameters ---
+    # The considered equilibration strategy
+    Equilibrator = FluxEqlbSE
 
-# Solve primal problem
-uh_prime = solve_primal_problem(elmt_order_prime, domain, facet_tags, ds)
+    # The orders of the FE spaces
+    elmt_order_prime = 1
+    elmt_order_eqlb = 1
 
-# Solve equilibration
-sigma_proj, sigma_eqlb = equilibrate_flux(
-    Equilibrator, elmt_order_prime, elmt_order_eqlb, domain, facet_tags, uh_prime
-)
+    # The mesh resolution
+    sdisc_nelmt = 20
 
-# --- Export results to ParaView ---
-# Project flux into appropriate DG space
-V_dg_hdiv = dfem.VectorFunctionSpace(domain, ("DG", elmt_order_eqlb))
-v_dg_ref = dfem.VectorFunctionSpace(domain, ("DG", elmt_order_prime))
+    # --- Execute calculation ---
+    # Create mesh
+    domain, facet_tags, ds = create_unit_square_mesh(sdisc_nelmt)
 
-sigma_ref = local_projection(
-    v_dg_ref,
-    [-ufl.grad(exact_solution(ufl)(ufl.SpatialCoordinate(domain)))],
-    quadrature_degree=8,
-)
+    # Solve primal problem
+    uh_prime = solve_primal_problem(elmt_order_prime, domain, facet_tags, ds)
 
-if Equilibrator == FluxEqlbEV:
-    sigma_eqlb_dg = local_projection(V_dg_hdiv, sigma_eqlb)
-else:
-    sigma_eqlb_dg = local_projection(V_dg_hdiv, [sigma_eqlb + sigma_proj])
+    # Solve equilibration
+    sigma_proj, sigma_eqlb = equilibrate_flux(
+        Equilibrator, elmt_order_prime, elmt_order_eqlb, domain, facet_tags, uh_prime
+    )
 
-# Export primal solution
-uh_prime.name = "u"
-sigma_proj.name = "sigma_proj"
-sigma_eqlb_dg[0].name = "sigma_eqlb"
-sigma_ref[0].name = "sigma_ref"
+    # --- Export results to ParaView ---
+    # Project flux into appropriate DG space
+    V_dg_hdiv = dfem.VectorFunctionSpace(domain, ("DG", elmt_order_eqlb))
+    v_dg_ref = dfem.VectorFunctionSpace(domain, ("DG", elmt_order_prime))
 
-outfile = dolfinx.io.XDMFFile(MPI.COMM_WORLD, "demo_equilibration.xdmf", "w")
-outfile.write_mesh(domain)
-outfile.write_function(uh_prime, 1)
-outfile.write_function(sigma_ref[0], 1)
-outfile.write_function(sigma_proj, 1)
-outfile.write_function(sigma_eqlb_dg[0], 1)
+    sigma_ref = local_projection(
+        v_dg_ref,
+        [-ufl.grad(exact_solution(ufl)(ufl.SpatialCoordinate(domain)))],
+        quadrature_degree=8,
+    )
+
+    if Equilibrator == FluxEqlbEV:
+        sigma_eqlb_dg = local_projection(V_dg_hdiv, sigma_eqlb)
+    else:
+        sigma_eqlb_dg = local_projection(V_dg_hdiv, [sigma_eqlb + sigma_proj])
+
+    # Export primal solution
+    uh_prime.name = "u"
+    sigma_proj.name = "sigma_proj"
+    sigma_eqlb_dg[0].name = "sigma_eqlb"
+    sigma_ref[0].name = "sigma_ref"
+
+    outfile = dolfinx.io.XDMFFile(MPI.COMM_WORLD, "demo_equilibration.xdmf", "w")
+    outfile.write_mesh(domain)
+    outfile.write_function(uh_prime, 1)
+    outfile.write_function(sigma_ref[0], 1)
+    outfile.write_function(sigma_proj, 1)
+    outfile.write_function(sigma_eqlb_dg[0], 1)

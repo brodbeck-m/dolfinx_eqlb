@@ -35,11 +35,11 @@ Equilibrator = FluxEqlbEV
 
 # The orders of the FE spaces
 elmt_order_prime = 1
-elmt_order_eqlb = 2
+elmt_order_eqlb = 1
 
 # The mesh resolution
 sdisc_nelmt_init = 1
-convstudy_nref = 6
+convstudy_nref = 7
 
 
 # --- Exact solution ---
@@ -50,23 +50,33 @@ def exact_solution(pkt):
 # --- Error estimation ---
 def estimate_error(rhs_prime, u_prime, sig_eqlb):
     # Extract mesh
-    msh = u_prime.function_space.mesh
+    domain = u_prime.function_space.mesh
+
+    # Check if equilibrated flux is discontinuous
+    flux_is_discontinuous = sig_eqlb.function_space.element.basix_element.discontinuous
 
     # Initialize storage of error
-    V_e = dfem.FunctionSpace(msh, ufl.FiniteElement("DG", msh.ufl_cell(), 0))
+    V_e = dfem.FunctionSpace(domain, ufl.FiniteElement("DG", domain.ufl_cell(), 0))
     v = ufl.TestFunction(V_e)
 
     # Extract cell diameter
     h_cell = dfem.Function(V_e)
     num_cells = (
-        msh.topology.index_map(2).size_local + msh.topology.index_map(2).num_ghosts
+        domain.topology.index_map(2).size_local
+        + domain.topology.index_map(2).num_ghosts
     )
-    h = dolfinx.cpp.mesh.h(msh, 2, range(num_cells))
+    h = dolfinx.cpp.mesh.h(domain, 2, range(num_cells))
     h_cell.x.array[:] = h
 
     # Forms for error estimation
-    err_sig = ufl.grad(u_prime) + sig_eqlb
-    err_osc = (h_cell / ufl.pi) * (rhs_prime - ufl.div(sig_eqlb))
+    if flux_is_discontinuous:
+        sigma = sig_eqlb - ufl.grad(u_prime)
+        err_sig = sig_eqlb
+    else:
+        sigma = sig_eqlb
+        err_sig = ufl.grad(u_prime) + sig_eqlb
+
+    err_osc = (h_cell / ufl.pi) * (rhs_prime - ufl.div(sigma))
     form_eta_sig = dfem.form(ufl.dot(err_sig, err_sig) * v * ufl.dx)
     form_eta_osc = dfem.form(ufl.dot(err_osc, err_osc) * v * ufl.dx)
 
@@ -121,7 +131,7 @@ for i in range(convstudy_nref):
     # RHS
     f = -ufl.div(ufl.grad(exact_solution(ufl)(ufl.SpatialCoordinate(domain))))
 
-    errorestm, errorestm_sig, errorestm_osc = estimate_error(f, uh_prime, sigma)
+    errorestm, errorestm_sig, errorestm_osc = estimate_error(f, uh_prime, sigma_eqlb)
 
     # --- Compute real errors
     # Volume integrator
