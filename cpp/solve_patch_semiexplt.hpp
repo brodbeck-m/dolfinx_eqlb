@@ -125,7 +125,7 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
   /* Initialise Mappings */
   // Representation/Storage isoparametric mapping
   std::array<double, 9> Jb, Kb;
-  mdspan2_t J(Jb.data(), 2, 2), K(Kb.data(), 2, 2);
+  mdspan_t<double, 2> J(Jb.data(), 2, 2), K(Kb.data(), 2, 2);
   std::array<double, 18> detJ_scratch;
 
   bool store_K = false;
@@ -156,7 +156,7 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
   std::int8_t fctloc_ea, fctloc_eam1;
   bool noutward_ea, noutward_eam1;
   std::vector<double> dprefactor_dof(ncells * 2, 1.0);
-  mdspan2_t prefactor_dof(dprefactor_dof.data(), ncells, 2);
+  mdspan_t<double, 2> prefactor_dof(dprefactor_dof.data(), ncells, 2);
 
   // Calculate mapping and pre-factors on cells of patch
 
@@ -238,7 +238,7 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
 
     /* Piola mapping */
     // Reshape geometry infos
-    cmdspan2_t coords(coordinate_dofs_e.data(), nnodes_cell, 3);
+    mdspan_t<const double, 2> coords(coordinate_dofs_e.data(), nnodes_cell, 3);
 
     // Calculate Jacobi, inverse, and determinant
     storage_detJ[index]
@@ -402,19 +402,23 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
 
       /* Tabulate shape functions */
       // Shape functions RHS
-      s_cmdspan2_t shp_TaEa = kernel_data.shapefunctions_fct_rhs(fl_TaEa);
-      s_cmdspan2_t shp_Tap1Ea = kernel_data.shapefunctions_fct_rhs(fl_Tap1Ea);
+      smdspan_t<const double, 2> shp_TaEa
+          = kernel_data.shapefunctions_fct_rhs(fl_TaEa);
+      smdspan_t<const double, 2> shp_Tap1Ea
+          = kernel_data.shapefunctions_fct_rhs(fl_Tap1Ea);
 
       // Shape-functions hat-function
-      s_cmdspan2_t hat_TaEam1 = kernel_data.shapefunctions_fct_hat(fl_TaEam1);
-      s_cmdspan2_t hat_TaEa = kernel_data.shapefunctions_fct_hat(fl_TaEa);
+      smdspan_t<const double, 2> hat_TaEam1
+          = kernel_data.shapefunctions_fct_hat(fl_TaEam1);
+      smdspan_t<const double, 2> hat_TaEa
+          = kernel_data.shapefunctions_fct_hat(fl_TaEa);
 
       /* Prepare data for inclusion of flux BCs */
       // DOFs on facet E0
       std::span<const std::int32_t> pflux_ldofs_E0, ldofs_E0;
 
       // Tabulated shape functions on facet E0
-      s_cmdspan2_t shp_TaEam1;
+      smdspan_t<const double, 2> shp_TaEam1;
 
       if ((a == 1) && (fct_has_bc || type_patch == PatchType::bound_mixed))
       {
@@ -677,18 +681,20 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
       else
       {
         // Isoparametric mapping
-        cmdspan2_t K = extract_mapping_data(id_a, storage_K);
+        mdspan_t<const double, 2> K = extract_mapping_data(id_a, storage_K);
 
         // Quadrature points and weights
-        cmdspan2_t qpoints = kernel_data.quadrature_points(0);
+        mdspan_t<const double, 2> qpoints = kernel_data.quadrature_points(0);
         std::span<const double> weights = kernel_data.quadrature_weights(0);
         const int nqpoints = weights.size();
 
         // Shape-functions RHS
-        s_cmdspan3_t shp_rhs = kernel_data.shapefunctions_cell_rhs(K);
+        smdspan_t<const double, 3> shp_rhs
+            = kernel_data.shapefunctions_cell_rhs(K);
 
         // Shape-functions hat-function
-        s_cmdspan2_t shp_hat = kernel_data.shapefunctions_cell_hat();
+        smdspan_t<const double, 2> shp_hat
+            = kernel_data.shapefunctions_cell_hat();
 
         // Quadrature loop
         c_ta_ea = -c_ta_eam1;
