@@ -53,7 +53,7 @@ python3 demo_reconstruction_poisson.py
 
 <a id="7">[7]</a> Ern, A. and Vohralik, M.: Polynomial-Degree-Robust A Posteriori Estimates in a Unified Setting for Conforming, Nonconforming, Discontinuous Galerkin, and Mixed Discretizations (2015).
 
-<a id="8">[8]</a> Cai, Z., Zhang, S.: Robust equilibrated residual error estimator for diffusion problems:
+<a id="8">[8]</a> Cai, Z. and Zhang, S.: Robust equilibrated residual error estimator for diffusion problems:
 conforming elements (2012).
 
 <a id="9">[9]</a> Bertrand et al.: Stabilization-free HHO a posteriori error control (2023).
