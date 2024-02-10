@@ -16,14 +16,23 @@ DOLFINx_eqlb supports flux equilibration on two-dimensional domain with arbitrar
 
 ## Literature
 [1] Prager, W. and Synge, J. L.: Approximations in elasticity based on the concept of function space (1947).
+
 [2] Braess, D. and Schöberl, J.: Equilibrated Residual Error Estimator for Edge Elements (2008).
+
 [3] Bertrand et al.: Weakly symmetric stress equilibration and a posteriori error estimation for linear elasticity (2021).
+
 [4] Bertrand et al.: Weakly symmetric stress equilibration for hyperelastic material models (2020).
+
 [5] Riedlbeck et al.: Stress and flux reconstruction in Biot’s poro-elasticity problem with application to a posteriori error analysis (2017).
+
 [6] Bertrand, F. and Starke, G.: A posteriori error estimates by weakly symmetric stress reconstruction for the Biot problem (2021).
+
 [7] Ern, A. and Vohralik, M.: Polynomial-Degree-Robust A Posteriori Estimates in a Unified Setting for Conforming, Nonconforming, Discontinuous Galerkin, and Mixed Discretizations (2015).
+
 [8] Cai, Z., Zhang, S.: Robust equilibrated residual error estimator for diffusion problems:
 conforming elements (2012).
+
 [9] Bertrand et al.: Stabilization-free HHO a posteriori error control (2023).
+
 [10] Boffi et al.: Mixed finite element methods and applications (2013).
 
