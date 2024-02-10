@@ -1,11 +1,11 @@
 # dolfinx for flux equilibration (dolfinx_eqlb)
 ## Description
-DOLFINx_eqlb is an open source library, extending the FEniCSx Project finite element solver (https://fenicsproject.org) by (patch-local) flux equilibration strategies. The resulting H(div) conforming fluxes, which strongly full-fill the Neumann boundary conditions of the primal problem, can be used for the construction of space-time adaptive finite element solvers. 
+dolfinx_eqlb is an open source library, extending the FEniCSx Project finite element solver (https://fenicsproject.org) by (patch-local) flux equilibration strategies. The resulting H(div) conforming fluxes, which strongly full-fill the Neumann boundary conditions of the primal problem, can be used for the construction of space-time adaptive finite element solvers. 
 
 The basic idea of these reconstructions can be traced back to Prager and Synge [[1]](#1) and can be applied to the poisson problem [[2]](#2), incompressible elasticity [[3]](#3)[[4]](#4) or poro-elasticity [[5]](#5)[[6]](#6). The reconstruction itself can be performed either by a patch-wise constrained minimisation problem (Ern and Vohralik [[7]](#7)) or based on a semi-explicit procedure, where only a unconstrained minimisation on a patch-wise, divergence free function spaces is required [[8]](#8)[[9]](#9). For stress tensors distinct symmetry properties have to be considered. This can be done in a weak sene, which requires an additional constrained minimisation step, after the row wise reconstruction of the tensor [[3]](#3)[[4]](#4).
 
 ## Features
-DOLFINx_eqlb supports flux equilibration on two-dimensional domain with arbitrary triangular grids. It further includes twi following features
+dolfinx_eqlb supports flux equilibration on two-dimensional domains with arbitrary triangular grids. It further includes the following features
 - A local projector into arbitrary function-spaces
 - A hierarchic Raviart-Thomas element based on Boffi, Brezzi and Fortin [[10]](#10)
 - Boundary conditions for H(div) spaces on general boundaries
