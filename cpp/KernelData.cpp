@@ -248,9 +248,10 @@ void KernelDataEqlb<T>::tabulate_flux_basis(
                                 _flux_basis_values);
 
   // Recast functions into mdspans for later usage
-  _flux_fullbasis = cmdspan4_t(_flux_basis_values.data(), flux_basis_shape);
-  _flux_fullbasis_current
-      = mdspan4_t(_flux_basis_current_values.data(), flux_basis_shape);
+  _flux_fullbasis
+      = mdspan_t<const double, 4>(_flux_basis_values.data(), flux_basis_shape);
+  _flux_fullbasis_current = mdspan_t<double, 4>(
+      _flux_basis_current_values.data(), flux_basis_shape);
 }
 
 template <typename T>
@@ -286,13 +287,13 @@ void KernelDataEqlb<T>::tabulate_rhs_basis(
                              _rhs_basis_fct_values);
 
   // Recast functions into mdspans for later usage
-  _rhs_cell_fullbasis
-      = cmdspan4_t(_rhs_basis_cell_values.data(), rhs_basis_shape_cell);
-  _rhs_fct_fullbasis
-      = cmdspan4_t(_rhs_basis_fct_values.data(), rhs_basis_shape_fct);
+  _rhs_cell_fullbasis = mdspan_t<const double, 4>(_rhs_basis_cell_values.data(),
+                                                  rhs_basis_shape_cell);
+  _rhs_fct_fullbasis = mdspan_t<const double, 4>(_rhs_basis_fct_values.data(),
+                                                 rhs_basis_shape_fct);
 
-  _rhs_fullbasis_current
-      = mdspan4_t(_rhs_basis_current_values.data(), rhs_basis_shape_cell);
+  _rhs_fullbasis_current = mdspan_t<double, 4>(_rhs_basis_current_values.data(),
+                                               rhs_basis_shape_cell);
 
   // Apply identity-map (ref->cur) on shape-functions (on cell)
   for (std::size_t i = 0; i < _rhs_cell_fullbasis.extent(1); ++i)
@@ -334,10 +335,10 @@ void KernelDataEqlb<T>::tabulate_hat_basis(
                              _hat_basis_fct_values);
 
   // Recast functions into mdspans for later usage
-  _hat_cell_fullbasis
-      = cmdspan4_t(_hat_basis_cell_values.data(), hat_basis_shape_cell);
-  _hat_fct_fullbasis
-      = cmdspan4_t(_hat_basis_fct_values.data(), hat_basis_shape_fct);
+  _hat_cell_fullbasis = mdspan_t<const double, 4>(_hat_basis_cell_values.data(),
+                                                  hat_basis_shape_cell);
+  _hat_fct_fullbasis = mdspan_t<const double, 4>(_hat_basis_fct_values.data(),
+                                                 hat_basis_shape_fct);
 }
 
 /* Mapping routines */
@@ -365,7 +366,8 @@ void KernelDataEqlb<T>::contravariant_piola_mapping(
 
 /* Push-forward of shape-functions */
 template <typename T>
-s_cmdspan3_t KernelDataEqlb<T>::shapefunctions_cell_rhs(cmdspan2_t K)
+smdspan_t<const double, 3>
+KernelDataEqlb<T>::shapefunctions_cell_rhs(mdspan_t<const double, 2> K)
 {
   // Loop over all evaluation points
   for (std::size_t i = 0; i < _rhs_cell_fullbasis.extent(1); ++i)

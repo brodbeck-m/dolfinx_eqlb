@@ -225,7 +225,7 @@ public:
   /// Array with indexes i, j and k: phi_j(x_i)[k] is the
   /// shape-function j at point i within direction k.
   /// @return Array of shape functions (reference cell)
-  s_cmdspan3_t shapefunctions_flux() const
+  smdspan_t<const double, 3> shapefunctions_flux() const
   {
     return stdex::submdspan(_flux_fullbasis, 0, stdex::full_extent,
                             stdex::full_extent, stdex::full_extent);
@@ -257,7 +257,7 @@ public:
   /// phi_k(x_j) is the shape-function k at point j while i determins
   /// if function or the derivative is returned.
   /// @return Array of shape functions (reference cell)
-  s_cmdspan3_t shapefunctions_cell_rhs() const
+  smdspan_t<const double, 3> shapefunctions_cell_rhs() const
   {
     return stdex::submdspan(_rhs_cell_fullbasis, stdex::full_extent,
                             stdex::full_extent, stdex::full_extent, 0);
@@ -269,13 +269,14 @@ public:
   /// if function or the derivative is returned.
   /// @param K The inverse Jacobian
   /// @return Array of shape functions (current cell)
-  s_cmdspan3_t shapefunctions_cell_rhs(cmdspan2_t K);
+  smdspan_t<const double, 3>
+  shapefunctions_cell_rhs(mdspan_t<const double, 2> K);
 
   /// Extract shape functions on facet (RHS, projected flux)
   /// Array with indexes i, j: phi_j(x_i) is the shape-function j
   /// at point i.
   /// @return Array of shape functions (current cell)
-  s_cmdspan2_t shapefunctions_fct_rhs(std::int8_t fct_id)
+  smdspan_t<const double, 2> shapefunctions_fct_rhs(std::int8_t fct_id)
   {
     // Offset of shpfkt for current facet
     std::size_t obgn = fct_id * _nipoints_per_fct;
@@ -289,7 +290,7 @@ public:
   /// Array with indexes i and j: phi_k(x_j) is the shape-function k
   /// at point j
   /// @return Array of shape functions (reference cell)
-  s_cmdspan2_t shapefunctions_cell_hat() const
+  smdspan_t<const double, 2> shapefunctions_cell_hat() const
   {
     return stdex::submdspan(_hat_cell_fullbasis, 0, stdex::full_extent,
                             stdex::full_extent, 0);
@@ -299,7 +300,7 @@ public:
   /// Array with indexes i, j: phi_j(x_i) is the shape-function j
   /// at point i.
   /// @return Array of shape functions (reference cell)
-  s_cmdspan2_t shapefunctions_fct_hat(std::int8_t fct_id)
+  smdspan_t<const double, 2> shapefunctions_fct_hat(std::int8_t fct_id)
   {
     // Offset of shpfkt for current facet
     std::size_t obgn = fct_id * _nipoints_per_fct;
@@ -318,13 +319,13 @@ public:
   /// Indices of M: nfct x ndofs x spacial dimension x points
   /// @param fct_id The cell-local facet id
   /// @return The interpolation matrix M
-  cmdspan4_t interpl_matrix_facte() { return _M_fct; }
+  mdspan_t<const double, 4> interpl_matrix_facte() { return _M_fct; }
 
   /// Extract interpolation matrix on facet for single DOF
   /// Indices of M: ndofs x spacial dimension x points
   /// @param fct_id The cell-local facet id
   /// @return The interpolation matrix M
-  cmdspan3_t interpl_matrix_facte(std::int8_t fct_id)
+  mdspan_t<const double, 3> interpl_matrix_facte(std::int8_t fct_id)
   {
     return stdex::submdspan(_M_fct, (std::size_t)fct_id, stdex::full_extent,
                             stdex::full_extent, stdex::full_extent);
@@ -335,7 +336,8 @@ public:
   /// @param fct_id The cell-local facet id
   /// @param dof_id The facet-local DOF id
   /// @return The interpolation matrix M
-  cmdspan2_t interpl_matrix_facte(std::int8_t fct_id, std::int8_t dof_id)
+  mdspan_t<const double, 2> interpl_matrix_facte(std::int8_t fct_id,
+                                                 std::int8_t dof_id)
   {
     return stdex::submdspan(_M_fct, (std::size_t)fct_id, (std::size_t)dof_id,
                             stdex::full_extent, stdex::full_extent);
@@ -369,22 +371,22 @@ protected:
   // Interpolation data
   std::size_t _nipoints_per_fct, _nipoints_fct;
   std::vector<double> _ipoints_fct, _data_M_fct;
-  cmdspan4_t _M_fct; // Indices: facet, dof, gdim, points
+  mdspan_t<const double, 4> _M_fct; // Indices: facet, dof, gdim, points
 
   // Tabulated shape-functions (pice-wise H(div) flux)
   std::vector<double> _flux_basis_values, _flux_basis_current_values;
-  cmdspan4_t _flux_fullbasis;
-  mdspan4_t _flux_fullbasis_current;
+  mdspan_t<const double, 4> _flux_fullbasis;
+  mdspan_t<double, 4> _flux_fullbasis_current;
 
   // Tabulated shape-functions (projected flux, RHS)
   std::vector<double> _rhs_basis_cell_values, _rhs_basis_fct_values,
       _rhs_basis_current_values;
-  cmdspan4_t _rhs_cell_fullbasis, _rhs_fct_fullbasis;
-  mdspan4_t _rhs_fullbasis_current;
+  mdspan_t<const double, 4> _rhs_cell_fullbasis, _rhs_fct_fullbasis;
+  mdspan_t<double, 4> _rhs_fullbasis_current;
 
   // Tabulated shape-functions (hat-function)
   std::vector<double> _hat_basis_cell_values, _hat_basis_fct_values;
-  cmdspan4_t _hat_cell_fullbasis, _hat_fct_fullbasis;
+  mdspan_t<const double, 4> _hat_cell_fullbasis, _hat_fct_fullbasis;
 
   // Push-back H(div) data
   std::function<void(mdspan_t<T, 2>&, const mdspan_t<const T, 2>&,
