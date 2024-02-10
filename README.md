@@ -13,6 +13,30 @@ DOLFINx_eqlb supports flux equilibration on two-dimensional domain with arbitrar
 - Stress equilibration considering distinct symmetry properties in a weak sense
 
 ## Getting started
+1. Clone this repository using the command:
+
+```shell
+git clone https://github.tik.uni-stuttgart.de/brodbeck/dolfinx_eqlb
+```
+
+2. Download the required Docker image of DOLFINx:
+
+```shell
+docker pull dolfinx/dolfinx:v0.6.0-r1
+```
+
+3. Build a Docker image containing dolfinx_eqlb
+
+```shell
+cd docker
+./build_image.sh 
+```
+4. Try out a demo
+```shell
+./launch-container.sh
+cd ./Programs/dolfinx_eqlb/python/demo
+python3 demo_reconstruction_poisson.py  
+```
 
 ## Literature
 <a id="1">[1]</a> Prager, W. and Synge, J. L.: Approximations in elasticity based on the concept of function space (1947).
