@@ -1,2 +1,29 @@
-# dolfinx_eqlb
-Extension to dolfinX enabeling the efficient construction of adaptive FEM algorithms, based on flux equilibration
+# dolfinx for flux equilibration (dolfinx_eqlb)
+## Description
+DOLFINx_eqlb is an open source library, extending the FEniCSx Project finite element solver (https://fenicsproject.org) by (patch-local) flux equilibration strategies. The resulting H(div) conforming fluxes, which strongly full-fill the Neumann boundary conditions of the primal problem, can be used for the construction of space-time adaptive finite element solvers. 
+
+The basic idea of these reconstructions can be traced back to Prager and Synge [1] and can be applied to the poisson problem [2], incompressible elasticity [3,4] or poro-elasticity [5,6]. The reconstruction itself can be performed either by a patch-wise constrained minimisation problem (Ern and Vohralik [7]) or based on a semi-explicit procedure, where only a unconstrained minimisation on a patch-wise, divergence free function spaces is required [8,9]. For stress tensors distinct symmetry properties have to be considered. This can be done in a weak sene, which requires an additional constrained minimisation step, after the row wise reconstruction of the tensor [3,4].
+
+## Features
+DOLFINx_eqlb supports flux equilibration on two-dimensional domain with arbitrary triangular grids. It further includes twi following features
+- A local projector into arbitrary function-spaces
+- A hierarchic Raviart-Thomas element based on Boffi, Brezzi and Fortin [10]
+- Boundary conditions for H(div) spaces on general boundaries
+- Flux equilibration based on Ern and Vohralik (FluxEqlbEV) or a semi-explicit strategy (FluxEqlbSE)
+- Stress equilibration considering distinct symmetry properties in a weak sense
+
+## Getting started
+
+## Literature
+[1] Prager, W. and Synge, J. L.: Approximations in elasticity based on the concept of function space (1947).
+[2] Braess, D. and Schöberl, J.: Equilibrated Residual Error Estimator for Edge Elements (2008).
+[3] Bertrand et al.: Weakly symmetric stress equilibration and a posteriori error estimation for linear elasticity (2021).
+[4] Bertrand et al.: Weakly symmetric stress equilibration for hyperelastic material models (2020).
+[5] Riedlbeck et al.: Stress and flux reconstruction in Biot’s poro-elasticity problem with application to a posteriori error analysis (2017).
+[6] Bertrand, F. and Starke, G.: A posteriori error estimates by weakly symmetric stress reconstruction for the Biot problem (2021).
+[7] Ern, A. and Vohralik, M.: Polynomial-Degree-Robust A Posteriori Estimates in a Unified Setting for Conforming, Nonconforming, Discontinuous Galerkin, and Mixed Discretizations (2015).
+[8] Cai, Z., Zhang, S.: Robust equilibrated residual error estimator for diffusion problems:
+conforming elements (2012).
+[9] Bertrand et al.: Stabilization-free HHO a posteriori error control (2023).
+[10] Boffi et al.: Mixed finite element methods and applications (2013).
+
