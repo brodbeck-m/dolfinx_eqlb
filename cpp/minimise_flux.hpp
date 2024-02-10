@@ -38,7 +38,7 @@ namespace stdex = std::experimental;
 /// @param storage The flattened storage
 /// @param matrix  The matrix (J, K) on the current cell
 void store_mapping_data(const int cell_id, std::span<double> storage,
-                        mdspan2_t matrix)
+                        mdspan_t<const double, 2> matrix)
 {
   // Set offset
   const int offset = 4 * cell_id;
@@ -53,13 +53,13 @@ void store_mapping_data(const int cell_id, std::span<double> storage,
 /// @param cell_id The patch-local index of a cell
 /// @param storage The flattened storage
 /// @return        The matrix (J, K) on the current cell
-cmdspan2_t extract_mapping_data(const int cell_id,
-                                std::span<const double> storage)
+mdspan_t<const double, 2> extract_mapping_data(const int cell_id,
+                                               std::span<const double> storage)
 {
   // Set offset
   const int offset = 4 * cell_id;
 
-  return cmdspan2_t(storage.data() + offset, 2, 2);
+  return mdspan_t<const double, 2>(storage.data() + offset, 2, 2);
 }
 // ------------------------------------------------------------------------------
 
@@ -468,7 +468,7 @@ void assemble_fluxminimiser(
   const int ndofs_nz = 2 * ndofs_per_fct + ndofs_cell_add - 1;
   const int index_load = ndofs_nz;
   std::vector<T> dTe(ndofs_nz * (ndofs_nz + 1), 0);
-  mdspan2_t Te(dTe.data(), ndofs_nz + 1, ndofs_nz);
+  mdspan_t<double, 2> Te(dTe.data(), ndofs_nz + 1, ndofs_nz);
 
   /* Calculation and assembly */
   for (std::size_t a = 1; a < ncells + 1; ++a)
@@ -477,7 +477,7 @@ void assemble_fluxminimiser(
 
     // Isoparametric mapping
     const double detJ = storage_detJ[id_a];
-    cmdspan2_t J = extract_mapping_data(id_a, storage_J);
+    mdspan_t<const double, 2> J = extract_mapping_data(id_a, storage_J);
 
     // DOFmap on cell
     smdspan_t<const std::int32_t, 2> dofmap_cell = stdex::submdspan(
