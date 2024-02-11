@@ -85,19 +85,9 @@ mdspan_t<const double, 2> extract_mapping_data(const int cell_id,
 ///
 /// @tparam T               The scalar type
 /// @tparam id_flux_order   The flux order (1->RT1, 2->RT2, 3->general)
-/// @tparam asmbl_systmtrx  Flag if entire tangent or only load vector is
-///                         assembled
-/// @param A_patch          The patch system matrix (mass matrix)
-/// @param L_patch          The patch load vector
-/// @param patch            The patch
-/// @param kernel_data      The kernel data
-/// @param dofmap_patch     The patch DOFmap
-/// @param boundary_markers The boundary markers
-/// @param coefficients     Flux DOFs on cells
-/// @param storage_detJ     The Jacobi determinants of the patch cells
-/// @param storage_J        The Jacobi matrices of the patch cells
-/// @param storage_J        The invers Jacobi matrices of the patch cells
-/// @param requires_flux_bc Marker if flux BCs are required
+/// @param patch             The patch
+/// @param facet_orientation The facet orientation of one cell
+/// @param storage_detJ      The Jacobi determinants of the patch cells
 template <typename T, int id_flux_order = 3>
 std::vector<std::int32_t>
 set_flux_dofmap(PatchFluxCstm<T, id_flux_order>& patch,
