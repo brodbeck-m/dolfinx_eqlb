@@ -261,6 +261,12 @@ protected:
   std::int8_t get_fctid_local(std::int32_t fct_i,
                               std::span<const std::int32_t> fct_cell_i);
 
+  /// Determine local id of node on cell
+  /// @param cell_i Processor-local cell id
+  /// @param node_i Processor-local node id
+  /// @return Cell local node id
+  std::int8_t node_local(std::int32_t cell_i, std::int32_t node_i);
+
   /// Determine local id of patch-central node on cell
   /// @param cell_i Processor-local cell id
   /// @return Cell local node id

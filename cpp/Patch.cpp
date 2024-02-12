@@ -326,7 +326,7 @@ std::int8_t Patch::get_fctid_local(std::int32_t fct_i,
   return fct_loc;
 }
 
-std::int8_t Patch::nodei_local(std::int32_t cell_i)
+std::int8_t Patch::node_local(std::int32_t cell_i, std::int32_t node_i)
 {
   // Initialize cell-local node-id
   std::int8_t id_node_loc_ci = 0;
@@ -334,12 +334,17 @@ std::int8_t Patch::nodei_local(std::int32_t cell_i)
   // Get nodes on cell_i
   std::span<const std::int32_t> node_cell_i = _cell_to_node->links(cell_i);
 
-  while (node_cell_i[id_node_loc_ci] != _nodei)
+  while (node_cell_i[id_node_loc_ci] != node_i)
   {
     id_node_loc_ci += 1;
   }
 
   return id_node_loc_ci;
+}
+
+std::int8_t Patch::nodei_local(std::int32_t cell_i)
+{
+  return node_local(cell_i, _nodei);
 }
 
 std::int32_t
