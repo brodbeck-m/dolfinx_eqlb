@@ -166,6 +166,9 @@ public:
           // Patch-local
           dofmap(2, a, offs) = pdof + ii;
 
+          // Prefactor for construction of H(div=0) space
+          dofmap(3, a, offs) = 1;
+
           // Update offset/ local DOF
           offs += 1;
           ldof += ii;
@@ -183,6 +186,9 @@ public:
 
         // Global
         dofmap(1, a, offs) = gdof + ldof;
+
+        // Prefactor for construction of H(div=0) space
+        dofmap(3, a, offs) = 0;
 
         // Update offset/ local DOF
         offs += 1;
@@ -241,6 +247,10 @@ public:
         // Patch-local DOF
         dofmap(2, pcell_1, offs) = _ndof_min_flux;
         dofmap(2, pcell_2, offs) = _ndof_min_flux;
+
+        // Prefactor for construction of H(div=0) space
+        dofmap(3, pcell_1, offs) = 1;
+        dofmap(3, pcell_2, offs) = 1;
       }
       else
       {
@@ -255,6 +265,10 @@ public:
         // Patch-local DOF
         dofmap(2, pcell_1, offs_1) = pdof;
         dofmap(2, pcell_2, offs_2) = pdof;
+
+        // Prefactor for construction of H(div=0) space
+        dofmap(3, pcell_1, offs_1) = 1;
+        dofmap(3, pcell_2, offs_2) = 1;
       }
     }
   }
@@ -291,18 +305,64 @@ public:
 
     // Patch-local DOF
     dofmap(2, pcell, offs) = pdof;
+
+    // Prefactor for construction of H(div=0) space
+    dofmap(3, pcell, offs) = 1;
   }
 
   void set_assembly_informations(const std::vector<bool>& facet_orientation,
                                  std::span<const double> storage_detJ)
   {
-    for (std::size_t id_a = 0; id_a < this->_ncells; ++id_a)
+    // Initialisation
+    std::int8_t fctloc_ea, fctloc_eam1;
+    std::int32_t prefactor_ea, prefactor_eam1;
+
+    // Create mdspan of DOFmap
+    mdspan_t<std::int32_t, 3> dofmap(_ddofmap.data(), _dofmap_shape);
+
+    // Loop over all cells
+    for (std::size_t a = 1; a < _ncells + 1; ++a)
     {
       // Local facet IDs
+      std::tie(fctloc_eam1, fctloc_ea) = fctid_local(a);
 
       // Prefactors
+      if (storage_detJ[a - 1] < 0)
+      {
+        prefactor_eam1 = (facet_orientation[fctloc_eam1]) ? -1 : 1;
+        prefactor_ea = (facet_orientation[fctloc_ea]) ? -1 : 1;
+      }
+      else
+      {
+        prefactor_eam1 = (facet_orientation[fctloc_eam1]) ? 1 : -1;
+        prefactor_ea = (facet_orientation[fctloc_ea]) ? 1 : -1;
+      }
 
-      // Set informations
+      /* Set DOFmap */
+      // DOFs associated with d_0
+      dofmap(3, a, 0) = prefactor_eam1;
+      dofmap(3, a, _ndof_flux_fct) = -prefactor_ea;
+
+      // Higer order DOFs
+      if constexpr (id_flux_order > 1)
+      {
+        // Extract type of patch 0
+        const PatchType type_patch = _type[0];
+
+        if constexpr (id_flux_order == 2)
+        {
+          dofmap(3, a, 1) = prefactor_eam1;
+          dofmap(3, a, 3) = -prefactor_ea;
+        }
+        else
+        {
+          for (std::size_t i = 1; i < _ndof_flux_fct; ++i)
+          {
+            dofmap(3, a, i) = prefactor_eam1;
+            dofmap(3, a, _ndof_flux_fct + i) = -prefactor_ea;
+          }
+        }
+      }
     }
   }
 
