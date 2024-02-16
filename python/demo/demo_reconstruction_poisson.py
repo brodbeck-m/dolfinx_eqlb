@@ -167,7 +167,7 @@ def equilibrate_flux(
     return sigma_proj[0], equilibrator.list_flux[0]
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     # --- Parameters ---
     # The considered equilibration strategy
     Equilibrator = FluxEqlbSE
@@ -203,7 +203,7 @@ if __name__ == '__main__':
     )
 
     if Equilibrator == FluxEqlbEV:
-        sigma_eqlb_dg = local_projection(V_dg_hdiv, sigma_eqlb)
+        sigma_eqlb_dg = local_projection(V_dg_hdiv, [sigma_eqlb])
     else:
         sigma_eqlb_dg = local_projection(V_dg_hdiv, [sigma_eqlb + sigma_proj])
 
