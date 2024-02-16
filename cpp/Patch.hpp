@@ -354,7 +354,10 @@ public:
   ///     Stabilization-free HHO a posteriori error control, 2022
   ///
   /// @param node_i Processor-local id of current node
-  void create_subdofmap(int node_i) { initialize_patch(node_i); }
+  void create_subdofmap(const int node_i)
+  {
+    throw std::runtime_error("Patch-DOFmap not implemented!");
+  }
 
   /// Check if reversion of patch is required
   ///
@@ -499,7 +502,7 @@ protected:
   /// Sets patch type and creates sorted list of patch-facets.
   ///
   /// @param node_i Processor local id of patch-central node
-  void initialize_patch(int node_i);
+  void initialize_patch(const int node_i);
 
   /// Determine local facet-id on cell
   /// @param fct_i Processor-local facet id
@@ -566,11 +569,14 @@ protected:
   std::int8_t _equal_patches;
 
   // Number of elements on patch
-  int _ncells, _ncells_data, _nfcts, _nfcts_data;
+  int _ncells, _nfcts;
 
-  // Factes/Cells on patch
+  // Facets/Cells on patch
   std::vector<std::int32_t> _cells, _fcts, _fcts_sorted;
-  std::vector<std::int8_t> _inodes_local, _fcts_local;
+  std::vector<std::int8_t> _inodes_local;
+
+  // [lfct_(E0,T-1), lfct_(E0,T1), ..., lfct_(Ea,Ta), lfct_(Ea,Tap1)]
+  std::vector<std::int8_t> _fcts_local;
 
   /* DOFmap */
   std::vector<std::int32_t> _ddofmap;

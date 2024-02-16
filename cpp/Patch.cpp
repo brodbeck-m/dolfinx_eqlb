@@ -556,7 +556,7 @@ std::int8_t PatchNew::node_local(std::int32_t cell_i, std::int32_t node_i) const
   return id_node_loc_ci;
 }
 
-void PatchNew::initialize_patch(int node_i)
+void PatchNew::initialize_patch(const int node_i)
 {
   // Set central node
   _nodei = node_i;
@@ -732,8 +732,6 @@ void PatchNew::initialize_patch(int node_i)
   {
     std::size_t ap1 = a + 1;
     std::int32_t fct_a = _fcts[a], cell_a = _cells[a];
-
-    std::cout << fct_a << std::endl;
 
     // Get cells adjacent to facet E_a
     std::span<const std::int32_t> cells_fct = _fct_to_cell->links(fct_a);
