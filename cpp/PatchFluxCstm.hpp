@@ -168,7 +168,7 @@ public:
 
           // Update offset/ local DOF
           offs += 1;
-          ldof += ii;
+          ldof += 1;
         }
       }
 
