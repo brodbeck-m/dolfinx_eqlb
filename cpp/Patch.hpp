@@ -327,7 +327,7 @@ protected:
   std::vector<std::int8_t> _inodes_local;
 };
 
-class PatchNew
+class OrientedPatch
 {
 public:
   /// Create storage of patch data
@@ -338,8 +338,8 @@ public:
   /// @param nnodes_proc Numbe rof nodes on current processor
   /// @param mesh        The current mesh
   /// @param bfct_type   List with type of all boundary facets
-  PatchNew(int nnodes_proc, std::shared_ptr<const mesh::Mesh> mesh,
-           mdspan_t<const std::int8_t, 2> bfct_type);
+  OrientedPatch(int nnodes_proc, std::shared_ptr<const mesh::Mesh> mesh,
+                mdspan_t<const std::int8_t, 2> bfct_type);
 
   /// Construction of a sub-DOFmap on each patch
   ///

@@ -427,8 +427,9 @@ Patch::next_facet_triangle(std::int32_t cell_i,
 }
 
 // ---------------------------------------------------------------------------------------------------
-PatchNew::PatchNew(int nnodes_proc, std::shared_ptr<const mesh::Mesh> mesh,
-                   mdspan_t<const std::int8_t, 2> bfct_type)
+OrientedPatch::OrientedPatch(int nnodes_proc,
+                             std::shared_ptr<const mesh::Mesh> mesh,
+                             mdspan_t<const std::int8_t, 2> bfct_type)
     : _mesh(mesh), _bfct_type(bfct_type), _dim(mesh->geometry().dim()),
       _dim_fct(mesh->geometry().dim() - 1),
       _type(bfct_type.extent(0), PatchType::internal)
@@ -470,7 +471,7 @@ PatchNew::PatchNew(int nnodes_proc, std::shared_ptr<const mesh::Mesh> mesh,
   }
 }
 
-bool PatchNew::reversion_required(int index) const
+bool OrientedPatch::reversion_required(int index) const
 {
   // Initialise output
   bool patch_reversed = false;
@@ -494,7 +495,7 @@ bool PatchNew::reversion_required(int index) const
   return patch_reversed;
 }
 
-void PatchNew::set_max_patch_size(int nnodes_proc)
+void OrientedPatch::set_max_patch_size(int nnodes_proc)
 {
   // Initialization
   _ncells_max = 0;
@@ -512,8 +513,8 @@ void PatchNew::set_max_patch_size(int nnodes_proc)
   }
 }
 
-std::int8_t PatchNew::get_fctid_local(std::int32_t fct_i,
-                                      std::int32_t cell_i) const
+std::int8_t OrientedPatch::get_fctid_local(std::int32_t fct_i,
+                                           std::int32_t cell_i) const
 {
   // Get facets on cell
   std::span<const std::int32_t> fct_cell_i = _cell_to_fct->links(cell_i);
@@ -522,8 +523,8 @@ std::int8_t PatchNew::get_fctid_local(std::int32_t fct_i,
 }
 
 std::int8_t
-PatchNew::get_fctid_local(std::int32_t fct_i,
-                          std::span<const std::int32_t> fct_cell_i) const
+OrientedPatch::get_fctid_local(std::int32_t fct_i,
+                               std::span<const std::int32_t> fct_cell_i) const
 {
   // Initialize local id
   std::int8_t fct_loc = 0;
@@ -540,7 +541,8 @@ PatchNew::get_fctid_local(std::int32_t fct_i,
   return fct_loc;
 }
 
-std::int8_t PatchNew::node_local(std::int32_t cell_i, std::int32_t node_i) const
+std::int8_t OrientedPatch::node_local(std::int32_t cell_i,
+                                      std::int32_t node_i) const
 {
   // Initialize cell-local node-id
   std::int8_t id_node_loc_ci = 0;
@@ -556,7 +558,7 @@ std::int8_t PatchNew::node_local(std::int32_t cell_i, std::int32_t node_i) const
   return id_node_loc_ci;
 }
 
-void PatchNew::initialize_patch(const int node_i)
+void OrientedPatch::initialize_patch(const int node_i)
 {
   // Set central node
   _nodei = node_i;
@@ -787,9 +789,9 @@ void PatchNew::initialize_patch(const int node_i)
   }
 }
 
-std::int32_t PatchNew::next_facet(std::int32_t cell_i,
-                                  std::span<const std::int32_t> fct_cell_i,
-                                  std::int8_t id_fct_loc) const
+std::int32_t OrientedPatch::next_facet(std::int32_t cell_i,
+                                       std::span<const std::int32_t> fct_cell_i,
+                                       std::int8_t id_fct_loc) const
 {
   // Get remaining facets in correct order
   std::vector<std::int32_t> fct_es(2);

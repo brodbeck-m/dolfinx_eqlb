@@ -14,7 +14,7 @@ using namespace dolfinx;
 namespace dolfinx_eqlb
 {
 template <typename T, int id_flux_order, bool constr_minms>
-class PatchCstm : public PatchNew
+class PatchCstm : public OrientedPatch
 {
 public:
   /// Initialization
@@ -30,7 +30,7 @@ public:
       int nnodes_proc, std::shared_ptr<const mesh::Mesh> mesh,
       mdspan_t<const std::int8_t, 2> bfct_type,
       const std::shared_ptr<const fem::FunctionSpace> function_space_fluxhdiv)
-      : PatchNew(nnodes_proc, mesh, bfct_type),
+      : OrientedPatch(nnodes_proc, mesh, bfct_type),
         _degree_elmt_fluxhdiv(
             function_space_fluxhdiv->element()->basix_element().degree() - 1),
         _function_space_fluxhdiv(function_space_fluxhdiv)
