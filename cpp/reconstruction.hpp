@@ -149,7 +149,7 @@ void reconstruct_fluxes_patch(const fem::Form<T>& a, const fem::Form<T>& l_pen,
 /// @tparam id_flux_order The flux order (1->RT1, 2->RT2, 3->general)
 /// @param problem_data   The problem data
 /// @param fct_type       Lookup-table for facet-types
-template <typename T, int id_flux_order = 3>
+template <typename T, int id_flux_order>
 void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
 {
   assert(id_flux_order < 0);
@@ -198,6 +198,12 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
       n_nodes, mesh, problem_data.facet_type(), problem_data.fspace_flux_hdiv(),
       problem_data.fspace_flux_dg(), basix_element_rhscg);
 
+  PatchFluxCstmNew<T, id_flux_order, false> patch_test
+      = PatchFluxCstmNew<T, id_flux_order, false>(
+          n_nodes, mesh, problem_data.facet_type(),
+          problem_data.fspace_flux_hdiv(), problem_data.fspace_flux_dg(),
+          basix_element_rhscg);
+
   // Set quadrature rule
   const int quadrature_degree
       = (degree_flux_hdiv == 1) ? 2 : 2 * degree_flux_hdiv + 1;
@@ -215,10 +221,11 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
   {
     // Create Sub-DOFmap
     patch.create_subdofmap(i_node);
+    patch_test.create_subdofmap(i_node);
 
     // Calculate coefficients per patch
-    equilibrate_flux_semiexplt<T, id_flux_order>(mesh->geometry(), patch,
-                                                 problem_data, kernel_data);
+    equilibrate_flux_semiexplt<T, id_flux_order>(
+        mesh->geometry(), patch, patch_test, problem_data, kernel_data);
   }
 }
 
@@ -325,7 +332,7 @@ void reconstruct_fluxes_cstm(
   else
   {
     // Perform equilibration
-    reconstruct_fluxes_patch<T>(problem_data);
+    reconstruct_fluxes_patch<T, 3>(problem_data);
   }
 }
 

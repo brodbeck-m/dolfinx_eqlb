@@ -91,10 +91,10 @@ void calculate_jump(std::size_t ipoint_n,
 /// @param kernel_data  The kernel data (Quadrature data, tabulated basis
 /// functions)
 template <typename T, int id_flux_order = 3>
-void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
-                                PatchFluxCstm<T, id_flux_order>& patch,
-                                ProblemDataFluxCstm<T>& problem_data,
-                                KernelDataEqlb<T>& kernel_data)
+void equilibrate_flux_semiexplt(
+    const mesh::Geometry& geometry, PatchFluxCstm<T, id_flux_order>& patch,
+    PatchFluxCstmNew<T, id_flux_order, false>& patch_test,
+    ProblemDataFluxCstm<T>& problem_data, KernelDataEqlb<T>& kernel_data)
 {
   /* Extract data */
   // Spacial dimension
@@ -105,22 +105,22 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
   std::span<const double> x = geometry.x();
 
   // The patch
-  std::span<const std::int32_t> cells = patch.cells();
-  const int ncells = patch.ncells();
-  const int nfcts = patch.nfcts();
+  std::span<const std::int32_t> cells = patch_test.cells();
+  const int ncells = patch_test.ncells();
+  const int nfcts = patch_test.nfcts();
 
   // Nodes constructing one element
   const int nnodes_cell = kernel_data.nnodes_cell();
 
   // DOF-counts function spaces
-  const int degree_flux_rt = patch.degree_raviart_thomas();
-  const int ndofs_flux = patch.ndofs_flux();
-  const int ndofs_flux_fct = patch.ndofs_flux_fct();
-  const int ndofs_flux_cell_div = patch.ndofs_flux_cell_div();
-  const int ndofs_flux_cell_add = patch.ndofs_flux_cell_add();
-  const int ndofs_projflux = patch.ndofs_fluxdg_cell();
-  const int ndofs_projflux_fct = patch.ndofs_fluxdg_fct();
-  const int ndofs_rhs = patch.ndofs_rhs_cell();
+  const int degree_flux_rt = patch_test.degree_raviart_thomas();
+  const int ndofs_flux = patch_test.ndofs_flux();
+  const int ndofs_flux_fct = patch_test.ndofs_flux_fct();
+  const int ndofs_flux_cell_div = patch_test.ndofs_flux_cell_div();
+  const int ndofs_flux_cell_add = patch_test.ndofs_flux_cell_add();
+  const int ndofs_projflux = patch_test.ndofs_fluxdg_cell();
+  const int ndofs_projflux_fct = patch_test.ndofs_fluxdg_fct();
+  const int ndofs_rhs = patch_test.ndofs_rhs_cell();
 
   /* Initialise Mappings */
   // Representation/Storage isoparametric mapping
@@ -138,7 +138,7 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
     storage_K.resize(ncells * 4);
   }
 
-  if (patch.is_on_boundary())
+  if (patch_test.is_on_boundary())
   {
     if (store_K == false)
     {
@@ -157,8 +157,6 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
   bool noutward_ea, noutward_eam1;
   std::vector<double> dprefactor_dof(ncells * 2, 1.0);
   mdspan_t<double, 2> prefactor_dof(dprefactor_dof.data(), ncells, 2);
-
-  // Calculate mapping and pre-factors on cells of patch
 
   /* The patch-wise solution */
   std::vector<T> dcoefficients_flux(ncells * ndofs_flux, 0);
@@ -230,7 +228,7 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
     int a = index + 1;
 
     // Get current cell
-    std::int32_t c = cells[index];
+    std::int32_t c = cells[a];
 
     // Copy points of current cell
     std::span<const std::int32_t> x_dofs = x_dofmap.links(c);
@@ -255,7 +253,7 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
     }
 
     /* DOF transformation */
-    std::tie(fctloc_eam1, fctloc_ea) = patch.fctid_local(a);
+    std::tie(fctloc_eam1, fctloc_ea) = patch_test.fctid_local(a);
     std::tie(noutward_eam1, noutward_ea)
         = kernel_data.fct_normal_is_outward(fctloc_eam1, fctloc_ea);
 
@@ -293,15 +291,24 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
       ddofmap_minms.data(), 5, (std::size_t)ncells,
       (std::size_t)(2 * ndofs_flux_fct + ndofs_flux_cell_add));
 
+  patch_test.set_assembly_informations(kernel_data.fct_normal_is_outward(),
+                                       storage_detJ);
+  mdspan_t<const std::int32_t, 3> dofmap_flux
+      = patch_test.assembly_info_minimisation();
+
+  const int offs_ffEa = ndofs_flux_fct;
+  const int offs_fcadd = 2 * ndofs_flux_fct;
+  const int offs_fcdiv = offs_fcadd + ndofs_flux_cell_add;
+
   /* Evaluate DOFs of sigma_tilde (for each flux separately) */
   for (std::size_t i_rhs = 0; i_rhs < problem_data.nrhs(); ++i_rhs)
   {
     /* Extract data */
     // Patch type
-    PatchType type_patch = patch.type(i_rhs);
+    PatchType type_patch = patch_test.type(i_rhs);
 
     // Check if reversion is requierd
-    bool reversion_required = patch.reversion_required(i_rhs);
+    bool reversion_required = patch_test.reversion_required(i_rhs);
 
     // Projected primal flux
     const graph::AdjacencyList<std::int32_t>& fluxdg_dofmap
@@ -320,7 +327,7 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
 
     /* Step 1: Calculate sigma_tilde */
     // Initialisations
-    copy_cell_data<T, 2>(x_flux_proj, fluxdg_dofmap.links(cells[0]),
+    copy_cell_data<T, 2>(x_flux_proj, fluxdg_dofmap.links(cells[1]),
                          coefficients_G_Tap1, 2);
 
     // Reinitialise history storage
@@ -339,15 +346,15 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
       int id_a = a - 1;
 
       // Global cell id
-      std::int32_t c_a = cells[id_a];
+      std::int32_t c_a = cells[a];
 
       // Cell-local id of patch-central node
-      std::int8_t node_i_Ta = patch.inode_local(a);
+      std::int8_t node_i_Ta = patch_test.inode_local(a);
 
       // Check if facet is on boundary
       bool fct_on_boundary
-          = ((patch.is_on_boundary()) && (a == 1 || a == ncells)) ? true
-                                                                  : false;
+          = ((patch_test.is_on_boundary()) && (a == 1 || a == ncells)) ? true
+                                                                       : false;
 
       // Check if bcs have to be applied
       bool fct_has_bc = false;
@@ -362,11 +369,11 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
         {
           if (a == 1)
           {
-            fct_has_bc = patch.requires_flux_bcs(i_rhs, 0);
+            fct_has_bc = patch_test.requires_flux_bcs(i_rhs, 0);
           }
           else if (a == ncells)
           {
-            fct_has_bc = patch.requires_flux_bcs(i_rhs, ncells);
+            fct_has_bc = patch_test.requires_flux_bcs(i_rhs, ncells);
           }
           else
           {
@@ -382,20 +389,20 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
       /* Extract required data */
       // Local facet IDs
       std::int8_t fl_TaEam1, fl_TaEa;
-      std::tie(fl_TaEam1, fl_TaEa) = patch.fctid_local(a);
-      std::int8_t fl_Tap1Ea = patch.fctid_local(a, a + 1);
+      std::tie(fl_TaEam1, fl_TaEa) = patch_test.fctid_local(a);
+      std::int8_t fl_Tap1Ea = patch_test.fctid_local(a, a + 1);
 
       // Isoparametric mapping
       const double detJ = storage_detJ[id_a];
       const double sign_detJ = (detJ > 0.0) ? 1.0 : -1.0;
 
       // DOFs (cell-local) projected flux on facet Ea
-      std::span<const std::int32_t> dofs_Ea = patch.dofs_projflux_fct(a);
+      std::span<const std::int32_t> dofs_Ea = patch_test.dofs_projflux_fct(a);
 
       // Coefficient arrays
       std::swap(coefficients_G_Ta, coefficients_G_Tap1);
 
-      copy_cell_data<T, 2>(x_flux_proj, fluxdg_dofmap.links(patch.cell(a + 1)),
+      copy_cell_data<T, 2>(x_flux_proj, fluxdg_dofmap.links(cells[a + 1]),
                            coefficients_G_Tap1, 2);
       copy_cell_data<T, 1>(x_rhs_proj, rhs_dofmap.links(c_a), coefficients_f,
                            1);
@@ -415,7 +422,7 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
 
       /* Prepare data for inclusion of flux BCs */
       // DOFs on facet E0
-      std::span<const std::int32_t> pflux_ldofs_E0, ldofs_E0;
+      std::span<const std::int32_t> pflux_ldofs_E0;
 
       // Tabulated shape functions on facet E0
       smdspan_t<const double, 2> shp_TaEam1;
@@ -423,10 +430,10 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
       if ((a == 1) && (fct_has_bc || type_patch == PatchType::bound_mixed))
       {
         // DOFs (cell-local) projected flux on facet E0
-        pflux_ldofs_E0 = patch.dofs_projflux_fct(0);
+        pflux_ldofs_E0 = patch_test.dofs_projflux_fct(0);
 
         // DOFs (cell-local) equilibrated flux on facet E0
-        ldofs_E0 = patch.dofs_flux_fct_local(1, 0);
+        // ldofs_E0 = patch.dofs_flux_fct_local(1, 0);
 
         // Tabulate shape functions RHS on facet 0
         shp_TaEam1 = kernel_data.shapefunctions_fct_rhs(fl_TaEam1);
@@ -441,25 +448,28 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
       if (fct_has_bc)
       {
         // Get (global) boundary facet/DOFs
-        std::span<const std::int32_t> bdofs_local, bdofs_global;
+        // std::span<const std::int32_t> bdofs_local, bdofs_global;
         std::int32_t bfct_global;
+        int offs_bdofs;
         if (a == 1)
         {
-          bdofs_local = patch.dofs_flux_fct_local(1, 0);
-          bdofs_global = patch.dofs_flux_fct_global(1, 0);
+          // bdofs_local = patch.dofs_flux_fct_local(1, 0);
+          // bdofs_global = patch.dofs_flux_fct_global(1, 0);
+          offs_bdofs = 0;
 
-          bfct_global = patch.fct(0);
+          bfct_global = patch_test.fct(0);
         }
         else
         {
-          bdofs_local = patch.dofs_flux_fct_local(a, a);
-          bdofs_global = patch.dofs_flux_fct_global(a, a);
+          // bdofs_local = patch.dofs_flux_fct_local(a, a);
+          // bdofs_global = patch.dofs_flux_fct_global(a, a);
+          offs_bdofs = ndofs_flux_fct;
 
-          bfct_global = patch.fct(a);
+          bfct_global = patch_test.fct(a);
         }
 
         // Calculate patch bcs
-        std::int8_t node_i_Ta = patch.inode_local(a);
+        // std::int8_t node_i_Ta = patch.inode_local(a);
         mdspan_t<const double, 2> J = extract_mapping_data(0, storage_J);
         mdspan_t<const double, 2> K = extract_mapping_data(0, storage_K);
 
@@ -469,8 +479,10 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
         // Contribution to c_ta_eam1
         if (a == 1)
         {
-          c_ta_eam1
-              += prefactor_dof(id_a, 0) * boundary_values[bdofs_global[0]];
+          // c_ta_eam1
+          //     += prefactor_dof(id_a, 0) * boundary_values[bdofs_global[0]];
+          c_ta_eam1 += prefactor_dof(id_a, 0)
+                       * boundary_values[dofmap_flux(1, a, offs_bdofs)];
         }
 
         // Contribution to cj_ta_ea
@@ -478,15 +490,19 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
         {
           if constexpr (id_flux_order == 2)
           {
-            coefficients_flux(id_a, bdofs_local[1])
-                += boundary_values[bdofs_global[1]];
+            // coefficients_flux(id_a, bdofs_local[1])
+            //     += boundary_values[bdofs_global[1]];
+            coefficients_flux(id_a, dofmap_flux(0, a, offs_bdofs + 1))
+                += boundary_values[dofmap_flux(1, a, offs_bdofs + 1)];
           }
           else
           {
             for (std::size_t j = 1; j < ndofs_flux_fct; ++j)
             {
-              coefficients_flux(id_a, bdofs_local[j])
-                  += boundary_values[bdofs_global[j]];
+              // coefficients_flux(id_a, bdofs_local[j])
+              //     += boundary_values[bdofs_global[j]];
+              coefficients_flux(id_a, dofmap_flux(0, a, offs_bdofs + j))
+                  += boundary_values[dofmap_flux(1, a, offs_bdofs + j)];
             }
           }
         }
@@ -494,7 +510,10 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
         // Handle mixed patch with E_0 on dirichlet boundary
         if (reversion_required)
         {
-          c_t1_e0 -= prefactor_dof(id_a, 1) * boundary_values[bdofs_global[0]];
+          // c_t1_e0 -= prefactor_dof(id_a, 1) *
+          // boundary_values[bdofs_global[0]];
+          c_t1_e0 -= prefactor_dof(id_a, 1)
+                     * boundary_values[dofmap_flux(1, a, offs_bdofs)];
         }
       }
 
@@ -502,7 +521,7 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
       for (std::size_t n = 0; n < nipoints_facet; ++n)
       {
         // Global index of Tap1
-        std::int32_t c_ap1 = (a < ncells) ? cells[id_a + 1] : cells[0];
+        std::int32_t c_ap1 = cells[a + 1];
 
         // Interpolate jump at quadrature point
         if (fct_on_boundary)
@@ -556,7 +575,10 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
                 // Evaluate higher-order DOFs on facet E0
                 if constexpr (id_flux_order == 2)
                 {
-                  coefficients_flux(id_a, ldofs_E0[1])
+                  // coefficients_flux(id_a, ldofs_E0[1])
+                  // += M(fl_TaEam1, 1, 0, n) * jG_mapped_E0(0, 0)
+                  //        + M(fl_TaEam1, 1, 1, n) * jG_mapped_E0(0, 1);
+                  coefficients_flux(id_a, dofmap_flux(0, a, 1))
                       += M(fl_TaEam1, 1, 0, n) * jG_mapped_E0(0, 0)
                          + M(fl_TaEam1, 1, 1, n) * jG_mapped_E0(0, 1);
                 }
@@ -565,7 +587,10 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
                   // Evaluate facet DOFs
                   for (std::size_t j = 1; j < ndofs_flux_fct; ++j)
                   {
-                    coefficients_flux(id_a, ldofs_E0[j])
+                    // coefficients_flux(id_a, ldofs_E0[j])
+                    // += M(fl_TaEam1, j, 0, n) * jG_mapped_E0(0, 0)
+                    //        + M(fl_TaEam1, j, 1, n) * jG_mapped_E0(0, 1);
+                    coefficients_flux(id_a, dofmap_flux(0, a, j))
                         += M(fl_TaEam1, j, 0, n) * jG_mapped_E0(0, 0)
                            + M(fl_TaEam1, j, 1, n) * jG_mapped_E0(0, 1);
                   }
@@ -759,44 +784,55 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
 
       /* Store DOFs into patch-wise solution evctor */
       // Global DOF ids
-      std::span<const std::int32_t> ldofs_fct = patch.dofs_flux_fct_local(a);
+      // std::span<const std::int32_t> ldofs_fct = patch.dofs_flux_fct_local(a);
 
       // Set zero order DOFs
-      coefficients_flux(id_a, ldofs_fct[0])
+      // coefficients_flux(id_a, ldofs_fct[0])
+      //     += prefactor_dof(id_a, 0) * c_ta_eam1;
+      // coefficients_flux(id_a, ldofs_fct[ndofs_flux_fct])
+      //     += prefactor_dof(id_a, 1) * c_ta_ea;
+      coefficients_flux(id_a, dofmap_flux(0, a, 0))
           += prefactor_dof(id_a, 0) * c_ta_eam1;
-      coefficients_flux(id_a, ldofs_fct[ndofs_flux_fct])
+      coefficients_flux(id_a, dofmap_flux(0, a, offs_ffEa))
           += prefactor_dof(id_a, 1) * c_ta_ea;
 
       if constexpr (id_flux_order > 1)
       {
         // Global DOF ids
-        std::span<const std::int32_t> ldofs_cell
-            = patch.dofs_flux_cell_local(a);
+        // std::span<const std::int32_t> ldofs_cell
+        //     = patch.dofs_flux_cell_local(a);
 
         if constexpr (id_flux_order == 2)
         {
           // Set higher-order DOFs on facets
-          coefficients_flux(id_a, ldofs_fct[3]) += cj_ta_ea[0];
+          // coefficients_flux(id_a, ldofs_fct[3]) += cj_ta_ea[0];
+          coefficients_flux(id_a, dofmap_flux(0, a, 3)) += cj_ta_ea[0];
 
           // Set DOFs on cell
-          coefficients_flux(id_a, ldofs_cell[0]) += c_ta_div[0];
-          coefficients_flux(id_a, ldofs_cell[1]) += c_ta_div[1];
+          // coefficients_flux(id_a, ldofs_cell[0]) += c_ta_div[0];
+          // coefficients_flux(id_a, ldofs_cell[1]) += c_ta_div[1];
+          coefficients_flux(id_a, dofmap_flux(0, a, 4)) += c_ta_div[0];
+          coefficients_flux(id_a, dofmap_flux(0, a, 5)) += c_ta_div[1];
         }
         else
         {
           // Set higher-order DOFs on facets
           for (std::size_t i = 1; i < ndofs_flux_fct; ++i)
           {
-            const int offs = ldofs_fct[ndofs_flux_fct + i];
+            // const int offs = ldofs_fct[ndofs_flux_fct + i];
 
             // DOFs on facet Ea
-            coefficients_flux(id_a, offs) += cj_ta_ea[i - 1];
+            // coefficients_flux(id_a, offs) += cj_ta_ea[i - 1];
+            coefficients_flux(id_a, dofmap_flux(0, a, offs_ffEa + i))
+                += cj_ta_ea[i - 1];
           }
 
           // Set divergence DOFs on cell
           for (std::size_t i = 0; i < ndofs_flux_cell_div; ++i)
           {
-            coefficients_flux(id_a, ldofs_cell[i]) += c_ta_div[i];
+            // coefficients_flux(id_a, ldofs_cell[i]) += c_ta_div[i];
+            coefficients_flux(id_a, dofmap_flux(0, a, offs_fcdiv + i))
+                += c_ta_div[i];
           }
         }
       }
@@ -814,15 +850,17 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
         std::size_t id_a = a - 1;
 
         // Global DOF ids
-        std::span<const std::int32_t> ldofs_fct = patch.dofs_flux_fct_local(a);
+        // std::span<const std::int32_t> ldofs_fct =
+        // patch.dofs_flux_fct_local(a);
 
         // Set zero-order DOFs on facets
-        // x_flux_dhdiv[gdofs_fct[0]] += prefactor_dof(id_a, 0) * c_t1_e0;
-        // x_flux_dhdiv[gdofs_fct[ndofs_flux_fct]]
+        // coefficients_flux(id_a, ldofs_fct[0])
+        //     += prefactor_dof(id_a, 0) * c_t1_e0;
+        // coefficients_flux(id_a, ldofs_fct[ndofs_flux_fct])
         //     -= prefactor_dof(id_a, 1) * c_t1_e0;
-        coefficients_flux(id_a, ldofs_fct[0])
+        coefficients_flux(id_a, dofmap_flux(0, a, 0))
             += prefactor_dof(id_a, 0) * c_t1_e0;
-        coefficients_flux(id_a, ldofs_fct[ndofs_flux_fct])
+        coefficients_flux(id_a, dofmap_flux(0, a, offs_ffEa))
             -= prefactor_dof(id_a, 1) * c_t1_e0;
       }
     }
@@ -841,10 +879,10 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
     }
     else
     {
-      if (patch.is_on_boundary())
+      if (patch_test.is_on_boundary())
       {
-        if (patch.type(i_rhs) != patch.type(i_rhs - 1)
-            || patch.type(i_rhs) == PatchType::bound_mixed)
+        if (patch_test.type(i_rhs) != patch_test.type(i_rhs - 1)
+            || patch_test.type(i_rhs) == PatchType::bound_mixed)
         {
           assemble_entire_system = true;
         }
@@ -862,7 +900,7 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
       assemble_fluxminimiser<T, id_flux_order, true>(
           A_patch, L_patch, patch, kernel_data, dofmap_minms, boundary_markers,
           dcoefficients_flux, storage_detJ, storage_J, storage_K,
-          patch.requires_flux_bcs(i_rhs));
+          patch_test.requires_flux_bcs(i_rhs));
 
       // Factorise of system matrix
       if constexpr (id_flux_order > 1)
@@ -879,7 +917,7 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
       assemble_fluxminimiser<T, id_flux_order, true>(
           A_patch, L_patch, patch, kernel_data, dofmap_minms, boundary_markers,
           dcoefficients_flux, storage_detJ, storage_J, storage_K,
-          patch.requires_flux_bcs(i_rhs));
+          patch_test.requires_flux_bcs(i_rhs));
     }
 
     // Solve system
@@ -905,14 +943,14 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
       std::size_t id_a = a - 1;
 
       // Global DOFs
-      std::span<const std::int32_t> gdofs = flux_dofmap.links(cells[id_a]);
+      std::span<const std::int32_t> gdofs = flux_dofmap.links(cells[a]);
 
       // Map solution from H(div=0) to H(div=0) space
       for (std::size_t i = 0; i < ndofs_hdivz_per_cell; ++i)
       {
         // Apply correction
-        coefficients_flux(id_a, dofmap_minms(0, id_a, i))
-            += dofmap_minms(4, id_a, i) * u_patch(dofmap_minms(1, id_a, i));
+        coefficients_flux(id_a, dofmap_flux(0, a, i))
+            += dofmap_flux(3, a, i) * u_patch(dofmap_flux(2, a, i));
       }
 
       // Loop over DOFs an cell
