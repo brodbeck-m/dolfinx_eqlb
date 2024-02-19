@@ -285,11 +285,12 @@ void equilibrate_flux_semiexplt(
   }
 
   // DOFmap for minimisation
-  std::vector<std::int32_t> ddofmap_minms = set_flux_dofmap<T, id_flux_order>(
-      patch, kernel_data.fct_normal_is_outward(), storage_detJ);
-  mdspan_t<const std::int32_t, 3> dofmap_minms(
-      ddofmap_minms.data(), 5, (std::size_t)ncells,
-      (std::size_t)(2 * ndofs_flux_fct + ndofs_flux_cell_add));
+  // std::vector<std::int32_t> ddofmap_minms = set_flux_dofmap<T,
+  // id_flux_order>(
+  //     patch, kernel_data.fct_normal_is_outward(), storage_detJ);
+  // mdspan_t<const std::int32_t, 3> dofmap_minms(
+  //     ddofmap_minms.data(), 5, (std::size_t)ncells,
+  //     (std::size_t)(2 * ndofs_flux_fct + ndofs_flux_cell_add));
 
   patch_test.set_assembly_informations(kernel_data.fct_normal_is_outward(),
                                        storage_detJ);
@@ -898,7 +899,7 @@ void equilibrate_flux_semiexplt(
 
       // Assemble system
       assemble_fluxminimiser<T, id_flux_order, true>(
-          A_patch, L_patch, patch, kernel_data, dofmap_minms, boundary_markers,
+          A_patch, L_patch, patch_test, kernel_data, boundary_markers,
           dcoefficients_flux, storage_detJ, storage_J, storage_K,
           patch_test.requires_flux_bcs(i_rhs));
 
@@ -915,7 +916,7 @@ void equilibrate_flux_semiexplt(
 
       // Assemble linear form
       assemble_fluxminimiser<T, id_flux_order, true>(
-          A_patch, L_patch, patch, kernel_data, dofmap_minms, boundary_markers,
+          A_patch, L_patch, patch_test, kernel_data, boundary_markers,
           dcoefficients_flux, storage_detJ, storage_J, storage_K,
           patch_test.requires_flux_bcs(i_rhs));
     }
@@ -945,7 +946,7 @@ void equilibrate_flux_semiexplt(
       // Global DOFs
       std::span<const std::int32_t> gdofs = flux_dofmap.links(cells[a]);
 
-      // Map solution from H(div=0) to H(div=0) space
+      // Map solution from H(div=0) to H(div) space
       for (std::size_t i = 0; i < ndofs_hdivz_per_cell; ++i)
       {
         // Apply correction
