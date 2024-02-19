@@ -194,8 +194,8 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
 
   /* Equilibration */
   // Initialise patch
-  PatchFluxCstmNew<T, id_flux_order, false> patch
-      = PatchFluxCstmNew<T, id_flux_order, false>(
+  PatchFluxCstm<T, id_flux_order, false> patch
+      = PatchFluxCstm<T, id_flux_order, false>(
           n_nodes, mesh, problem_data.facet_type(),
           problem_data.fspace_flux_hdiv(), problem_data.fspace_flux_dg(),
           basix_element_rhscg);

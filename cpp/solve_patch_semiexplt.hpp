@@ -91,10 +91,10 @@ void calculate_jump(std::size_t ipoint_n,
 /// @param kernel_data  The kernel data (Quadrature data, tabulated basis
 /// functions)
 template <typename T, int id_flux_order = 3>
-void equilibrate_flux_semiexplt(
-    const mesh::Geometry& geometry,
-    PatchFluxCstmNew<T, id_flux_order, false>& patch,
-    ProblemDataFluxCstm<T>& problem_data, KernelDataEqlb<T>& kernel_data)
+void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
+                                PatchFluxCstm<T, id_flux_order, false>& patch,
+                                ProblemDataFluxCstm<T>& problem_data,
+                                KernelDataEqlb<T>& kernel_data)
 {
   /* Extract data */
   // Spacial dimension
