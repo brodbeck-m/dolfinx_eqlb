@@ -149,7 +149,7 @@ void reconstruct_fluxes_patch(const fem::Form<T>& a, const fem::Form<T>& l_pen,
 /// @tparam id_flux_order The flux order (1->RT1, 2->RT2, 3->general)
 /// @param problem_data   The problem data
 /// @param fct_type       Lookup-table for facet-types
-template <typename T, int id_flux_order = 3>
+template <typename T, int id_flux_order>
 void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
 {
   assert(id_flux_order < 0);
@@ -194,9 +194,11 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
 
   /* Equilibration */
   // Initialise patch
-  PatchFluxCstm<T, id_flux_order> patch = PatchFluxCstm<T, id_flux_order>(
-      n_nodes, mesh, problem_data.facet_type(), problem_data.fspace_flux_hdiv(),
-      problem_data.fspace_flux_dg(), basix_element_rhscg);
+  PatchFluxCstm<T, id_flux_order, false> patch
+      = PatchFluxCstm<T, id_flux_order, false>(
+          n_nodes, mesh, problem_data.facet_type(),
+          problem_data.fspace_flux_hdiv(), problem_data.fspace_flux_dg(),
+          basix_element_rhscg);
 
   // Set quadrature rule
   const int quadrature_degree
@@ -325,7 +327,7 @@ void reconstruct_fluxes_cstm(
   else
   {
     // Perform equilibration
-    reconstruct_fluxes_patch<T>(problem_data);
+    reconstruct_fluxes_patch<T, 3>(problem_data);
   }
 }
 
