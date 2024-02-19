@@ -758,6 +758,9 @@ void PatchNew::initialize_patch(const int node_i)
   // Complete Definition of patch
   if (is_on_boundary())
   {
+    // Get local node ID on patch-central node
+    _inodes_local[_ncells] = node_local(_cells[_ncells], _nodei);
+
     // Get local facet IDs
     std::int8_t lfct_cell
         = get_fctid_local(_fcts[_ncells], _cell_to_fct->links(_cells[_ncells]));
@@ -770,6 +773,10 @@ void PatchNew::initialize_patch(const int node_i)
     // Set cell 0 and cell n+1
     _cells[0] = _cells[_ncells];
     _cells[_ncells + 1] = _cells[1];
+
+    // Set ID of patch-central node in cell 0 and cell n+1
+    _inodes_local[0] = _inodes_local[_ncells];
+    _inodes_local[_ncells + 1] = _inodes_local[1];
 
     // Set facet 0
     _fcts[0] = _fcts[_nfcts];
