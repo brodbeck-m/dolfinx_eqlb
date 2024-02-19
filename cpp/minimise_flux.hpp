@@ -341,9 +341,6 @@ void kernel_fluxmin(mdspan_t<double, 2> Te, KernelDataEqlb<T>& kernel_data,
   // Interpolated solution from step 1
   std::array<T, 2> sigtilde_q;
 
-  // // Number of non-zero DOFs on cell
-  // const int nidofs_per_cell = dofmap.extent(1) - 1;
-
   // Data mainpulation of shapfunction for d0
   std::int32_t ld0_Eam1 = asmbl_info(0, 0),
                ld0_Ea = asmbl_info(0, ndofs_flux_fct);
@@ -431,12 +428,11 @@ void kernel_fluxmin(mdspan_t<double, 2> Te, KernelDataEqlb<T>& kernel_data,
 /// @param L_patch          The patch load vector
 /// @param patch            The patch
 /// @param kernel_data      The kernel data
-/// @param dofmap_patch     The patch dofmap
 /// @param boundary_markers The boundary markers
 /// @param coefficients     Flux DOFs on cells
 /// @param storage_detJ     The Jacobi determinants of the patch cells
 /// @param storage_J        The Jacobi matrices of the patch cells
-/// @param storage_J        The invers Jacobi matrices of the patch cells
+/// @param storage_K        The invers Jacobi matrices of the patch cells
 /// @param requires_flux_bc Marker if flux BCs are required
 template <typename T, int id_flux_order = 3, bool asmbl_systmtrx = true>
 void assemble_fluxminimiser(

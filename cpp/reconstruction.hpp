@@ -194,11 +194,7 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
 
   /* Equilibration */
   // Initialise patch
-  PatchFluxCstm<T, id_flux_order> patch = PatchFluxCstm<T, id_flux_order>(
-      n_nodes, mesh, problem_data.facet_type(), problem_data.fspace_flux_hdiv(),
-      problem_data.fspace_flux_dg(), basix_element_rhscg);
-
-  PatchFluxCstmNew<T, id_flux_order, false> patch_test
+  PatchFluxCstmNew<T, id_flux_order, false> patch
       = PatchFluxCstmNew<T, id_flux_order, false>(
           n_nodes, mesh, problem_data.facet_type(),
           problem_data.fspace_flux_hdiv(), problem_data.fspace_flux_dg(),
@@ -221,11 +217,10 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
   {
     // Create Sub-DOFmap
     patch.create_subdofmap(i_node);
-    patch_test.create_subdofmap(i_node);
 
     // Calculate coefficients per patch
-    equilibrate_flux_semiexplt<T, id_flux_order>(
-        mesh->geometry(), patch, patch_test, problem_data, kernel_data);
+    equilibrate_flux_semiexplt<T, id_flux_order>(mesh->geometry(), patch,
+                                                 problem_data, kernel_data);
   }
 }
 
