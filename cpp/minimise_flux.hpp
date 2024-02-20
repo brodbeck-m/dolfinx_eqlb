@@ -64,6 +64,8 @@ mdspan_t<const double, 2> extract_mapping_data(const int cell_id,
 // ------------------------------------------------------------------------------
 
 // ------------------------------------------------------------------------------
+/* Routines for flux minimisation */
+
 enum class Kernel
 {
   UconstrFluxMini,
@@ -193,31 +195,52 @@ generate_minimisation_kernel(Kernel type, KernelDataEqlb<T>& kernel_data,
   }
 }
 
-// ------------------------------------------------------------------------------
-
-// ------------------------------------------------------------------------------
-
-/* Minimise fluxes without constraint */
-
 /// Initialise boundary markers for patch-wise H(div=0) space
-/// @param ndofs_hdivz_per_cell nDOFs in patch-wise H(div=0) space per cell
-std::vector<std::int8_t>
-initialise_boundary_markers(const int ndofs_hdivz_per_cell)
+/// @param type             The kernel type of the minimisation problem
+/// @param gdim             The geometric dimension
+/// @param nnodes_on_patch  Number of nodes on patch
+/// @param ndofs_flux_hdivz nDOFs patch-wise H(div=0) space
+/// @return                 Initialised vector for boundary markers
+std::vector<std::int8_t> initialise_boundary_markers(const Kernel type,
+                                                     const int gdim,
+                                                     const int nnodes_on_patch,
+                                                     const int ndofs_flux_hdivz)
 {
+  // Determine length of (mixed) fe-space
+  std::size_t size;
+
+  switch (type)
+  {
+  case Kernel::UconstrFluxMini:
+    size = ndofs_flux_hdivz;
+    break;
+  case Kernel::ConstrStressMini2D:
+    size = gdim * ndofs_flux_hdivz + nnodes_on_patch;
+    break;
+  case Kernel::ConstrStressMini3D:
+    size = gdim * (ndofs_flux_hdivz + nnodes_on_patch);
+    break;
+  default:
+    throw std::invalid_argument("Unrecognized kernel");
+  }
+
   // Create vector
-  std::vector<std::int8_t> boundary_markers(ndofs_hdivz_per_cell, false);
+  std::vector<std::int8_t> boundary_markers(size, false);
 
   return std::move(boundary_markers);
 }
 
 /// Set boundary markers for patch-wise H(div=0) space
 /// @param boundary_markers   The boundary markers
+/// @param type_kernel        The kernel type of the minimisation problem
 /// @param type_patch         The patch type
+/// @param gdim               The geometric dimension
 /// @param ncells             Number of cells on patch
 /// @param ndofs_flux_fct     nDOFs flux-space space per facet
 /// @param reversion_required Patch requires reversion
 void set_boundary_markers(std::span<std::int8_t> boundary_markers,
-                          const PatchType type_patch, const int ncells,
+                          const Kernel type_kernel, const PatchType type_patch,
+                          const int gdim, const int ncells,
                           const int ndofs_flux_fct,
                           bool reversion_required = false)
 {
@@ -228,30 +251,45 @@ void set_boundary_markers(std::span<std::int8_t> boundary_markers,
   if ((type_patch != PatchType::internal)
       && (type_patch != PatchType::bound_essnt_primal))
   {
-    // Set boundary markers
-    boundary_markers[0] = true;
+    // Check if mixed space required
+    std::size_t bs = (type_kernel == Kernel::UconstrFluxMini) ? 1 : gdim;
 
-    for (std::size_t i = 1; i < ndofs_flux_fct; ++i)
+    // Auxiliaries
+    const int offs_En_base = bs * (ncells * (ndofs_flux_fct - 1));
+
+    // Set boundary markers
+    for (std::size_t i = 0; i < bs; ++i)
     {
-      if (type_patch == PatchType::bound_essnt_dual)
+      // Set boundary markers for d0
+      boundary_markers[i] = true;
+
+      for (std::size_t j = 1; j < ndofs_flux_fct; ++j)
       {
-        // Mark DOFs on facet E0 and En
-        boundary_markers[i] = true;
-        boundary_markers[ncells * (ndofs_flux_fct - 1) + i] = true;
-      }
-      else
-      {
-        if (reversion_required)
+        if (type_patch == PatchType::bound_essnt_dual)
         {
-          // Mark DOFs in facet En
-          // (Mixed patch with reversed order)
-          boundary_markers[ncells * (ndofs_flux_fct - 1) + i] = true;
+          // Mark DOFs on facet E0
+          int offs_E0 = i + bs * j;
+          boundary_markers[offs_E0] = true;
+
+          // Mark DOFs on facet En
+          int offs_En = offs_En_base + offs_E0;
+          boundary_markers[offs_En_base + offs_E0] = true;
         }
         else
         {
-          // Mark DOFs in facet E0
-          // (Mixed patch with original order)
-          boundary_markers[i] = true;
+          if (reversion_required)
+          {
+            // Mark DOFs in facet En
+            // (Mixed patch with reversed order)
+            int offs_En = offs_En_base + i + bs * j;
+            boundary_markers[offs_En] = true;
+          }
+          else
+          {
+            // Mark DOFs in facet E0
+            // (Mixed patch with original order)
+            boundary_markers[i + bs * j] = true;
+          }
         }
       }
     }

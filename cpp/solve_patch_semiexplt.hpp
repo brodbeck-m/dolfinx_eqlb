@@ -219,8 +219,10 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
   Eigen::LLT<Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>> solver;
 
   // Boundary markers
-  std::vector<std::int8_t> boundary_markers
-      = initialise_boundary_markers(ndofs_hdivz);
+  // std::vector<std::int8_t> boundary_markers = initialise_boundary_markers(
+  //     Kernel::UconstrFluxMini, 2, nfcts + 1, ndofs_hdivz);
+  std::vector<std::int8_t> boundary_markers = initialise_boundary_markers(
+      Kernel::UconstrFluxMini, 2, nfcts + 1, ndofs_hdivz);
 
   /* Pre-evaluate repeatedly used cell data */
   // Jacobi transformation and interpolation matrix
@@ -811,8 +813,8 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
 
     /* Step 2: Minimse sigma_delta */
     // Set boundary markers
-    set_boundary_markers(boundary_markers, type_patch, ncells, ndofs_flux_fct,
-                         reversion_required);
+    set_boundary_markers(boundary_markers, Kernel::UconstrFluxMini, type_patch,
+                         2, ncells, ndofs_flux_fct, reversion_required);
 
     // Check if assembly of entire system is required
     bool assemble_entire_system = false;
