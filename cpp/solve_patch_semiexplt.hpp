@@ -94,7 +94,9 @@ template <typename T, int id_flux_order = 3>
 void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
                                 PatchFluxCstm<T, id_flux_order, false>& patch,
                                 ProblemDataFluxCstm<T>& problem_data,
-                                KernelDataEqlb<T>& kernel_data)
+                                KernelDataEqlb<T>& kernel_data,
+                                kernel_fn<T, true>& minkernel,
+                                kernel_fn<T, false>& minkernel_rhs)
 {
   /* Extract data */
   // Spacial dimension
@@ -840,7 +842,7 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
 
       // Assemble system
       assemble_fluxminimiser<T, id_flux_order, true>(
-          A_patch, L_patch, patch, kernel_data, boundary_markers,
+          minkernel, A_patch, L_patch, patch, boundary_markers,
           dcoefficients_flux, storage_detJ, storage_J, storage_K,
           patch.requires_flux_bcs(i_rhs));
 
@@ -857,7 +859,7 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
 
       // Assemble linear form
       assemble_fluxminimiser<T, id_flux_order, true>(
-          A_patch, L_patch, patch, kernel_data, boundary_markers,
+          minkernel_rhs, A_patch, L_patch, patch, boundary_markers,
           dcoefficients_flux, storage_detJ, storage_J, storage_K,
           patch.requires_flux_bcs(i_rhs));
     }

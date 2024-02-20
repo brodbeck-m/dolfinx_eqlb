@@ -64,6 +64,138 @@ mdspan_t<const double, 2> extract_mapping_data(const int cell_id,
 // ------------------------------------------------------------------------------
 
 // ------------------------------------------------------------------------------
+enum class Kernel
+{
+  UconstrFluxMini,
+  ConstrStressMini2D,
+  ConstrStressMini3D,
+};
+
+template <typename T, bool asmbl_systmtrx = true>
+kernel_fn<T, asmbl_systmtrx>
+generate_minimisation_kernel(Kernel type, KernelDataEqlb<T>& kernel_data,
+                             const int ndofs_per_cell, const int ndofs_flux_fct)
+{
+  /// Kernel for unconstrained flux minimisation
+  ///
+  /// Calculates system-matrix and load vector for unconstrained flux
+  /// minimisation on patch-wise divergence free H(div) space.
+  ///
+  /// @tparam T               The scalar type
+  /// @tparam asmbl_systmtrx  Flag if entire tangent or only load vector is
+  ///                         assembled
+  /// @param Te           Storage for tangent arrays
+  /// @param coefficients The Coefficients
+  /// @param asmbl_info   Information to create the patch-wise H(div=0) space
+  /// @param detJ         The Jacobi determinant
+  /// @param J            The Jacobi matrix
+  kernel_fn<T, asmbl_systmtrx> unconstrained_flux_minimisation
+      = [kernel_data, ndofs_per_cell, ndofs_flux_fct](
+            mdspan_t<double, 2> Te, std::span<const T> coefficients,
+            smdspan_t<const std::int32_t, 2> asmbl_info, const double detJ,
+            mdspan_t<const double, 2> J) mutable
+  {
+    const int index_load = Te.extent(0) - 1;
+
+    /* Extract shape functions and quadrature data */
+    smdspan_t<double, 3> phi = kernel_data.shapefunctions_flux(J, detJ);
+
+    std::span<const double> quadrature_weights
+        = kernel_data.quadrature_weights(0);
+
+    /* Initialisation */
+    // Interpolated solution from step 1
+    std::array<T, 2> sigtilde_q;
+
+    // Data mainpulation of shapfunction for d0
+    std::int32_t ld0_Eam1 = asmbl_info(0, 0),
+                 ld0_Ea = asmbl_info(0, ndofs_flux_fct);
+    std::int32_t p_Eam1 = asmbl_info(3, 0),
+                 p_Ea = asmbl_info(3, ndofs_flux_fct);
+
+    /* Assemble tangents */
+    for (std::size_t iq = 0; iq < quadrature_weights.size(); ++iq)
+    {
+      // Interpolate sigma_tilde
+      sigtilde_q[0] = 0;
+      sigtilde_q[1] = 0;
+
+      // Interpolation
+      for (std::size_t i = 0; i < phi.extent(1); ++i)
+      {
+        sigtilde_q[0] += coefficients[i] * phi(iq, i, 0);
+        sigtilde_q[1] += coefficients[i] * phi(iq, i, 1);
+      }
+
+      // Manipulate shape function for coefficient d_0
+      phi(iq, ld0_Ea, 0)
+          = p_Ea * (p_Eam1 * phi(iq, ld0_Eam1, 0) + p_Ea * phi(iq, ld0_Ea, 0));
+      phi(iq, ld0_Ea, 1)
+          = p_Ea * (p_Eam1 * phi(iq, ld0_Eam1, 1) + p_Ea * phi(iq, ld0_Ea, 1));
+
+      // Assemble linear- and bilinear form
+      for (std::size_t i = 0; i < ndofs_per_cell; ++i)
+      {
+        // Auxilary variables
+        std::size_t ip1 = i + 1;
+        double alpha
+            = asmbl_info(3, ip1) * quadrature_weights[iq] * std::fabs(detJ);
+
+        // Linear form
+        Te(index_load, i) -= (phi(iq, asmbl_info(0, ip1), 0) * sigtilde_q[0]
+                              + phi(iq, asmbl_info(0, ip1), 1) * sigtilde_q[1])
+                             * alpha;
+
+        if constexpr (asmbl_systmtrx)
+        {
+          for (std::size_t j = i; j < ndofs_per_cell; ++j)
+          {
+            // Auxiliary variables
+            std::size_t jp1 = j + 1;
+            double sp = phi(iq, asmbl_info(0, ip1), 0)
+                            * phi(iq, asmbl_info(0, jp1), 0)
+                        + phi(iq, asmbl_info(0, ip1), 1)
+                              * phi(iq, asmbl_info(0, jp1), 1);
+
+            // Bilinear form
+            Te(i, j) += sp * asmbl_info(3, jp1) * alpha;
+          }
+        }
+      }
+    }
+
+    // Set symmetric contributions of element mass-matrix
+    if constexpr (asmbl_systmtrx)
+    {
+      if (ndofs_per_cell > 1)
+      {
+        for (std::size_t i = 1; i < ndofs_per_cell; ++i)
+        {
+          for (std::size_t j = 0; j < i; ++j)
+          {
+            Te(i, j) = Te(j, i);
+          }
+        }
+      }
+    }
+  };
+
+  switch (type)
+  {
+  case Kernel::UconstrFluxMini:
+    return unconstrained_flux_minimisation;
+  case Kernel::ConstrStressMini2D:
+    throw std::runtime_error("Not implemented yet!");
+  case Kernel::ConstrStressMini3D:
+    throw std::runtime_error("Not implemented yet!");
+  default:
+    throw std::invalid_argument("Unrecognized kernel");
+  }
+}
+
+// ------------------------------------------------------------------------------
+
+// ------------------------------------------------------------------------------
 
 /* Minimise fluxes without constraint */
 
@@ -126,108 +258,6 @@ void set_boundary_markers(std::span<std::int8_t> boundary_markers,
   }
 }
 
-/// Kernel for unconstrained flux minimisation
-///
-/// Calculates system-matrix and load vector for unconstrained flux minimisation
-/// on patch-wise divergence free H(div) space.
-///
-/// @tparam T               The scalar type
-/// @tparam id_flux_order   The flux order (1->RT1, 2->RT2, 3->general)
-/// @tparam asmbl_systmtrx  Flag if entire tangent or only load vector is
-///                         assembled
-/// @param Te           Storage for tangent arrays
-/// @param kernel_data  The KernelData
-/// @param coefficients The Coefficients
-/// @param dofmap       The DOFmap of the patch-wise H(div=0) space
-/// @param detJ         The Jacobi determinant
-/// @param J            The Jacobi matrix
-template <typename T, int id_flux_order = 3, bool asmbl_systmtrx = true>
-void kernel_fluxmin(mdspan_t<double, 2> Te, KernelDataEqlb<T>& kernel_data,
-                    std::span<const T> coefficients,
-                    smdspan_t<const std::int32_t, 2> asmbl_info,
-                    const int ndofs_per_cell, const int ndofs_flux_fct,
-                    const double detJ, mdspan_t<const double, 2> J)
-{
-  const int index_load = Te.extent(0) - 1;
-
-  /* Extract shape functions and quadrature data */
-  smdspan_t<double, 3> phi = kernel_data.shapefunctions_flux(J, detJ);
-
-  std::span<const double> quadrature_weights
-      = kernel_data.quadrature_weights(0);
-
-  /* Initialisation */
-  // Interpolated solution from step 1
-  std::array<T, 2> sigtilde_q;
-
-  // Data mainpulation of shapfunction for d0
-  std::int32_t ld0_Eam1 = asmbl_info(0, 0),
-               ld0_Ea = asmbl_info(0, ndofs_flux_fct);
-  std::int32_t p_Eam1 = asmbl_info(3, 0), p_Ea = asmbl_info(3, ndofs_flux_fct);
-
-  /* Assemble tangents */
-  for (std::size_t iq = 0; iq < quadrature_weights.size(); ++iq)
-  {
-    // Interpolate sigma_tilde
-    sigtilde_q[0] = 0;
-    sigtilde_q[1] = 0;
-
-    // Interpolation
-    for (std::size_t i = 0; i < phi.extent(1); ++i)
-    {
-      sigtilde_q[0] += coefficients[i] * phi(iq, i, 0);
-      sigtilde_q[1] += coefficients[i] * phi(iq, i, 1);
-    }
-
-    // Manipulate shape function for coefficient d_0
-    phi(iq, ld0_Ea, 0)
-        = p_Ea * (p_Eam1 * phi(iq, ld0_Eam1, 0) + p_Ea * phi(iq, ld0_Ea, 0));
-    phi(iq, ld0_Ea, 1)
-        = p_Ea * (p_Eam1 * phi(iq, ld0_Eam1, 1) + p_Ea * phi(iq, ld0_Ea, 1));
-
-    // Assemble linear- and bilinear form
-    for (std::size_t i = 0; i < ndofs_per_cell; ++i)
-    {
-      // Auxilary variables
-      std::size_t ip1 = i + 1;
-      double alpha
-          = asmbl_info(3, ip1) * quadrature_weights[iq] * std::fabs(detJ);
-
-      // Linear form
-      Te(index_load, i) -= (phi(iq, asmbl_info(0, ip1), 0) * sigtilde_q[0]
-                            + phi(iq, asmbl_info(0, ip1), 1) * sigtilde_q[1])
-                           * alpha;
-
-      if constexpr (asmbl_systmtrx)
-      {
-        for (std::size_t j = i; j < ndofs_per_cell; ++j)
-        {
-          // Auxiliary variables
-          std::size_t jp1 = j + 1;
-          double sp
-              = phi(iq, asmbl_info(0, ip1), 0) * phi(iq, asmbl_info(0, jp1), 0)
-                + phi(iq, asmbl_info(0, ip1), 1)
-                      * phi(iq, asmbl_info(0, jp1), 1);
-
-          // Bilinear form
-          Te(i, j) += sp * asmbl_info(3, jp1) * alpha;
-        }
-      }
-    }
-  }
-
-  // Set symmetric contributions of element mass-matrix
-  if constexpr (id_flux_order > 1)
-  {
-    for (std::size_t i = 1; i < ndofs_per_cell; ++i)
-    {
-      for (std::size_t j = 0; j < i; ++j)
-      {
-        Te(i, j) = Te(j, i);
-      }
-    }
-  }
-}
 // ------------------------------------------------------------------------------
 
 /// Assemble EQS for flux minimisation
@@ -246,7 +276,6 @@ void kernel_fluxmin(mdspan_t<double, 2> Te, KernelDataEqlb<T>& kernel_data,
 /// @param A_patch          The patch system matrix (mass matrix)
 /// @param L_patch          The patch load vector
 /// @param patch            The patch
-/// @param kernel_data      The kernel data
 /// @param boundary_markers The boundary markers
 /// @param coefficients     Flux DOFs on cells
 /// @param storage_detJ     The Jacobi determinants of the patch cells
@@ -255,10 +284,10 @@ void kernel_fluxmin(mdspan_t<double, 2> Te, KernelDataEqlb<T>& kernel_data,
 /// @param requires_flux_bc Marker if flux BCs are required
 template <typename T, int id_flux_order = 3, bool asmbl_systmtrx = true>
 void assemble_fluxminimiser(
+    kernel_fn<T, asmbl_systmtrx>& minimisation_kernel,
     Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>& A_patch,
     Eigen::Matrix<T, Eigen::Dynamic, 1>& L_patch,
     PatchFluxCstm<T, id_flux_order, false>& patch,
-    KernelDataEqlb<T>& kernel_data,
     std::span<const std::int8_t> boundary_markers,
     std::span<const T> coefficients, std::span<const double> storage_detJ,
     std::span<const double> storage_J, std::span<const double> storage_K,
@@ -305,9 +334,7 @@ void assemble_fluxminimiser(
 
     // Evaluate linear- and bilinear form
     std::fill(dTe.begin(), dTe.end(), 0);
-    kernel_fluxmin<T, id_flux_order, asmbl_systmtrx>(
-        Te, kernel_data, coefficients_elmt, asmbl_info_cell, ndofs_nz,
-        ndofs_per_fct, detJ, J);
+    minimisation_kernel(Te, coefficients_elmt, asmbl_info_cell, detJ, J);
 
     // Assemble linear- and bilinear form
     if constexpr (id_flux_order == 1)

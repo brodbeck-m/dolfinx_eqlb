@@ -7,6 +7,7 @@
 #include "ProblemDataFluxCstm.hpp"
 #include "ProblemDataFluxEV.hpp"
 #include "StorageStiffness.hpp"
+#include "minimise_flux.hpp"
 #include "solve_patch_constrmin.hpp"
 #include "solve_patch_semiexplt.hpp"
 #include "utils.hpp"
@@ -212,6 +213,18 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
       mesh, std::make_shared<QuadratureRule>(quadrature_rule),
       basix_element_fluxhdiv, basix_element_rhs, basix_element_hat);
 
+  // Set minimisation kernels
+  const int ndofs_cell_hdivzero
+      = 2 * patch.ndofs_flux_fct() + patch.ndofs_flux_cell_add() - 1;
+
+  kernel_fn<T, true> minkernel = generate_minimisation_kernel<T, true>(
+      Kernel::UconstrFluxMini, kernel_data, ndofs_cell_hdivzero,
+      patch.ndofs_flux_fct());
+
+  kernel_fn<T, false> minkernel_rhs = generate_minimisation_kernel<T, false>(
+      Kernel::UconstrFluxMini, kernel_data, ndofs_cell_hdivzero,
+      patch.ndofs_flux_fct());
+
   // Execute equilibration
   for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
   {
@@ -220,7 +233,8 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
 
     // Calculate coefficients per patch
     equilibrate_flux_semiexplt<T, id_flux_order>(mesh->geometry(), patch,
-                                                 problem_data, kernel_data);
+                                                 problem_data, kernel_data,
+                                                 minkernel, minkernel_rhs);
   }
 }
 
