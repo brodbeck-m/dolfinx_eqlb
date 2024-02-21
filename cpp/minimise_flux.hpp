@@ -434,6 +434,7 @@ generate_minimisation_kernel(Kernel type, KernelDataEqlb<T>& kernel_data,
 /// @param L_patch          The patch load vector
 /// @param patch            The patch
 /// @param boundary_markers The boundary markers
+/// @param asmbl_info       Informations to create the patch-wise H(div=0) space
 /// @param coefficients     Flux DOFs on cells
 /// @param storage_detJ     The Jacobi determinants of the patch cells
 /// @param storage_J        The Jacobi matrices of the patch cells
@@ -446,9 +447,9 @@ void assemble_fluxminimiser(
     Eigen::Matrix<T, Eigen::Dynamic, 1>& L_patch,
     PatchFluxCstm<T, id_flux_order, false>& patch,
     std::span<const std::int8_t> boundary_markers,
-    std::span<const T> coefficients, std::span<const double> storage_detJ,
-    std::span<const double> storage_J, std::span<const double> storage_K,
-    const bool requires_flux_bc)
+    mdspan_t<const std::int32_t, 3> asmbl_info, std::span<const T> coefficients,
+    std::span<const double> storage_detJ, std::span<const double> storage_J,
+    std::span<const double> storage_K, const bool requires_flux_bc)
 {
   assert(id_flux_order < 0);
 
@@ -460,10 +461,6 @@ void assemble_fluxminimiser(
   const int ndofs = patch.ndofs_flux();
   const int ndofs_per_fct = patch.ndofs_flux_fct();
   const int ndofs_cell_add = patch.ndofs_flux_cell_add();
-
-  // DOFmap minimisation problem on patch
-  mdspan_t<const std::int32_t, 3> asmbl_info
-      = patch.assembly_info_minimisation();
 
   /* Initialisation */
   // Element tangents

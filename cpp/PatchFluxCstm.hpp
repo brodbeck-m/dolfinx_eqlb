@@ -554,9 +554,9 @@ public:
   /// DOF ordering per cell: [dofs_TaEam1, dofs_TaEa, dofs_Ta-add, dofs_Ta-div]
   ///
   /// @return List DOFs
-  mdspan_t<const int32_t, 3> assembly_info_minimisation() const
+  mdspan_t<const std::int32_t, 3> assembly_info_minimisation() const
   {
-    return mdspan_t<const int32_t, 3>(_ddofmap.data(), _dofmap_shape);
+    return mdspan_t<const std::int32_t, 3>(_ddofmap.data(), _dofmap_shape);
   }
 
 protected:

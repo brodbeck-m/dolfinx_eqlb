@@ -191,7 +191,22 @@ public:
   /// Kernel data basic constructor
   ///
   /// Generates data required for isoparametric mapping between reference and
-  /// actual element and tabulates flux element.
+  /// actual element and tabulates elements for flux and hat-function.
+  ///
+  /// @param[in] mesh                 The mesh
+  /// @param[in] quadrature_rule_cell The quadrature rule on the cell
+  /// @param[in] basix_element_fluxpw The basix-element for the H(div) flux
+  /// @param[in] basix_element_hat    The basix-element for the hat-function
+  KernelDataEqlb(std::shared_ptr<const mesh::Mesh> mesh,
+                 std::shared_ptr<const QuadratureRule> quadrature_rule_cell,
+                 const basix::FiniteElement& basix_element_fluxpw,
+                 const basix::FiniteElement& basix_element_hat);
+
+  /// Kernel data constructor
+  ///
+  /// Generates data required for isoparametric mapping between reference and
+  /// actual element and tabulates elements for flux, projected RHS and
+  /// hat-function.
   ///
   /// @param[in] mesh                 The mesh
   /// @param[in] quadrature_rule_cell The quadrature rule on the cell

@@ -190,7 +190,6 @@ KernelDataEqlb<T>::KernelDataEqlb(
     std::shared_ptr<const mesh::Mesh> mesh,
     std::shared_ptr<const QuadratureRule> quadrature_rule_cell,
     const basix::FiniteElement& basix_element_fluxpw,
-    const basix::FiniteElement& basix_element_rhs,
     const basix::FiniteElement& basix_element_hat)
     : KernelData<T>(mesh, {quadrature_rule_cell})
 {
@@ -208,10 +207,6 @@ KernelDataEqlb<T>::KernelDataEqlb(
   // Tabulate pice-wise H(div) flux
   tabulate_flux_basis(basix_element_fluxpw);
 
-  // Tabulate right-hand side
-  // (Assumption: Same order for projected flux and RHS)
-  tabulate_rhs_basis(basix_element_rhs);
-
   // Tabulate hat-function
   tabulate_hat_basis(basix_element_hat);
 
@@ -222,6 +217,21 @@ KernelDataEqlb<T>::KernelDataEqlb(
   using K_t = mdspan_t<const double, 2>;
 
   _pull_back_fluxspace = basix_element_fluxpw.map_fn<V_t, v_t, K_t, J_t>();
+}
+
+template <typename T>
+KernelDataEqlb<T>::KernelDataEqlb(
+    std::shared_ptr<const mesh::Mesh> mesh,
+    std::shared_ptr<const QuadratureRule> quadrature_rule_cell,
+    const basix::FiniteElement& basix_element_fluxpw,
+    const basix::FiniteElement& basix_element_rhs,
+    const basix::FiniteElement& basix_element_hat)
+    : KernelDataEqlb<T>(mesh, quadrature_rule_cell, basix_element_fluxpw,
+                        basix_element_hat)
+{
+  // Tabulate right-hand side
+  // (Assumption: Same order for projected flux and RHS)
+  tabulate_rhs_basis(basix_element_rhs);
 }
 
 /* Tabulation of shape-functions */

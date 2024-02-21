@@ -103,6 +103,20 @@ void declare_fluxeqlb(py::module& m)
 }
 
 template <typename T>
+void declare_stresseqlb(py::module& m)
+{
+  m.def(
+      "weak_symmetry_stress",
+      [](std::vector<std::shared_ptr<dolfinx::fem::Function<T>>>& flux_hdiv,
+         std::shared_ptr<BoundaryData<T>> boundary_data)
+      { reconstruct_stresses<T>(flux_hdiv, boundary_data); },
+      py::arg("flux_hdiv"), py::arg("boundary_data"),
+      "Incorporation of a wak symmetry condition into equilibrated stresses."
+      "The rows of the stress-tensor have to fullfil divergence, jump and "
+      "boundary conditions.");
+}
+
+template <typename T>
 void declare_bcs(py::module& m)
 {
   /* A single boundary-condition for the flux */
@@ -187,5 +201,8 @@ PYBIND11_MODULE(cpp, m)
 
   // Equilibration of vector-valued quantity
   declare_fluxeqlb<double>(m);
+
+  // Incorporation of weak symmetry conditions into equilibrated stress
+  declare_stresseqlb<double>(m);
 }
 } // namespace

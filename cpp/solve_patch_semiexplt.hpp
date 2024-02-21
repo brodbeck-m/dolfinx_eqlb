@@ -845,7 +845,7 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
 
       // Assemble system
       assemble_fluxminimiser<T, id_flux_order, true>(
-          minkernel, A_patch, L_patch, patch, boundary_markers,
+          minkernel, A_patch, L_patch, patch, boundary_markers, dofmap_flux,
           dcoefficients_flux, storage_detJ, storage_J, storage_K,
           patch.requires_flux_bcs(i_rhs));
 
@@ -862,7 +862,7 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
 
       // Assemble linear form
       assemble_fluxminimiser<T, id_flux_order, true>(
-          minkernel_rhs, A_patch, L_patch, patch, boundary_markers,
+          minkernel_rhs, A_patch, L_patch, patch, boundary_markers, dofmap_flux,
           dcoefficients_flux, storage_detJ, storage_J, storage_K,
           patch.requires_flux_bcs(i_rhs));
     }

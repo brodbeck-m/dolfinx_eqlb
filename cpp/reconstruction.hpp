@@ -238,6 +238,80 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
   }
 }
 
+template <typename T, int id_flux_order>
+void apply_weak_symmetry_stress(ProblemDataStress<T>& problem_data)
+{
+  /* Geometry */
+  // Extract mesh
+  std::shared_ptr<const mesh::Mesh> mesh = problem_data.mesh();
+  const fem::CoordinateElement& cmap = mesh->geometry().cmap();
+
+  // Spacial dimension
+  const int dim = mesh->geometry().dim();
+
+  // Number of nodes on processor
+  int n_nodes = mesh->topology().index_map(0)->size_local();
+
+  // Number of elements on processor
+  int n_cells = mesh->topology().index_map(dim)->size_local();
+
+  /* Basix elements */
+  // Basix element of pice-wise H(div) flux
+  const basix::FiniteElement& basix_element_fluxhdiv
+      = problem_data.fspace_flux_hdiv()->element()->basix_element();
+
+  const int degree_flux_hdiv = basix_element_fluxhdiv.degree();
+
+  // Basix element of an order 1 Lagrange space
+  basix::FiniteElement basix_element_hat = basix::element::create_lagrange(
+      basix_element_fluxhdiv.cell_type(), 1,
+      basix::element::lagrange_variant::equispaced, false);
+
+  /* Equilibration */
+  // Initialise patch
+  PatchCstm<T, id_flux_order, true> patch = PatchCstm<T, id_flux_order, true>(
+      n_nodes, mesh, problem_data.facet_type(),
+      problem_data.fspace_flux_hdiv());
+
+  // Set quadrature rule
+  const int quadrature_degree
+      = (degree_flux_hdiv == 1) ? 2 : 2 * degree_flux_hdiv + 1;
+
+  QuadratureRule quadrature_rule
+      = QuadratureRule(mesh->topology().cell_type(), quadrature_degree, dim);
+
+  // Initialize KernelData
+  KernelDataEqlb<T> kernel_data = KernelDataEqlb<T>(
+      mesh, std::make_shared<QuadratureRule>(quadrature_rule),
+      basix_element_fluxhdiv, basix_element_hat);
+
+  // Set minimisation kernels
+  const int ndofs_cell_hdivzero
+      = 2 * patch.ndofs_flux_fct() + patch.ndofs_flux_cell_add() - 1;
+
+  kernel_fn<T, true> minkernel;
+
+  // if (dim == 2)
+  // {
+  //   minkernel = generate_minimisation_kernel<T, true>(
+  //       Kernel::ConstrStressMini2D, kernel_data, ndofs_cell_hdivzero,
+  //       patch.ndofs_flux_fct());
+  // }
+  // else
+  // {
+  //   minkernel = generate_minimisation_kernel<T, true>(
+  //       Kernel::ConstrStressMini3D, kernel_data, ndofs_cell_hdivzero,
+  //       patch.ndofs_flux_fct());
+  // }
+
+  // Execute equilibration
+  for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
+  {
+    // Create Sub-DOFmap
+    patch.create_subdofmap(i_node);
+  }
+}
+
 /// Execute flux calculation based on H(div) conforming equilibration
 ///
 /// Equilibration based on local minimization problems. Weak forms
@@ -323,7 +397,7 @@ void reconstruct_fluxes_cstm(
         "Equilibration: Degrees of projected flux and RHS have to match");
   }
 
-  /* Initialize essential boundary conditions for reconstructed flux */
+  /* Set problem data */
   ProblemDataFluxCstm<T> problem_data
       = ProblemDataFluxCstm<T>(flux_hdiv, flux_dg, rhs_dg, boundary_data);
 
@@ -342,6 +416,48 @@ void reconstruct_fluxes_cstm(
   {
     // Perform equilibration
     reconstruct_fluxes_patch<T, 3>(problem_data);
+  }
+}
+
+/// Execute flux calculation based on H(div) conforming equilibration
+///
+/// Equilibration based on semi-explicit formulas and small, unconstrained
+/// minimisation problems.
+///
+/// @param flux_hdiv           Function that holds the reconstructed flux
+/// @param flux_dg             Function that holds the projected primal flux
+/// @param rhs_dg              Function that holds the projected rhs
+/// @param fct_esntbound_prime Facets of essential BCs of primal problem
+/// @param fct_esntbound_flux  Facets of essential BCs on flux field
+/// @param bcs_flux            Essential boundary conditions for the flux
+template <typename T>
+void reconstruct_stresses(
+    std::vector<std::shared_ptr<fem::Function<T>>>& flux_hdiv,
+    std::shared_ptr<BoundaryData<T>> boundary_data)
+{
+  // Order of the flux space
+  const int order_flux
+      = flux_hdiv[0]->function_space()->element()->basix_element().degree();
+
+  /* Set problem data */
+  ProblemDataStress<T> problem_data
+      = ProblemDataStress<T>(flux_hdiv, boundary_data);
+
+  /* Call equilibration */
+  if (order_flux == 1)
+  {
+    // Perform equilibration
+    apply_weak_symmetry_stress<T, 1>(problem_data);
+  }
+  else if (order_flux == 2)
+  {
+    // Perform equilibration
+    apply_weak_symmetry_stress<T, 2>(problem_data);
+  }
+  else
+  {
+    // Perform equilibration
+    apply_weak_symmetry_stress<T, 3>(problem_data);
   }
 }
 

@@ -428,6 +428,10 @@ public:
     }
   }
 
+  /// Return spacial dimension
+  /// @return The spacial dimension
+  int dim() const { return _dim; }
+
   /// Return number of facets per cell
   /// @return Number of facets per cell
   int fcts_per_cell() const { return _fct_per_cell; }
