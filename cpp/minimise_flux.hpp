@@ -73,6 +73,224 @@ enum class Kernel
   ConstrStressMini3D,
 };
 
+std::size_t dimension_minimisation_space(const Kernel type, const int gdim,
+                                         const int nnodes_on_patch,
+                                         const int ndofs_flux_hdivz)
+{
+  switch (type)
+  {
+  case Kernel::UconstrFluxMini:
+    return ndofs_flux_hdivz;
+    break;
+  case Kernel::ConstrStressMini2D:
+    return gdim * ndofs_flux_hdivz + nnodes_on_patch;
+    break;
+  case Kernel::ConstrStressMini3D:
+    return gdim * (ndofs_flux_hdivz + nnodes_on_patch);
+    break;
+  default:
+    throw std::invalid_argument("Unrecognized kernel");
+  }
+}
+
+/// Create mixed-space DOFmap
+///
+/// Patch-wise divergence free H(div) space requires special DOFmap and
+/// prefacers during assembly. Following [1, Lemma 12], the DOFmap is
+/// created based on the following patch-wise ordering:
+///
+/// {d0}_i, {{d^l_E0}, ..., {d^l_En}}_i, {d^r_T1}_i, ..., {d^r_Tn}_i, {d_c}_j
+///
+/// The indexes i resp. j thereby denotes the block.size of flux resp.
+/// constraints. Cell wise structure of the DOFmap:
+///
+/// [{dofs_TaEam1}_i, {dofs_TaEa}_i, {dofs_Ta-add}_i, {dofs_Ta-c}_j]
+///
+/// [1] Bertrand, F.; Carstensen, C.; Gräßle, B. & Tran, N. T.:
+///     Stabilization-free HHO a posteriori error control, 2022
+///
+/// @tparam T               The scalar type
+/// @tparam id_flux_order   The flux order (1->RT1, 2->RT2, 3->general)
+/// @param patch            The patch
+/// @param ndofs_flux_hdivz nDOF patch-wise H(div=0) space
+template <typename T, int id_flux_order>
+std::vector<std::int32_t>
+set_flux_dofmap(PatchFluxCstm<T, id_flux_order, true>& patch,
+                const int ndofs_flux_hdivz)
+{
+  /* Extract data */
+  // Te spacial dimension
+  const int gdim = patch.dim();
+
+  // Number of facets per cell
+  const int fcts_per_cell = patch.fcts_per_cell();
+
+  // Nodes on cell
+  const int nnodes_per_cell = fcts_per_cell;
+
+  // Number of cells on patch
+  const int ncells = patch.ncells();
+
+  // DOF counters
+  const int ndofs_flux_fct = patch.ndofs_flux_fct();
+
+  // Assembly information for non-mixed space
+  mdspan_t<const std::int32_t, 3> asmbl_info_base
+      = patch.assembly_info_minimisation();
+
+  /* Initialisation */
+  // Number of (mixed) DOFs per cell
+  const int bsize_per_cell = gdim * ndofs_flux_fct;
+  const int bsize_flux_per_cell = fcts_per_cell;
+  const int bsize_constr_per_cell = bsize_flux_per_cell + bsize_constr_per_cell;
+
+  const int size_per_cell = gdim * bsize_flux_per_cell;
+  const int size_flux_per_cell
+      = (gdim == 2) ? bsize_constr_per_cell : bsize_flux_per_cell * gdim;
+  const int size_constr_per_cell = size_flux_per_cell + size_constr_per_cell;
+
+  // Storage for assembly information
+  std::vector<std::int32_t> dasmbl_info(
+      4 * asmbl_info_base.extent(1) * size_per_cell, 0);
+
+  // Size of new mdspan
+  std::array<std::size_t, 3> shape
+      = {4, asmbl_info_base.extent(1), size_per_cell};
+
+  /* Recreate assembly-informations */
+  mdspan_t<std::int32_t, 3> asmbl_info(dasmbl_info.data(), shape);
+
+  const std::size_t lbound_a = (patch.is_internal()) ? 0 : 1;
+  const std::size_t ubound_a = (patch.is_internal()) ? ncells + 2 : ncells + 1;
+  const std::size_t ubound_j
+      = (gdim == 2) ? bsize_flux_per_cell : bsize_per_cell;
+
+  for (std::size_t a = lbound_a; a < ubound_a; ++a)
+  {
+    for (std::size_t i = 0; i < gdim; ++i)
+    {
+      for (std::size_t j = 0; j < ubound_j; ++j)
+      {
+        int offs = i + gdim * j;
+
+        asmbl_info(0, a, offs) = asmbl_info_base(0, a, j);
+        asmbl_info(1, a, offs) = asmbl_info_base(1, a, j);
+        asmbl_info(3, a, offs) = asmbl_info_base(3, a, j);
+
+        // Set new patch-wise DOF
+        asmbl_info(2, a, offs) = gdim * asmbl_info_base(1, a, j) + i;
+      }
+    }
+
+    // Extra handling for constraint DOFs (gdim == 2)
+    if (gdim == 2)
+    {
+      for (std::size_t j = 0; j < nnodes_per_cell; ++j)
+      {
+        int offs_n = size_flux_per_cell + j;
+        int offs_b = bsize_flux_per_cell + j;
+
+        asmbl_info(0, a, offs_n) = asmbl_info_base(0, a, offs_b);
+        asmbl_info(1, a, offs_n) = asmbl_info_base(1, a, offs_b);
+        asmbl_info(3, a, offs_n) = asmbl_info_base(3, a, offs_b);
+
+        // Set new patch-wise DOF
+        asmbl_info(2, a, offs_n)
+            = asmbl_info_base(2, a, offs_b) + ndofs_flux_hdivz;
+      }
+    }
+  }
+}
+
+/// Initialise boundary markers for patch-wise H(div=0) space
+/// @param type             The kernel type of the minimisation problem
+/// @param gdim             The geometric dimension
+/// @param nnodes_on_patch  Number of nodes on patch
+/// @param ndofs_flux_hdivz nDOFs patch-wise H(div=0) space
+/// @return                 Initialised vector for boundary markers
+std::vector<std::int8_t> initialise_boundary_markers(const Kernel type,
+                                                     const int gdim,
+                                                     const int nnodes_on_patch,
+                                                     const int ndofs_flux_hdivz)
+{
+  // Determine dimension of (mixed) fe-space on patch
+  const std::size_t size = dimension_minimisation_space(
+      type, gdim, nnodes_on_patch, ndofs_flux_hdivz);
+
+  // Create vector
+  std::vector<std::int8_t> boundary_markers(size, false);
+
+  return std::move(boundary_markers);
+}
+
+/// Set boundary markers for patch-wise H(div=0) space
+/// @param boundary_markers   The boundary markers
+/// @param type_kernel        The kernel type of the minimisation problem
+/// @param type_patch         The patch type
+/// @param gdim               The geometric dimension
+/// @param ncells             Number of cells on patch
+/// @param ndofs_flux_fct     nDOFs flux-space space per facet
+/// @param reversion_required Patch requires reversion
+void set_boundary_markers(std::span<std::int8_t> boundary_markers,
+                          const Kernel type_kernel,
+                          std::vector<PatchType> type_patch, const int gdim,
+                          const int ncells, const int ndofs_flux_fct,
+                          std::vector<bool> reversion_required)
+{
+  // Reinitialise markers
+  std::fill(boundary_markers.begin(), boundary_markers.end(), false);
+
+  // Set markers
+  if ((type_patch[0] != PatchType::internal))
+  {
+    // Check if mixed space required
+    std::size_t bs = (type_kernel == Kernel::UconstrFluxMini) ? 1 : gdim;
+
+    // Auxiliaries
+    const int offs_En_base = bs * (ncells * (ndofs_flux_fct - 1));
+
+    // Set boundary markers
+    for (std::size_t i = 0; i < bs; ++i)
+    {
+      if (type_patch[i] != PatchType::bound_essnt_primal)
+      {
+        // Set boundary markers for d0
+        boundary_markers[i] = true;
+
+        for (std::size_t j = 1; j < ndofs_flux_fct; ++j)
+        {
+          if (type_patch[i] == PatchType::bound_essnt_dual)
+          {
+            // Mark DOFs on facet E0
+            int offs_E0 = i + bs * j;
+            boundary_markers[offs_E0] = true;
+
+            // Mark DOFs on facet En
+            int offs_En = offs_En_base + offs_E0;
+            boundary_markers[offs_En_base + offs_E0] = true;
+          }
+          else
+          {
+            if (reversion_required[i])
+            {
+              // Mark DOFs in facet En
+              // (Mixed patch with reversed order)
+              int offs_En = offs_En_base + i + bs * j;
+              boundary_markers[offs_En] = true;
+            }
+            else
+            {
+              // Mark DOFs in facet E0
+              // (Mixed patch with original order)
+              boundary_markers[i + bs * j] = true;
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
 template <typename T, bool asmbl_systmtrx = true>
 kernel_fn<T, asmbl_systmtrx>
 generate_minimisation_kernel(Kernel type, KernelDataEqlb<T>& kernel_data,
@@ -195,114 +413,13 @@ generate_minimisation_kernel(Kernel type, KernelDataEqlb<T>& kernel_data,
   }
 }
 
-/// Initialise boundary markers for patch-wise H(div=0) space
-/// @param type             The kernel type of the minimisation problem
-/// @param gdim             The geometric dimension
-/// @param nnodes_on_patch  Number of nodes on patch
-/// @param ndofs_flux_hdivz nDOFs patch-wise H(div=0) space
-/// @return                 Initialised vector for boundary markers
-std::vector<std::int8_t> initialise_boundary_markers(const Kernel type,
-                                                     const int gdim,
-                                                     const int nnodes_on_patch,
-                                                     const int ndofs_flux_hdivz)
-{
-  // Determine length of (mixed) fe-space
-  std::size_t size;
-
-  switch (type)
-  {
-  case Kernel::UconstrFluxMini:
-    size = ndofs_flux_hdivz;
-    break;
-  case Kernel::ConstrStressMini2D:
-    size = gdim * ndofs_flux_hdivz + nnodes_on_patch;
-    break;
-  case Kernel::ConstrStressMini3D:
-    size = gdim * (ndofs_flux_hdivz + nnodes_on_patch);
-    break;
-  default:
-    throw std::invalid_argument("Unrecognized kernel");
-  }
-
-  // Create vector
-  std::vector<std::int8_t> boundary_markers(size, false);
-
-  return std::move(boundary_markers);
-}
-
-/// Set boundary markers for patch-wise H(div=0) space
-/// @param boundary_markers   The boundary markers
-/// @param type_kernel        The kernel type of the minimisation problem
-/// @param type_patch         The patch type
-/// @param gdim               The geometric dimension
-/// @param ncells             Number of cells on patch
-/// @param ndofs_flux_fct     nDOFs flux-space space per facet
-/// @param reversion_required Patch requires reversion
-void set_boundary_markers(std::span<std::int8_t> boundary_markers,
-                          const Kernel type_kernel, const PatchType type_patch,
-                          const int gdim, const int ncells,
-                          const int ndofs_flux_fct,
-                          bool reversion_required = false)
-{
-  // Reinitialise markers
-  std::fill(boundary_markers.begin(), boundary_markers.end(), false);
-
-  // Set markers
-  if ((type_patch != PatchType::internal)
-      && (type_patch != PatchType::bound_essnt_primal))
-  {
-    // Check if mixed space required
-    std::size_t bs = (type_kernel == Kernel::UconstrFluxMini) ? 1 : gdim;
-
-    // Auxiliaries
-    const int offs_En_base = bs * (ncells * (ndofs_flux_fct - 1));
-
-    // Set boundary markers
-    for (std::size_t i = 0; i < bs; ++i)
-    {
-      // Set boundary markers for d0
-      boundary_markers[i] = true;
-
-      for (std::size_t j = 1; j < ndofs_flux_fct; ++j)
-      {
-        if (type_patch == PatchType::bound_essnt_dual)
-        {
-          // Mark DOFs on facet E0
-          int offs_E0 = i + bs * j;
-          boundary_markers[offs_E0] = true;
-
-          // Mark DOFs on facet En
-          int offs_En = offs_En_base + offs_E0;
-          boundary_markers[offs_En_base + offs_E0] = true;
-        }
-        else
-        {
-          if (reversion_required)
-          {
-            // Mark DOFs in facet En
-            // (Mixed patch with reversed order)
-            int offs_En = offs_En_base + i + bs * j;
-            boundary_markers[offs_En] = true;
-          }
-          else
-          {
-            // Mark DOFs in facet E0
-            // (Mixed patch with original order)
-            boundary_markers[i + bs * j] = true;
-          }
-        }
-      }
-    }
-  }
-}
-
 // ------------------------------------------------------------------------------
 
 /// Assemble EQS for flux minimisation
 ///
-/// Assembles system-matrix and load vector for unconstrained flux minimisation
-/// on patch-wise divergence free H(div) space. Explicit ansatz for such a
-/// space see [1, Lemma 12].
+/// Assembles system-matrix and load vector for unconstrained flux
+/// minimisation on patch-wise divergence free H(div) space. Explicit ansatz
+/// for such a space see [1, Lemma 12].
 ///
 /// [1] Bertrand, F.; Carstensen, C.; Gräßle, B. & Tran, N. T.:
 ///     Stabilization-free HHO a posteriori error control, 2022
