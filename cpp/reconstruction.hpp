@@ -6,10 +6,12 @@
 #include "PatchFluxEV.hpp"
 #include "ProblemDataFluxCstm.hpp"
 #include "ProblemDataFluxEV.hpp"
+#include "ProblemDataStress.hpp"
 #include "StorageStiffness.hpp"
 #include "minimise_flux.hpp"
 #include "solve_patch_constrmin.hpp"
 #include "solve_patch_semiexplt.hpp"
+#include "solve_patch_weaksym.hpp"
 #include "utils.hpp"
 
 #include <basix/e-lagrange.h>
@@ -218,11 +220,11 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
       = 2 * patch.ndofs_flux_fct() + patch.ndofs_flux_cell_add() - 1;
 
   kernel_fn<T, true> minkernel = generate_minimisation_kernel<T, true>(
-      Kernel::UconstrFluxMini, kernel_data, ndofs_cell_hdivzero,
+      Kernel::FluxMin, kernel_data, dim, ndofs_cell_hdivzero,
       patch.ndofs_flux_fct());
 
   kernel_fn<T, false> minkernel_rhs = generate_minimisation_kernel<T, false>(
-      Kernel::UconstrFluxMini, kernel_data, ndofs_cell_hdivzero,
+      Kernel::FluxMin, kernel_data, dim, ndofs_cell_hdivzero,
       patch.ndofs_flux_fct());
 
   // Execute equilibration
@@ -239,7 +241,7 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
 }
 
 template <typename T, int id_flux_order>
-void apply_weak_symmetry_stress(ProblemDataStress<T>& problem_data)
+void reconstruct_stresses_patch(ProblemDataStress<T>& problem_data)
 {
   /* Geometry */
   // Extract mesh
@@ -294,13 +296,13 @@ void apply_weak_symmetry_stress(ProblemDataStress<T>& problem_data)
   // if (dim == 2)
   // {
   //   minkernel = generate_minimisation_kernel<T, true>(
-  //       Kernel::ConstrStressMini2D, kernel_data, ndofs_cell_hdivzero,
+  //       Kernel::StressMin, kernel_data, dim, ndofs_cell_hdivzero,
   //       patch.ndofs_flux_fct());
   // }
   // else
   // {
   //   minkernel = generate_minimisation_kernel<T, true>(
-  //       Kernel::ConstrStressMini3D, kernel_data, ndofs_cell_hdivzero,
+  //       Kernel::StressMin, kernel_data, dim, ndofs_cell_hdivzero,
   //       patch.ndofs_flux_fct());
   // }
 
@@ -309,6 +311,10 @@ void apply_weak_symmetry_stress(ProblemDataStress<T>& problem_data)
   {
     // Create Sub-DOFmap
     patch.create_subdofmap(i_node);
+
+    // Calculate coefficients per patch
+    impose_weak_symmetry(mesh->geometry(), patch, problem_data, kernel_data,
+                         minkernel);
   }
 }
 
@@ -447,17 +453,17 @@ void reconstruct_stresses(
   if (order_flux == 1)
   {
     // Perform equilibration
-    apply_weak_symmetry_stress<T, 1>(problem_data);
+    reconstruct_stresses_patch<T, 1>(problem_data);
   }
   else if (order_flux == 2)
   {
     // Perform equilibration
-    apply_weak_symmetry_stress<T, 2>(problem_data);
+    reconstruct_stresses_patch<T, 2>(problem_data);
   }
   else
   {
     // Perform equilibration
-    apply_weak_symmetry_stress<T, 3>(problem_data);
+    reconstruct_stresses_patch<T, 3>(problem_data);
   }
 }
 

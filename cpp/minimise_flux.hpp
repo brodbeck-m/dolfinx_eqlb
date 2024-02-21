@@ -68,28 +68,35 @@ mdspan_t<const double, 2> extract_mapping_data(const int cell_id,
 
 enum class Kernel
 {
-  UconstrFluxMini,
-  ConstrStressMini2D,
-  ConstrStressMini3D,
+  FluxMin,
+  StressMin,
+  StressMinNL,
 };
 
-std::size_t dimension_minimisation_space(const Kernel type, const int gdim,
+std::size_t dimension_minimisation_space(const Kernel type_kernel,
+                                         const int gdim,
                                          const int nnodes_on_patch,
                                          const int ndofs_flux_hdivz)
 {
-  switch (type)
+  if (type_kernel == Kernel::FluxMin)
   {
-  case Kernel::UconstrFluxMini:
     return ndofs_flux_hdivz;
-    break;
-  case Kernel::ConstrStressMini2D:
-    return gdim * ndofs_flux_hdivz + nnodes_on_patch;
-    break;
-  case Kernel::ConstrStressMini3D:
-    return gdim * (ndofs_flux_hdivz + nnodes_on_patch);
-    break;
-  default:
-    throw std::invalid_argument("Unrecognized kernel");
+  }
+  else if ((type_kernel == Kernel::StressMin)
+           || (type_kernel == Kernel::StressMinNL))
+  {
+    if (gdim == 2)
+    {
+      return gdim * ndofs_flux_hdivz + nnodes_on_patch;
+    }
+    else
+    {
+      return gdim * (ndofs_flux_hdivz + nnodes_on_patch);
+    }
+  }
+  else
+  {
+    throw std::invalid_argument("Unrecognised kernel");
   }
 }
 
@@ -246,7 +253,7 @@ void set_boundary_markers(std::span<std::int8_t> boundary_markers,
   if ((type_patch[0] != PatchType::internal))
   {
     // Check if mixed space required
-    std::size_t bs = (type_kernel == Kernel::UconstrFluxMini) ? 1 : gdim;
+    std::size_t bs = (type_kernel == Kernel::FluxMin) ? 1 : gdim;
 
     // Auxiliaries
     const int offs_En_base = bs * (ncells * (ndofs_flux_fct - 1));
@@ -296,7 +303,8 @@ void set_boundary_markers(std::span<std::int8_t> boundary_markers,
 template <typename T, bool asmbl_systmtrx = true>
 kernel_fn<T, asmbl_systmtrx>
 generate_minimisation_kernel(Kernel type, KernelDataEqlb<T>& kernel_data,
-                             const int ndofs_per_cell, const int ndofs_flux_fct)
+                             const int gdim, const int ndofs_per_cell,
+                             const int ndofs_flux_fct)
 {
   /// Kernel for unconstrained flux minimisation
   ///
@@ -404,14 +412,32 @@ generate_minimisation_kernel(Kernel type, KernelDataEqlb<T>& kernel_data,
 
   switch (type)
   {
-  case Kernel::UconstrFluxMini:
+  case Kernel::FluxMin:
     return unconstrained_flux_minimisation;
-  case Kernel::ConstrStressMini2D:
-    throw std::runtime_error("Not implemented yet!");
-  case Kernel::ConstrStressMini3D:
-    throw std::runtime_error("Not implemented yet!");
+  case Kernel::StressMin:
+    if (gdim == 2)
+    {
+      throw std::runtime_error(
+          "Kernel for weakly symmetric stresses (2D) not implemented");
+    }
+    else
+    {
+      throw std::runtime_error(
+          "Kernel for weakly symmetric stresses (3D) not implemented");
+    }
+  case Kernel::StressMinNL:
+    if (gdim == 2)
+    {
+      throw std::runtime_error(
+          "Kernel for weakly symmetric 1.PK stress (2D) not implemented");
+    }
+    else
+    {
+      throw std::runtime_error(
+          "Kernel for weakly symmetric 1.PK stress (3D) not implemented");
+    }
   default:
-    throw std::invalid_argument("Unrecognized kernel");
+    throw std::invalid_argument("Unrecognised kernel");
   }
 }
 
