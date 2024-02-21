@@ -4,7 +4,7 @@
 
 #include "KernelData.hpp"
 #include "Patch.hpp"
-#include "PatchFluxCstm.hpp"
+#include "PatchCstm.hpp"
 #include "utils.hpp"
 
 #include <dolfinx/fem/DofMap.h>

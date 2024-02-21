@@ -59,7 +59,7 @@ set(
   KernelData.hpp
   Patch.hpp
   PatchFluxEV.hpp
-  PatchFluxCstm.hpp
+  PatchCstm.hpp
   ProblemData.hpp
   ProblemDataFluxEV.hpp
   ProblemDataFluxCstm.hpp

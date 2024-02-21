@@ -4,7 +4,7 @@
 
 #include "KernelData.hpp"
 #include "Patch.hpp"
-#include "PatchFluxCstm.hpp"
+#include "PatchCstm.hpp"
 #include "ProblemDataFluxCstm.hpp"
 #include "minimise_flux.hpp"
 #include "utils.hpp"

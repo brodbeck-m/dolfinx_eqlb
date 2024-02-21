@@ -2,7 +2,7 @@
 
 #include "BoundaryData.hpp"
 #include "KernelData.hpp"
-#include "PatchFluxCstm.hpp"
+#include "PatchCstm.hpp"
 #include "PatchFluxEV.hpp"
 #include "ProblemDataFluxCstm.hpp"
 #include "ProblemDataFluxEV.hpp"
