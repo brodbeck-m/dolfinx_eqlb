@@ -114,8 +114,8 @@ std::size_t dimension_minimisation_space(const Kernel type, const int gdim,
 /// @param patch            The patch
 /// @param ndofs_flux_hdivz nDOF patch-wise H(div=0) space
 template <typename T, int id_flux_order>
-std::vector<std::int32_t>
-set_flux_dofmap(PatchFluxCstm<T, id_flux_order, true>& patch,
+std::pair<std::array<std::size_t, 3>, std::vector<std::int32_t>>
+set_flux_dofmap(PatchCstm<T, id_flux_order, true>& patch,
                 const int ndofs_flux_hdivz)
 {
   /* Extract data */
@@ -133,6 +133,7 @@ set_flux_dofmap(PatchFluxCstm<T, id_flux_order, true>& patch,
 
   // DOF counters
   const int ndofs_flux_fct = patch.ndofs_flux_fct();
+  const int ndofs_flux_cell_add = patch.ndofs_flux_cell_add();
 
   // Assembly information for non-mixed space
   mdspan_t<const std::int32_t, 3> asmbl_info_base
@@ -140,14 +141,14 @@ set_flux_dofmap(PatchFluxCstm<T, id_flux_order, true>& patch,
 
   /* Initialisation */
   // Number of (mixed) DOFs per cell
-  const int bsize_per_cell = gdim * ndofs_flux_fct;
-  const int bsize_flux_per_cell = fcts_per_cell;
-  const int bsize_constr_per_cell = bsize_flux_per_cell + bsize_constr_per_cell;
+  const int bsize_flux_per_cell = gdim * ndofs_flux_fct + ndofs_flux_cell_add;
+  const int bsize_constr_per_cell = fcts_per_cell;
+  const int bsize_per_cell = bsize_flux_per_cell + bsize_constr_per_cell;
 
-  const int size_per_cell = gdim * bsize_flux_per_cell;
-  const int size_flux_per_cell
+  const int size_flux_per_cell = gdim * bsize_flux_per_cell;
+  const int size_constr_per_cell
       = (gdim == 2) ? bsize_constr_per_cell : bsize_flux_per_cell * gdim;
-  const int size_constr_per_cell = size_flux_per_cell + size_constr_per_cell;
+  const int size_per_cell = size_flux_per_cell + size_constr_per_cell;
 
   // Storage for assembly information
   std::vector<std::int32_t> dasmbl_info(
@@ -178,7 +179,7 @@ set_flux_dofmap(PatchFluxCstm<T, id_flux_order, true>& patch,
         asmbl_info(3, a, offs) = asmbl_info_base(3, a, j);
 
         // Set new patch-wise DOF
-        asmbl_info(2, a, offs) = gdim * asmbl_info_base(1, a, j) + i;
+        asmbl_info(2, a, offs) = gdim * asmbl_info_base(2, a, j) + i;
       }
     }
 
@@ -191,8 +192,7 @@ set_flux_dofmap(PatchFluxCstm<T, id_flux_order, true>& patch,
         int offs_b = bsize_flux_per_cell + j;
 
         asmbl_info(0, a, offs_n) = asmbl_info_base(0, a, offs_b);
-        asmbl_info(1, a, offs_n) = asmbl_info_base(1, a, offs_b);
-        asmbl_info(3, a, offs_n) = asmbl_info_base(3, a, offs_b);
+        asmbl_info(3, a, offs_n) = 1;
 
         // Set new patch-wise DOF
         asmbl_info(2, a, offs_n)
@@ -200,6 +200,8 @@ set_flux_dofmap(PatchFluxCstm<T, id_flux_order, true>& patch,
       }
     }
   }
+
+  return {std::move(shape), std::move(dasmbl_info)};
 }
 
 /// Initialise boundary markers for patch-wise H(div=0) space
