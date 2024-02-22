@@ -116,12 +116,15 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
 
   // DOF-counts function spaces
   const int degree_flux_rt = patch.degree_raviart_thomas();
+
   const int ndofs_flux = patch.ndofs_flux();
   const int ndofs_flux_fct = patch.ndofs_flux_fct();
   const int ndofs_flux_cell_div = patch.ndofs_flux_cell_div();
   const int ndofs_flux_cell_add = patch.ndofs_flux_cell_add();
+
   const int ndofs_projflux = patch.ndofs_fluxdg_cell();
   const int ndofs_projflux_fct = patch.ndofs_fluxdg_fct();
+
   const int ndofs_rhs = patch.ndofs_rhs_cell();
 
   /* Initialise Mappings */
@@ -842,9 +845,9 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
 
       // Assemble system
       assemble_fluxminimiser<T, id_flux_order, true>(
-          minkernel, A_patch, L_patch, patch, boundary_markers, dofmap_flux,
-          dcoefficients_flux, storage_detJ, storage_J, storage_K,
-          patch.requires_flux_bcs(i_rhs));
+          minkernel, A_patch, L_patch, boundary_markers, dofmap_flux,
+          ndofs_hdivz_per_cell - 1, dcoefficients_flux, ndofs_flux,
+          storage_detJ, storage_J, storage_K, patch.requires_flux_bcs(i_rhs));
 
       // Factorise of system matrix
       if constexpr (id_flux_order > 1)
@@ -859,9 +862,9 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
 
       // Assemble linear form
       assemble_fluxminimiser<T, id_flux_order, true>(
-          minkernel_rhs, A_patch, L_patch, patch, boundary_markers, dofmap_flux,
-          dcoefficients_flux, storage_detJ, storage_J, storage_K,
-          patch.requires_flux_bcs(i_rhs));
+          minkernel_rhs, A_patch, L_patch, boundary_markers, dofmap_flux,
+          ndofs_hdivz_per_cell - 1, dcoefficients_flux, ndofs_flux,
+          storage_detJ, storage_J, storage_K, patch.requires_flux_bcs(i_rhs));
     }
 
     // Solve system

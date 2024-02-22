@@ -399,6 +399,24 @@ public:
 
   /// Check if patch requires flux BCs
   /// @return True if patch requires flux BCs
+  bool requires_flux_bcs() const
+  {
+    bool requires_bc = false;
+
+    for (auto t : _type)
+    {
+      if (t == PatchType::bound_essnt_dual || t == PatchType::bound_mixed)
+      {
+        requires_bc = true;
+        break;
+      }
+    }
+
+    return requires_bc;
+  }
+
+  /// Check if patch requires flux BCs
+  /// @return True if patch requires flux BCs
   bool requires_flux_bcs(int index) const
   {
     if (_type[index] == PatchType::bound_essnt_dual

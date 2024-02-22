@@ -58,36 +58,44 @@ void impose_weak_symmetry(const mesh::Geometry& geometry,
   // Nodes constructing one element
   const int nnodes_cell = kernel_data.nnodes_cell();
 
-  // DOF-counts function spaces
+  // The flux space
+  const graph::AdjacencyList<std::int32_t>& flux_dofmap
+      = problem_data.fspace_flux_hdiv()->dofmap()->list();
+
   const int degree_flux_rt = patch.degree_raviart_thomas();
 
   const int ndofs_flux = patch.ndofs_flux();
   const int ndofs_flux_fct = patch.ndofs_flux_fct();
   const int ndofs_flux_cell_add = patch.ndofs_flux_cell_add();
 
-  /* Initialise Mappings */
-  // Representation/Storage isoparametric mapping
-  std::array<double, 9> Jb, Kb;
-  mdspan_t<double, 2> J(Jb.data(), 2, 2), K(Kb.data(), 2, 2);
-  std::array<double, 18> detJ_scratch;
-
-  std::vector<double> storage_detJ(ncells, 0), storage_J(ncells * 4, 0);
-
-  // Storage cell geometry
-  const int cstride_geom = 3 * nnodes_cell;
-  std::vector<double> coordinate_dofs_e(cstride_geom, 0);
-
-  /* Initialisations */
-  // Coefficients of solution without symmetry
-  std::vector<T> dcoefficients(gdim * ncells * ndofs_flux, 0);
-  mdspan_t<T, 2> coefficients(dcoefficients.data(), ncells, ndofs_flux);
-
-  // Number of flux-DOFs on patch-wise H(div=0) space
   const int ndofs_flux_hdivz
       = 1 + degree_flux_rt * nfcts
         + 0.5 * degree_flux_rt * (degree_flux_rt - 1) * ncells;
 
-  // The equation system for the minimisation step
+  const int ndofs_per_cell
+      = (gdim == 2) ? 2 * (2 * (ndofs_flux_fct - 1) + 1 + ndofs_flux_cell_add)
+                          + nnodes_cell
+                    : 3 * (3 * (ndofs_flux_fct - 1) + 1 + ndofs_flux_cell_add)
+                          + 3 * nnodes_cell;
+
+  /* Initialisations */
+  // Isoparametric mapping
+  std::array<double, 9> Jb;
+  mdspan_t<double, 2> J(Jb.data(), 2, 2);
+  std::array<double, 18> detJ_scratch;
+
+  std::vector<double> storage_K;
+  std::vector<double> storage_detJ(ncells, 0), storage_J(ncells * 4, 0);
+
+  // Cell geometry
+  const int cstride_geom = 3 * nnodes_cell;
+  std::vector<double> coordinate_dofs_e(cstride_geom, 0);
+
+  // DOFmap
+  std::array<std::size_t, 3> shape_asmblinfo;
+  std::vector<std::int32_t> dasmblinfo;
+
+  // Equation system
   const std::size_t dim_minspace = dimension_minimisation_space(
       Kernel::StressMin, gdim, nnodes, ndofs_flux_hdivz);
 
@@ -98,47 +106,104 @@ void impose_weak_symmetry(const mesh::Geometry& geometry,
   L_patch.resize(dim_minspace);
   u_patch.resize(dim_minspace);
 
-  // Local solver (Cholesky decomposition)
-  Eigen::LLT<Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>> solver;
+  A_patch.setZero();
+  L_patch.setZero();
 
   // Boundary markers
+  std::array<PatchType, 3> patch_types;
+  std::array<bool, 3> patch_reversions;
+
   std::vector<std::int8_t> boundary_markers = initialise_boundary_markers(
       Kernel::StressMin, gdim, nnodes, ndofs_flux_hdivz);
 
-  // Pre-evaluate J and detJ
-  for (std::size_t index = 0; index < ncells; ++index)
+  // Coefficients (solution without symmetry)
+  std::vector<T> dcoefficients(gdim * ncells * ndofs_flux, 0);
+  mdspan_t<T, 2> coefficients(dcoefficients.data(), ncells, ndofs_flux);
+
+  // Local solver (Cholesky decomposition)
+  Eigen::PartialPivLU<Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>> solver;
+
+  /* Move data into flattened storage */
+  for (std::size_t i_row = 0; i_row < gdim; ++i_row)
   {
-    // Index using patch nomenclature
-    int a = index + 1;
+    // Set patch type
+    patch_types[i_row] = patch.type(i_row);
 
-    // Get current cell
-    std::int32_t c = cells[a];
+    // Check if patch reversion required
+    patch_reversions[i_row] = patch.reversion_required(i_row);
 
-    // Copy points of current cell
-    std::span<const std::int32_t> x_dofs = x_dofmap.links(c);
-    copy_cell_data<double, 3>(x, x_dofs, coordinate_dofs_e, 3);
+    // The global DOF vector
+    std::span<const T> x_flux = problem_data.flux(i_row).x()->array();
 
-    /* Piola mapping */
-    // Reshape geometry infos
-    mdspan_t<const double, 2> coords(coordinate_dofs_e.data(), nnodes_cell, 3);
+    // Initialise offset
+    int offs_base = i_row * ndofs_flux;
 
-    // Calculate Jacobi, inverse, and determinant
-    storage_detJ[index] = kernel_data.compute_jacobian(J, detJ_scratch, coords);
+    // Loop over cells
+    for (std::size_t a = 1; a < ncells + 1; ++a)
+    {
+      // Current cell
+      std::size_t id_a = a - 1;
+      std::int32_t c = cells[a];
 
-    // Storage of (inverse) Jacobian
-    store_mapping_data(index, storage_J, J);
+      // DOFs on current cell
+      std::span<const std::int32_t> dofs_cell = flux_dofmap.links(c);
+
+      // Copy DOFs into flattened storage
+      for (std::size_t i = 0; i < ndofs_flux; ++i)
+      {
+        coefficients(id_a, offs_base + i) = x_flux[dofs_cell[i]];
+      }
+
+      // Piola transformation
+      if (i_row == 0)
+      {
+        // Copy points of current cell
+        std::span<const std::int32_t> x_dofs = x_dofmap.links(c);
+        copy_cell_data<double, 3>(x, x_dofs, coordinate_dofs_e, 3);
+
+        /* Piola mapping */
+        // Reshape geometry infos
+        mdspan_t<const double, 2> coords(coordinate_dofs_e.data(), nnodes_cell,
+                                         3);
+
+        // Calculate Jacobi, inverse, and determinant
+        storage_detJ[id_a]
+            = kernel_data.compute_jacobian(J, detJ_scratch, coords);
+
+        // Storage of (inverse) Jacobian
+        store_mapping_data(id_a, storage_J, J);
+      }
+    }
   }
 
-  // DOFmap for minimisation problem
+  /* Solve minimisation problem */
+  // Set DOFmap on patch
   patch.set_assembly_informations(kernel_data.fct_normal_is_outward(),
                                   storage_detJ);
 
-  std::array<std::size_t, 3> shape_asmblinfo;
-  std::vector<std::int32_t> dasmblinfo;
   std::tie(shape_asmblinfo, dasmblinfo)
       = set_flux_dofmap(patch, ndofs_flux_hdivz);
-
   mdspan_t<const std::int32_t, 3> asmbl_info(dasmblinfo.data(),
                                              shape_asmblinfo);
+
+  // Set boundary markers
+  set_boundary_markers(
+      boundary_markers, Kernel::StressMin, {patch.type(0), patch.type(1)}, gdim,
+      ncells, ndofs_flux_fct,
+      {patch.reversion_required(0), patch.reversion_required(1)});
+
+  // Assemble equation system
+  std::cout << "ndofs_per_cell: " << ndofs_per_cell << std::endl;
+
+  assemble_fluxminimiser<T, id_flux_order, true>(
+      minkernel, A_patch, L_patch, boundary_markers, asmbl_info, ndofs_per_cell,
+      dcoefficients, gdim * ndofs_flux, storage_detJ, storage_J, storage_K,
+      patch.requires_flux_bcs());
+
+  // Solve equation system
+  solver.compute(A_patch);
+  u_patch = solver.solve(L_patch);
+
+  /* Store local solution into global storage */
 }
 } // namespace dolfinx_eqlb

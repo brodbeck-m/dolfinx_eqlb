@@ -216,16 +216,13 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
       basix_element_fluxhdiv, basix_element_rhs, basix_element_hat);
 
   // Set minimisation kernels
-  const int ndofs_cell_hdivzero
-      = 2 * patch.ndofs_flux_fct() + patch.ndofs_flux_cell_add() - 1;
-
   kernel_fn<T, true> minkernel = generate_minimisation_kernel<T, true>(
-      Kernel::FluxMin, kernel_data, dim, ndofs_cell_hdivzero,
-      patch.ndofs_flux_fct());
+      Kernel::FluxMin, kernel_data, dim, patch.fcts_per_cell(),
+      patch.degree_raviart_thomas());
 
   kernel_fn<T, false> minkernel_rhs = generate_minimisation_kernel<T, false>(
-      Kernel::FluxMin, kernel_data, dim, ndofs_cell_hdivzero,
-      patch.ndofs_flux_fct());
+      Kernel::FluxMin, kernel_data, dim, patch.fcts_per_cell(),
+      patch.degree_raviart_thomas());
 
   // Execute equilibration
   for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
@@ -291,20 +288,9 @@ void reconstruct_stresses_patch(ProblemDataStress<T>& problem_data)
   const int ndofs_cell_hdivzero
       = 2 * patch.ndofs_flux_fct() + patch.ndofs_flux_cell_add() - 1;
 
-  kernel_fn<T, true> minkernel;
-
-  // if (dim == 2)
-  // {
-  //   minkernel = generate_minimisation_kernel<T, true>(
-  //       Kernel::StressMin, kernel_data, dim, ndofs_cell_hdivzero,
-  //       patch.ndofs_flux_fct());
-  // }
-  // else
-  // {
-  //   minkernel = generate_minimisation_kernel<T, true>(
-  //       Kernel::StressMin, kernel_data, dim, ndofs_cell_hdivzero,
-  //       patch.ndofs_flux_fct());
-  // }
+  kernel_fn<T, true> minkernel = generate_minimisation_kernel<T, true>(
+      Kernel::StressMin, kernel_data, dim, patch.fcts_per_cell(),
+      patch.degree_raviart_thomas());
 
   // Execute equilibration
   for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
