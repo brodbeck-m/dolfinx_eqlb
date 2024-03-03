@@ -78,6 +78,9 @@ void impose_weak_symmetry(const mesh::Geometry& geometry,
                     : 3 * (3 * (ndofs_flux_fct - 1) + 1 + ndofs_flux_cell_add)
                           + 3 * nnodes_cell;
 
+  // Intermediate storage of the stress corrector
+  std::span<T> storage_corrector = problem_data.stress_corrector();
+
   /* Initialisations */
   // Isoparametric mapping
   std::array<double, 9> Jb;
@@ -192,9 +195,6 @@ void impose_weak_symmetry(const mesh::Geometry& geometry,
       ncells, ndofs_flux_fct,
       {patch.reversion_required(0), patch.reversion_required(1)});
 
-  // Assemble equation system
-  std::cout << "ndofs_per_cell: " << ndofs_per_cell << std::endl;
-
   assemble_fluxminimiser<T, id_flux_order, true>(
       minkernel, A_patch, L_patch, boundary_markers, asmbl_info, ndofs_per_cell,
       dcoefficients, gdim * ndofs_flux, storage_detJ, storage_J, storage_K,
@@ -205,5 +205,28 @@ void impose_weak_symmetry(const mesh::Geometry& geometry,
   u_patch = solver.solve(L_patch);
 
   /* Store local solution into global storage */
+  const int ndofs_flux_per_cell
+      = gdim * (ndofs_flux_fct - 1) + 1 + ndofs_flux_cell_add;
+
+  for (std::int32_t a = 1; a < ncells + 1; ++a)
+  {
+    // Set id for accessing storage
+    std::size_t id_a = a - 1;
+
+    // Map solution from H(div=0) to H(div) space
+    for (std::size_t i = 0; i < ndofs_flux_per_cell; ++i)
+    {
+      // Apply correction
+      for (std::size_t j = 0; j < gdim; ++j)
+      {
+        // Offsets
+        int offs_i = gdim * i + j;
+        int pos_strg = gdim * asmbl_info(1, a, offs_i) + j;
+
+        storage_corrector[pos_strg]
+            += asmbl_info(3, a, offs_i) * u_patch(asmbl_info(2, a, offs_i));
+      }
+    }
+  }
 }
 } // namespace dolfinx_eqlb

@@ -302,6 +302,21 @@ void reconstruct_stresses_patch(ProblemDataStress<T>& problem_data)
     impose_weak_symmetry(mesh->geometry(), patch, problem_data, kernel_data,
                          minkernel);
   }
+
+  // Add stress corrector to global storage
+  std::span<const T> x_corrector = problem_data.stress_corrector();
+
+  for (std::size_t i = 0; i < dim; ++i)
+  {
+    // Extract global storage
+    std::span<T> x_stress = problem_data.flux(i).x()->mutable_array();
+
+    // Add corrector to global storage
+    for (std::size_t j = 0; j < x_stress.size(); ++j)
+    {
+      x_stress[j] += x_corrector[dim * j + i];
+    }
+  }
 }
 
 /// Execute flux calculation based on H(div) conforming equilibration

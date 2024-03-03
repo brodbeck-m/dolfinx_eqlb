@@ -30,6 +30,11 @@ public:
                     std::shared_ptr<BoundaryData<T>> boundary_data)
       : _flux_hdiv(fluxes), _boundary_data(boundary_data)
   {
+    // Spatial dimension
+    const int gdim = _flux_hdiv[0]->function_space()->mesh()->topology().dim();
+
+    // Initialise storage for corrector of weak symmetry
+    _storage.resize(gdim * _flux_hdiv[0]->x()->array().size(), 0);
   }
 
   /* Setter functions*/
@@ -55,6 +60,20 @@ public:
   /// @return The projected flux (fe function)
   fem::Function<T>& flux(int index) { return *(_flux_hdiv[index]); }
 
+  /// Extract storage of correctors for stress
+  /// @return The storage vector
+  std::span<T> stress_corrector()
+  {
+    return std::span<T>(_storage.data(), _storage.size());
+  }
+
+  /// Extract storage of correctors for stress
+  /// @return The storage vector
+  std::span<const T> stress_corrector() const
+  {
+    return std::span<const T>(_storage.data(), _storage.size());
+  }
+
   /* Interface BoundaryData */
   /// Extract facet-types of all sub-problems
   /// @return Mdspan of facet-types
@@ -78,5 +97,8 @@ protected:
 
   // The boundary data
   std::shared_ptr<BoundaryData<T>> _boundary_data;
+
+  // Intermediate storage
+  std::vector<T> _storage;
 };
 } // namespace dolfinx_eqlb
