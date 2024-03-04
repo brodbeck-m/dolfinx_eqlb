@@ -12,12 +12,8 @@ from utils import (
     create_unitsquare_builtin,
 )
 
-from testcase_poisson import (
-    set_arbitrary_rhs,
-    set_arbitrary_bcs,
-    solve_poisson_problem,
-    equilibrate_poisson,
-)
+from testcase_general import set_arbitrary_rhs, set_arbitrary_bcs
+from testcase_poisson import solve_primal_problem, equilibrate_fluxes
 
 """ 
 Check flux equilibration for multiple RHS
@@ -53,7 +49,10 @@ def test_equilibration_multi_rhs(degree, equilibrator):
     for bids in list_boundary_ids:
         # Set RHS
         rhs, rhs_projected = set_arbitrary_rhs(
-            geometry.mesh, degree - 1, degree_projection=(degree - 1)
+            geometry.mesh,
+            degree - 1,
+            degree_projection=(degree - 1),
+            vector_valued=False,
         )
 
         list_proj_rhs.append(rhs_projected)
@@ -75,7 +74,7 @@ def test_equilibration_multi_rhs(degree, equilibrator):
         list_neumann_projection.append(neumann_projection)
 
         # Solve primal problem
-        u_prime, sigma_projected = solve_poisson_problem(
+        u_prime, sigma_projected = solve_primal_problem(
             V_prime,
             geometry,
             boundary_id_neumann,
@@ -89,7 +88,7 @@ def test_equilibration_multi_rhs(degree, equilibrator):
         list_proj_flux.append(sigma_projected)
 
         # Solve equilibration
-        sigma_eq, boundary_dofvalues = equilibrate_poisson(
+        sigma_eq, boundary_dofvalues = equilibrate_fluxes(
             equilibrator,
             degree,
             geometry,
@@ -105,7 +104,7 @@ def test_equilibration_multi_rhs(degree, equilibrator):
         list_boundary_values.append(boundary_dofvalues[0])
 
     # --- Equilibrate two RHS
-    sigma_eq, boundary_dofvalues = equilibrate_poisson(
+    sigma_eq, boundary_dofvalues = equilibrate_fluxes(
         equilibrator,
         degree,
         geometry,

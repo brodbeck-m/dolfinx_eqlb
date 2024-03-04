@@ -12,12 +12,8 @@ from utils import (
     create_unitsquare_gmsh,
 )
 
-from testcase_poisson import (
-    set_arbitrary_rhs,
-    set_arbitrary_bcs,
-    solve_poisson_problem,
-    equilibrate_poisson,
-)
+from testcase_general import set_arbitrary_rhs, set_arbitrary_bcs
+from testcase_poisson import solve_primal_problem, equilibrate_fluxes
 
 
 """ 
@@ -61,7 +57,10 @@ def test_equilibration_conditions(mesh_type, degree, bc_type, equilibrator):
 
                 # Set RHS
                 rhs, rhs_projected = set_arbitrary_rhs(
-                    geometry.mesh, degree_rhs, degree_projection=degree_proj
+                    geometry.mesh,
+                    degree_rhs,
+                    degree_projection=degree_proj,
+                    vector_valued=False,
                 )
 
                 # Set boundary conditions
@@ -74,7 +73,7 @@ def test_equilibration_conditions(mesh_type, degree, bc_type, equilibrator):
                 ) = set_arbitrary_bcs(bc_type, V_prime, degree, degree_bc)
 
                 # Solve primal problem
-                u_prime, sigma_projected = solve_poisson_problem(
+                u_prime, sigma_projected = solve_primal_problem(
                     V_prime,
                     geometry,
                     boundary_id_neumann,
@@ -86,7 +85,7 @@ def test_equilibration_conditions(mesh_type, degree, bc_type, equilibrator):
                 )
 
                 # Solve equilibration
-                sigma_eq, boundary_dofvalues = equilibrate_poisson(
+                sigma_eq, boundary_dofvalues = equilibrate_fluxes(
                     equilibrator,
                     degree,
                     geometry,

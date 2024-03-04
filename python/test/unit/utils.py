@@ -183,6 +183,19 @@ def initialise_evaluate_function(domain: dmesh.Mesh, points: np.ndarray):
 
 
 """
+Interpolation of ufl- into fe-function 
+"""
+
+
+def interpolate_ufl_to_function(f_ufl: Any, f_fe: dfem.Function):
+    # Create expression
+    expr = dfem.Expression(f_ufl, f_fe.function_space.element.interpolation_points())
+
+    # Perform interpolation
+    f_fe.interpolate(expr)
+
+
+"""
 Calculate Convergence rates
 """
 

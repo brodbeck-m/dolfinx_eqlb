@@ -1,9 +1,7 @@
 # --- Includes ---
 import numpy as np
-from petsc4py import PETSc
-from typing import Any, Callable, List
+import typing
 
-import dolfinx
 import dolfinx.fem as dfem
 import ufl
 
@@ -21,269 +19,40 @@ Supported variants:
 """
 
 
-# --- Definition of manufactured solution
-def exact_solution_poisson(pkt):
-    """Exact solution
+# --- The exact solution
+def exact_solution(x):
+    """Exact solution (Poisson)
     u_ext = sin(2*pi * x) * cos(2*pi * y)
 
     Args:
-        pkt: Defines wether the function works with numpy or ufl
+        x (ufl.SpatialCoordinate): The position x
     Returns:
-        lambda: The exact solution as function of the position x
+        The exact function as ufl-expression
     """
-    return lambda x: pkt.sin(2 * pkt.pi * x[0]) * pkt.cos(2 * pkt.pi * x[1])
+    return ufl.sin(2 * ufl.pi * x[0]) * ufl.cos(2 * ufl.pi * x[1])
 
 
-def exact_flux_ufl_poisson(x):
-    """Exact flux
+def exact_flux(x):
+    """Exact flux (Poisson)
     flux_ext = -Grad[sin(2*pi * x) * cos(2*pi * y)]
 
     Args:
-        x
+        x (ufl.SpatialCoordinate): The position x
     Returns:
-        The exact flux at spacial positions x as ufl expression
+        The exact flux as ufl expression
     """
-    return -ufl.grad(exact_solution_poisson(ufl)(x))
-
-
-def exact_flux_ntrace(flux_ext, bound_id):
-    if bound_id == 1:
-        return -flux_ext[0]
-    elif bound_id == 2:
-        return -flux_ext[1]
-    elif bound_id == 3:
-        return flux_ext[0]
-    else:
-        return flux_ext[1]
-
-
-# --- Set right-hand side
-def set_arbitrary_rhs(
-    domain: dolfinx.mesh.Mesh, degree_rhs: int, degree_projection: int = -1
-):
-    """Set polynomial right-hand side of degree degree_rhs
-
-    RHS has to be used to calculate primal solution and thereafter the projected flux.
-
-    Args:
-        domain (dolfinx.mesh.Mesh): The mesh
-        degree_rhs (int): Degree of the right-hand side
-        degree_projection (int): If >0 the degree of the DG space within which the RHS (of degree_rhs) is represented
-
-    Returns:
-        rhs_ufl (dolfinx.Function): The RHS used for calculating the primal solution
-        rhs_projected (dolfinx.Function): The projected RHS for the equilibration process
-
-    """
-    # Check input
-    if degree_projection < 0:
-        degree_projection = degree_rhs
-
-    # Set function space
-    if degree_projection < degree_rhs:
-        raise ValueError("Degree of projection to small!")
-    else:
-        V_rhs = dfem.FunctionSpace(domain, ("DG", degree_projection))
-
-    function_rhs = dfem.Function(V_rhs)
-
-    # Set random data
-    if degree_projection > degree_rhs:
-        V_data = dfem.FunctionSpace(domain, ("DG", degree_rhs))
-        function_data = dfem.Function(V_data)
-        function_data.x.array[:] = 2 * (
-            np.random.rand(V_data.dofmap.index_map.size_local) + 0.1
-        )
-        function_rhs.interpolate(function_data)
-    else:
-        function_rhs.x.array[:] = 2 * (
-            np.random.rand(V_rhs.dofmap.index_map.size_local) + 0.1
-        )
-
-    return function_rhs, function_rhs
-
-
-def set_manufactured_rhs(
-    u_ext_ufl: Callable,
-    domain: dolfinx.mesh.Mesh,
-    degree_rhs: int,
-):
-    """Set right-hand based on manufactured solution
-
-    RHS is the -div(grad(u_ext)) of the manufactured solution u_ext.
-
-    Args:
-        u_ext_ufl (Callable): ufl-expression of the manufactured solution
-        domain (dolfinx.mesh.Mesh): The mesh
-        degree_rhs (int): Degree of the right-hand side
-
-    Returns:
-        rhs_ufl (ufl): The RHS used for calculating the primal solution
-        rhs_projected (dolfinx.Function): The projected RHS for the equilibration process
-
-    """
-    # Set function space
-    V_rhs = dfem.FunctionSpace(domain, ("DG", degree_rhs))
-
-    # UFL function of u_ext
-    x_crds = ufl.SpatialCoordinate(domain)
-    rhs_ufl = -ufl.div(ufl.grad(u_ext_ufl(x_crds)))
-
-    # Project RHS to appropriate DG space
-    rhs_projected = local_projection(V_rhs, [rhs_ufl])[0]
-
-    return rhs_ufl, rhs_projected
-
-
-# --- Set boundary conditions
-def set_arbitrary_bcs(
-    bc_type: str,
-    V_prime: dfem.FunctionSpace,
-    degree_flux: int,
-    degree_bc: int = 0,
-    neumann_ids: List[int] = None,
-):
-    """Set arbitrary dirichlet and neumann BCs
-
-    Remarks:
-         1.) Dirichlet BCs for primal problem are homogenous.
-
-    Args:
-        bc_type (str):           Type of boundary conditions
-                                 (pure_dirichlet, neumann_homogenous, neumann_inhomogenous)
-        V_prime (FunctionSpace): The function space of the primal problem
-        degree_flux (int):       Degree of the flux space
-        degree_bc (int):         Polynomial degree of the boundary conditions
-        neumann_ids (List[int]): List of boundary ids for neumann BCs
-
-    Returns:
-        boundary_id_dirichlet (List[int]): List of boundary ids for dirichlet BCs
-        boundary_id_neumann (List[int]):   List of boundary ids for neumann BCs
-        u_D (List[Function]):              List of dirichlet boundary conditions
-        func_neumann (List[ufl]):          List of neumann boundary conditions
-        neumann_projection (List[bool]):   List of booleans indicating wether the neumann
-                                           BCs require projection
-    """
-    if bc_type == "pure_dirichlet":
-        # Set boundary ids
-        boundary_id_dirichlet = [1, 2, 3, 4]
-        boundary_id_neumann = []
-
-        # Set homogenous dirichlet boundary conditions
-        u_D = [dfem.Function(V_prime) for i in range(0, len(boundary_id_dirichlet))]
-
-        # Empty array of Neumann conditions
-        func_neumann = []
-    elif bc_type == "neumann_hom":
-        # The mesh
-        domain = V_prime.mesh
-
-        # Set boundary ids
-        if neumann_ids is None:
-            boundary_id_dirichlet = [2, 3]
-            boundary_id_neumann = [1, 4]
-        else:
-            boundary_id_dirichlet = [i for i in range(1, 5) if i not in neumann_ids]
-            boundary_id_neumann = neumann_ids
-
-        # Set homogenous dirichlet boundary conditions
-        u_D = [dfem.Function(V_prime) for i in range(0, len(boundary_id_dirichlet))]
-
-        # Set homogenous dirichlet boundary conditions
-        func_neumann = [
-            dfem.Constant(domain, PETSc.ScalarType(0.0))
-            for i in range(0, len(boundary_id_neumann))
-        ]
-    elif bc_type == "neumann_inhom":
-        # The mesh
-        domain = V_prime.mesh
-
-        # Set boundary ids
-        if neumann_ids is None:
-            boundary_id_dirichlet = [2, 3]
-            boundary_id_neumann = [1, 4]
-        else:
-            boundary_id_dirichlet = [i for i in range(1, 5) if i not in neumann_ids]
-            boundary_id_neumann = neumann_ids
-
-        # Set homogenous dirichlet boundary conditions
-        u_D = [dfem.Function(V_prime) for i in range(0, len(boundary_id_dirichlet))]
-
-        # Set homogenous dirichlet boundary conditions
-        V_bc = dfem.FunctionSpace(domain, ("DG", degree_bc))
-        f_bc = dfem.Function(V_bc)
-        f_bc.x.array[:] = 2 * (np.random.rand(V_bc.dofmap.index_map.size_local) + 0.1)
-
-        func_neumann = [f_bc for i in range(0, len(boundary_id_neumann))]
-    else:
-        raise ValueError("Not implemented!")
-
-    # Specify if projection is required
-    if degree_bc < degree_flux - 1:
-        neumann_projection = [False for i in range(0, len(boundary_id_neumann))]
-    else:
-        neumann_projection = [True for i in range(0, len(boundary_id_neumann))]
-
-    return (
-        boundary_id_dirichlet,
-        boundary_id_neumann,
-        u_D,
-        func_neumann,
-        neumann_projection,
-    )
-
-
-def set_manufactured_bcs(
-    V_prime: dfem.FunctionSpace,
-    boundary_id_dirichlet: List[int],
-    boundary_id_neumann: List[int],
-    u_ext: Callable,
-    sigma_ext: Any,
-):
-    """Sets dirichlet and neumann BCs based on manufactured solution
-
-    Args:
-        V_prime (dolfinx.FunctionSpace):   The function space of the primal problem
-        boundary_id_dirichlet (List[int]): List of boundary ids for dirichlet BCs
-        boundary_id_neumann (List[int]):   List of boundary ids for neumann BCs
-        u_ext (Callable):                  The manufactured solution (return np.array)
-        sigma_ext (ufl):                   The manufactured flux (ufl representation)
-
-    Returns:
-        u_D (List[dolfinx.Function]):      List of dirichlet boundary conditions
-        func_neumann (List[ufl]):          List of neumann boundary conditions
-        neumann_projection (List[bool]):   List of booleans indicating wether the neumann
-                                           BCs require projection
-    """
-
-    # Set dirichlet BCs
-    u_D = []
-    for id in boundary_id_dirichlet:
-        uD = dfem.Function(V_prime)
-        uD.interpolate(u_ext)
-
-        u_D.append(uD)
-
-    # Set neumann BCs
-    func_neumann = []
-    neumann_projection = []
-
-    for id in boundary_id_neumann:
-        func_neumann.append(exact_flux_ntrace(sigma_ext, id))
-        neumann_projection.append(True)
-
-    return u_D, func_neumann, neumann_projection
+    return -ufl.grad(exact_solution(x))
 
 
 # --- Solution routines
-def solve_poisson_problem(
+def solve_primal_problem(
     V_prime: dfem.FunctionSpace,
     geometry: Geometry,
-    bc_id_neumann: List[int],
-    bc_id_dirichlet: List[int],
-    ufl_rhs: Any,
-    ufl_neumann: List[Any],
-    u_dirichlet: List[dfem.Function],
+    bc_id_neumann: typing.List[int],
+    bc_id_dirichlet: typing.List[int],
+    ufl_rhs: typing.Any,
+    ufl_neumann: typing.List[typing.Any],
+    u_dirichlet: typing.List[dfem.Function],
     degree_projection: int = -1,
 ):
     """Solves a poisson problem based on lagrangian finite elements
@@ -347,16 +116,16 @@ def solve_poisson_problem(
     return u_prime, sig_proj
 
 
-def equilibrate_poisson(
-    Equilibrator: Any,
+def equilibrate_fluxes(
+    Equilibrator: typing.Any,
     degree_flux: int,
     geometry: Geometry,
-    sig_proj: List[dfem.Function],
-    rhs_proj: List[dfem.Function],
-    bc_id_neumann: List[List[int]],
-    bc_id_dirichlet: List[List[int]],
-    flux_neumann: List[Any],
-    neumann_projection: List[bool],
+    sig_proj: typing.List[dfem.Function],
+    rhs_proj: typing.List[dfem.Function],
+    bc_id_neumann: typing.List[typing.List[int]],
+    bc_id_dirichlet: typing.List[typing.List[int]],
+    flux_neumann: typing.List[typing.Any],
+    neumann_projection: typing.List[bool],
 ):
     """Equilibrates the fluxes of the primal problem
 
