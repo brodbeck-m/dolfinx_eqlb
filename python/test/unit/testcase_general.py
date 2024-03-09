@@ -90,13 +90,19 @@ def set_arbitrary_rhs(
 
         function_data = dfem.Function(V_data)
         function_data.x.array[:] = 2 * (
-            np.random.rand(V_data.dofmap.index_map.size_local) + 0.1
+            np.random.rand(
+                V_data.dofmap.index_map_bs * V_data.dofmap.index_map.size_local
+            )
+            + 0.1
         )
 
         function_rhs.interpolate(function_data)
     else:
         function_rhs.x.array[:] = 2 * (
-            np.random.rand(V_rhs.dofmap.index_map.size_local) + 0.1
+            np.random.rand(
+                V_rhs.dofmap.index_map_bs * V_rhs.dofmap.index_map.size_local
+            )
+            + 0.1
         )
 
     return function_rhs, function_rhs

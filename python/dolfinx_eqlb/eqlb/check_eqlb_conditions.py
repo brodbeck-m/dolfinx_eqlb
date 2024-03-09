@@ -4,6 +4,7 @@ import typing
 
 import basix
 import dolfinx.fem as dfem
+import dolfinx.mesh as dmesh
 import ufl
 
 from dolfinx_eqlb.lsolver import local_projection
@@ -97,7 +98,12 @@ def check_boundary_conditions(
 
 
 def check_divergence_condition(
-    sigma_eq: dfem.Function, sigma_proj: dfem.Function, rhs_proj: dfem.Function
+    sigma_eq: typing.Union[dfem.Function, typing.Any],
+    sigma_proj: typing.Union[dfem.Function, typing.Any],
+    rhs_proj: dfem.Function,
+    mesh: typing.Optional[dmesh.Mesh] = None,
+    degree: typing.Optional[int] = None,
+    flux_is_dg: typing.Optional[bool] = None,
 ):
     """Check the divergence condition
 
@@ -110,13 +116,33 @@ def check_divergence_condition(
     are performed.
 
     Args:
-        sigma_eq:       The equilibrated flux
-        sigma_proj:     The projected flux
-        rhs_proj:       The projected right-hand side
+        sigma_eq (Function or ufl-Argument):   The equilibrated flux
+        sigma_proj (Function or ufl-Argument): The projected flux
+        rhs_proj (Function):                   The projected right-hand side
+        mesh (optional, dmesh.Mesh):           The mesh (optional, only for ufl flux required)
+        degree (optional, int):                The flux degree (optional, only for ufl flux required)
+        flux_is_dg (optional, bool):                     Identifier id flux is in DRT space (optional, only for ufl flux required)
     """
     # --- Extract solution data
-    # the mesh
-    mesh = sigma_eq.function_space.mesh
+    if type(sigma_eq) is dfem.Function:
+        # the mesh
+        mesh = sigma_eq.function_space.mesh
+
+        # degree of the flux space
+        degree = sigma_eq.function_space.element.basix_element.degree
+
+        # check if flux space is discontinuous
+        flux_is_dg = sigma_eq.function_space.element.basix_element.discontinuous
+    else:
+        # Check input
+        if mesh is None:
+            raise ValueError("Mesh must be provided")
+
+        if degree is None:
+            raise ValueError("Flux degree must be provided")
+
+        if flux_is_dg is None:
+            raise ValueError("Flux type must be provided")
 
     # the geometry DOFmap
     gdmap = mesh.geometry.dofmap
@@ -124,14 +150,11 @@ def check_divergence_condition(
     # number of cells in mesh
     n_cells = mesh.topology.index_map(2).size_local
 
-    # degree of the flux space
-    degree = sigma_eq.function_space.element.basix_element.degree
-
-    # check if flux space is discontinuous
-    flux_is_dg = sigma_eq.function_space.element.basix_element.discontinuous
-
     # --- Calculate divergence of the equilibrated flux
-    V_div = dfem.FunctionSpace(mesh, ("DG", degree - 1))
+    if rhs_proj.function_space.dofmap.index_map_bs == 1:
+        V_div = dfem.FunctionSpace(mesh, ("DG", degree - 1))
+    else:
+        V_div = dfem.VectorFunctionSpace(mesh, ("DG", degree - 1))
 
     if flux_is_dg:
         div_sigeq = local_projection(V_div, [ufl.div(sigma_eq + sigma_proj)])[0]
