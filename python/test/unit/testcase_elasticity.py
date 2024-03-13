@@ -220,6 +220,6 @@ def equilibrate_stresses(
     equilibrator.equilibrate_fluxes()
 
     # Step 2: Enforce symmetry in a weak sense
-    # weak_symmetry_stress(equilibrator.list_flux_cpp, equilibrator.boundary_data)
+    weak_symmetry_stress(equilibrator.list_flux_cpp, equilibrator.boundary_data)
 
     return equilibrator.list_flux, equilibrator.list_bfunctions

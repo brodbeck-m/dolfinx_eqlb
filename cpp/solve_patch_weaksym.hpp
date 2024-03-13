@@ -109,9 +109,6 @@ void impose_weak_symmetry(const mesh::Geometry& geometry,
   L_patch.resize(dim_minspace);
   u_patch.resize(dim_minspace);
 
-  A_patch.setZero();
-  L_patch.setZero();
-
   // Boundary markers
   std::array<PatchType, 3> patch_types;
   std::array<bool, 3> patch_reversions;
@@ -195,6 +192,10 @@ void impose_weak_symmetry(const mesh::Geometry& geometry,
       ncells, ndofs_flux_fct,
       {patch.reversion_required(0), patch.reversion_required(1)});
 
+  // Assemble equation system
+  A_patch.setZero();
+  L_patch.setZero();
+
   assemble_fluxminimiser<T, id_flux_order, true>(
       minkernel, A_patch, L_patch, boundary_markers, asmbl_info, ndofs_per_cell,
       dcoefficients, gdim * ndofs_flux, storage_detJ, storage_J, storage_K,
@@ -205,8 +206,7 @@ void impose_weak_symmetry(const mesh::Geometry& geometry,
   u_patch = solver.solve(L_patch);
 
   /* Store local solution into global storage */
-  const int ndofs_flux_per_cell
-      = gdim * (ndofs_flux_fct - 1) + 1 + ndofs_flux_cell_add;
+  const int ndofs_flux_per_cell = gdim * ndofs_flux_fct + ndofs_flux_cell_add;
 
   for (std::int32_t a = 1; a < ncells + 1; ++a)
   {

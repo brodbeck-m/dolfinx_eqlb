@@ -173,23 +173,26 @@ public:
       }
 
       /* Cell DOFs: Divergence */
-      offs = 2 * _ndof_flux_fct + _ndof_flux_add_cell;
-      ldof = _fct_per_cell * _ndof_flux_fct;
-
-      for (std::size_t ii = 0; ii < _ndof_flux_div_cell; ++ii)
+      if constexpr (!(constr_minms))
       {
-        // Cell-local
-        dofmap(0, a, offs) = ldof;
+        offs = 2 * _ndof_flux_fct + _ndof_flux_add_cell;
+        ldof = _fct_per_cell * _ndof_flux_fct;
 
-        // Global
-        dofmap(1, a, offs) = gdof + ldof;
+        for (std::size_t ii = 0; ii < _ndof_flux_div_cell; ++ii)
+        {
+          // Cell-local
+          dofmap(0, a, offs) = ldof;
 
-        // Prefactor for construction of H(div=0) space
-        dofmap(3, a, offs) = 0;
+          // Global
+          dofmap(1, a, offs) = gdof + ldof;
 
-        // Update offset/ local DOF
-        offs += 1;
-        ldof += 1;
+          // Prefactor for construction of H(div=0) space
+          dofmap(3, a, offs) = 0;
+
+          // Update offset/ local DOF
+          offs += 1;
+          ldof += 1;
+        }
       }
     }
 

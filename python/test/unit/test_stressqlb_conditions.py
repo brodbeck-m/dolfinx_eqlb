@@ -23,8 +23,9 @@ Check if equilibrated flux
     c.) fulfills the flux boundary conditions strongly
 """
 
+
 @pytest.mark.parametrize("mesh_type", ["builtin"])
-@pytest.mark.parametrize("degree", [1,2,3,4])
+@pytest.mark.parametrize("degree", [1, 2, 3, 4])
 @pytest.mark.parametrize("bc_type", ["pure_dirichlet"])
 def test_equilibration_conditions(mesh_type, degree, bc_type):
     # Create mesh
@@ -145,4 +146,3 @@ if __name__ == "__main__":
     import sys
 
     pytest.main(sys.argv)
-    # test_equilibration_conditions("builtin", 3, "pure_dirichlet")
