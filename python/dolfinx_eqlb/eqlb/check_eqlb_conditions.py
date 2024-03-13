@@ -4,6 +4,7 @@ import typing
 
 import basix
 import dolfinx.fem as dfem
+import dolfinx.fem.petsc as dfem_petsc
 import dolfinx.mesh as dmesh
 import ufl
 
@@ -121,7 +122,7 @@ def check_divergence_condition(
         rhs_proj (Function):                   The projected right-hand side
         mesh (optional, dmesh.Mesh):           The mesh (optional, only for ufl flux required)
         degree (optional, int):                The flux degree (optional, only for ufl flux required)
-        flux_is_dg (optional, bool):                     Identifier id flux is in DRT space (optional, only for ufl flux required)
+        flux_is_dg (optional, bool):           Identifier id flux is in DRT space (optional, only for ufl flux required)
     """
     # --- Extract solution data
     if type(sigma_eq) is dfem.Function:
@@ -294,3 +295,46 @@ def check_jump_condition(sigma_eq: dfem.Function, sig_proj: dfem.Function):
                 # check continuity of facet-normal flux
                 if not np.isclose(flux_plus + flux_minus, 0):
                     raise ValueError("Jump condition not satisfied")
+
+
+def check_weak_symmetry_condition(sigma_eq: dfem.Function):
+    """Check the weak symmetry condition
+
+    Let sigma_eq be the equilibrated flux, then
+
+                (sig_eq, J(theta)) = 0
+
+    must hold.
+
+    Args:
+        sigma_eq (Function):   The equilibrated flux
+    """
+    # --- Extract solution data
+    # The mesh
+    mesh = sigma_eq[0].function_space.mesh
+
+    # --- Assemble weak symmetry condition
+    #  The (continuous) test space
+    V_test = dfem.FunctionSpace(mesh, ("P", 1))
+
+    # The test functional
+    if mesh.topology.dim == 2:
+        # The test function
+        v = ufl.TestFunction(V_test)
+
+        # The linear form
+        l_weaksym = dfem.form(ufl.inner(sigma_eq[0][1] - sigma_eq[1][0], v) * ufl.dx)
+    else:
+        raise ValueError("Test on weak symmetry condition not implemented for 3D")
+
+    # Assemble linear form
+    L = dfem_petsc.create_vector(l_weaksym)
+
+    with L.localForm() as loc:
+        loc.set(0)
+
+    dfem_petsc.assemble_vector(L, l_weaksym)
+
+    # --- Test weak-symmetry condition
+    if not np.allclose(L.array, 0):
+        raise ValueError("Weak symmetry condition not satisfied")

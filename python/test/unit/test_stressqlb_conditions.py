@@ -141,6 +141,9 @@ def test_equilibration_conditions(mesh_type, degree, bc_type):
                 for i in range(geometry.mesh.geometry.dim):
                     eqlb_checker.check_jump_condition(sigma_eq[i], sigma_projected[i])
 
+                # --- Check weak symmetry
+                eqlb_checker.check_weak_symmetry_condition(sigma_eq)
+
 
 if __name__ == "__main__":
     import sys
