@@ -385,7 +385,7 @@ public:
 
   /* Getter functions */
   /// Number of considered RHS
-  int nhrs() const { return _nrhs; }
+  int nrhs() const { return _nrhs; }
 
   /// Return central node of patch
   /// @return Central node

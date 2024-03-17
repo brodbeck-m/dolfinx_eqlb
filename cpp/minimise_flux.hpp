@@ -662,8 +662,7 @@ void assemble_fluxminimiser(
     Eigen::Matrix<T, Eigen::Dynamic, 1>& L_patch,
     std::span<const std::int8_t> boundary_markers,
     mdspan_t<const std::int32_t, 3> asmbl_info, const int ndofs_per_cell,
-    std::span<const T> coefficients, const int cstride,
-    const bool requires_flux_bc)
+    const bool requires_flux_bc, const int i_rhs = 0)
 {
   assert(id_flux_order < 0);
 
@@ -692,12 +691,11 @@ void assemble_fluxminimiser(
         asmbl_info, stdex::full_extent, a, stdex::full_extent);
 
     // DOFs on cell
-    std::span<const T> coefficients_elmt
-        = coefficients.subspan(id_a * cstride, cstride);
+    std::span<const T> coefficients = patch_data.coefficients_flux(i_rhs, a);
 
     // Evaluate linear- and bilinear form
     std::fill(dTe.begin(), dTe.end(), 0);
-    minimisation_kernel(Te, coefficients_elmt, asmbl_info_cell, detJ, J);
+    minimisation_kernel(Te, coefficients, asmbl_info_cell, detJ, J);
 
     // Assemble linear- and bilinear form
     if constexpr (id_flux_order == 1)

@@ -131,42 +131,26 @@ void equilibrate_flux_semiexplt(
   /* Initialise Mappings */
   // Representation/Storage isoparametric mapping
   std::array<double, 9> Jb, Kb;
-  mdspan_t<double, 2> J(Jb.data(), 2, 2), K(Kb.data(), 2, 2);
   std::array<double, 18> detJ_scratch;
+  mdspan_t<double, 2> J(Jb.data(), 2, 2), K(Kb.data(), 2, 2);
 
   // Storage cell geometry
-  const int cstride_geom = 3 * nnodes_cell;
-  std::vector<double> coordinate_dofs_e(cstride_geom, 0);
+  std::array<double, 12> coordinate_dofs_e;
 
   // Storage pre-factors (due to orientation of the normal)
-  std::int8_t fctloc_ea, fctloc_eam1;
-  bool noutward_ea, noutward_eam1;
-  std::vector<double> dprefactor_dof(ncells * 2, 1.0);
-  mdspan_t<double, 2> prefactor_dof(dprefactor_dof.data(), ncells, 2);
-
-  /* The patch-wise solution */
-  std::vector<T> dcoefficients_flux(ncells * ndofs_flux, 0);
-  mdspan_t<T, 2> coefficients_flux(dcoefficients_flux.data(), ncells,
-                                   ndofs_flux);
+  mdspan_t<T, 2> prefactor_dof = patch_data.prefactors_facet_per_cell();
 
   /* Initialise Step 1 */
-  // The interpolation matrix (reference cell)
+  // The interpolation matrix
   mdspan_t<const double, 4> M = kernel_data.interpl_matrix_facte();
+  mdspan_t<double, 4> M_mapped = patch_data.mapped_interpolation_matrix();
 
   const int nipoints_facet = kernel_data.nipoints_facet();
 
-  // The mapped interpolation matrix
-  // (Structure M_mapped: cells x dofs x dim x points)
-  // (DOF zero on facet Eam1, higher order DOFs on Ea)
-  std::vector<double> dM_mapped(ncells * nipoints_facet * ndofs_flux_fct * 2,
-                                0);
-  mdspan_t<double, 4> M_mapped(dM_mapped.data(), ncells, ndofs_flux_fct, 2,
-                               nipoints_facet);
-
   // Coefficient arrays for RHS/ projected flux
-  std::vector<T> coefficients_f(ndofs_rhs, 0),
-      coefficients_G_Tap1(ndofs_projflux, 0),
-      coefficients_G_Ta(ndofs_projflux, 0);
+  std::span<T> coefficients_f = patch_data.coefficients_rhs();
+  std::span<T> coefficients_G_Ta = patch_data.coefficients_projflux_Ta();
+  std::span<T> coefficients_G_Tap1 = patch_data.coefficients_projflux_Tap1();
 
   // Flux-jumps over facets
   std::array<T, 2> jG_Ea, djG_E0, djG_mapped_E0;
@@ -229,6 +213,9 @@ void equilibrate_flux_semiexplt(
     patch_data.store_piola_mapping(index, detJ, J, K);
 
     /* DOF transformation */
+    std::int8_t fctloc_eam1, fctloc_ea;
+    bool noutward_eam1, noutward_ea;
+
     std::tie(fctloc_eam1, fctloc_ea) = patch.fctid_local(a);
     std::tie(noutward_eam1, noutward_ea)
         = kernel_data.fct_normal_is_outward(fctloc_eam1, fctloc_ea);
@@ -280,6 +267,9 @@ void equilibrate_flux_semiexplt(
     // Check if reversion is requierd
     bool reversion_required = patch.reversion_required(i_rhs);
 
+    // Equilibarted flux
+    mdspan_t<T, 2> coefficients_flux = patch_data.coefficients_flux(i_rhs);
+
     // Projected primal flux
     const graph::AdjacencyList<std::int32_t>& fluxdg_dofmap
         = problem_data.fspace_flux_dg()->dofmap()->list();
@@ -306,7 +296,6 @@ void equilibrate_flux_semiexplt(
       c_tam1_eam1 = 0.0;
       c_t1_e0 = 0.0;
       std::fill(djG_Eam1.begin(), djG_Eam1.end(), 0.0);
-      std::fill(dcoefficients_flux.begin(), dcoefficients_flux.end(), 0.0);
     }
 
     // Loop over all cells
@@ -813,8 +802,8 @@ void equilibrate_flux_semiexplt(
       // Assemble system
       assemble_fluxminimiser<T, id_flux_order, true>(
           minkernel, patch_data, A_patch, L_patch, boundary_markers,
-          dofmap_flux, ndofs_hdivz_per_cell - 1, dcoefficients_flux, ndofs_flux,
-          patch.requires_flux_bcs(i_rhs));
+          dofmap_flux, ndofs_hdivz_per_cell - 1, patch.requires_flux_bcs(i_rhs),
+          i_rhs);
 
       // Factorise of system matrix
       if constexpr (id_flux_order > 1)
@@ -830,8 +819,8 @@ void equilibrate_flux_semiexplt(
       // Assemble linear form
       assemble_fluxminimiser<T, id_flux_order, true>(
           minkernel_rhs, patch_data, A_patch, L_patch, boundary_markers,
-          dofmap_flux, ndofs_hdivz_per_cell - 1, dcoefficients_flux, ndofs_flux,
-          patch.requires_flux_bcs(i_rhs));
+          dofmap_flux, ndofs_hdivz_per_cell - 1, patch.requires_flux_bcs(i_rhs),
+          i_rhs);
     }
 
     // Solve system

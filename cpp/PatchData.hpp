@@ -2,6 +2,9 @@
 
 #include "eigen3/Eigen/Dense"
 
+#include "utils.hpp"
+
+#include <algorithm>
 #include <span>
 #include <vector>
 
@@ -15,7 +18,7 @@ class PatchDataCstm
 public:
   PatchDataCstm(PatchFluxCstm<T, id_flux_order, constr_minms>& patch,
                 const int niponts_per_fct)
-      : _gdim(patch.dim()), _ndofs_flux(patch.ndofs_fluxdg_cell()),
+      : _gdim(patch.dim()), _ndofs_flux(patch.ndofs_flux()),
         _ncells_max(patch.ncells_max()), _size_j(_gdim * _gdim)
   {
     // The patch
@@ -34,17 +37,22 @@ public:
     _data_K.resize(_size_j * ncells_max, 0);
     _data_detJ.resize(ncells_max, 0);
 
-    // // Facet prefactors on cells
-    // _data_fctprefactors_cell.resize(gdim * ncells_max);
+    // Facet prefactors on cells
+    _data_fctprefactors_cell.resize(_gdim * ncells_max);
 
-    // // Mapped interpolation matrix
-    // _data_M_mapped.resize(niponts_per_fct * ncells_max * ndofs_flux_fct, 0);
+    // Mapped interpolation matrix
+    _shape_Mm = {_ncells_max, ndofs_flux_fct, _gdim, niponts_per_fct};
+    _data_Mm.resize(_shape_Mm[0] * _shape_Mm[1] * _shape_Mm[2] * _shape_Mm[3],
+                    0);
 
-    // // Coefficients
-    // _coefficients_rhs.resize(ncells_max * patch.ndofs_rhs_cell(), 0);
-    // _coefficients_G_Tap1.resize(ncells_max * ndofs_projflux, 0);
-    // _coefficients_G_Ta.resize(ncells_max * ndofs_projflux, 0);
-    // _coefficients_flux.resize(ncells_max * patch.nrhs() * _ndofs_flux, 0);
+    // Coefficients
+    _coefficients_rhs.resize(ncells_max * patch.ndofs_rhs_cell(), 0);
+    _coefficients_G_Tap1.resize(ncells_max * ndofs_projflux, 0);
+    _coefficients_G_Ta.resize(ncells_max * ndofs_projflux, 0);
+
+    _shape_coeffsflux = {patch.nrhs(), _ncells_max, _ndofs_flux};
+    _coefficients_flux.resize(
+        _shape_coeffsflux[0] * _shape_coeffsflux[1] * _shape_coeffsflux[2], 0);
 
     // // Jumps of the projected flux
     // _data_jumpG_Eam1.resize(_gdim * niponts_per_fct, 0);
@@ -103,8 +111,23 @@ public:
   }
 
   // --- Setter methods ---
-  void set_patch_length(const int ncells) { _ncells = ncells; }
+  void reinitialisation(const int ncells)
+  {
+    // Set current patch length
+    _ncells = ncells;
 
+    // --- Update length of mdspans
+    _shape_Mm[0] = ncells;
+    _shape_coeffsflux[1] = ncells;
+
+    // --- Re-initialise storage
+    // Coefficients of the flux
+    const int length_cflux
+        = _shape_coeffsflux[0] * ncells * _shape_coeffsflux[2];
+    std::fill_n(_coefficients_flux.begin(), length_cflux, 0.0);
+  }
+
+  /* Piola mapping */
   void store_piola_mapping(const int cell_id, const double detJ,
                            mdspan_t<const double, 2> J)
   {
@@ -160,6 +183,71 @@ public:
   }
 
   /* Interpolation */
+  mdspan_t<T, 2> prefactors_facet_per_cell()
+  {
+    // Set offset
+    return mdspan_t<T, 2>(_data_fctprefactors_cell.data(), _ncells, _gdim);
+  }
+
+  /// Mapped interpolation matrix
+  ///
+  /// Structure mdspan: cells x dofs x dim x points
+  /// Structure DOFs: Zero order on Eam1, higher order on Ea
+  ///
+  /// @return mdspan of the interpolation matrix
+  mdspan_t<double, 4> mapped_interpolation_matrix()
+  {
+    return mdspan_t<double, 4>(_data_Mm.data(), _shape_Mm);
+  }
+
+  /* Coefficients */
+  /// Coefficients of the flux
+  ///
+  /// Structure mdspan: rhs x cells x dofs
+  ///
+  /// @return mdspan of the coefficients
+  mdspan_t<T, 3> coefficients_flux()
+  {
+    return mdspan_t<T, 3>(_coefficients_flux.data(), _shape_coeffsflux);
+  }
+
+  /// Coefficients of the i-th flux
+  ///
+  /// Structure mdspan: cells x dofs
+  ///
+  /// @return mdspan of the coefficients (i-th flux)
+  mdspan_t<T, 2> coefficients_flux(const int i)
+  {
+    const int offset = i * _ncells * _shape_coeffsflux[2];
+    return mdspan_t<T, 2>(_coefficients_flux.data() + offset,
+                          _shape_coeffsflux[1], _shape_coeffsflux[2]);
+  }
+
+  /// Coefficients of the i-th flux on cell a
+  /// @return span of the coefficients
+  std::span<const T> coefficients_flux(const int i, const int a) const
+  {
+    const int offset
+        = (i * _shape_coeffsflux[1] + a - 1) * _shape_coeffsflux[2];
+    return std::span<const T>(_coefficients_flux.data() + offset,
+                              _shape_coeffsflux[2]);
+  }
+
+  std::span<T> coefficients_projflux_Ta()
+  {
+    return std::span<T>(_coefficients_G_Ta.data(), _coefficients_G_Ta.size());
+  }
+
+  std::span<T> coefficients_projflux_Tap1()
+  {
+    return std::span<T>(_coefficients_G_Tap1.data(),
+                        _coefficients_G_Tap1.size());
+  }
+
+  std::span<T> coefficients_rhs()
+  {
+    return std::span<T>(_coefficients_rhs.data(), _coefficients_rhs.size());
+  }
 
 protected:
   void store_piola_matrix(std::span<double> storage,
@@ -204,13 +292,15 @@ protected:
   std::vector<double> _data_J, _data_K, _data_detJ;
 
   // Pre-factors cell facets
-  std::vector<double> _data_fctprefactors_cell;
+  std::vector<T> _data_fctprefactors_cell;
 
   // The mapped interpolation matrix
-  std::vector<double> _data_M_mapped;
+  std::array<std::size_t, 4> _shape_Mm;
+  std::vector<double> _data_Mm;
 
   // --- Intermediate storage
   // Coefficients (RHS, projected flux, equilibrated flux)
+  std::array<std::size_t, 3> _shape_coeffsflux;
   std::vector<T> _coefficients_rhs, _coefficients_G_Tap1, _coefficients_G_Ta,
       _coefficients_flux;
 
