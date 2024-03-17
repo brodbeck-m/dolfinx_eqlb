@@ -158,13 +158,8 @@ void equilibrate_flux_semiexplt(
 
   // Storage for cell-wise solution
   T c_ta_ea = 0, c_ta_eam1 = 0, c_tam1_eam1 = 0, c_t1_e0 = 0;
-  std::vector<T> c_ta_div, cj_ta_ea;
-
-  if constexpr (id_flux_order > 1)
-  {
-    c_ta_div.resize(ndofs_flux_cell_div, 0);
-    cj_ta_ea.resize(ndofs_flux_fct - 1, 0);
-  }
+  std::span<T> c_ta_div = patch_data.c_ta_div(),
+               cj_ta_ea = patch_data.cj_ta_ea();
 
   /* Initialise Step 2 */
   // Number of DOFs on patch-wise H(div=0) space

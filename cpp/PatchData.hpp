@@ -58,9 +58,9 @@ public:
     _shape_jGEam1 = {niponts_per_fct, _gdim};
     _data_jumpG_Eam1.resize(_shape_jGEam1[0] * _shape_jGEam1[1], 0);
 
-    // // Higher order DOFs (explicit solution step)
-    // _c_ta_div.resize(patch.ndofs_flux_cell_div(), 0);
-    // _cj_ta_ea.resize(ndofs_flux_fct - 1, 0);
+    // Higher order DOFs (explicit solution step)
+    _c_ta_div.resize(patch.ndofs_flux_cell_div(), 0);
+    _cj_ta_ea.resize(ndofs_flux_fct - 1, 0);
 
     // // --- Initialise equation system
     // int ndofs_hdivz, ndofs_hdivz_constr;
@@ -262,6 +262,16 @@ public:
   mdspan_t<T, 2> jumpG_Eam1()
   {
     return mdspan_t<T, 2>(_data_jumpG_Eam1.data(), _shape_jGEam1);
+  }
+
+  std::span<T> c_ta_div()
+  {
+    return std::span<T>(_c_ta_div.data(), _c_ta_div.size());
+  }
+
+  std::span<T> cj_ta_ea()
+  {
+    return std::span<T>(_cj_ta_ea.data(), _cj_ta_ea.size());
   }
 
 protected:
