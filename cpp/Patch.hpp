@@ -93,6 +93,9 @@ public:
   }
 
   /* Getter functions */
+  /// Number of considered RHS
+  int nhrs() const { return _nrhs; }
+
   /// Return central node of patch
   /// @return Central node
   int node_i() { return _nodei; }
@@ -148,6 +151,9 @@ public:
   /// Return number of facets per cell
   /// @return Number of facets per cell
   int fcts_per_cell() { return _fct_per_cell; }
+
+  // Return the maximal number of cells per patch
+  int ncells_max() const { return _ncells_max; }
 
   /// Return number of cells on patch
   /// @return Number of cells on patch
@@ -311,9 +317,11 @@ protected:
   // Central node of patch
   int _nodei;
 
+  // Number of considered RHS
+  int _nrhs;
+
   // Type of patch
   std::vector<PatchType> _type;
-  int _npatches;
 
   // Id if all patches are equal;
   std::int8_t _equal_patches;
@@ -376,6 +384,9 @@ public:
   /* Setter functions */
 
   /* Getter functions */
+  /// Number of considered RHS
+  int nhrs() const { return _nrhs; }
+
   /// Return central node of patch
   /// @return Central node
   int node_i() const { return _nodei; }
@@ -453,6 +464,9 @@ public:
   /// Return number of facets per cell
   /// @return Number of facets per cell
   int fcts_per_cell() const { return _fct_per_cell; }
+
+  // Return the maximal number of cells per patch
+  int ncells_max() const { return _ncells_max; }
 
   /// Return number of cells on patch
   /// @return Number of cells on patch
@@ -583,6 +597,9 @@ protected:
   /* Patch */
   // Central node of patch
   int _nodei;
+
+  // Number of considered RHS
+  int _nrhs;
 
   // Type of patch
   std::vector<PatchType> _type;

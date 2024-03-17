@@ -5,6 +5,7 @@
 #include "KernelData.hpp"
 #include "Patch.hpp"
 #include "PatchCstm.hpp"
+#include "PatchData.hpp"
 #include "ProblemDataFluxCstm.hpp"
 #include "minimise_flux.hpp"
 #include "utils.hpp"
@@ -91,12 +92,12 @@ void calculate_jump(std::size_t ipoint_n,
 /// @param kernel_data  The kernel data (Quadrature data, tabulated basis
 /// functions)
 template <typename T, int id_flux_order = 3>
-void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
-                                PatchFluxCstm<T, id_flux_order, false>& patch,
-                                ProblemDataFluxCstm<T>& problem_data,
-                                KernelDataEqlb<T>& kernel_data,
-                                kernel_fn<T, true>& minkernel,
-                                kernel_fn<T, false>& minkernel_rhs)
+void equilibrate_flux_semiexplt(
+    const mesh::Geometry& geometry,
+    PatchFluxCstm<T, id_flux_order, false>& patch,
+    PatchDataCstm<T, id_flux_order, false>& patch_data,
+    ProblemDataFluxCstm<T>& problem_data, KernelDataEqlb<T>& kernel_data,
+    kernel_fn<T, true>& minkernel, kernel_fn<T, false>& minkernel_rhs)
 {
   /* Extract data */
   // Spacial dimension
@@ -132,26 +133,6 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
   std::array<double, 9> Jb, Kb;
   mdspan_t<double, 2> J(Jb.data(), 2, 2), K(Kb.data(), 2, 2);
   std::array<double, 18> detJ_scratch;
-
-  bool store_K = false;
-  std::vector<double> storage_detJ(ncells, 0), storage_J(ncells * 4, 0),
-      storage_K;
-
-  if constexpr (id_flux_order > 1)
-  {
-    store_K = true;
-    storage_K.resize(ncells * 4);
-  }
-
-  if (patch.is_on_boundary())
-  {
-    if (store_K == false)
-    {
-      // Inverse of the Jacobian
-      store_K = true;
-      storage_K.resize(ncells * 4, 0);
-    }
-  }
 
   // Storage cell geometry
   const int cstride_geom = 3 * nnodes_cell;
@@ -244,18 +225,8 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
     mdspan_t<const double, 2> coords(coordinate_dofs_e.data(), nnodes_cell, 3);
 
     // Calculate Jacobi, inverse, and determinant
-    storage_detJ[index]
-        = kernel_data.compute_jacobian(J, K, detJ_scratch, coords);
-
-    const double detJ = storage_detJ[index];
-
-    // Storage of (inverse) Jacobian
-    store_mapping_data(index, storage_J, J);
-
-    if (store_K)
-    {
-      store_mapping_data(index, storage_K, K);
-    }
+    double detJ = kernel_data.compute_jacobian(J, K, detJ_scratch, coords);
+    patch_data.store_piola_mapping(index, detJ, J, K);
 
     /* DOF transformation */
     std::tie(fctloc_eam1, fctloc_ea) = patch.fctid_local(a);
@@ -291,7 +262,7 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
 
   // DOFmap for minimisation
   patch.set_assembly_informations(kernel_data.fct_normal_is_outward(),
-                                  storage_detJ);
+                                  patch_data.jacobi_determinants(ncells));
 
   const int offs_ffEa = ndofs_flux_fct;
   const int offs_fcadd = 2 * ndofs_flux_fct;
@@ -392,7 +363,7 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
       std::int8_t fl_Tap1Ea = patch.fctid_local(a, a + 1);
 
       // Isoparametric mapping
-      const double detJ = storage_detJ[id_a];
+      const double detJ = patch_data.jacobi_determinant(id_a);
       const double sign_detJ = (detJ > 0.0) ? 1.0 : -1.0;
 
       // DOFs (cell-local) projected flux on facet Ea
@@ -457,8 +428,8 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
         }
 
         // Calculate patch bcs
-        mdspan_t<const double, 2> J = extract_mapping_data(0, storage_J);
-        mdspan_t<const double, 2> K = extract_mapping_data(0, storage_K);
+        mdspan_t<const double, 2> J = patch_data.jacobian(0);
+        mdspan_t<const double, 2> K = patch_data.inverse_jacobian(0);
 
         problem_data.calculate_patch_bc(i_rhs, bfct_global, node_i_Ta, J, detJ,
                                         K);
@@ -528,10 +499,8 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
               if constexpr (id_flux_order > 1)
               {
                 // Extract mapping data
-                mdspan_t<const double, 2> J
-                    = extract_mapping_data(id_a, storage_J);
-                mdspan_t<const double, 2> K
-                    = extract_mapping_data(id_a, storage_K);
+                mdspan_t<const double, 2> J = patch_data.jacobian(id_a);
+                mdspan_t<const double, 2> K = patch_data.inverse_jacobian(id_a);
 
                 // Pull back flux to reference cell
                 mdspan_t<T, 2> jG_E0(djG_E0.data(), 1, dim);
@@ -606,10 +575,8 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
             if (reversion_required)
             {
               // Extract mapping data
-              mdspan_t<const double, 2> J
-                  = extract_mapping_data(id_a, storage_J);
-              mdspan_t<const double, 2> K
-                  = extract_mapping_data(id_a, storage_K);
+              mdspan_t<const double, 2> J = patch_data.jacobian(id_a);
+              mdspan_t<const double, 2> K = patch_data.inverse_jacobian(id_a);
 
               // Pull back flux to reference cell
               mdspan_t<T, 2> jG_En(jG_Ea.data(), 1, dim);
@@ -679,7 +646,7 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
       else
       {
         // Isoparametric mapping
-        mdspan_t<const double, 2> K = extract_mapping_data(id_a, storage_K);
+        mdspan_t<const double, 2> K = patch_data.inverse_jacobian(id_a);
 
         // Quadrature points and weights
         mdspan_t<const double, 2> qpoints = kernel_data.quadrature_points(0);
@@ -845,9 +812,9 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
 
       // Assemble system
       assemble_fluxminimiser<T, id_flux_order, true>(
-          minkernel, A_patch, L_patch, boundary_markers, dofmap_flux,
-          ndofs_hdivz_per_cell - 1, dcoefficients_flux, ndofs_flux,
-          storage_detJ, storage_J, storage_K, patch.requires_flux_bcs(i_rhs));
+          minkernel, patch_data, A_patch, L_patch, boundary_markers,
+          dofmap_flux, ndofs_hdivz_per_cell - 1, dcoefficients_flux, ndofs_flux,
+          patch.requires_flux_bcs(i_rhs));
 
       // Factorise of system matrix
       if constexpr (id_flux_order > 1)
@@ -862,9 +829,9 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
 
       // Assemble linear form
       assemble_fluxminimiser<T, id_flux_order, true>(
-          minkernel_rhs, A_patch, L_patch, boundary_markers, dofmap_flux,
-          ndofs_hdivz_per_cell - 1, dcoefficients_flux, ndofs_flux,
-          storage_detJ, storage_J, storage_K, patch.requires_flux_bcs(i_rhs));
+          minkernel_rhs, patch_data, A_patch, L_patch, boundary_markers,
+          dofmap_flux, ndofs_hdivz_per_cell - 1, dcoefficients_flux, ndofs_flux,
+          patch.requires_flux_bcs(i_rhs));
     }
 
     // Solve system

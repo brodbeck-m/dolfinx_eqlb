@@ -653,26 +653,23 @@ generate_minimisation_kernel(Kernel type, KernelDataEqlb<T>& kernel_data,
 /// @param boundary_markers The boundary markers
 /// @param asmbl_info       Informations to create the patch-wise H(div=0) space
 /// @param coefficients     Flux DOFs on cells
-/// @param storage_detJ     The Jacobi determinants of the patch cells
-/// @param storage_J        The Jacobi matrices of the patch cells
-/// @param storage_K        The invers Jacobi matrices of the patch cells
 /// @param requires_flux_bc Marker if flux BCs are required
 template <typename T, int id_flux_order = 3, bool asmbl_systmtrx = true>
 void assemble_fluxminimiser(
     kernel_fn<T, asmbl_systmtrx>& minimisation_kernel,
+    PatchDataCstm<T, id_flux_order, false>& patch_data,
     Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>& A_patch,
     Eigen::Matrix<T, Eigen::Dynamic, 1>& L_patch,
     std::span<const std::int8_t> boundary_markers,
     mdspan_t<const std::int32_t, 3> asmbl_info, const int ndofs_per_cell,
     std::span<const T> coefficients, const int cstride,
-    std::span<const double> storage_detJ, std::span<const double> storage_J,
-    std::span<const double> storage_K, const bool requires_flux_bc)
+    const bool requires_flux_bc)
 {
   assert(id_flux_order < 0);
 
   /* Extract data */
   // Number of elements/facets on patch
-  const int ncells = storage_detJ.size();
+  const int ncells = patch_data.ncells();
 
   /* Initialisation */
   // Element tangents
@@ -687,8 +684,8 @@ void assemble_fluxminimiser(
     int id_a = a - 1;
 
     // Isoparametric mapping
-    const double detJ = storage_detJ[id_a];
-    mdspan_t<const double, 2> J = extract_mapping_data(id_a, storage_J);
+    const double detJ = patch_data.jacobi_determinant(id_a);
+    mdspan_t<const double, 2> J = patch_data.jacobian(id_a);
 
     // DOFmap on cell
     smdspan_t<const std::int32_t, 2> asmbl_info_cell = stdex::submdspan(

@@ -8,7 +8,7 @@ Patch::Patch(int nnodes_proc, std::shared_ptr<const mesh::Mesh> mesh,
     : _mesh(mesh), _bfct_type(bfct_type), _dim(mesh->geometry().dim()),
       _dim_fct(mesh->geometry().dim() - 1),
       _type(bfct_type.extent(0), PatchType::internal),
-      _npatches(bfct_type.extent(0))
+      _nrhs(bfct_type.extent(0))
 {
   // Initialize connectivities
   _node_to_cell = _mesh->topology().connectivity(0, _dim);
@@ -432,7 +432,8 @@ OrientedPatch::OrientedPatch(int nnodes_proc,
                              mdspan_t<const std::int8_t, 2> bfct_type)
     : _mesh(mesh), _bfct_type(bfct_type), _dim(mesh->geometry().dim()),
       _dim_fct(mesh->geometry().dim() - 1),
-      _type(bfct_type.extent(0), PatchType::internal)
+      _type(bfct_type.extent(0), PatchType::internal),
+      _nrhs(bfct_type.extent(0))
 {
   // Initialize connectivities
   _node_to_cell = _mesh->topology().connectivity(0, _dim);

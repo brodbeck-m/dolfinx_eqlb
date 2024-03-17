@@ -60,6 +60,7 @@ set(
   Patch.hpp
   PatchFluxEV.hpp
   PatchCstm.hpp
+  PatchData.hpp
   ProblemData.hpp
   ProblemDataFluxCstm.hpp
   ProblemDataFluxEV.hpp
