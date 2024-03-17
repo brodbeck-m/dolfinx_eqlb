@@ -154,9 +154,7 @@ void equilibrate_flux_semiexplt(
 
   // Flux-jumps over facets
   std::array<T, 2> jG_Ea, djG_E0, djG_mapped_E0;
-
-  std::vector<T> djG_Eam1(dim * nipoints_facet, 0);
-  mdspan_t<T, 2> jG_Eam1(djG_Eam1.data(), nipoints_facet, dim);
+  mdspan_t<T, 2> jG_Eam1 = patch_data.jumpG_Eam1();
 
   // Storage for cell-wise solution
   T c_ta_ea = 0, c_ta_eam1 = 0, c_tam1_eam1 = 0, c_t1_e0 = 0;
@@ -295,7 +293,7 @@ void equilibrate_flux_semiexplt(
     {
       c_tam1_eam1 = 0.0;
       c_t1_e0 = 0.0;
-      std::fill(djG_Eam1.begin(), djG_Eam1.end(), 0.0);
+      patch_data.reinitialise_jumpG_Eam1();
     }
 
     // Loop over all cells

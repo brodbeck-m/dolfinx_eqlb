@@ -54,8 +54,9 @@ public:
     _coefficients_flux.resize(
         _shape_coeffsflux[0] * _shape_coeffsflux[1] * _shape_coeffsflux[2], 0);
 
-    // // Jumps of the projected flux
-    // _data_jumpG_Eam1.resize(_gdim * niponts_per_fct, 0);
+    // Jumps of the projected flux
+    _shape_jGEam1 = {niponts_per_fct, _gdim};
+    _data_jumpG_Eam1.resize(_shape_jGEam1[0] * _shape_jGEam1[1], 0);
 
     // // Higher order DOFs (explicit solution step)
     // _c_ta_div.resize(patch.ndofs_flux_cell_div(), 0);
@@ -125,6 +126,14 @@ public:
     const int length_cflux
         = _shape_coeffsflux[0] * ncells * _shape_coeffsflux[2];
     std::fill_n(_coefficients_flux.begin(), length_cflux, 0.0);
+
+    // Storage jump of the projected flux
+    reinitialise_jumpG_Eam1();
+  }
+
+  void reinitialise_jumpG_Eam1()
+  {
+    std::fill(_data_jumpG_Eam1.begin(), _data_jumpG_Eam1.end(), 0.0);
   }
 
   /* Piola mapping */
@@ -249,6 +258,12 @@ public:
     return std::span<T>(_coefficients_rhs.data(), _coefficients_rhs.size());
   }
 
+  /* Intermediate storage */
+  mdspan_t<T, 2> jumpG_Eam1()
+  {
+    return mdspan_t<T, 2>(_data_jumpG_Eam1.data(), _shape_jGEam1);
+  }
+
 protected:
   void store_piola_matrix(std::span<double> storage,
                           mdspan_t<const double, 2> matrix)
@@ -305,6 +320,7 @@ protected:
       _coefficients_flux;
 
   // Jumps of the projected flux
+  std::array<std::size_t, 2> _shape_jGEam1;
   std::vector<T> _data_jumpG_Eam1;
 
   // Cell-wise solutions (explicit setp)
