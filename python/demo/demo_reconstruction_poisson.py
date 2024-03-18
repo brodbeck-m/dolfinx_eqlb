@@ -17,6 +17,7 @@ holds. Dirichlet BCs are applied on the boundaries 2 and 4.
 # --- Imports ---
 import numpy as np
 from mpi4py import MPI
+import time
 
 import dolfinx
 import dolfinx.fem as dfem
@@ -99,13 +100,25 @@ def solve_primal_problem(elmt_order_prime, domain, facet_tags, ds):
     bc_essnt = [dfem.dirichletbc(uD, dofs_essnt)]
 
     # Solve primal problem
+    timing = 0
     problem = dfem.petsc.LinearProblem(
         a,
         l,
         bcs=bc_essnt,
-        petsc_options={"ksp_type": "cg", "ksp_rtol": 1e-10, "ksp_atol": 1e-12},
+        petsc_options={
+            "ksp_type": "cg",
+            "pc_type": "hypre",
+            "hypre_type": "boomeramg",
+            "ksp_rtol": 1e-10,
+            "ksp_atol": 1e-12,
+        },
     )
+
+    timing -= time.perf_counter()
     uh_prime = problem.solve()
+    timing += time.perf_counter()
+
+    print(f"Primal problem solved in {timing:.4e} s")
 
     return uh_prime
 
@@ -162,7 +175,13 @@ def equilibrate_flux(
     )
 
     # Solve equilibration
+    timing = 0
+
+    timing -= time.perf_counter()
     equilibrator.equilibrate_fluxes()
+    timing += time.perf_counter()
+
+    print(f"Equilibration solved in {timing:.4e} s")
 
     return sigma_proj[0], equilibrator.list_flux[0]
 
