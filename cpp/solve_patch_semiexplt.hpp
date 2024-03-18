@@ -145,8 +145,6 @@ void equilibrate_flux_semiexplt(
   mdspan_t<const double, 4> M = kernel_data.interpl_matrix_facte();
   mdspan_t<double, 4> M_mapped = patch_data.mapped_interpolation_matrix();
 
-  const int nipoints_facet = kernel_data.nipoints_facet();
-
   // Coefficient arrays for RHS/ projected flux
   std::span<T> coefficients_f = patch_data.coefficients_rhs();
   std::span<T> coefficients_G_Ta = patch_data.coefficients_projflux_Ta();
@@ -167,21 +165,6 @@ void equilibrate_flux_semiexplt(
       = 1 + degree_flux_rt * nfcts
         + 0.5 * degree_flux_rt * (degree_flux_rt - 1) * ncells;
   const int ndofs_hdivz_per_cell = 2 * ndofs_flux_fct + ndofs_flux_cell_add;
-
-  // The equation system for the minimisation step
-  Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic> A_patch;
-  Eigen::Matrix<T, Eigen::Dynamic, 1> L_patch, u_patch;
-
-  A_patch.resize(ndofs_hdivz, ndofs_hdivz);
-  L_patch.resize(ndofs_hdivz);
-  u_patch.resize(ndofs_hdivz);
-
-  // Local solver (Cholesky decomposition)
-  Eigen::LLT<Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>> solver;
-
-  // Boundary markers
-  std::vector<std::int8_t> boundary_markers
-      = initialise_boundary_markers(Kernel::FluxMin, 2, nfcts + 1, ndofs_hdivz);
 
   /* Pre-evaluate repeatedly used cell data */
   // Jacobi transformation and interpolation matrix
@@ -223,7 +206,7 @@ void equilibrate_flux_semiexplt(
     /* Apply push-back on interpolation matrix M */
     for (std::size_t i = 0; i < ndofs_flux_fct; ++i)
     {
-      for (std::size_t j = 0; j < nipoints_facet; ++j)
+      for (std::size_t j = 0; j < kernel_data.nipoints_facet(); ++j)
       {
         // Select facet
         // (Zero-order moment on facet Eama, higer order moments on Ea)
@@ -450,7 +433,7 @@ void equilibrate_flux_semiexplt(
       }
 
       // Interpolate DOFs
-      for (std::size_t n = 0; n < nipoints_facet; ++n)
+      for (std::size_t n = 0; n < kernel_data.nipoints_facet(); ++n)
       {
         // Global index of Tap1
         std::int32_t c_ap1 = cells[a + 1];
@@ -763,8 +746,9 @@ void equilibrate_flux_semiexplt(
 
     /* Step 2: Minimse sigma_delta */
     // Set boundary markers
-    set_boundary_markers(boundary_markers, Kernel::FluxMin, {type_patch}, dim,
-                         ncells, ndofs_flux_fct, {reversion_required});
+    set_boundary_markers(patch_data.boundary_markers(false), Kernel::FluxMin,
+                         {type_patch}, dim, ncells, ndofs_flux_fct,
+                         {reversion_required});
 
     // Check if assembly of entire system is required
     bool assemble_entire_system = false;
@@ -788,45 +772,29 @@ void equilibrate_flux_semiexplt(
     // Assemble equation system
     if (assemble_entire_system)
     {
-      // Initialize tangents
-      A_patch.setZero();
-      L_patch.setZero();
-
       // Assemble system
-      assemble_fluxminimiser<T, id_flux_order, true>(
-          minkernel, patch_data, A_patch, L_patch, boundary_markers,
-          dofmap_flux, ndofs_hdivz_per_cell - 1, patch.requires_flux_bcs(i_rhs),
-          i_rhs);
+      assemble_fluxminimiser<T, id_flux_order, true, false>(
+          minkernel, patch_data, dofmap_flux, i_rhs,
+          patch.requires_flux_bcs(i_rhs), false);
 
-      // Factorise of system matrix
-      if constexpr (id_flux_order > 1)
-      {
-        solver.compute(A_patch);
-      }
+      // Factorisation of system matrix
+      patch_data.factorise_system(false);
     }
     else
     {
-      // Initialise linear form
-      L_patch.setZero();
-
       // Assemble linear form
-      assemble_fluxminimiser<T, id_flux_order, true>(
-          minkernel_rhs, patch_data, A_patch, L_patch, boundary_markers,
-          dofmap_flux, ndofs_hdivz_per_cell - 1, patch.requires_flux_bcs(i_rhs),
-          i_rhs);
+      assemble_fluxminimiser<T, id_flux_order, false, false>(
+          minkernel_rhs, patch_data, dofmap_flux, i_rhs,
+          patch.requires_flux_bcs(i_rhs), false);
     }
 
     // Solve system
-    if constexpr (id_flux_order == 1)
-    {
-      u_patch(0) = L_patch(0) / A_patch(0, 0);
-    }
-    else
-    {
-      u_patch = solver.solve(L_patch);
-    }
+    patch_data.solve_system(false);
 
     /* Move patch-wise solution into global storage */
+    // The patch-local solution
+    Eigen::Matrix<T, Eigen::Dynamic, 1>& u_patch = patch_data.u_patch(false);
+
     // Global solution vector and DOFmap
     std::span<T> x_flux_dhdiv = problem_data.flux(i_rhs).x()->mutable_array();
     const graph::AdjacencyList<std::int32_t>& flux_dofmap

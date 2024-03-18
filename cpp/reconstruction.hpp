@@ -237,7 +237,7 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
     patch.create_subdofmap(i_node);
 
     // Current patch-length to patch-data
-    patch_data.reinitialisation(patch.ncells());
+    patch_data.reinitialisation(patch.ncells(), patch.nfcts(), patch.npnts());
 
     // Calculate coefficients per patch
     equilibrate_flux_semiexplt<T, id_flux_order>(

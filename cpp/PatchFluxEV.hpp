@@ -36,6 +36,9 @@ public:
   /* Setter functions */
 
   /* Getter functions */
+  /// @return Number of mesh nodes on patch
+  int npnts() const { return _nfcts + 1; }
+
   /// @return Number of DOFs on element
   int ndofs_elmt() { return _ndof_elmt; }
 

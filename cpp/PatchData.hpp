@@ -18,16 +18,15 @@ class PatchDataCstm
 public:
   PatchDataCstm(PatchFluxCstm<T, id_flux_order, constr_minms>& patch,
                 const int niponts_per_fct)
-      : _gdim(patch.dim()), _ndofs_flux(patch.ndofs_flux()),
-        _ncells_max(patch.ncells_max()), _size_j(_gdim * _gdim)
+      : _gdim(patch.dim()), _degree_flux_rt(patch.degree_raviart_thomas()),
+        _ndofs_flux(patch.ndofs_flux()), _ncells_max(patch.ncells_max()),
+        _size_j(_gdim * _gdim)
   {
     // The patch
     const int ncells_max = patch.ncells_max();
     const int nfcts_per_cell = patch.fcts_per_cell();
 
     // Counter flux DOFs
-    const int degree_flux_rt = patch.degree_raviart_thomas();
-
     const int ndofs_projflux = patch.ndofs_fluxdg_cell();
     const int ndofs_flux_fct = patch.ndofs_flux_fct();
 
@@ -62,60 +61,75 @@ public:
     _c_ta_div.resize(patch.ndofs_flux_cell_div(), 0);
     _cj_ta_ea.resize(ndofs_flux_fct - 1, 0);
 
-    // // --- Initialise equation system
-    // int ndofs_hdivz, ndofs_hdivz_constr;
+    // --- Initialise equation system
+    // FIXME - ndofs_hdivz_per_cell wrong for 2D quads + 3D
+    const int nfcts_max = ncells_max + 1;
 
-    // if (_gdim == 2)
-    // {
-    //   ndofs_hdivz = 1 + degree_flux_rt * (ncells_max + 1)
-    //                 + 0.5 * degree_flux_rt * (degree_flux_rt - 1) *
-    //                 ncells_max;
-    //   ndofs_hdivz_constr = 2 * ndofs_hdivz + ncells_max + 2;
-    // }
-    // else
-    // {
-    //   throw std::runtime_error("3D not implemented");
-    // }
+    const std::size_t ndofs_hdivz = dimension_uconstrained_minspace(
+        _degree_flux_rt, ncells_max, nfcts_max);
+    const int ndofs_hdivz_per_cell
+        = 2 * ndofs_flux_fct + patch.ndofs_flux_cell_add() - 1;
 
-    // // DOFmap and boundary markers
-    // if constexpr (constr_minms)
-    // {
-    //   //   // DOFmap
-    //   //   const int size_per_cell = (_gdim == 2)
-    //   //                                 ? ndofs_hdivz_constr +
-    //   nfcts_per_cell
-    //   //                                 : ndofs_hdivz_constr + 3 *
-    //   //                                 nfcts_per_cell;
-    //   //   _shape_dofmap = {4, ncells_max, size_per_cell};
-    //   //   _data_dofmap.resize(4 * ncells_max * size_per_cell, 0);
+    // Equation system (unconstrained minimisation)
+    _A.resize(ndofs_hdivz, ndofs_hdivz);
+    _L.resize(ndofs_hdivz);
+    _u.resize(ndofs_hdivz);
 
-    //   // Boundary markers
-    //   _boundary_markers.resize(ndofs_hdivz_constr, false);
-    // }
-    // else
-    // {
-    //   // Boundary markers
-    //   _boundary_markers.resize(ndofs_hdivz, false);
-    // }
+    if constexpr (constr_minms)
+    {
+      // Dimension constraint space
+      const int npnts_max = nfcts_max + 1;
+      const std::size_t ndofs_hdivz_constr = dimension_constrained_minspace(
+          _degree_flux_rt, _gdim, ncells_max, nfcts_max, npnts_max);
 
-    // // System matrix minimisation
-    // _A.resize(ndofs_hdivz, ndofs_hdivz);
-    // _L.resize(ndofs_hdivz);
-    // _u.resize(ndofs_hdivz);
+      // DOFs per cell
+      // FIXME -- Incorrect for 3D or non triangular cells
+      const int ndofs_constrhdivz_per_cell
+          = 2 * ndofs_flux_fct + patch.ndofs_flux_cell_add() + 2;
 
-    // if constexpr (constr_minms)
-    // {
-    //   _A_constr.resize(ndofs_hdivz_constr, ndofs_hdivz_constr);
-    //   _L_constr.resize(ndofs_hdivz_constr);
-    //   _u_constr.resize(ndofs_hdivz_constr);
-    // }
+      // DOFmap
+
+      // Boundary markers
+      _boundary_markers.resize(ndofs_hdivz_constr, false);
+
+      // Intermediate storage element contribution
+      _shape_Te = {ndofs_hdivz_per_cell + 1, ndofs_hdivz_per_cell};
+      _shape_Te_constr
+          = {ndofs_constrhdivz_per_cell + 1, ndofs_constrhdivz_per_cell};
+
+      _data_Te.resize(_shape_Te_constr[0] * _shape_Te_constr[1], 0);
+
+      // Equation system (constrained minimisation)
+      _A_constr.resize(ndofs_hdivz_constr, ndofs_hdivz_constr);
+      _L_constr.resize(ndofs_hdivz_constr);
+      _u_constr.resize(ndofs_hdivz_constr);
+    }
+    else
+    {
+      // Boundary markers
+      _boundary_markers.resize(ndofs_hdivz, false);
+
+      // Intermediate storage element contribution
+      _shape_Te = {ndofs_hdivz_per_cell + 1, ndofs_hdivz_per_cell};
+      _data_Te.resize(_shape_Te[0] * _shape_Te[1], 0);
+    }
   }
 
   // --- Setter methods ---
-  void reinitialisation(const int ncells)
+  void reinitialisation(const int ncells, const int nfcts, const int npnts)
   {
     // Set current patch length
     _ncells = ncells;
+
+    // Set dimension of minimisation spaces
+    _dim_hdivz
+        = dimension_uconstrained_minspace(_degree_flux_rt, ncells, nfcts);
+
+    if constexpr (constr_minms)
+    {
+      _dim_hdivz_constr = dimension_constrained_minspace(_degree_flux_rt, _gdim,
+                                                         ncells, npnts);
+    }
 
     // --- Update length of mdspans
     _shape_Mm[0] = ncells;
@@ -134,6 +148,25 @@ public:
   void reinitialise_jumpG_Eam1()
   {
     std::fill(_data_jumpG_Eam1.begin(), _data_jumpG_Eam1.end(), 0.0);
+  }
+
+  void reinitialise_Te(const bool constrained_system)
+  {
+    if (constrained_system)
+    {
+      std::fill(_data_Te.begin(), _data_Te.end(), 0.0);
+    }
+    else
+    {
+      if constexpr (constr_minms)
+      {
+        std::fill_n(_data_Te.begin(), _shape_Te[0] * _shape_Te[1], 0.0);
+      }
+      else
+      {
+        std::fill(_data_Te.begin(), _data_Te.end(), 0.0);
+      }
+    }
   }
 
   /* Piola mapping */
@@ -274,6 +307,118 @@ public:
     return std::span<T>(_cj_ta_ea.data(), _cj_ta_ea.size());
   }
 
+  /* The equation system */
+  std::span<const std::int8_t> boundary_markers(bool constrained_system) const
+  {
+    if (constrained_system)
+    {
+      return std::span<const std::int8_t>(_boundary_markers.data(),
+                                          _dim_hdivz_constr);
+    }
+    else
+    {
+      return std::span<const std::int8_t>(_boundary_markers.data(), _dim_hdivz);
+    }
+  }
+
+  std::span<std::int8_t> boundary_markers(bool constrained_system)
+  {
+    if (constrained_system)
+    {
+      return std::span<std::int8_t>(_boundary_markers.data(),
+                                    _dim_hdivz_constr);
+    }
+    else
+    {
+      return std::span<std::int8_t>(_boundary_markers.data(), _dim_hdivz);
+    }
+  }
+
+  mdspan_t<T, 2> Te(bool constrained_system)
+  {
+    if (constrained_system)
+    {
+      return mdspan_t<T, 2>(_data_Te.data(), _shape_Te_constr);
+    }
+    else
+    {
+      return mdspan_t<T, 2>(_data_Te.data(), _shape_Te);
+    }
+  }
+
+  Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>&
+  A_patch(bool constrained_system)
+  {
+    if (constrained_system)
+    {
+      return _A_constr;
+    }
+    else
+    {
+      return _A;
+    }
+  }
+
+  Eigen::Matrix<T, Eigen::Dynamic, 1>& L_patch(bool constrained_system)
+  {
+    if (constrained_system)
+    {
+      return _L_constr;
+    }
+    else
+    {
+      return _L;
+    }
+  }
+
+  Eigen::Matrix<T, Eigen::Dynamic, 1>& u_patch(bool constrained_system)
+  {
+    if (constrained_system)
+    {
+      return _u_constr;
+    }
+    else
+    {
+      return _u;
+    }
+  }
+
+  void factorise_system(bool constrained_system)
+  {
+    if (constrained_system)
+    {
+      _solver_constr.compute(
+          _A_constr.topLeftCorner(_dim_hdivz_constr, _dim_hdivz_constr));
+    }
+    else
+    {
+      if constexpr (id_flux_order > 1)
+      {
+        _solver.compute(_A.topLeftCorner(_dim_hdivz, _dim_hdivz));
+      }
+    }
+  }
+
+  void solve_system(bool constrained_system)
+  {
+    if (constrained_system)
+    {
+      _u_constr.head(_dim_hdivz_constr)
+          = _solver_constr.solve(_L_constr.head(_dim_hdivz_constr));
+    }
+    else
+    {
+      if constexpr (id_flux_order == 1)
+      {
+        _u(0) = _L(0) / _A(0, 0);
+      }
+      else
+      {
+        _u.head(_dim_hdivz) = _solver.solve(_L.head(_dim_hdivz));
+      }
+    }
+  }
+
 protected:
   void store_piola_matrix(std::span<double> storage,
                           mdspan_t<const double, 2> matrix)
@@ -299,13 +444,39 @@ protected:
     }
   }
 
+  std::size_t dimension_uconstrained_minspace(const int degree_rt,
+                                              const int ncells, const int nfcts)
+  {
+    return 1 + degree_rt * nfcts + 0.5 * degree_rt * (degree_rt - 1) * ncells;
+  }
+
+  std::size_t dimension_constrained_minspace(const int degree_rt,
+                                             const int gdim, const int ncells,
+                                             const int nfcts, const int npnt)
+  {
+    const std::size_t dim_hdivz
+        = dimension_uconstrained_minspace(degree_rt, ncells, nfcts);
+
+    if (gdim == 2)
+    {
+      return 2 * dim_hdivz + npnt;
+    }
+    else
+    {
+      return 3 * (dim_hdivz + npnt);
+    }
+  }
+
   /* Variables */
   // --- General information
   // The spatial dimension
   const std::size_t _gdim;
 
-  // Counter flux DOFs
-  const int _ndofs_flux;
+  // Counter reconstructed flux
+  const int _degree_flux_rt, _ndofs_flux;
+
+  // Dimension H(div=0) space
+  int _dim_hdivz, _dim_hdivz_constr;
 
   // The length of the patch
   const int _ncells_max;
@@ -345,6 +516,9 @@ protected:
   std::vector<std::int8_t> _boundary_markers;
 
   // Equation system
+  std::array<std::size_t, 2> _shape_Te, _shape_Te_constr;
+  std::vector<T> _data_Te;
+
   Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic> _A, _A_constr;
   Eigen::Matrix<T, Eigen::Dynamic, 1> _L, _L_constr, _u, _u_constr;
 
