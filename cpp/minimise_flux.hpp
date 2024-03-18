@@ -612,14 +612,18 @@ generate_minimisation_kernel(Kernel type, KernelDataEqlb<T>& kernel_data,
 /// [1] Bertrand, F.; Carstensen, C.; Gräßle, B. & Tran, N. T.:
 ///     Stabilization-free HHO a posteriori error control, 2022
 ///
-/// @tparam T               The scalar type
-/// @tparam id_flux_order   The flux order (1->RT1, 2->RT2, 3->general)
-/// @tparam asmbl_systmtrx  Flag if entire tangent or only load vector is
-///                         assembled
-
-/// @param asmbl_info       Informations to create the patch-wise H(div=0) space
-/// @param coefficients     Flux DOFs on cells
-/// @param requires_flux_bc Marker if flux BCs are required
+/// @tparam T                       The scalar type
+/// @tparam id_flux_order           The flux order (1->RT1, 2->RT2, 3->general)
+/// @tparam asmbl_systmtrx          Flag if entire tangent or only load
+///                                 vector is assembled
+/// @tparam constr_minms            Flag if minimisation problem is constrained
+/// @param minimisation_kernel      The kernel for minimisation
+/// @param patch_data               The temporary storage for the patch
+/// @param asmbl_info               Informations to create the patch-wise
+///                                 H(div=0) space
+/// @param i_rhs                    Index of the right-hand side
+/// @param requires_flux_bc         Marker if flux BCs are required
+/// @param constrained_minimisation Flag if constarined system is assembeled
 template <typename T, int id_flux_order = 3, bool asmbl_systmtrx = true,
           bool constr_minms = false>
 void assemble_fluxminimiser(kernel_fn<T, asmbl_systmtrx>& minimisation_kernel,

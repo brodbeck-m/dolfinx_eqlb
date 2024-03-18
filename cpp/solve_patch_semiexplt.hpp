@@ -88,6 +88,7 @@ void calculate_jump(std::size_t ipoint_n,
 /// @tparam id_flux_order Parameter for flux order (1->RT1, 2->RT2, 3->general)
 /// @param geometry     The geometry
 /// @param patch        The patch
+/// @param patch_data   The temporary storage for the patch
 /// @param problem_data The problem data (Functions of flux, flux_dg, RHS_dg)
 /// @param kernel_data  The kernel data (Quadrature data, tabulated basis
 /// functions)
@@ -225,7 +226,7 @@ void equilibrate_flux_semiexplt(
 
   // DOFmap for minimisation
   patch.set_assembly_informations(kernel_data.fct_normal_is_outward(),
-                                  patch_data.jacobi_determinants(ncells));
+                                  patch_data.jacobi_determinant());
 
   const int offs_ffEa = ndofs_flux_fct;
   const int offs_fcadd = 2 * ndofs_flux_fct;

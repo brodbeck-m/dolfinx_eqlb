@@ -16,6 +16,13 @@ template <typename T, int id_flux_order, bool constr_minms>
 class PatchDataCstm
 {
 public:
+  /// Initialisation
+  ///
+  /// Holds temporary storage, required within semi-explicit flux equilibration
+  /// in order to avoid repeated reallocation of memory.
+  ///
+  /// @param patch           The patch
+  /// @param niponts_per_fct The number of integration points per facet
   PatchDataCstm(PatchFluxCstm<T, id_flux_order, constr_minms>& patch,
                 const int niponts_per_fct)
       : _gdim(patch.dim()), _degree_flux_rt(patch.degree_raviart_thomas()),
@@ -116,6 +123,14 @@ public:
   }
 
   // --- Setter methods ---
+  /// Reinitialise patch data
+  ///
+  /// Set current lengths of storage on patch and set array to zero (if
+  /// required).
+  ///
+  /// @param ncells The number of cells
+  /// @param nfcts  The number of facets
+  /// @param npnts  The number of points
   void reinitialisation(const int ncells, const int nfcts, const int npnts)
   {
     // Set current patch length
@@ -145,11 +160,13 @@ public:
     reinitialise_jumpG_Eam1();
   }
 
+  /// Set storage of facet jump to zero
   void reinitialise_jumpG_Eam1()
   {
     std::fill(_data_jumpG_Eam1.begin(), _data_jumpG_Eam1.end(), 0.0);
   }
 
+  /// Set storage element contribution (minimisation) to zero
   void reinitialise_Te(const bool constrained_system)
   {
     if (constrained_system)
@@ -170,6 +187,11 @@ public:
   }
 
   /* Piola mapping */
+
+  /// Store data for Piola mapping
+  /// @param cell_id The cell id (starting at 0)
+  /// @param detJ    The determinant of the Jacobian
+  /// @param J       The Jacobian
   void store_piola_mapping(const int cell_id, const double detJ,
                            mdspan_t<const double, 2> J)
   {
@@ -182,6 +204,11 @@ public:
     store_piola_matrix(std::span<double>(_data_J.data() + offset, _size_j), J);
   }
 
+  /// Store data for Piola mapping
+  /// @param cell_id The cell id (starting at 0)
+  /// @param detJ    The determinant of the Jacobian
+  /// @param J       The Jacobian
+  /// @param K       The inverse Jacobian
   void store_piola_mapping(const int cell_id, const double detJ,
                            mdspan_t<const double, 2> J,
                            mdspan_t<const double, 2> K)
@@ -197,9 +224,16 @@ public:
   }
 
   // --- Getter methods ---
+
+  /// Number of cells on current patch
+  /// @return The cell number
   int ncells() const { return _ncells; }
 
   /* Piola mapping */
+
+  /// Extract the Jacobian of the i-th cell
+  /// @param cell_id The cell id (starting at 0)
+  /// @return mdspan of the Jacobian
   mdspan_t<const double, 2> jacobian(const int cell_id) const
   {
     // Set offset
@@ -207,6 +241,9 @@ public:
                                      _gdim);
   }
 
+  /// Extract the inverse Jacobian of the i-th cell
+  /// @param cell_id The cell id (starting at 0)
+  /// @return mdspan of the inverse Jacobian
   mdspan_t<const double, 2> inverse_jacobian(const int cell_id) const
   {
     // Set offset
@@ -214,17 +251,25 @@ public:
                                      _gdim);
   }
 
+  /// Extract the determinant of the Jacobian of the i-th cell
+  /// @param cell_id The cell id (starting at 0)
+  /// @return The determinant of the Jacobian
   double jacobi_determinant(const int cell_id) const
   {
     return _data_detJ[cell_id];
   }
 
-  std::span<const double> jacobi_determinants(const int ncells) const
+  /// Extract the determinants of the Jacobian on patch
+  /// @return span of the determinants on entire patch
+  std::span<const double> jacobi_determinant() const
   {
-    return std::span<const double>(_data_detJ.data(), ncells);
+    return std::span<const double>(_data_detJ.data(), _ncells);
   }
 
   /* Interpolation */
+
+  /// Prefactors (facet orientation) on patch cells
+  /// @return mdspan (cells x dim) of the prefactors
   mdspan_t<T, 2> prefactors_facet_per_cell()
   {
     // Set offset
@@ -243,21 +288,17 @@ public:
   }
 
   /* Coefficients */
+
   /// Coefficients of the flux
-  ///
-  /// Structure mdspan: rhs x cells x dofs
-  ///
-  /// @return mdspan of the coefficients
+  /// @return mdspan (rhs x cells x dofs) of the coefficients
   mdspan_t<T, 3> coefficients_flux()
   {
     return mdspan_t<T, 3>(_coefficients_flux.data(), _shape_coeffsflux);
   }
 
   /// Coefficients of the i-th flux
-  ///
-  /// Structure mdspan: cells x dofs
-  ///
-  /// @return mdspan of the coefficients (i-th flux)
+  /// @param i The flux id (starting at 0)
+  /// @return mdspan (cells x dofs) of the coefficients (i-th flux)
   mdspan_t<T, 2> coefficients_flux(const int i)
   {
     const int offset = i * _ncells * _shape_coeffsflux[2];
@@ -266,6 +307,8 @@ public:
   }
 
   /// Coefficients of the i-th flux on cell a
+  /// @param i The flux id (starting at 0)
+  /// @param a The cell id (starting at 1)
   /// @return span of the coefficients
   std::span<const T> coefficients_flux(const int i, const int a) const
   {
@@ -275,39 +318,56 @@ public:
                               _shape_coeffsflux[2]);
   }
 
+  /// Coefficients of the projected flux (cell Ta)
+  /// @return span of the coefficients
   std::span<T> coefficients_projflux_Ta()
   {
     return std::span<T>(_coefficients_G_Ta.data(), _coefficients_G_Ta.size());
   }
 
+  /// Coefficients of the projected flux (cell Tap1)
+  /// @return span of the coefficients
   std::span<T> coefficients_projflux_Tap1()
   {
     return std::span<T>(_coefficients_G_Tap1.data(),
                         _coefficients_G_Tap1.size());
   }
 
+  /// Coefficients of the projected right-hand side
+  /// @return span of the coefficients
   std::span<T> coefficients_rhs()
   {
     return std::span<T>(_coefficients_rhs.data(), _coefficients_rhs.size());
   }
 
   /* Intermediate storage */
+
+  /// Jump of the projected flux on facet Eam1
+  /// @return mdspan (ipoints x dim) of the jump
   mdspan_t<T, 2> jumpG_Eam1()
   {
     return mdspan_t<T, 2>(_data_jumpG_Eam1.data(), _shape_jGEam1);
   }
 
+  /// Explicite solution: Divergence cell moments
+  /// @return span of the solution coefficients
   std::span<T> c_ta_div()
   {
     return std::span<T>(_c_ta_div.data(), _c_ta_div.size());
   }
 
+  /// Explicite solution: Higher order facet moments
+  /// @return span of the solution coefficients
   std::span<T> cj_ta_ea()
   {
     return std::span<T>(_cj_ta_ea.data(), _cj_ta_ea.size());
   }
 
   /* The equation system */
+
+  /// The boundary markers (const version)
+  /// @param constrained_system Id for constrained minimisation
+  /// @return span of the boundary markers
   std::span<const std::int8_t> boundary_markers(bool constrained_system) const
   {
     if (constrained_system)
@@ -321,6 +381,9 @@ public:
     }
   }
 
+  /// The equation system matrix
+  /// @param constrained_system Id for constrained minimisation
+  /// @return span of the matrix
   std::span<std::int8_t> boundary_markers(bool constrained_system)
   {
     if (constrained_system)
@@ -334,6 +397,9 @@ public:
     }
   }
 
+  /// Storage cell-contribution minimisation system
+  /// @param constrained_system Id for constrained minimisation
+  /// @return mdspan (ndofs_per_cell + 1, ndofs_per_cell) of the storage
   mdspan_t<T, 2> Te(bool constrained_system)
   {
     if (constrained_system)
@@ -346,6 +412,9 @@ public:
     }
   }
 
+  /// System matrix for minimisation problem
+  /// @param constrained_system Id for constrained minimisation
+  /// @return Eigen matrix of the minimisation system
   Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>&
   A_patch(bool constrained_system)
   {
@@ -359,6 +428,9 @@ public:
     }
   }
 
+  /// System vector for minimisation problem
+  /// @param constrained_system Id for constrained minimisation
+  /// @return Eigen vector of the minimisation system
   Eigen::Matrix<T, Eigen::Dynamic, 1>& L_patch(bool constrained_system)
   {
     if (constrained_system)
@@ -371,6 +443,9 @@ public:
     }
   }
 
+  /// Solution vector for minimisation problem
+  /// @param constrained_system Id for constrained minimisation
+  /// @return Eigen vector of the solution of minimisation problem
   Eigen::Matrix<T, Eigen::Dynamic, 1>& u_patch(bool constrained_system)
   {
     if (constrained_system)
@@ -383,6 +458,7 @@ public:
     }
   }
 
+  /// Factorise the system matrix
   void factorise_system(bool constrained_system)
   {
     if (constrained_system)
@@ -399,6 +475,7 @@ public:
     }
   }
 
+  /// Solve the minimisation problem
   void solve_system(bool constrained_system)
   {
     if (constrained_system)
@@ -420,6 +497,9 @@ public:
   }
 
 protected:
+  /// Store a Piola matrix in flattended storage
+  /// @param storage The storage
+  /// @param matrix  The matrix
   void store_piola_matrix(std::span<double> storage,
                           mdspan_t<const double, 2> matrix)
   {
@@ -444,12 +524,24 @@ protected:
     }
   }
 
+  /// Dimension (patch-wise) of the unconstrained minimisation space
+  /// @param degree_rt The degree of the Raviart-Thomas space
+  /// @param ncells    The number of cells on patch
+  /// @param nfcts     The number of facets on patch
+  /// @return          The dimension
   std::size_t dimension_uconstrained_minspace(const int degree_rt,
                                               const int ncells, const int nfcts)
   {
     return 1 + degree_rt * nfcts + 0.5 * degree_rt * (degree_rt - 1) * ncells;
   }
 
+  /// Dimension (patch-wise) of the constrained minimisation space
+  /// @param degree_rt The degree of the Raviart-Thomas space
+  /// @param gdim      The spatial dimension
+  /// @param ncells    The number of cells on patch
+  /// @param nfcts     The number of facets on patch
+  /// @param npnt      The number of points on patch
+  /// @return          The dimension
   std::size_t dimension_constrained_minspace(const int degree_rt,
                                              const int gdim, const int ncells,
                                              const int nfcts, const int npnt)
