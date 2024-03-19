@@ -421,6 +421,8 @@ public:
   /* Setter functions */
 
   /* Getter functions (Geometry) */
+  /// @return Number of mesh nodes on patch
+  int npnts() const { return _nfcts + 1; }
 
   /// Get global node-ids on facet
   /// @param fct_i Patch-local facet-id

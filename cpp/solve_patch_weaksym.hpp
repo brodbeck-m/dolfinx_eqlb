@@ -171,7 +171,7 @@ void impose_weak_symmetry(const mesh::Geometry& geometry,
             = kernel_data.compute_jacobian(J, detJ_scratch, coords);
 
         // Storage of (inverse) Jacobian
-        store_mapping_data(id_a, storage_J, J);
+        // store_mapping_data(id_a, storage_J, J);
       }
     }
   }
@@ -196,14 +196,14 @@ void impose_weak_symmetry(const mesh::Geometry& geometry,
   A_patch.setZero();
   L_patch.setZero();
 
-  assemble_fluxminimiser<T, id_flux_order, true>(
-      minkernel, A_patch, L_patch, boundary_markers, asmbl_info, ndofs_per_cell,
-      dcoefficients, gdim * ndofs_flux, storage_detJ, storage_J, storage_K,
-      patch.requires_flux_bcs());
+  // assemble_fluxminimiser<T, id_flux_order, true>(
+  //     minkernel, A_patch, L_patch, boundary_markers, asmbl_info,
+  //     ndofs_per_cell, dcoefficients, gdim * ndofs_flux, storage_detJ,
+  //     storage_J, storage_K, patch.requires_flux_bcs());
 
-  // Solve equation system
-  solver.compute(A_patch);
-  u_patch = solver.solve(L_patch);
+  // // Solve equation system
+  // solver.compute(A_patch);
+  // u_patch = solver.solve(L_patch);
 
   /* Store local solution into global storage */
   const int ndofs_flux_per_cell = gdim * ndofs_flux_fct + ndofs_flux_cell_add;

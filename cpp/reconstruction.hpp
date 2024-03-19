@@ -3,6 +3,7 @@
 #include "BoundaryData.hpp"
 #include "KernelData.hpp"
 #include "PatchCstm.hpp"
+#include "PatchData.hpp"
 #include "PatchFluxEV.hpp"
 #include "ProblemDataFluxCstm.hpp"
 #include "ProblemDataFluxEV.hpp"
@@ -215,6 +216,11 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
       mesh, std::make_shared<QuadratureRule>(quadrature_rule),
       basix_element_fluxhdiv, basix_element_rhs, basix_element_hat);
 
+  // Initialise storage for equilibration
+  PatchDataCstm<T, id_flux_order, false> patch_data
+      = PatchDataCstm<T, id_flux_order, false>(patch,
+                                               kernel_data.nipoints_facet());
+
   // Set minimisation kernels
   kernel_fn<T, true> minkernel = generate_minimisation_kernel<T, true>(
       Kernel::FluxMin, kernel_data, dim, patch.fcts_per_cell(),
@@ -230,10 +236,13 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
     // Create Sub-DOFmap
     patch.create_subdofmap(i_node);
 
+    // Current patch-length to patch-data
+    patch_data.reinitialisation(patch.ncells(), patch.nfcts(), patch.npnts());
+
     // Calculate coefficients per patch
-    equilibrate_flux_semiexplt<T, id_flux_order>(mesh->geometry(), patch,
-                                                 problem_data, kernel_data,
-                                                 minkernel, minkernel_rhs);
+    equilibrate_flux_semiexplt<T, id_flux_order>(
+        mesh->geometry(), patch, patch_data, problem_data, kernel_data,
+        minkernel, minkernel_rhs);
   }
 }
 

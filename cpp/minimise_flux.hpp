@@ -5,6 +5,7 @@
 #include "KernelData.hpp"
 #include "Patch.hpp"
 #include "PatchCstm.hpp"
+#include "PatchData.hpp"
 #include "utils.hpp"
 
 #include <dolfinx/fem/DofMap.h>
@@ -31,39 +32,6 @@ namespace stdex = std::experimental;
 
 // ------------------------------------------------------------------------------
 
-/* Store maping data (J, K) per patch */
-
-/// Store mapping data (Jacobian or its inverse) in flattened array
-/// @param cell_id The patch-local index of a cell
-/// @param storage The flattened storage
-/// @param matrix  The matrix (J, K) on the current cell
-void store_mapping_data(const int cell_id, std::span<double> storage,
-                        mdspan_t<const double, 2> matrix)
-{
-  // Set offset
-  const int offset = 4 * cell_id;
-
-  storage[offset] = matrix(0, 0);
-  storage[offset + 1] = matrix(0, 1);
-  storage[offset + 2] = matrix(1, 0);
-  storage[offset + 3] = matrix(1, 1);
-}
-
-/// Extract mapping data (Jacobian or its inverse) from flattened array
-/// @param cell_id The patch-local index of a cell
-/// @param storage The flattened storage
-/// @return        The matrix (J, K) on the current cell
-mdspan_t<const double, 2> extract_mapping_data(const int cell_id,
-                                               std::span<const double> storage)
-{
-  // Set offset
-  const int offset = 4 * cell_id;
-
-  return mdspan_t<const double, 2>(storage.data() + offset, 2, 2);
-}
-// ------------------------------------------------------------------------------
-
-// ------------------------------------------------------------------------------
 /* Routines for flux minimisation */
 
 enum class Kernel
@@ -106,7 +74,8 @@ std::size_t dimension_minimisation_space(const Kernel type_kernel,
 /// prefacers during assembly. Following [1, Lemma 12], the DOFmap is
 /// created based on the following patch-wise ordering:
 ///
-/// {d0}_i, {{d^l_E0}, ..., {d^l_En}}_i, {d^r_T1}_i, ..., {d^r_Tn}_i, {d_c}_j
+/// {d0}_i, {{d^l_E0}, ..., {d^l_En}}_i, {d^r_T1}_i, ..., {d^r_Tn}_i,
+/// {d_c}_j
 ///
 /// The indexes i resp. j thereby denotes the block.size of flux resp.
 /// constraints. Cell wise structure of the DOFmap:
@@ -643,64 +612,75 @@ generate_minimisation_kernel(Kernel type, KernelDataEqlb<T>& kernel_data,
 /// [1] Bertrand, F.; Carstensen, C.; Gräßle, B. & Tran, N. T.:
 ///     Stabilization-free HHO a posteriori error control, 2022
 ///
-/// @tparam T               The scalar type
-/// @tparam id_flux_order   The flux order (1->RT1, 2->RT2, 3->general)
-/// @tparam asmbl_systmtrx  Flag if entire tangent or only load vector is
-///                         assembled
-/// @param A_patch          The patch system matrix (mass matrix)
-/// @param L_patch          The patch load vector
-/// @param patch            The patch
-/// @param boundary_markers The boundary markers
-/// @param asmbl_info       Informations to create the patch-wise H(div=0) space
-/// @param coefficients     Flux DOFs on cells
-/// @param storage_detJ     The Jacobi determinants of the patch cells
-/// @param storage_J        The Jacobi matrices of the patch cells
-/// @param storage_K        The invers Jacobi matrices of the patch cells
-/// @param requires_flux_bc Marker if flux BCs are required
-template <typename T, int id_flux_order = 3, bool asmbl_systmtrx = true>
-void assemble_fluxminimiser(
-    kernel_fn<T, asmbl_systmtrx>& minimisation_kernel,
-    Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>& A_patch,
-    Eigen::Matrix<T, Eigen::Dynamic, 1>& L_patch,
-    std::span<const std::int8_t> boundary_markers,
-    mdspan_t<const std::int32_t, 3> asmbl_info, const int ndofs_per_cell,
-    std::span<const T> coefficients, const int cstride,
-    std::span<const double> storage_detJ, std::span<const double> storage_J,
-    std::span<const double> storage_K, const bool requires_flux_bc)
+/// @tparam T                       The scalar type
+/// @tparam id_flux_order           The flux order (1->RT1, 2->RT2, 3->general)
+/// @tparam asmbl_systmtrx          Flag if entire tangent or only load
+///                                 vector is assembled
+/// @tparam constr_minms            Flag if minimisation problem is constrained
+/// @param minimisation_kernel      The kernel for minimisation
+/// @param patch_data               The temporary storage for the patch
+/// @param asmbl_info               Informations to create the patch-wise
+///                                 H(div=0) space
+/// @param i_rhs                    Index of the right-hand side
+/// @param requires_flux_bc         Marker if flux BCs are required
+/// @param constrained_minimisation Flag if constarined system is assembeled
+template <typename T, int id_flux_order = 3, bool asmbl_systmtrx = true,
+          bool constr_minms = false>
+void assemble_fluxminimiser(kernel_fn<T, asmbl_systmtrx>& minimisation_kernel,
+                            PatchDataCstm<T, id_flux_order, false>& patch_data,
+                            mdspan_t<const std::int32_t, 3> asmbl_info,
+                            const int i_rhs, const bool requires_flux_bc,
+                            const bool constrained_minimisation)
 {
   assert(id_flux_order < 0);
 
   /* Extract data */
   // Number of elements/facets on patch
-  const int ncells = storage_detJ.size();
+  const int ncells = patch_data.ncells();
+
+  // Tangent storage
+  mdspan_t<T, 2> Te = patch_data.Te(constrained_minimisation);
+
+  Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>& A_patch
+      = patch_data.A_patch(constrained_minimisation);
+  Eigen::Matrix<T, Eigen::Dynamic, 1>& L_patch
+      = patch_data.L_patch(constrained_minimisation);
+  std::span<const std::int8_t> boundary_markers
+      = patch_data.boundary_markers(constrained_minimisation);
 
   /* Initialisation */
-  // Element tangents
-  const int index_load = ndofs_per_cell;
-
-  std::vector<T> dTe(ndofs_per_cell * (ndofs_per_cell + 1), 0);
-  mdspan_t<double, 2> Te(dTe.data(), ndofs_per_cell + 1, ndofs_per_cell);
+  if constexpr (asmbl_systmtrx)
+  {
+    A_patch.setZero();
+    L_patch.setZero();
+  }
+  else
+  {
+    L_patch.setZero();
+  }
 
   /* Calculation and assembly */
+  const int ndofs_per_cell = Te.extent(1);
+  const int index_load = ndofs_per_cell;
+
   for (std::size_t a = 1; a < ncells + 1; ++a)
   {
     int id_a = a - 1;
 
     // Isoparametric mapping
-    const double detJ = storage_detJ[id_a];
-    mdspan_t<const double, 2> J = extract_mapping_data(id_a, storage_J);
+    const double detJ = patch_data.jacobi_determinant(id_a);
+    mdspan_t<const double, 2> J = patch_data.jacobian(id_a);
 
     // DOFmap on cell
     smdspan_t<const std::int32_t, 2> asmbl_info_cell = stdex::submdspan(
         asmbl_info, stdex::full_extent, a, stdex::full_extent);
 
     // DOFs on cell
-    std::span<const T> coefficients_elmt
-        = coefficients.subspan(id_a * cstride, cstride);
+    std::span<const T> coefficients = patch_data.coefficients_flux(i_rhs, a);
 
     // Evaluate linear- and bilinear form
-    std::fill(dTe.begin(), dTe.end(), 0);
-    minimisation_kernel(Te, coefficients_elmt, asmbl_info_cell, detJ, J);
+    patch_data.reinitialise_Te(constrained_minimisation);
+    minimisation_kernel(Te, coefficients, asmbl_info_cell, detJ, J);
 
     // Assemble linear- and bilinear form
     if constexpr (id_flux_order == 1)

@@ -21,7 +21,7 @@ namespace dolfinx_eqlb
 {
 // ------------------------------------------------------------------------------
 
-/* Definition of spans */
+/* Definition of mdspans */
 namespace stdex = std::experimental;
 
 template <typename T, std::size_t d>
