@@ -92,28 +92,19 @@ void declare_fluxeqlb(py::module& m)
       [](std::vector<std::shared_ptr<dolfinx::fem::Function<T>>>& flux_hdiv,
          std::vector<std::shared_ptr<dolfinx::fem::Function<T>>>& flux_dg,
          std::vector<std::shared_ptr<dolfinx::fem::Function<T>>>& rhs_dg,
-         std::shared_ptr<BoundaryData<T>> boundary_data) {
-        reconstruct_fluxes_cstm<T>(flux_hdiv, flux_dg, rhs_dg, boundary_data);
+         std::shared_ptr<BoundaryData<T>> boundary_data,
+         const bool reconstruct_stress)
+      {
+        reconstruct_fluxes_cstm<T>(flux_hdiv, flux_dg, rhs_dg, boundary_data,
+                                   reconstruct_stress);
       },
       py::arg("flux_hdiv"), py::arg("flux_dg"), py::arg("rhs_dg"),
-      py::arg("boundary_data"),
+      py::arg("boundary_data"), py::arg("reconstruct_stress"),
       "Local equilibration of H(div) conforming fluxes, using an explicit "
-      "determination of the flues alongside with an unconstrained ministration "
-      "problem on a reduced space.");
-}
-
-template <typename T>
-void declare_stresseqlb(py::module& m)
-{
-  m.def(
-      "weak_symmetry_stress",
-      [](std::vector<std::shared_ptr<dolfinx::fem::Function<T>>>& flux_hdiv,
-         std::shared_ptr<BoundaryData<T>> boundary_data)
-      { reconstruct_stresses<T>(flux_hdiv, boundary_data); },
-      py::arg("flux_hdiv"), py::arg("boundary_data"),
-      "Incorporation of a wak symmetry condition into equilibrated stresses."
-      "The rows of the stress-tensor have to fullfil divergence, jump and "
-      "boundary conditions.");
+      "determination of the fluxes followed by a  ministration on a reduced "
+      "space. If apply_weal_symmetry is true, the first gdim fluxes are "
+      "treated as rows of a (symmetric) stress tensors, with weak imposition "
+      "of the symmetry constraint.");
 }
 
 template <typename T>
@@ -201,8 +192,5 @@ PYBIND11_MODULE(cpp, m)
 
   // Equilibration of vector-valued quantity
   declare_fluxeqlb<double>(m);
-
-  // Incorporation of weak symmetry conditions into equilibrated stress
-  declare_stresseqlb<double>(m);
 }
 } // namespace

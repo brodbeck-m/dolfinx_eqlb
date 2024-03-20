@@ -618,7 +618,7 @@ protected:
   std::vector<std::int8_t> _fcts_local;
 
   /* DOFmap */
-  std::vector<std::int32_t> _ddofmap;
+  std::vector<std::int32_t> _ddofmap, _offset_dofmap;
   std::array<std::size_t, 3> _dofmap_shape;
 };
 } // namespace dolfinx_eqlb

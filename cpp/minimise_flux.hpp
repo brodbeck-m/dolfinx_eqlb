@@ -91,8 +91,7 @@ std::size_t dimension_minimisation_space(const Kernel type_kernel,
 /// @param ndofs_flux_hdivz nDOF patch-wise H(div=0) space
 template <typename T, int id_flux_order>
 std::pair<std::array<std::size_t, 3>, std::vector<std::int32_t>>
-set_flux_dofmap(PatchCstm<T, id_flux_order, true>& patch,
-                const int ndofs_flux_hdivz)
+set_flux_dofmap(PatchCstm<T, id_flux_order>& patch, const int ndofs_flux_hdivz)
 {
   /* Extract data */
   // Te spacial dimension
@@ -616,7 +615,6 @@ generate_minimisation_kernel(Kernel type, KernelDataEqlb<T>& kernel_data,
 /// @tparam id_flux_order           The flux order (1->RT1, 2->RT2, 3->general)
 /// @tparam asmbl_systmtrx          Flag if entire tangent or only load
 ///                                 vector is assembled
-/// @tparam constr_minms            Flag if minimisation problem is constrained
 /// @param minimisation_kernel      The kernel for minimisation
 /// @param patch_data               The temporary storage for the patch
 /// @param asmbl_info               Informations to create the patch-wise
@@ -624,10 +622,9 @@ generate_minimisation_kernel(Kernel type, KernelDataEqlb<T>& kernel_data,
 /// @param i_rhs                    Index of the right-hand side
 /// @param requires_flux_bc         Marker if flux BCs are required
 /// @param constrained_minimisation Flag if constarined system is assembeled
-template <typename T, int id_flux_order = 3, bool asmbl_systmtrx = true,
-          bool constr_minms = false>
+template <typename T, int id_flux_order, bool asmbl_systmtrx>
 void assemble_fluxminimiser(kernel_fn<T, asmbl_systmtrx>& minimisation_kernel,
-                            PatchDataCstm<T, id_flux_order, false>& patch_data,
+                            PatchDataCstm<T, id_flux_order>& patch_data,
                             mdspan_t<const std::int32_t, 3> asmbl_info,
                             const int i_rhs, const bool requires_flux_bc,
                             const bool constrained_minimisation)

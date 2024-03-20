@@ -13,7 +13,7 @@ using namespace dolfinx;
 
 namespace dolfinx_eqlb
 {
-template <typename T, int id_flux_order, bool constr_minms>
+template <typename T, int id_flux_order>
 class PatchCstm : public OrientedPatch
 {
 public:
@@ -26,11 +26,14 @@ public:
   /// @param mesh                    The current mesh
   /// @param bfct_type               List with type of all boundary facets
   /// @param function_space_fluxhdiv Function space of H(div) flux
+  /// @param symconstr_required      Flag for constrained minimisation
   PatchCstm(
       int nnodes_proc, std::shared_ptr<const mesh::Mesh> mesh,
       mdspan_t<const std::int8_t, 2> bfct_type,
-      const std::shared_ptr<const fem::FunctionSpace> function_space_fluxhdiv)
+      const std::shared_ptr<const fem::FunctionSpace> function_space_fluxhdiv,
+      const bool symconstr_required)
       : OrientedPatch(nnodes_proc, mesh, bfct_type),
+        _symconstr_required(symconstr_required),
         _degree_elmt_fluxhdiv(
             function_space_fluxhdiv->element()->basix_element().degree() - 1),
         _function_space_fluxhdiv(function_space_fluxhdiv)
@@ -50,11 +53,9 @@ public:
     _ndof_flux_nz = _ndof_flux - (_fct_per_cell - 2) * _ndof_flux_fct;
 
     // Resize storage of DOFmap
-    if constexpr (constr_minms)
+    if (_symconstr_required)
     {
-      const std::size_t ndofs_per_cell
-          = std::max(2 * _ndof_flux_fct + _ndof_flux_add_cell + _fct_per_cell,
-                     _ndof_flux_nz);
+      const std::size_t ndofs_per_cell = _ndof_flux_nz + _fct_per_cell;
       _dofmap_shape = {4, (std::size_t)(_ncells_max + 2), ndofs_per_cell};
     }
     else
@@ -64,6 +65,16 @@ public:
     }
 
     _ddofmap.resize(_dofmap_shape[0] * _dofmap_shape[1] * _dofmap_shape[2], 0);
+
+    // Specify offsets in DOFmap
+    _offset_dofmap.resize(5, 0);
+
+    _offset_dofmap[1] = _ndof_flux_fct;
+    _offset_dofmap[2] = _offset_dofmap[1] + _ndof_flux_fct;
+    _offset_dofmap[3] = _offset_dofmap[2] + _ndof_flux_add_cell;
+    _offset_dofmap[4] = (_symconstr_required)
+                            ? _offset_dofmap[3] + _fct_per_cell
+                            : _offset_dofmap[3];
   }
 
   void flux_dofmap_cell(const int a, mdspan_t<std::int32_t, 3> dofmap)
@@ -102,7 +113,7 @@ public:
     else
     {
       /* Facet DOFs */
-      offs = _ndof_flux_fct;
+      offs = _offset_dofmap[1];
 
       if (internal_patch && (a == _ncells))
       {
@@ -147,7 +158,7 @@ public:
       /* Cell DOFs: Additional */
       if constexpr (id_flux_order > 2)
       {
-        offs = 2 * _ndof_flux_fct;
+        offs = _offset_dofmap[2];
         ldof = _fct_per_cell * _ndof_flux_fct + _ndof_flux_div_cell;
         pdof
             = _nfcts * (_ndof_flux_fct - 1) + 1 + (a - 1) * _ndof_flux_add_cell;
@@ -173,31 +184,28 @@ public:
       }
 
       /* Cell DOFs: Divergence */
-      if constexpr (!(constr_minms))
+      offs = _offset_dofmap[4];
+      ldof = _fct_per_cell * _ndof_flux_fct;
+
+      for (std::size_t ii = 0; ii < _ndof_flux_div_cell; ++ii)
       {
-        offs = 2 * _ndof_flux_fct + _ndof_flux_add_cell;
-        ldof = _fct_per_cell * _ndof_flux_fct;
+        // Cell-local
+        dofmap(0, a, offs) = ldof;
 
-        for (std::size_t ii = 0; ii < _ndof_flux_div_cell; ++ii)
-        {
-          // Cell-local
-          dofmap(0, a, offs) = ldof;
+        // Global
+        dofmap(1, a, offs) = gdof + ldof;
 
-          // Global
-          dofmap(1, a, offs) = gdof + ldof;
+        // Prefactor for construction of H(div=0) space
+        dofmap(3, a, offs) = 0;
 
-          // Prefactor for construction of H(div=0) space
-          dofmap(3, a, offs) = 0;
-
-          // Update offset/ local DOF
-          offs += 1;
-          ldof += 1;
-        }
+        // Update offset/ local DOF
+        offs += 1;
+        ldof += 1;
       }
     }
 
     /* DOFs constraint */
-    if constexpr (constr_minms)
+    if (_symconstr_required)
     {
       if (is_internal())
       {
@@ -235,7 +243,7 @@ public:
     const std::int32_t cell_2 = _cells[pcell_2];
 
     // Determine the facet DOFs
-    const int offs = 2 * _ndof_flux_fct + _ndof_flux_add_cell;
+    const int offs = _offset_dofmap[3];
     for (std::int32_t node : nodes_on_fct)
     {
       if (node == _nodei)
@@ -287,12 +295,12 @@ public:
 
     if (pfct == 0)
     {
-      offs = 2 * _ndof_flux_fct + _ndof_flux_add_cell + 2;
+      offs = _offset_dofmap[3] + 2;
       pdof = _ndof_min_flux + _nfcts - 1;
     }
     else
     {
-      offs = 2 * _ndof_flux_fct + _ndof_flux_add_cell + 1;
+      offs = _offset_dofmap[3] + 1;
       pdof = _ndof_min_flux + _nfcts;
     }
 
@@ -376,7 +384,7 @@ public:
     _ndof_min_flux
         = 1 + _degree_elmt_fluxhdiv * _nfcts + _ndof_flux_add_cell * _ncells;
 
-    if constexpr (constr_minms)
+    if (_symconstr_required)
     {
       _ndof_min_cons = _nfcts + 1;
       _ndof_min = _ndof_min_flux + _ndof_min_cons;
@@ -556,7 +564,7 @@ public:
   ///   id = 2: patch-local DOFs
   ///   id = 3: prefactor for construction of H(div=0) space
   ///
-  /// DOF ordering per cell: [dofs_TaEam1, dofs_TaEa, dofs_Ta-add, dofs_Ta-div]
+  /// DOF ordering per cell: [d_TaEam1, d_TaEa, d_Ta-add, d_Ta-constr, d_Ta-div]
   ///
   /// @return List DOFs
   mdspan_t<const std::int32_t, 3> assembly_info_minimisation() const
@@ -564,7 +572,23 @@ public:
     return mdspan_t<const std::int32_t, 3>(_ddofmap.data(), _dofmap_shape);
   }
 
+  /// Offsets within DOFmap on each element
+  ///
+  /// id = 0: Offset dofs_TaEam1
+  /// id = 1: Offset dofs_TaEa
+  /// id = 2: Offset dofs_Ta-add
+  /// id = 3: Offset dofs_Ta-constr
+  /// id = 4: Offset dofs_Ta-div
+  ///
+  /// @return List of offsets
+  std::span<const std::int32_t> offset_dofmap() const
+  {
+    return std::span<const std::int32_t>(_offset_dofmap.data(), 5);
+  }
+
 protected:
+  const bool _symconstr_required;
+
   /* Variables */
   // Element degree of fluxes (degree of RT elements starts with 0!)
   const int _degree_elmt_fluxhdiv;
@@ -578,8 +602,8 @@ protected:
   int _ndof_min, _ndof_min_flux, _ndof_min_cons;
 };
 
-template <typename T, int id_flux_order, bool constr_minms>
-class PatchFluxCstm : public PatchCstm<T, id_flux_order, constr_minms>
+template <typename T, int id_flux_order>
+class PatchFluxCstm : public PatchCstm<T, id_flux_order>
 {
 public:
   /// Initialization
@@ -600,9 +624,11 @@ public:
       mdspan_t<const std::int8_t, 2> bfct_type,
       const std::shared_ptr<const fem::FunctionSpace> function_space_fluxhdiv,
       const std::shared_ptr<const fem::FunctionSpace> function_space_fluxdg,
-      const basix::FiniteElement& basix_element_fluxdg)
-      : PatchCstm<T, id_flux_order, constr_minms>(nnodes_proc, mesh, bfct_type,
-                                                  function_space_fluxhdiv),
+      const basix::FiniteElement& basix_element_fluxdg,
+      const bool symconstr_required)
+      : PatchCstm<T, id_flux_order>(nnodes_proc, mesh, bfct_type,
+                                    function_space_fluxhdiv,
+                                    symconstr_required),
         _degree_elmt_fluxdg(basix_element_fluxdg.degree()),
         _function_space_fluxdg(function_space_fluxdg),
         _entity_dofs_fluxcg(basix_element_fluxdg.entity_closure_dofs())
@@ -641,7 +667,7 @@ public:
     this->_ndof_min_flux = 1 + this->_degree_elmt_fluxhdiv * this->_nfcts
                            + this->_ndof_flux_add_cell * this->_ncells;
 
-    if constexpr (constr_minms)
+    if (this->_symconstr_required)
     {
       this->_ndof_min_cons = this->_nfcts + 1;
       this->_ndof_min = this->_ndof_min_flux + this->_ndof_min_cons;

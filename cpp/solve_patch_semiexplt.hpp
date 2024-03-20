@@ -92,13 +92,14 @@ void calculate_jump(std::size_t ipoint_n,
 /// @param problem_data The problem data (Functions of flux, flux_dg, RHS_dg)
 /// @param kernel_data  The kernel data (Quadrature data, tabulated basis
 /// functions)
-template <typename T, int id_flux_order = 3>
-void equilibrate_flux_semiexplt(
-    const mesh::Geometry& geometry,
-    PatchFluxCstm<T, id_flux_order, false>& patch,
-    PatchDataCstm<T, id_flux_order, false>& patch_data,
-    ProblemDataFluxCstm<T>& problem_data, KernelDataEqlb<T>& kernel_data,
-    kernel_fn<T, true>& minkernel, kernel_fn<T, false>& minkernel_rhs)
+template <typename T, int id_flux_order, bool symconstr_required>
+void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
+                                PatchFluxCstm<T, id_flux_order>& patch,
+                                PatchDataCstm<T, id_flux_order>& patch_data,
+                                ProblemDataFluxCstm<T>& problem_data,
+                                KernelDataEqlb<T>& kernel_data,
+                                kernel_fn<T, true>& minkernel,
+                                kernel_fn<T, false>& minkernel_rhs)
 {
   /* Extract data */
   // Spacial dimension
@@ -228,11 +229,13 @@ void equilibrate_flux_semiexplt(
   patch.set_assembly_informations(kernel_data.fct_normal_is_outward(),
                                   patch_data.jacobi_determinant());
 
-  const int offs_ffEa = ndofs_flux_fct;
-  const int offs_fcadd = 2 * ndofs_flux_fct;
-  const int offs_fcdiv = offs_fcadd + ndofs_flux_cell_add;
   mdspan_t<const std::int32_t, 3> dofmap_flux
       = patch.assembly_info_minimisation();
+  std::span<const std::int32_t> offs_dofmap = patch.offset_dofmap();
+
+  const int offs_ffEa = offs_dofmap[1];
+  const int offs_fcadd = offs_dofmap[2];
+  const int offs_fcdiv = offs_dofmap[4];
 
   /* Evaluate DOFs of sigma_tilde (for each flux separately) */
   for (std::size_t i_rhs = 0; i_rhs < problem_data.nrhs(); ++i_rhs)
@@ -774,7 +777,7 @@ void equilibrate_flux_semiexplt(
     if (assemble_entire_system)
     {
       // Assemble system
-      assemble_fluxminimiser<T, id_flux_order, true, false>(
+      assemble_fluxminimiser<T, id_flux_order, true>(
           minkernel, patch_data, dofmap_flux, i_rhs,
           patch.requires_flux_bcs(i_rhs), false);
 
@@ -784,7 +787,7 @@ void equilibrate_flux_semiexplt(
     else
     {
       // Assemble linear form
-      assemble_fluxminimiser<T, id_flux_order, false, false>(
+      assemble_fluxminimiser<T, id_flux_order, false>(
           minkernel_rhs, patch_data, dofmap_flux, i_rhs,
           patch.requires_flux_bcs(i_rhs), false);
     }

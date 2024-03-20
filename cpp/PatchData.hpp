@@ -12,7 +12,7 @@ using namespace dolfinx;
 
 namespace dolfinx_eqlb
 {
-template <typename T, int id_flux_order, bool constr_minms>
+template <typename T, int id_flux_order>
 class PatchDataCstm
 {
 public:
@@ -21,11 +21,13 @@ public:
   /// Holds temporary storage, required within semi-explicit flux equilibration
   /// in order to avoid repeated reallocation of memory.
   ///
-  /// @param patch           The patch
-  /// @param niponts_per_fct The number of integration points per facet
-  PatchDataCstm(PatchFluxCstm<T, id_flux_order, constr_minms>& patch,
-                const int niponts_per_fct)
-      : _gdim(patch.dim()), _degree_flux_rt(patch.degree_raviart_thomas()),
+  /// @param patch              The patch
+  /// @param niponts_per_fct    The number of integration points per facet
+  /// @param symconstr_required Flag for constrained minimisation
+  PatchDataCstm(PatchFluxCstm<T, id_flux_order>& patch,
+                const int niponts_per_fct, const bool symconstr_required)
+      : _symconstr_required(symconstr_required), _gdim(patch.dim()),
+        _degree_flux_rt(patch.degree_raviart_thomas()),
         _ndofs_flux(patch.ndofs_flux()), _ncells_max(patch.ncells_max()),
         _size_j(_gdim * _gdim)
   {
@@ -72,8 +74,8 @@ public:
     // FIXME - ndofs_hdivz_per_cell wrong for 2D quads + 3D
     const int nfcts_max = ncells_max + 1;
 
-    const std::size_t ndofs_hdivz = dimension_uconstrained_minspace(
-        _degree_flux_rt, ncells_max, nfcts_max);
+    const std::size_t ndofs_hdivz
+        = dimension_uconstrained_minspace(ncells_max, nfcts_max);
     const int ndofs_hdivz_per_cell
         = 2 * ndofs_flux_fct + patch.ndofs_flux_cell_add() - 1;
 
@@ -82,12 +84,12 @@ public:
     _L.resize(ndofs_hdivz);
     _u.resize(ndofs_hdivz);
 
-    if constexpr (constr_minms)
+    if (symconstr_required)
     {
       // Dimension constraint space
       const int npnts_max = nfcts_max + 1;
-      const std::size_t ndofs_hdivz_constr = dimension_constrained_minspace(
-          _degree_flux_rt, _gdim, ncells_max, nfcts_max, npnts_max);
+      const std::size_t ndofs_hdivz_constr
+          = dimension_constrained_minspace(ndofs_hdivz, npnts_max);
 
       // DOFs per cell
       // FIXME -- Incorrect for 3D or non triangular cells
@@ -137,14 +139,7 @@ public:
     _ncells = ncells;
 
     // Set dimension of minimisation spaces
-    _dim_hdivz
-        = dimension_uconstrained_minspace(_degree_flux_rt, ncells, nfcts);
-
-    if constexpr (constr_minms)
-    {
-      _dim_hdivz_constr = dimension_constrained_minspace(_degree_flux_rt, _gdim,
-                                                         ncells, npnts);
-    }
+    dimension_minspaces(ncells, nfcts, npnts);
 
     // --- Update length of mdspans
     _shape_Mm[0] = ncells;
@@ -175,14 +170,7 @@ public:
     }
     else
     {
-      if constexpr (constr_minms)
-      {
-        std::fill_n(_data_Te.begin(), _shape_Te[0] * _shape_Te[1], 0.0);
-      }
-      else
-      {
-        std::fill(_data_Te.begin(), _data_Te.end(), 0.0);
-      }
+      std::fill_n(_data_Te.begin(), _shape_Te[0] * _shape_Te[1], 0.0);
     }
   }
 
@@ -525,31 +513,23 @@ protected:
   }
 
   /// Dimension (patch-wise) of the unconstrained minimisation space
-  /// @param degree_rt The degree of the Raviart-Thomas space
-  /// @param ncells    The number of cells on patch
-  /// @param nfcts     The number of facets on patch
-  /// @return          The dimension
-  std::size_t dimension_uconstrained_minspace(const int degree_rt,
-                                              const int ncells, const int nfcts)
+  /// @param ncells The number of cells on patch
+  /// @param nfcts  The number of facets on patch
+  /// @return       The dimension
+  std::size_t dimension_uconstrained_minspace(const int ncells, const int nfcts)
   {
-    return 1 + degree_rt * nfcts + 0.5 * degree_rt * (degree_rt - 1) * ncells;
+    return 1 + _degree_flux_rt * nfcts
+           + 0.5 * _degree_flux_rt * (_degree_flux_rt - 1) * ncells;
   }
 
   /// Dimension (patch-wise) of the constrained minimisation space
-  /// @param degree_rt The degree of the Raviart-Thomas space
-  /// @param gdim      The spatial dimension
-  /// @param ncells    The number of cells on patch
-  /// @param nfcts     The number of facets on patch
+  /// @param dim_hdivz The dimension of the unconstrained minimisation space
   /// @param npnt      The number of points on patch
   /// @return          The dimension
-  std::size_t dimension_constrained_minspace(const int degree_rt,
-                                             const int gdim, const int ncells,
-                                             const int nfcts, const int npnt)
+  std::size_t dimension_constrained_minspace(const int dim_hdivz,
+                                             const int npnt)
   {
-    const std::size_t dim_hdivz
-        = dimension_uconstrained_minspace(degree_rt, ncells, nfcts);
-
-    if (gdim == 2)
+    if (_gdim == 2)
     {
       return 2 * dim_hdivz + npnt;
     }
@@ -559,7 +539,22 @@ protected:
     }
   }
 
+  /// Set dimensions of minimisation spaces
+  /// @param ncells The number of cells on patch
+  /// @param nfcts  The number of factes on patch
+  /// @param npnt   The number of points on patch
+  void dimension_minspaces(const int ncells, const int nfcts, const int npnt)
+  {
+    // Dimension of the unconstrained minimisation space
+    _dim_hdivz = dimension_uconstrained_minspace(ncells, nfcts);
+
+    // Dimension of the constrained minimisation space
+    _dim_hdivz_constr = dimension_constrained_minspace(_dim_hdivz, npnt);
+  }
+
   /* Variables */
+  const bool _symconstr_required;
+
   // --- General information
   // The spatial dimension
   const std::size_t _gdim;
@@ -568,7 +563,7 @@ protected:
   const int _degree_flux_rt, _ndofs_flux;
 
   // Dimension H(div=0) space
-  int _dim_hdivz, _dim_hdivz_constr;
+  std::size_t _dim_hdivz, _dim_hdivz_constr;
 
   // The length of the patch
   const int _ncells_max;

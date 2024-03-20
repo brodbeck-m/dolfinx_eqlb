@@ -19,9 +19,10 @@ class FluxEqlbSE(FluxEquilibrator):
         msh: dmesh.Mesh,
         list_rhs: typing.List[typing.Any],
         list_proj_flux: typing.List[dfem.function.Function],
+        equilibrate_stress: typing.Optional[bool] = False,
     ):
         # Constructor of base class
-        super().__init__(degree_flux, len(list_rhs))
+        super().__init__(degree_flux, len(list_rhs), equilibrate_stress)
 
         # Store list of projected fluxes and RHS
         self.list_proj_flux = list_proj_flux
@@ -96,6 +97,7 @@ class FluxEqlbSE(FluxEquilibrator):
             self.list_proj_flux_cpp,
             self.list_rhs_cpp,
             self.boundary_data,
+            self.equilibrate_stresses,
         )
 
     def get_recontructed_fluxe(self, subproblem: int):

@@ -74,7 +74,6 @@ set(
   reconstruction.hpp
   solve_patch_constrmin.hpp
   solve_patch_semiexplt.hpp
-  solve_patch_weaksym.hpp
   utils.hpp
 )
 
