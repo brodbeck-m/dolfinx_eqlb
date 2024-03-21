@@ -38,6 +38,8 @@
 #include <iterator>
 #include <memory>
 #include <span>
+#include <stdexcept>
+#include <string>
 #include <vector>
 
 using namespace dolfinx;
@@ -228,18 +230,116 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
       patch.degree_raviart_thomas());
 
   // Execute equilibration
-  for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
+  // FIXME - Currently only 2D meshes supported
+  if constexpr (symconstr_required)
   {
-    // Create Sub-DOFmap
-    patch.create_subdofmap(i_node);
+    // Set kernel for weak symmetry condition
+    kernel_fn<T, true> minkernel_weaksym
+        = generate_minimisation_kernel<T, true>(Kernel::StressMin, kernel_data,
+                                                dim, patch.fcts_per_cell(),
+                                                patch.degree_raviart_thomas());
 
-    // Current patch-length to patch-data
-    patch_data.reinitialisation(patch.ncells(), patch.nfcts(), patch.npnts());
+    kernel_fn<T, true> minkernel_weaksym_constr
+        = generate_minimisation_kernel<T, true>(Kernel::StressMin, kernel_data,
+                                                dim, patch.fcts_per_cell(),
+                                                patch.degree_raviart_thomas());
 
-    // Calculate coefficients per patch
-    equilibrate_flux_semiexplt<T, id_flux_order, symconstr_required>(
-        mesh->geometry(), patch, patch_data, problem_data, kernel_data,
-        minkernel, minkernel_rhs);
+    // Initialise list with equilibration markers
+    std::vector<bool> perform_equilibration(n_nodes, true);
+
+    // Loop over all patches
+    for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
+    {
+      if (perform_equilibration[i_node])
+      {
+        // Set marker for patch
+        perform_equilibration[i_node] = false;
+
+        // Create Sub-DOFmap
+        patch.create_subdofmap(i_node);
+
+        // Check if equilibration is possible
+        if (patch.ncells() == 1)
+        {
+          std::string error_msg = "Patch around node " + std::to_string(i_node)
+                                  + " has only one cell";
+          throw std::runtime_error(error_msg);
+        }
+
+        // Reinitialise patch-data
+        patch_data.reinitialisation(patch.ncells(), patch.nfcts(),
+                                    patch.npnts());
+
+        // Calculate solution patch
+        if (((patch.type(0) == PatchType::bound_essnt_dual)
+             || (patch.type(1) == PatchType::bound_essnt_dual))
+            && patch.ncells() == 2)
+        {
+          // --- Step 1a: Flux equilibration on boundary patch
+          // Equilibrate fluxes boundary patch
+          equilibrate_flux_semiexplt<T, id_flux_order>(
+              mesh->geometry(), patch, patch_data, problem_data, kernel_data,
+              minkernel, minkernel_rhs, true);
+
+          // Move solution of boundary patch into temporary storage
+          // FIXME - Implement temporary storage of patch-solution
+
+          // --- Step 1b: Flux equilibration on additional patch
+          // Get central node of additional internal patch
+          const int i_node_add = 0;
+
+          // Create Sub-DOFmap
+          patch.create_subdofmap(i_node_add);
+
+          // Reinitialise patch-data
+          patch_data.reinitialisation(patch.ncells(), patch.nfcts(),
+                                      patch.npnts());
+
+          // Equilibrate fluxes on internal patch
+          equilibrate_flux_semiexplt<T, id_flux_order>(
+              mesh->geometry(), patch, patch_data, problem_data, kernel_data,
+              minkernel, minkernel_rhs, perform_equilibration[i_node_add]);
+
+          // Set marker for additional patch
+          perform_equilibration[i_node_add] = false;
+
+          // --- Step 2: Weak symmetry constraint
+          throw std::runtime_error("Weak symmetry condition for patches with"
+                                   "pure neumann not implemented");
+        }
+        else
+        {
+          equilibrate_flux_semiexplt<T, id_flux_order>(
+              mesh->geometry(), patch, patch_data, problem_data, kernel_data,
+              minkernel, minkernel_rhs, minkernel_weaksym_constr);
+        }
+      }
+    }
+  }
+  else
+  {
+    // Loop over all patches
+    for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
+    {
+      // Create Sub-DOFmap
+      patch.create_subdofmap(i_node);
+
+      // Check if equilibration is possible
+      if (patch.ncells() == 1)
+      {
+        std::string error_msg = "Patch around node " + std::to_string(i_node)
+                                + " has only one cell";
+        throw std::runtime_error(error_msg);
+      }
+
+      // Reinitialise patch-data
+      patch_data.reinitialisation(patch.ncells(), patch.nfcts(), patch.npnts());
+
+      // Calculate solution patch
+      equilibrate_flux_semiexplt<T, id_flux_order>(
+          mesh->geometry(), patch, patch_data, problem_data, kernel_data,
+          minkernel, minkernel_rhs, true);
+    }
   }
 }
 

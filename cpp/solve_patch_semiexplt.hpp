@@ -76,30 +76,35 @@ void calculate_jump(std::size_t ipoint_n,
   }
 }
 
-/// Calculate minimized fluxes fulfilling jump/divergence conditions on patch
+/// Calculate equilibrated fluxes on patch
 ///
 /// Calculates sig in pice-wise H(div) that fulfills jump and divergence
-/// condition on patch (see [1, Appendix A, Algorithm 2])
+/// condition on patch (see [1, Appendix A, Algorithm 2]). The explicit setp is
+/// followed by a unconstrained minimisation on a patch-wise H(div=0) space.
 ///
 /// [1] Bertrand, F.; Carstensen, C.; Gräßle, B. & Tran, N. T.:
 ///     Stabilization-free HHO a posteriori error control, 2022
 ///
 /// @tparam T             The scalar type
 /// @tparam id_flux_order Parameter for flux order (1->RT1, 2->RT2, 3->general)
-/// @param geometry     The geometry
-/// @param patch        The patch
-/// @param patch_data   The temporary storage for the patch
-/// @param problem_data The problem data (Functions of flux, flux_dg, RHS_dg)
-/// @param kernel_data  The kernel data (Quadrature data, tabulated basis
-/// functions)
-template <typename T, int id_flux_order, bool symconstr_required>
+/// @param geometry        The geometry
+/// @param patch           The patch
+/// @param patch_data      The temporary storage for the patch
+/// @param problem_data    The problem data (Functions of flux, flux_dg, RHS_dg)
+/// @param kernel_data     The kernel data (Quadrature data, tabulated basis)
+/// @param minkernel       The kernel for unconstrained minimisation
+/// @param minkernel_rhs   The kernel (RHS) for unconstrained minimisation
+/// @param consider_result If false patch solution will not be added into global
+///                        storage
+template <typename T, int id_flux_order>
 void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
                                 PatchFluxCstm<T, id_flux_order>& patch,
                                 PatchDataCstm<T, id_flux_order>& patch_data,
                                 ProblemDataFluxCstm<T>& problem_data,
                                 KernelDataEqlb<T>& kernel_data,
                                 kernel_fn<T, true>& minkernel,
-                                kernel_fn<T, false>& minkernel_rhs)
+                                kernel_fn<T, false>& minkernel_rhs,
+                                const bool consider_result)
 {
   /* Extract data */
   // Spacial dimension
@@ -703,11 +708,13 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
         if constexpr (id_flux_order == 2)
         {
           // Set higher-order DOFs on facets
-          coefficients_flux(id_a, dofmap_flux(0, a, 3)) += cj_ta_ea[0];
+          coefficients_flux(id_a, dofmap_flux(0, a, offs_ffEa + 1))
+              += cj_ta_ea[0];
 
           // Set DOFs on cell
-          coefficients_flux(id_a, dofmap_flux(0, a, 4)) += c_ta_div[0];
-          coefficients_flux(id_a, dofmap_flux(0, a, 5)) += c_ta_div[1];
+          coefficients_flux(id_a, dofmap_flux(0, a, offs_fcdiv)) += c_ta_div[0];
+          coefficients_flux(id_a, dofmap_flux(0, a, offs_fcdiv + 1))
+              += c_ta_div[1];
         }
         else
         {
@@ -830,4 +837,64 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
     }
   }
 }
+
+/// Calculate equilibrated fluxes on patch with weak symmetry constraint
+///
+/// Calculates sig in pice-wise H(div) that fulfills jump and divergence
+/// condition on patch (see [1, Appendix A, Algorithm 2]). The explicit setp is
+/// followed by a unconstrained minimisation on a patch-wise H(div=0) space. On
+/// the first gdim fluxes symmetry of the reuslting stress tensor is enforced in
+/// a weak sense following [2].
+///
+/// [1] Bertrand, F., Carstensen, C., Gräßle, B. & Tran, N. T.:
+///     Stabilization-free HHO a posteriori error control, 2022
+/// [2] Bertrand, F., Kober, B., Moldenhauer M. & Starke, G.: Weakly symmetric
+///     stress equilibration and a posteriori error estimation for linear
+///     elasticity, 2021
+///
+/// @tparam T             The scalar type
+/// @tparam id_flux_order Parameter for flux order (1->RT1, 2->RT2, 3->general)
+/// @param geometry        The geometry
+/// @param patch           The patch
+/// @param patch_data      The temporary storage for the patch
+/// @param problem_data    The problem data (Functions of flux, flux_dg, RHS_dg)
+/// @param kernel_data     The kernel data (Quadrature data, tabulated basis)
+/// @param minkernel       The kernel for unconstrained minimisation
+/// @param minkernel_rhs   The kernel (RHS) for unconstrained minimisation
+/// @param kernel_weaksym  The kernel for imposition of the weak symmetry
+///                        constraind
+template <typename T, int id_flux_order>
+void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
+                                PatchFluxCstm<T, id_flux_order>& patch,
+                                PatchDataCstm<T, id_flux_order>& patch_data,
+                                ProblemDataFluxCstm<T>& problem_data,
+                                KernelDataEqlb<T>& kernel_data,
+                                kernel_fn<T, true>& minkernel,
+                                kernel_fn<T, false>& minkernel_rhs,
+                                kernel_fn<T, true>& kernel_weaksym)
+{
+  /* Extract data */
+  // Spacial dimension
+  const int dim = 2;
+
+  // The patch
+  const int ncells = patch.ncells();
+  const int nfcts = patch.nfcts();
+
+  // Nodes constructing one element
+  const int nnodes_cell = kernel_data.nnodes_cell();
+
+  // DOF-counts function spaces
+  const int degree_flux_rt = patch.degree_raviart_thomas();
+
+  const int ndofs_flux = patch.ndofs_flux();
+
+  /* Step 1: Unconstrained flux equilibration */
+  equilibrate_flux_semiexplt<T, id_flux_order>(geometry, patch, patch_data,
+                                               problem_data, kernel_data,
+                                               minkernel, minkernel_rhs, true);
+
+  /* Step 2: Enforce weak symmetry constraint */
+}
+
 } // namespace dolfinx_eqlb

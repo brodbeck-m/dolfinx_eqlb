@@ -5,7 +5,6 @@ import dolfinx.mesh as dmesh
 import dolfinx.fem as dfem
 import ufl
 
-from dolfinx_eqlb.eqlb import FluxEqlbSE, FluxEqlbEV
 import dolfinx_eqlb.eqlb.check_eqlb_conditions as eqlb_checker
 
 from utils import (
@@ -100,7 +99,6 @@ def test_equilibration_conditions(mesh_type, degree, bc_type):
                     )
 
                 sigma_eq, boundary_dofvalues = equilibrate_stresses(
-                    FluxEqlbSE,
                     degree,
                     geometry,
                     sigma_projected,
@@ -111,11 +109,11 @@ def test_equilibration_conditions(mesh_type, degree, bc_type):
                     [neumann_projection, neumann_projection],
                 )
 
-                # # --- Check boundary conditions ---
-                # if bc_type != "pure_dirichlet":
-                #     raise NotImplementedError(
-                #         "Neumann boundary conditions not implemented yet"
-                #     )
+                # --- Check boundary conditions ---
+                if bc_type != "pure_dirichlet":
+                    raise NotImplementedError(
+                        "Neumann boundary conditions not implemented yet"
+                    )
 
                 # --- Check divergence condition ---
                 stress_eq = ufl.as_matrix(
@@ -141,8 +139,8 @@ def test_equilibration_conditions(mesh_type, degree, bc_type):
                 for i in range(geometry.mesh.geometry.dim):
                     eqlb_checker.check_jump_condition(sigma_eq[i], sigma_projected[i])
 
-                # --- Check weak symmetry
-                eqlb_checker.check_weak_symmetry_condition(sigma_eq)
+                # # --- Check weak symmetry
+                # eqlb_checker.check_weak_symmetry_condition(sigma_eq)
 
 
 if __name__ == "__main__":

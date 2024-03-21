@@ -1,15 +1,12 @@
 # --- Includes ---
 import numpy as np
-from petsc4py import PETSc
-from typing import Any, Callable, List
+from typing import Any, List
 
-import dolfinx
 import dolfinx.fem as dfem
 import ufl
 
-from dolfinx_eqlb.cpp import weak_symmetry_stress
 from dolfinx_eqlb.lsolver import local_projection
-from dolfinx_eqlb.eqlb import fluxbc
+from dolfinx_eqlb.eqlb import fluxbc, FluxEqlbSE
 
 from utils import Geometry, interpolate_ufl_to_function
 
@@ -143,7 +140,6 @@ def solve_primal_problem(
 
 
 def equilibrate_stresses(
-    Equilibrator: Any,
     degree_flux: int,
     geometry: Geometry,
     sig_proj: List[dfem.Function],
@@ -156,7 +152,6 @@ def equilibrate_stresses(
     """Equilibrates the fluxes of the primal problem
 
     Args:
-        Equilibrator (equilibration.FluxEquilibrator): The equilibrator object
         degree_flux (int):                             Degree of flux space
         geometry (Geometry):                           The geometry of the domain
         sig_proj (List[dfem.Function]):                List of projected fluxes
@@ -176,7 +171,7 @@ def equilibrate_stresses(
     fct_values = geometry.facet_function.values
 
     # Set equilibrator
-    equilibrator = Equilibrator(degree_flux, geometry.mesh, rhs_proj, sig_proj)
+    equilibrator = FluxEqlbSE(degree_flux, geometry.mesh, rhs_proj, sig_proj, True)
 
     # Mark dirichlet facets of primal problem
     fct_bcesnt_primal = []
@@ -218,8 +213,5 @@ def equilibrate_stresses(
 
     # Step 1: Equilibrate stress tensor without symmetry
     equilibrator.equilibrate_fluxes()
-
-    # Step 2: Enforce symmetry in a weak sense
-    weak_symmetry_stress(equilibrator.list_flux_cpp, equilibrator.boundary_data)
 
     return equilibrator.list_flux, equilibrator.list_bfunctions
