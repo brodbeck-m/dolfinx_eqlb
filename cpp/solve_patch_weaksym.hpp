@@ -48,33 +48,10 @@ void impose_weak_symmetry(const mesh::Geometry& geometry,
 
   // The patch
   const int ncells = patch.ncells();
-  // const int nfcts = patch.nfcts();
-  // const int nnodes = nfcts + 1;
-
-  // Nodes constructing one element
-  const int nnodes_cell = kernel_data.nnodes_cell();
 
   // The flux space
-  // const int degree_flux_rt = patch.degree_raviart_thomas();
-
   const int ndofs_flux = patch.ndofs_flux();
   const int ndofs_flux_fct = patch.ndofs_flux_fct();
-  const int ndofs_flux_cell_add = patch.ndofs_flux_cell_add();
-
-  // const int ndofs_flux_hdivz
-  //     = 1 + degree_flux_rt * nfcts
-  //       + 0.5 * degree_flux_rt * (degree_flux_rt - 1) * ncells;
-
-  // const int ndofs_per_cell
-  //     = (gdim == 2) ? 2 * (2 * (ndofs_flux_fct - 1) + 1 +
-  //     ndofs_flux_cell_add)
-  //                         + nnodes_cell
-  //                   : 3 * (3 * (ndofs_flux_fct - 1) + 1 +
-  //                   ndofs_flux_cell_add)
-  //                         + 3 * nnodes_cell;
-
-  // Intermediate storage of the stress corrector
-  // std::span<T> storage_corrector = problem_data.stress_corrector();
 
   /* Initialisations */
   // Patch type and reversion information
@@ -119,7 +96,8 @@ void impose_weak_symmetry(const mesh::Geometry& geometry,
 
     // Storage cell geometry
     std::array<double, 12> coordinate_dofs_e;
-    mdspan_t<const double, 2> coords(coordinate_dofs_e.data(), nnodes_cell, 3);
+    mdspan_t<const double, 2> coords(coordinate_dofs_e.data(),
+                                     kernel_data.nnodes_cell(), 3);
 
     /* Evaluate Piola mapping */
     for (std::size_t a = 1; a < ncells + 1; ++a)
@@ -191,7 +169,8 @@ void impose_weak_symmetry(const mesh::Geometry& geometry,
 
   /* Store local solution into global storage */
   Eigen::Matrix<T, Eigen::Dynamic, 1>& u_patch = patch_data.u_patch(true);
-  const int ndofs_flux_per_cell = gdim * ndofs_flux_fct + ndofs_flux_cell_add;
+  const int ndofs_flux_per_cell
+      = gdim * ndofs_flux_fct + patch.ndofs_flux_cell_add();
 
   for (std::size_t i_row = 0; i_row < gdim; ++i_row)
   {

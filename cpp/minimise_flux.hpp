@@ -41,33 +41,6 @@ enum class Kernel
   StressMinNL,
 };
 
-// std::size_t dimension_minimisation_space(const Kernel type_kernel,
-//                                          const int gdim,
-//                                          const int nnodes_on_patch,
-//                                          const int ndofs_flux_hdivz)
-// {
-//   if (type_kernel == Kernel::FluxMin)
-//   {
-//     return ndofs_flux_hdivz;
-//   }
-//   else if ((type_kernel == Kernel::StressMin)
-//            || (type_kernel == Kernel::StressMinNL))
-//   {
-//     if (gdim == 2)
-//     {
-//       return gdim * ndofs_flux_hdivz + nnodes_on_patch;
-//     }
-//     else
-//     {
-//       return gdim * (ndofs_flux_hdivz + nnodes_on_patch);
-//     }
-//   }
-//   else
-//   {
-//     throw std::invalid_argument("Unrecognised kernel");
-//   }
-// }
-
 /// Create mixed-space DOFmap
 ///
 /// Patch-wise divergence free H(div) space requires special DOFmap and
