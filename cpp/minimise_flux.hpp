@@ -41,32 +41,32 @@ enum class Kernel
   StressMinNL,
 };
 
-std::size_t dimension_minimisation_space(const Kernel type_kernel,
-                                         const int gdim,
-                                         const int nnodes_on_patch,
-                                         const int ndofs_flux_hdivz)
-{
-  if (type_kernel == Kernel::FluxMin)
-  {
-    return ndofs_flux_hdivz;
-  }
-  else if ((type_kernel == Kernel::StressMin)
-           || (type_kernel == Kernel::StressMinNL))
-  {
-    if (gdim == 2)
-    {
-      return gdim * ndofs_flux_hdivz + nnodes_on_patch;
-    }
-    else
-    {
-      return gdim * (ndofs_flux_hdivz + nnodes_on_patch);
-    }
-  }
-  else
-  {
-    throw std::invalid_argument("Unrecognised kernel");
-  }
-}
+// std::size_t dimension_minimisation_space(const Kernel type_kernel,
+//                                          const int gdim,
+//                                          const int nnodes_on_patch,
+//                                          const int ndofs_flux_hdivz)
+// {
+//   if (type_kernel == Kernel::FluxMin)
+//   {
+//     return ndofs_flux_hdivz;
+//   }
+//   else if ((type_kernel == Kernel::StressMin)
+//            || (type_kernel == Kernel::StressMinNL))
+//   {
+//     if (gdim == 2)
+//     {
+//       return gdim * ndofs_flux_hdivz + nnodes_on_patch;
+//     }
+//     else
+//     {
+//       return gdim * (ndofs_flux_hdivz + nnodes_on_patch);
+//     }
+//   }
+//   else
+//   {
+//     throw std::invalid_argument("Unrecognised kernel");
+//   }
+// }
 
 /// Create mixed-space DOFmap
 ///
@@ -88,10 +88,10 @@ std::size_t dimension_minimisation_space(const Kernel type_kernel,
 /// @tparam T               The scalar type
 /// @tparam id_flux_order   The flux order (1->RT1, 2->RT2, 3->general)
 /// @param patch            The patch
-/// @param ndofs_flux_hdivz nDOF patch-wise H(div=0) space
+/// @param asmbl_info       The assembly information of the constrained space
 template <typename T, int id_flux_order>
-std::pair<std::array<std::size_t, 3>, std::vector<std::int32_t>>
-set_flux_dofmap(PatchCstm<T, id_flux_order>& patch, const int ndofs_flux_hdivz)
+void set_flux_dofmap(PatchFluxCstm<T, id_flux_order>& patch,
+                     mdspan_t<std::int32_t, 3> asmbl_info)
 {
   /* Extract data */
   // Te spacial dimension
@@ -109,6 +109,7 @@ set_flux_dofmap(PatchCstm<T, id_flux_order>& patch, const int ndofs_flux_hdivz)
   // DOF counters
   const int ndofs_flux_fct = patch.ndofs_flux_fct();
   const int ndofs_flux_cell_add = patch.ndofs_flux_cell_add();
+  const int ndofs_flux_hdivz = patch.ndofs_minspace_flux(false);
 
   // Assembly information for non-mixed space
   mdspan_t<const std::int32_t, 3> asmbl_info_base
@@ -125,17 +126,7 @@ set_flux_dofmap(PatchCstm<T, id_flux_order>& patch, const int ndofs_flux_hdivz)
       = (gdim == 2) ? bsize_constr_per_cell : bsize_flux_per_cell * gdim;
   const int size_per_cell = size_flux_per_cell + size_constr_per_cell;
 
-  // Storage for assembly information
-  std::vector<std::int32_t> dasmbl_info(
-      4 * asmbl_info_base.extent(1) * size_per_cell, 0);
-
-  // Size of new mdspan
-  std::array<std::size_t, 3> shape
-      = {4, asmbl_info_base.extent(1), size_per_cell};
-
   /* Recreate assembly-informations */
-  mdspan_t<std::int32_t, 3> asmbl_info(dasmbl_info.data(), shape);
-
   const std::size_t lbound_a = (patch.is_internal()) ? 0 : 1;
   const std::size_t ubound_a = (patch.is_internal()) ? ncells + 2 : ncells + 1;
   const std::size_t ubound_j
@@ -175,29 +166,6 @@ set_flux_dofmap(PatchCstm<T, id_flux_order>& patch, const int ndofs_flux_hdivz)
       }
     }
   }
-
-  return {std::move(shape), std::move(dasmbl_info)};
-}
-
-/// Initialise boundary markers for patch-wise H(div=0) space
-/// @param type             The kernel type of the minimisation problem
-/// @param gdim             The geometric dimension
-/// @param nnodes_on_patch  Number of nodes on patch
-/// @param ndofs_flux_hdivz nDOFs patch-wise H(div=0) space
-/// @return                 Initialised vector for boundary markers
-std::vector<std::int8_t> initialise_boundary_markers(const Kernel type,
-                                                     const int gdim,
-                                                     const int nnodes_on_patch,
-                                                     const int ndofs_flux_hdivz)
-{
-  // Determine dimension of (mixed) fe-space on patch
-  const std::size_t size = dimension_minimisation_space(
-      type, gdim, nnodes_on_patch, ndofs_flux_hdivz);
-
-  // Create vector
-  std::vector<std::int8_t> boundary_markers(size, false);
-
-  return std::move(boundary_markers);
 }
 
 /// Set boundary markers for patch-wise H(div=0) space
@@ -660,6 +628,8 @@ void assemble_fluxminimiser(kernel_fn<T, asmbl_systmtrx>& minimisation_kernel,
   const int ndofs_per_cell = Te.extent(1);
   const int index_load = ndofs_per_cell;
 
+  std::span<const T> coefficients;
+
   for (std::size_t a = 1; a < ncells + 1; ++a)
   {
     int id_a = a - 1;
@@ -673,7 +643,14 @@ void assemble_fluxminimiser(kernel_fn<T, asmbl_systmtrx>& minimisation_kernel,
         asmbl_info, stdex::full_extent, a, stdex::full_extent);
 
     // DOFs on cell
-    std::span<const T> coefficients = patch_data.coefficients_flux(i_rhs, a);
+    if (constrained_minimisation)
+    {
+      coefficients = patch_data.coefficients_stress(a);
+    }
+    else
+    {
+      coefficients = patch_data.coefficients_flux(i_rhs, a);
+    }
 
     // Evaluate linear- and bilinear form
     patch_data.reinitialise_Te(constrained_minimisation);

@@ -93,10 +93,12 @@ public:
 
       // DOFs per cell
       // FIXME -- Incorrect for 3D or non triangular cells
-      const int ndofs_constrhdivz_per_cell
-          = 2 * ndofs_flux_fct + patch.ndofs_flux_cell_add() + 2;
+      const int ndofs_constrhdivz_per_cell = 2 * ndofs_hdivz_per_cell + 3;
 
       // DOFmap
+      _shape_dofmap = {4, _ncells_max + 2, ndofs_constrhdivz_per_cell + 2};
+      _data_dofmap.resize(
+          _shape_dofmap[0] * _shape_dofmap[1] * _shape_dofmap[2], 0);
 
       // Boundary markers
       _boundary_markers.resize(ndofs_hdivz_constr, false);
@@ -107,6 +109,9 @@ public:
           = {ndofs_constrhdivz_per_cell + 1, ndofs_constrhdivz_per_cell};
 
       _data_Te.resize(_shape_Te_constr[0] * _shape_Te_constr[1], 0);
+
+      // Intermediate storage of the stress coefficients
+      _coefficients_stress.resize(ncells_max * _gdim * _ndofs_flux, 0);
 
       // Equation system (constrained minimisation)
       _A_constr.resize(ndofs_hdivz_constr, ndofs_hdivz_constr);
@@ -144,6 +149,7 @@ public:
     // --- Update length of mdspans
     _shape_Mm[0] = ncells;
     _shape_coeffsflux[1] = ncells;
+    _shape_dofmap[1] = ncells + 2;
 
     // --- Re-initialise storage
     // Coefficients of the flux
@@ -306,6 +312,28 @@ public:
                               _shape_coeffsflux[2]);
   }
 
+  /// Coefficients of the stress tensor
+  ///
+  /// Structure [[dofs_T1_r0, ..., dofs_T1_rn], ...,
+  ///            [dofs_Tm_r0, ...,dofs_Tm_rn]]
+  ///
+  /// @return span of the coefficients
+  std::span<T> coefficients_stress()
+  {
+    const int size = _ncells * _gdim * _ndofs_flux;
+    return std::span<T>(_coefficients_stress.data(), size);
+  }
+
+  /// Coefficients of the stress tensor on cell a
+  /// @param a The cell id (starting at 1)
+  /// @return span of the coefficients
+  std::span<const T> coefficients_stress(const int a) const
+  {
+    const int size = _gdim * _ndofs_flux;
+    const int offset = (a - 1) * size;
+    return std::span<const T>(_coefficients_stress.data() + offset, size);
+  }
+
   /// Coefficients of the projected flux (cell Ta)
   /// @return span of the coefficients
   std::span<T> coefficients_projflux_Ta()
@@ -352,6 +380,20 @@ public:
   }
 
   /* The equation system */
+
+  /// The DOFmap of the constrained minimisation space
+  ///
+  /// id within the first index:
+  ///   id = 0: local DOFs
+  ///   id = 1: global DOFs
+  ///   id = 2: patch-local DOFs
+  ///   id = 3: prefactor for construction of H(div=0) space
+  ///
+  /// @return mdspan (id x ncells x ndofs_per_cell) of the DOFmap
+  mdspan_t<std::int32_t, 3> assembly_info_constained_minimisation()
+  {
+    return mdspan_t<std::int32_t, 3>(_data_dofmap.data(), _shape_dofmap);
+  }
 
   /// The boundary markers (const version)
   /// @param constrained_system Id for constrained minimisation
@@ -585,7 +627,7 @@ protected:
   // Coefficients (RHS, projected flux, equilibrated flux)
   std::array<std::size_t, 3> _shape_coeffsflux;
   std::vector<T> _coefficients_rhs, _coefficients_G_Tap1, _coefficients_G_Ta,
-      _coefficients_flux;
+      _coefficients_flux, _coefficients_stress;
 
   // Jumps of the projected flux
   std::array<std::size_t, 2> _shape_jGEam1;

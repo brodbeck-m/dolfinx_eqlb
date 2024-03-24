@@ -8,6 +8,7 @@
 #include "PatchData.hpp"
 #include "ProblemDataFluxCstm.hpp"
 #include "minimise_flux.hpp"
+#include "solve_patch_weaksym.hpp"
 #include "utils.hpp"
 
 #include <dolfinx/fem/DofMap.h>
@@ -143,6 +144,7 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
 
   // Storage cell geometry
   std::array<double, 12> coordinate_dofs_e;
+  mdspan_t<const double, 2> coords(coordinate_dofs_e.data(), nnodes_cell, 3);
 
   // Storage pre-factors (due to orientation of the normal)
   mdspan_t<T, 2> prefactor_dof = patch_data.prefactors_facet_per_cell();
@@ -168,9 +170,7 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
 
   /* Initialise Step 2 */
   // Number of DOFs on patch-wise H(div=0) space
-  const int ndofs_hdivz
-      = 1 + degree_flux_rt * nfcts
-        + 0.5 * degree_flux_rt * (degree_flux_rt - 1) * ncells;
+  const int ndofs_hdivz = patch.ndofs_minspace_flux(false);
   const int ndofs_hdivz_per_cell = 2 * ndofs_flux_fct + ndofs_flux_cell_add;
 
   /* Pre-evaluate repeatedly used cell data */
@@ -188,9 +188,6 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
     copy_cell_data<double, 3>(x, x_dofs, coordinate_dofs_e, 3);
 
     /* Piola mapping */
-    // Reshape geometry infos
-    mdspan_t<const double, 2> coords(coordinate_dofs_e.data(), nnodes_cell, 3);
-
     // Calculate Jacobi, inverse, and determinant
     double detJ = kernel_data.compute_jacobian(J, K, detJ_scratch, coords);
     patch_data.store_piola_mapping(index, detJ, J, K);
@@ -895,6 +892,8 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
                                                minkernel, minkernel_rhs, true);
 
   /* Step 2: Enforce weak symmetry constraint */
+  impose_weak_symmetry<T, id_flux_order, false>(
+      geometry, patch, patch_data, problem_data, kernel_data, kernel_weaksym);
 }
 
 } // namespace dolfinx_eqlb

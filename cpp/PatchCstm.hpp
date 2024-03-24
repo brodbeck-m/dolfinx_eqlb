@@ -556,6 +556,40 @@ public:
   /// @return Number of additional flux-DOFs on cell
   int ndofs_flux_cell_add() { return _ndof_flux_add_cell; }
 
+  /// @return Number of DOFs on (patch-wise) minimsation space
+  int ndofs_minspace(const bool constrained_system)
+  {
+    if (constrained_system)
+    {
+      if (_dim == 2)
+      {
+        return 2 * _ndof_min_flux + _ndof_min_cons;
+      }
+      else
+      {
+        return 3 * (_ndof_min_flux + _ndof_min_cons);
+      }
+    }
+    else
+    {
+      return _ndof_min_flux;
+    }
+  }
+
+  /// @return Number of flux-DOFs on (patch-wise) minimsation space
+  int ndofs_minspace_flux(const bool constrained_system)
+  {
+    if (constrained_system)
+    {
+
+      return _dim * _ndof_min_flux;
+    }
+    else
+    {
+      return _ndof_min_flux;
+    }
+  }
+
   /// Extract assembly information for minnisation problem
   ///
   /// mdspan has the dimension id x cells x ndofs with
@@ -564,7 +598,8 @@ public:
   ///   id = 2: patch-local DOFs
   ///   id = 3: prefactor for construction of H(div=0) space
   ///
-  /// DOF ordering per cell: [d_TaEam1, d_TaEa, d_Ta-add, d_Ta-constr, d_Ta-div]
+  /// DOF ordering per cell: [d_TaEam1, d_TaEa, d_Ta-add, d_Ta-constr,
+  /// d_Ta-div]
   ///
   /// @return List DOFs
   mdspan_t<const std::int32_t, 3> assembly_info_minimisation() const
