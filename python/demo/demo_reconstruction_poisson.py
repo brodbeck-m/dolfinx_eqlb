@@ -193,7 +193,7 @@ if __name__ == "__main__":
 
     # The orders of the FE spaces
     elmt_order_prime = 1
-    elmt_order_eqlb = 1
+    elmt_order_eqlb = 2
 
     # The mesh resolution
     sdisc_nelmt = 20
@@ -238,3 +238,4 @@ if __name__ == "__main__":
     outfile.write_function(sigma_ref[0], 1)
     outfile.write_function(sigma_proj, 1)
     outfile.write_function(sigma_eqlb_dg[0], 1)
+    outfile.close()

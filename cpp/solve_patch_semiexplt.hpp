@@ -809,6 +809,7 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
         = problem_data.fspace_flux_hdiv()->dofmap()->list();
 
     // Move cell contributions
+    // std::cout << "i_ths: " << unsigned(i_rhs) << std::endl;
     for (std::int32_t a = 1; a < ncells + 1; ++a)
     {
       // Set id for accessing storage
@@ -824,6 +825,14 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
         coefficients_flux(id_a, dofmap_flux(0, a, i))
             += dofmap_flux(3, a, i) * u_patch(dofmap_flux(2, a, i));
       }
+
+      // std::cout << "Cell " << a << ": ";
+      // for (std::size_t i = 0; i < ndofs_flux; ++i)
+      // {
+      //   // Apply correction
+      //   std::cout << coefficients_flux(id_a, i) << " ";
+      // }
+      // std::cout << "\n";
 
       // Loop over DOFs an cell
       for (std::size_t i = 0; i < ndofs_flux; ++i)

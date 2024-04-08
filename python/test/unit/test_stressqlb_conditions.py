@@ -1,10 +1,15 @@
 # --- Import ---
 import pytest
+from mpi4py import MPI
+import numpy as np
+import typing
 
+import dolfinx.io
 import dolfinx.mesh as dmesh
 import dolfinx.fem as dfem
 import ufl
 
+from dolfinx_eqlb.lsolver import local_projection
 import dolfinx_eqlb.eqlb.check_eqlb_conditions as eqlb_checker
 
 from utils import (
@@ -23,9 +28,9 @@ Check if equilibrated flux
 """
 
 
-@pytest.mark.parametrize("mesh_type", ["builtin"])
-@pytest.mark.parametrize("degree", [1, 2, 3, 4])
-@pytest.mark.parametrize("bc_type", ["pure_dirichlet"])
+# @pytest.mark.parametrize("mesh_type", ["builtin"])
+# @pytest.mark.parametrize("degree", [1, 2, 3, 4])
+# @pytest.mark.parametrize("bc_type", ["pure_dirichlet"])
 def test_equilibration_conditions(mesh_type, degree, bc_type):
     # Create mesh
     if mesh_type == "builtin":
@@ -37,6 +42,10 @@ def test_equilibration_conditions(mesh_type, degree, bc_type):
     else:
         raise ValueError("Unknown mesh type")
 
+    outfile = dolfinx.io.XDMFFile(MPI.COMM_WORLD, "TestMesh.xdmf", "w")
+    outfile.write_mesh(geometry.mesh)
+    outfile.close()
+
     # Initialise loop over degree of boundary flux
     if bc_type != "neumann_inhom":
         degree_max_rhs = 1
@@ -47,6 +56,13 @@ def test_equilibration_conditions(mesh_type, degree, bc_type):
     for degree_bc in range(0, degree_max_rhs):
         for degree_prime in range(1, degree + 1):
             for degree_rhs in range(0, degree):
+
+                print(
+                    "degree flux: {}, degree prime: {}, degree rhs: {}".format(
+                        degree, degree_prime, degree_rhs
+                    )
+                )
+
                 # Set function space
                 V_prime = dfem.VectorFunctionSpace(geometry.mesh, ("P", degree_prime))
 
@@ -139,11 +155,12 @@ def test_equilibration_conditions(mesh_type, degree, bc_type):
                 for i in range(geometry.mesh.geometry.dim):
                     eqlb_checker.check_jump_condition(sigma_eq[i], sigma_projected[i])
 
-                # # --- Check weak symmetry
-                # eqlb_checker.check_weak_symmetry_condition(sigma_eq)
+                # --- Check weak symmetry
+                eqlb_checker.check_weak_symmetry_condition(sigma_eq)
 
 
 if __name__ == "__main__":
     import sys
 
-    pytest.main(sys.argv)
+    # pytest.main(sys.argv)
+    test_equilibration_conditions("builtin", 2, "pure_dirichlet")

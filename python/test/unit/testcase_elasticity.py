@@ -95,7 +95,7 @@ def solve_primal_problem(
     sigma = 2 * ufl.sym(ufl.grad(u)) + ufl.div(u) * ufl.Identity(gdim)
 
     a_prime = ufl.inner(sigma, ufl.grad(v)) * ufl.dx
-    l_prime = ufl.inner(ufl_rhs, v) * ufl.dx
+    l_prime = ufl.inner(-ufl_rhs, v) * ufl.dx
 
     # Set dirichlet boundary conditions
     bcs_esnt = []
@@ -131,8 +131,8 @@ def solve_primal_problem(
     sig_proj = local_projection(
         V_flux,
         [
-            -ufl.as_vector([sigma_h[0, 0], sigma_h[0, 1]]),
-            -ufl.as_vector([sigma_h[1, 0], sigma_h[1, 1]]),
+            ufl.as_vector([sigma_h[0, 0], sigma_h[0, 1]]),
+            ufl.as_vector([sigma_h[1, 0], sigma_h[1, 1]]),
         ],
     )
 

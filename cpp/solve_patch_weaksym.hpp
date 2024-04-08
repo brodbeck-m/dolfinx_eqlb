@@ -129,10 +129,11 @@ void impose_weak_symmetry(const mesh::Geometry& geometry,
     // Copy the coefficients
     for (std::size_t i_row = 0; i_row < gdim; ++i_row)
     {
-      std::size_t offset = i_row * ndofs_flux * ncells;
-
       for (std::size_t a = 1; a < ncells + 1; ++a)
       {
+        // Set offset
+        std::size_t offset = (a - 1) * ndofs_flux * gdim + i_row * ndofs_flux;
+
         // Coefficients of flux i on cell a
         std::span<const T> coeffs_rowi_cella
             = patch_data.coefficients_flux(i_row, a);
@@ -140,9 +141,6 @@ void impose_weak_symmetry(const mesh::Geometry& geometry,
         // Move coefficients to flattened storage
         std::copy_n(coeffs_rowi_cella.begin(), ndofs_flux,
                     stress_coefficients.begin() + offset);
-
-        // Increment offset
-        offset += ndofs_flux;
       }
     }
   }
@@ -160,6 +158,62 @@ void impose_weak_symmetry(const mesh::Geometry& geometry,
                        patch_reversions);
 
   // Assemble equation system
+  // mdspan_t<const std::int32_t, 3> asmbl_info_base
+  //     = patch.assembly_info_minimisation();
+
+  // std::cout << "Cells on patch: " << std::endl;
+  // for (auto c : patch.cells())
+  // {
+  //   std::cout << c << " ";
+  // }
+  // std::cout << "\n";
+
+  std::cout << "DOFmap (local): " << std::endl;
+  for (std::size_t i = 0; i < asmbl_info.extent(1); ++i)
+  {
+    for (std::size_t j = 0; j < asmbl_info.extent(2); ++j)
+    {
+      std::cout << asmbl_info(0, i, j) << " ";
+    }
+    std::cout << "\n";
+  }
+
+  // std::cout << "DOFmap (patch, non-vector): " << std::endl;
+  // for (std::size_t i = 0; i < asmbl_info_base.extent(1); ++i)
+  // {
+  //   for (std::size_t j = 0; j < asmbl_info_base.extent(2); ++j)
+  //   {
+  //     std::cout << asmbl_info_base(2, i, j) << " ";
+  //   }
+  //   std::cout << "\n";
+  // }
+
+  std::cout << "DOFmap (patch): " << std::endl;
+  for (std::size_t i = 0; i < asmbl_info.extent(1); ++i)
+  {
+    for (std::size_t j = 0; j < asmbl_info.extent(2); ++j)
+    {
+      std::cout << asmbl_info(2, i, j) << " ";
+    }
+    std::cout << "\n";
+  }
+  std::cout << "DOFmap (prefactors): " << std::endl;
+  for (std::size_t i = 0; i < asmbl_info.extent(1); ++i)
+  {
+    for (std::size_t j = 0; j < asmbl_info.extent(2); ++j)
+    {
+      std::cout << asmbl_info(3, i, j) << " ";
+    }
+    std::cout << "\n";
+  }
+
+  std::cout << "detJ: " << std::endl;
+  for (auto j : patch_data.jacobi_determinant())
+  {
+    std::cout << j << " ";
+  }
+  std::cout << "\n";
+
   assemble_fluxminimiser<T, id_flux_order, true>(
       minkernel, patch_data, asmbl_info, 0, patch.requires_flux_bcs(), true);
 
@@ -171,6 +225,14 @@ void impose_weak_symmetry(const mesh::Geometry& geometry,
   Eigen::Matrix<T, Eigen::Dynamic, 1>& u_patch = patch_data.u_patch(true);
   const int ndofs_flux_per_cell
       = gdim * ndofs_flux_fct + patch.ndofs_flux_cell_add();
+
+  std::cout << "Solution patch " << patch.node_i() << std::endl;
+  const int size_exp = patch.ndofs_minspace_flux(true) + patch.nfcts() + 1;
+  for (std::size_t i = 0; i < size_exp; ++i)
+  {
+    std::cout << u_patch(i) << " ";
+  }
+  std::cout << "\n";
 
   for (std::size_t i_row = 0; i_row < gdim; ++i_row)
   {

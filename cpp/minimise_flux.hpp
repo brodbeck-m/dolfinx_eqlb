@@ -368,6 +368,9 @@ generate_minimisation_kernel(Kernel type, KernelDataEqlb<T>& kernel_data,
     const int offs_cijbase = 2 * ndofs_hdivzero_per_cell;
     const int offs_cbase = offs_cijbase + 2;
 
+    std::cout << "Offset 1: " << offs_cijbase << std::endl;
+    std::cout << "Offset 2: " << offs_cbase << std::endl;
+
     /* Assemble tangents */
     for (std::size_t iq = 0; iq < quadrature_weights.size(); ++iq)
     {
@@ -385,6 +388,10 @@ generate_minimisation_kernel(Kernel type, KernelDataEqlb<T>& kernel_data,
         sig_r1[0] += coefficients[offs] * phi_f(iq, i, 0);
         sig_r1[1] += coefficients[offs] * phi_f(iq, i, 1);
       }
+
+      // std::cout << "sig_r0_0, sig_r0_1, sig_r1_0, sig_r1_1: " << sig_r0[0]
+      //           << " " << sig_r0[1] << " " << sig_r1[0] << " " << sig_r1[1]
+      //           << std::endl;
 
       // Manipulate shape function for coefficient d_0
       phi_f(iq, ld0_Ea, 0)
@@ -600,8 +607,11 @@ void assemble_fluxminimiser(kernel_fn<T, asmbl_systmtrx>& minimisation_kernel,
   /* Calculation and assembly */
   const int ndofs_per_cell = Te.extent(1);
   const int index_load = ndofs_per_cell;
+  const int offset_asmblinfo
+      = (constrained_minimisation) ? patch_data.gdim() : 1;
 
   std::span<const T> coefficients;
+  // std::span<const T> coefficients, coefficients_test1, coefficients_test2;
 
   for (std::size_t a = 1; a < ncells + 1; ++a)
   {
@@ -619,6 +629,27 @@ void assemble_fluxminimiser(kernel_fn<T, asmbl_systmtrx>& minimisation_kernel,
     if (constrained_minimisation)
     {
       coefficients = patch_data.coefficients_stress(a);
+      // coefficients_test1 = patch_data.coefficients_flux(0, a);
+      // coefficients_test2 = patch_data.coefficients_flux(1, a);
+
+      // std::cout << "Coefficients: " << std::endl;
+      // for (auto c : coefficients)
+      // {
+      //   std::cout << c << " ";
+      // }
+      // std::cout << " \n";
+      // std::cout << "Coefficients row 1: " << std::endl;
+      // for (auto c : coefficients_test1)
+      // {
+      //   std::cout << c << " ";
+      // }
+      // std::cout << " \n";
+      // std::cout << "Coefficients row 2: " << std::endl;
+      // for (auto c : coefficients_test2)
+      // {
+      //   std::cout << c << " ";
+      // }
+      // std::cout << " \n";
     }
     else
     {
@@ -653,6 +684,19 @@ void assemble_fluxminimiser(kernel_fn<T, asmbl_systmtrx>& minimisation_kernel,
           // Assemble bilinear form
           A_patch(0, 0) += Te(0, 0);
         }
+
+        // if (constrained_minimisation)
+        // {
+        //   std::cout << "Cell: " << a << std::endl;
+        //   for (std::size_t i = 0; i < ndofs_per_cell; ++i)
+        //   {
+        //     for (std::size_t j = 0; j < ndofs_per_cell; ++j)
+        //     {
+        //       std::cout << Te(i, j) << " ";
+        //     }
+        //     std::cout << "\n";
+        //   }
+        // }
       }
     }
     else
@@ -661,7 +705,7 @@ void assemble_fluxminimiser(kernel_fn<T, asmbl_systmtrx>& minimisation_kernel,
       {
         for (std::size_t i = 0; i < ndofs_per_cell; ++i)
         {
-          std::int32_t dof_i = asmbl_info_cell(2, i + 1);
+          std::int32_t dof_i = asmbl_info_cell(2, offset_asmblinfo + i);
           std::int8_t bmarker_i = boundary_markers[dof_i];
 
           // Assemble load vector
@@ -685,7 +729,7 @@ void assemble_fluxminimiser(kernel_fn<T, asmbl_systmtrx>& minimisation_kernel,
             {
               for (std::size_t j = 0; j < ndofs_per_cell; ++j)
               {
-                std::int32_t dof_j = asmbl_info_cell(2, j + 1);
+                std::int32_t dof_j = asmbl_info_cell(2, offset_asmblinfo + j);
                 std::int8_t bmarker_j = boundary_markers[dof_j];
 
                 if (bmarker_j)
@@ -705,7 +749,7 @@ void assemble_fluxminimiser(kernel_fn<T, asmbl_systmtrx>& minimisation_kernel,
       {
         for (std::size_t i = 0; i < ndofs_per_cell; ++i)
         {
-          std::int32_t dof_i = asmbl_info_cell(2, i + 1);
+          std::int32_t dof_i = asmbl_info_cell(2, offset_asmblinfo + i);
 
           // Assemble load vector
           L_patch(dof_i) += Te(index_load, i);
@@ -715,11 +759,63 @@ void assemble_fluxminimiser(kernel_fn<T, asmbl_systmtrx>& minimisation_kernel,
           {
             for (std::size_t j = 0; j < ndofs_per_cell; ++j)
             {
-              A_patch(dof_i, asmbl_info_cell(2, j + 1)) += Te(i, j);
+              A_patch(dof_i, asmbl_info_cell(2, offset_asmblinfo + j))
+                  += Te(i, j);
             }
           }
         }
+
+        // if (constrained_minimisation)
+        // {
+        //   std::cout << "Cell: " << a << std::endl;
+        //   for (std::size_t i = 0; i < ndofs_per_cell; ++i)
+        //   {
+        //     for (std::size_t j = 0; j < ndofs_per_cell; ++j)
+        //     {
+        //       std::cout << Te(i, j) << " ";
+        //     }
+        //     std::cout << "\n";
+        //   }
+        // }
+
+        // std::cout << "Cell: " << a << std::endl;
+        // for (std::size_t i = 0; i < ndofs_per_cell; ++i)
+        // {
+        //   std::cout << Te(index_load, i) << " ";
+        // }
+        // std::cout << "\n";
       }
+    }
+  }
+
+  if (constrained_minimisation)
+  {
+    std::cout << "A_patch: " << std::endl;
+    for (std::size_t i = 0; i < 15; ++i)
+    {
+      for (std::size_t j = 0; j < 15; ++j)
+      {
+        std::cout << A_patch(i, j) << " ";
+      }
+      std::cout << "\n";
+    }
+    std::cout << "L_patch: " << std::endl;
+    for (std::size_t i = 0; i < 15; ++i)
+    {
+      std::cout << L_patch(i) << " ";
+    }
+    std::cout << "\n";
+  }
+  else
+  {
+    std::cout << "A_patch: " << std::endl;
+    for (std::size_t i = 0; i < 9; ++i)
+    {
+      for (std::size_t j = 0; j < 9; ++j)
+      {
+        std::cout << A_patch(i, j) << " ";
+      }
+      std::cout << "\n";
     }
   }
 }

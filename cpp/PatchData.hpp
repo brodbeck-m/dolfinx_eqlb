@@ -108,6 +108,9 @@ public:
       _shape_Te_constr
           = {ndofs_constrhdivz_per_cell + 1, ndofs_constrhdivz_per_cell};
 
+      std::cout << "Shape Te: " << ndofs_constrhdivz_per_cell + 1 << ", "
+                << ndofs_constrhdivz_per_cell << std::endl;
+
       _data_Te.resize(_shape_Te_constr[0] * _shape_Te_constr[1], 0);
 
       // Intermediate storage of the stress coefficients
@@ -218,6 +221,10 @@ public:
   }
 
   // --- Getter methods ---
+
+  /// The spatial dimension
+  /// @return The spatial dimension
+  int gdim() const { return _gdim; }
 
   /// Number of cells on current patch
   /// @return The cell number
@@ -495,6 +502,7 @@ public:
     {
       _solver_constr.compute(
           _A_constr.topLeftCorner(_dim_hdivz_constr, _dim_hdivz_constr));
+      std::cout << "Size system: " << _dim_hdivz_constr << std::endl;
     }
     else
     {

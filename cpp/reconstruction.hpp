@@ -207,6 +207,8 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
   // Set quadrature rule
   const int quadrature_degree
       = (degree_flux_hdiv == 1) ? 2 : 2 * degree_flux_hdiv + 1;
+  // const int quadrature_degree
+  //     = (degree_flux_hdiv == 1) ? 4 : 2 * degree_flux_hdiv + 3;
 
   QuadratureRule quadrature_rule
       = QuadratureRule(mesh->topology().cell_type(), quadrature_degree, dim);
@@ -248,7 +250,8 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
     std::vector<bool> perform_equilibration(n_nodes, true);
 
     // Loop over all patches
-    for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
+    // for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
+    for (std::size_t i_node = 2; i_node < 3; ++i_node)
     {
       if (perform_equilibration[i_node])
       {
@@ -257,6 +260,20 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
 
         // Create Sub-DOFmap
         patch.create_subdofmap(i_node);
+
+        std::cout << "Cells: " << std::endl;
+        for (auto c : patch.cells())
+        {
+          std::cout << c << " ";
+        }
+        std::cout << "\n";
+
+        std::cout << "Facets: " << std::endl;
+        for (auto f : patch.fcts())
+        {
+          std::cout << f << " ";
+        }
+        std::cout << "\n";
 
         // Check if equilibration is possible
         if (patch.ncells() == 1)

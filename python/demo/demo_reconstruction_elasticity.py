@@ -17,20 +17,41 @@ holds. Dirichlet BCs are applied on the boundaries 2 and 4.
 # --- Imports ---
 import numpy as np
 from mpi4py import MPI
+import typing
 
 import dolfinx
 import dolfinx.fem as dfem
 import dolfinx.mesh as dmesh
 import ufl
 
-from dolfinx_eqlb.cpp import weak_symmetry_stress
-from dolfinx_eqlb.eqlb import fluxbc, FluxEqlbEV, FluxEqlbSE
+from dolfinx_eqlb.eqlb import FluxEqlbSE, fluxbc, check_eqlb_conditions
 from dolfinx_eqlb.lsolver import local_projection
 
 
 # --- The exact solution
-def exact_solution(pkt):
-    return lambda x: pkt.sin(2 * pkt.pi * x[0]) * pkt.cos(2 * pkt.pi * x[1])
+def exact_solution(x):
+    """Exact solution
+    u_ext = [sin(2*pi * x) * cos(2*pi * y), -cos(2*pi * x) * sin(2*pi * y)]
+
+    Args:
+        x (ufl.SpatialCoordinate): The position x
+    Returns:
+        The exact function as ufl-expression
+    """
+    return ufl.as_vector(
+        [
+            ufl.sin(2 * ufl.pi * x[0]) * ufl.cos(2 * ufl.pi * x[1]),
+            -ufl.cos(2 * ufl.pi * x[0]) * ufl.cos(2 * ufl.pi * x[1]),
+        ]
+    )
+
+
+def interpolate_ufl_to_function(f_ufl: typing.Any, f_fe: dfem.Function):
+    # Create expression
+    expr = dfem.Expression(f_ufl, f_fe.function_space.element.interpolation_points())
+
+    # Perform interpolation
+    f_fe.interpolate(expr)
 
 
 # --- The primal problem
@@ -68,117 +89,126 @@ def create_unit_square_mesh(n_elmt: int):
     return domain, facet_tag, ds
 
 
-def solve_primal_problem(elmt_order_prime, domain, facet_tags, ds):
-    # Set function space (primal problem)
-    V_prime = dfem.FunctionSpace(domain, ("CG", elmt_order_prime))
+def solve_primal_problem(
+    elmt_order_prime: int, domain: dmesh.Mesh, facet_tags: typing.Any, ds: typing.Any
+):
+    """Solves the linear elasticity based on lagrangian finite elements
 
-    # Set trial and test functions
+    Args:
+        elmt_order_prime (int):     The order of the FE space
+        domain (dolfinx.mesh.Mesh): The mesh
+        facet_tags :                The facet tags
+        ds:                         The measure for the boundary integrals
+    """
+    # The spatial dimension
+    gdim = domain.geometry.dim
+
+    # Set function space (primal problem)
+    V_prime = dfem.VectorFunctionSpace(domain, ("CG", elmt_order_prime))
+
+    # The exact solution
+    u_ext = exact_solution(ufl.SpatialCoordinate(domain))
+    sigma_ext = 2 * ufl.sym(ufl.grad(u_ext)) + ufl.div(u_ext) * ufl.Identity(gdim)
+
+    # Set variational form
     u = ufl.TrialFunction(V_prime)
     v = ufl.TestFunction(V_prime)
 
-    # Set source term
-    x = ufl.SpatialCoordinate(domain)
-    f = -ufl.div(ufl.grad(exact_solution(ufl)(x)))
+    sigma = 2 * ufl.sym(ufl.grad(u)) + ufl.div(u) * ufl.Identity(gdim)
 
-    # Equation system
-    a = ufl.inner(ufl.grad(u), ufl.grad(v)) * ufl.dx
-    l = f * v * ufl.dx
+    a_prime = ufl.inner(sigma, ufl.grad(v)) * ufl.dx
+    l_prime = ufl.inner(-ufl.div(sigma_ext), v) * ufl.dx
 
-    # Neumann boundary conditions
-    normal = ufl.FacetNormal(domain)
-    l += ufl.inner(ufl.grad(exact_solution(ufl)(x)), normal) * v * ds(1)
-    l += ufl.inner(ufl.grad(exact_solution(ufl)(x)), normal) * v * ds(3)
+    # Set dirichlet boundary conditions
+    u_dirichlet = dfem.Function(V_prime)
+    interpolate_ufl_to_function(u_ext, u_dirichlet)
 
-    # Dirichlet boundary conditions
-    uD = dfem.Function(V_prime)
-    uD.interpolate(exact_solution(np))
+    dofs = dfem.locate_dofs_topological(V_prime, 1, facet_tags.indices)
+    bcs_esnt = [dfem.dirichletbc(u_dirichlet, dofs)]
 
-    fcts_essnt = facet_tags.indices[
-        np.logical_or(facet_tags.values == 2, facet_tags.values == 4)
-    ]
-    dofs_essnt = dfem.locate_dofs_topological(V_prime, 1, fcts_essnt)
-    bc_essnt = [dfem.dirichletbc(uD, dofs_essnt)]
-
-    # Solve primal problem
-    problem = dfem.petsc.LinearProblem(
-        a,
-        l,
-        bcs=bc_essnt,
-        petsc_options={"ksp_type": "cg", "ksp_rtol": 1e-10, "ksp_atol": 1e-12},
+    # Solve problem
+    solveoptions = {
+        "ksp_type": "preonly",
+        "pc_type": "lu",
+        "ksp_rtol": 1e-12,
+        "ksp_atol": 1e-12,
+    }
+    problem_prime = dfem.petsc.LinearProblem(
+        a_prime, l_prime, bcs_esnt, petsc_options=solveoptions
     )
-    uh_prime = problem.solve()
+    u_prime = problem_prime.solve()
 
-    return uh_prime
+    return u_prime, sigma_ext
 
 
 # --- The flux equilibration
 def equilibrate_flux(
-    Equilibrator, elmt_order_prime, elmt_order_eqlb, domain, facet_tags, uh_prime
+    elmt_order_eqlb: int,
+    domain: dmesh.Mesh,
+    facet_tags: typing.Any,
+    uh_prime: typing.Any,
+    sigma_ext: typing.Any,
+    weak_symmetry: bool = True,
 ):
-    # Set source term
-    x = ufl.SpatialCoordinate(domain)
-    f = -ufl.div(ufl.grad(exact_solution(ufl)(x)))
+    """Equilibrates the stress-tensor of linear elasticity
 
-    # Project flux and RHS into required DG space
-    V_rhs_proj = dfem.FunctionSpace(domain, ("DG", elmt_order_eqlb - 1))
+    The RHS is assumed to be the divergence of the exact stress
+    tensor (manufactured solution).
+
+    Args:
+        elmt_order_prime (int):     The order of the FE space
+        domain (dolfinx.mesh.Mesh): The mesh
+        facet_tags :                The facet tags
+        uh_prime:                   The primal solution
+        sigma_ext:                  The exact stress-tensor
+    """
+    # The spatial dimension
+    gdim = domain.geometry.dim
+
+    # The approximate solution
+    sigma_h = 2 * ufl.sym(ufl.grad(uh_prime)) + ufl.div(uh_prime) * ufl.Identity(gdim)
+
+    # Set source term
+    f = ufl.div(sigma_ext)
+
+    # Projected flux
     # (elmt_order_eqlb - 1 would be sufficient but not implemented for semi-explicit eqlb.)
     V_flux_proj = dfem.VectorFunctionSpace(domain, ("DG", elmt_order_eqlb - 1))
+    sigma_proj = local_projection(
+        V_flux_proj,
+        [
+            ufl.as_vector([sigma_h[0, 0], sigma_h[0, 1]]),
+            ufl.as_vector([sigma_h[1, 0], sigma_h[1, 1]]),
+        ],
+    )
 
-    sigma_proj = local_projection(V_flux_proj, [-ufl.grad(uh_prime), -ufl.grad(uh_prime)])
-    rhs_proj = local_projection(V_rhs_proj, [f, f])
+    # Project RHS
+    V_rhs_proj = dfem.FunctionSpace(domain, ("DG", elmt_order_eqlb - 1))
+    rhs_proj = local_projection(V_rhs_proj, [f[0], f[1]])
 
     # Initialise equilibrator
-    equilibrator = Equilibrator(elmt_order_eqlb, domain, rhs_proj, sigma_proj)
-
-    # Get facets on essential boundary surfaces
-    fcts_essnt = facet_tags.indices[
-        np.logical_or(facet_tags.values == 2, facet_tags.values == 4)
-    ]
-
-    # Specify flux boundary conditions
-    bc_dual = []
-
-    bc_dual.append(
-        fluxbc(
-            ufl.grad(exact_solution(ufl)(x))[0],
-            facet_tags.indices[facet_tags.values == 1],
-            equilibrator.V_flux,
-            requires_projection=True,
-            quadrature_degree=3 * elmt_order_eqlb,
-        )
+    equilibrator = FluxEqlbSE(
+        elmt_order_eqlb, domain, rhs_proj, sigma_proj, equilibrate_stress=weak_symmetry
     )
 
-    bc_dual.append(
-        fluxbc(
-            -ufl.grad(exact_solution(ufl)(x))[0],
-            facet_tags.indices[facet_tags.values == 3],
-            equilibrator.V_flux,
-            requires_projection=True,
-            quadrature_degree=3 * elmt_order_eqlb,
-        )
-    )
-
+    # Set boundary conditions
     equilibrator.set_boundary_conditions(
-        [fcts_essnt, fcts_essnt], [bc_dual, bc_dual], quadrature_degree=3 * elmt_order_eqlb
+        [facet_tags.indices, facet_tags.indices],
+        [[], []],
+        quadrature_degree=3 * elmt_order_eqlb,
     )
 
     # Solve equilibration
     equilibrator.equilibrate_fluxes()
-
-    # Incorporate symmetry (weak sense)
-    weak_symmetry_stress(equilibrator.list_flux_cpp, equilibrator.boundary_data)
 
     return sigma_proj, equilibrator.list_flux
 
 
 if __name__ == "__main__":
     # --- Parameters ---
-    # The considered equilibration strategy
-    Equilibrator = FluxEqlbSE
-
     # The orders of the FE spaces
     elmt_order_prime = 1
-    elmt_order_eqlb = 3
+    elmt_order_eqlb = 2
 
     # The mesh resolution
     sdisc_nelmt = 10
@@ -188,9 +218,40 @@ if __name__ == "__main__":
     domain, facet_tags, ds = create_unit_square_mesh(sdisc_nelmt)
 
     # Solve primal problem
-    uh_prime = solve_primal_problem(elmt_order_prime, domain, facet_tags, ds)
+    uh_prime, sigma_ref = solve_primal_problem(elmt_order_prime, domain, facet_tags, ds)
 
     # Solve equilibration
     sigma_proj, sigma_eqlb = equilibrate_flux(
-        Equilibrator, elmt_order_prime, elmt_order_eqlb, domain, facet_tags, uh_prime
+        elmt_order_eqlb, domain, facet_tags, uh_prime, sigma_ref, True
     )
+
+    sigma_proj_nows, sigma_eqlb_nows = equilibrate_flux(
+        elmt_order_eqlb, domain, facet_tags, uh_prime, sigma_ref, False
+    )
+
+    # --- Export results to ParaView ---
+    # The exact flux
+    V_dg_ref = dfem.TensorFunctionSpace(domain, ("DG", elmt_order_prime))
+    sigma_ref = local_projection(V_dg_ref, [sigma_ref], quadrature_degree=10)
+
+    # Project equilibrated flux into appropriate DG space
+    V_dg_hdiv = dfem.VectorFunctionSpace(domain, ("DG", elmt_order_eqlb))
+    sigma_eqlb_dg = local_projection(
+        V_dg_hdiv, [sigma_eqlb[0] + sigma_proj[0], sigma_eqlb[1] + sigma_proj[1]]
+    )
+
+    # Export primal solution
+    uh_prime.name = "u_h"
+    sigma_eqlb_dg[0].name = "sigma_eqlb_row1"
+    sigma_eqlb_dg[1].name = "sigma_eqlb_row2"
+    sigma_ref[0].name = "sigma_ref"
+
+    outfile = dolfinx.io.XDMFFile(MPI.COMM_WORLD, "demo_equilibration.xdmf", "w")
+    outfile.write_mesh(domain)
+    outfile.write_function(uh_prime, 1)
+    outfile.write_function(sigma_ref[0], 1)
+    outfile.write_function(sigma_eqlb_dg[0], 1)
+    outfile.write_function(sigma_eqlb_dg[1], 1)
+    outfile.close()
+
+    check_eqlb_conditions.check_weak_symmetry_condition(sigma_eqlb_nows)
