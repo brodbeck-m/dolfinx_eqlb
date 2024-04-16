@@ -28,9 +28,9 @@ Check if equilibrated flux
 """
 
 
-# @pytest.mark.parametrize("mesh_type", ["builtin"])
-# @pytest.mark.parametrize("degree", [1, 2, 3, 4])
-# @pytest.mark.parametrize("bc_type", ["pure_dirichlet"])
+@pytest.mark.parametrize("mesh_type", ["builtin"])
+@pytest.mark.parametrize("degree", [2, 3, 4])
+@pytest.mark.parametrize("bc_type", ["pure_dirichlet"])
 def test_equilibration_conditions(mesh_type, degree, bc_type):
     # Create mesh
     if mesh_type == "builtin":
@@ -54,14 +54,14 @@ def test_equilibration_conditions(mesh_type, degree, bc_type):
 
     # Perform tests
     for degree_bc in range(0, degree_max_rhs):
-        for degree_prime in range(1, degree + 1):
+        for degree_prime in range(2, degree + 1):
             for degree_rhs in range(0, degree):
 
-                print(
-                    "degree flux: {}, degree prime: {}, degree rhs: {}".format(
-                        degree, degree_prime, degree_rhs
-                    )
-                )
+                # print(
+                #     "degree flux: {}, degree prime: {}, degree rhs: {}".format(
+                #         degree, degree_prime, degree_rhs
+                #     )
+                # )
 
                 # Set function space
                 V_prime = dfem.VectorFunctionSpace(geometry.mesh, ("P", degree_prime))
@@ -162,5 +162,5 @@ def test_equilibration_conditions(mesh_type, degree, bc_type):
 if __name__ == "__main__":
     import sys
 
-    # pytest.main(sys.argv)
-    test_equilibration_conditions("builtin", 2, "pure_dirichlet")
+    pytest.main(sys.argv)
+    # test_equilibration_conditions("builtin", 3, "pure_dirichlet")

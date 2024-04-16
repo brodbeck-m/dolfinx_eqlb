@@ -52,6 +52,7 @@ void impose_weak_symmetry(const mesh::Geometry& geometry,
   // The flux space
   const int ndofs_flux = patch.ndofs_flux();
   const int ndofs_flux_fct = patch.ndofs_flux_fct();
+  const int ndofs_flux_hdivz = patch.ndofs_minspace_flux(true);
 
   /* Initialisations */
   // Patch type and reversion information
@@ -168,15 +169,15 @@ void impose_weak_symmetry(const mesh::Geometry& geometry,
   // }
   // std::cout << "\n";
 
-  std::cout << "DOFmap (local): " << std::endl;
-  for (std::size_t i = 0; i < asmbl_info.extent(1); ++i)
-  {
-    for (std::size_t j = 0; j < asmbl_info.extent(2); ++j)
-    {
-      std::cout << asmbl_info(0, i, j) << " ";
-    }
-    std::cout << "\n";
-  }
+  // std::cout << "DOFmap (local): " << std::endl;
+  // for (std::size_t i = 0; i < asmbl_info.extent(1); ++i)
+  // {
+  //   for (std::size_t j = 0; j < asmbl_info.extent(2); ++j)
+  //   {
+  //     std::cout << asmbl_info(0, i, j) << " ";
+  //   }
+  //   std::cout << "\n";
+  // }
 
   // std::cout << "DOFmap (patch, non-vector): " << std::endl;
   // for (std::size_t i = 0; i < asmbl_info_base.extent(1); ++i)
@@ -188,34 +189,35 @@ void impose_weak_symmetry(const mesh::Geometry& geometry,
   //   std::cout << "\n";
   // }
 
-  std::cout << "DOFmap (patch): " << std::endl;
-  for (std::size_t i = 0; i < asmbl_info.extent(1); ++i)
-  {
-    for (std::size_t j = 0; j < asmbl_info.extent(2); ++j)
-    {
-      std::cout << asmbl_info(2, i, j) << " ";
-    }
-    std::cout << "\n";
-  }
-  std::cout << "DOFmap (prefactors): " << std::endl;
-  for (std::size_t i = 0; i < asmbl_info.extent(1); ++i)
-  {
-    for (std::size_t j = 0; j < asmbl_info.extent(2); ++j)
-    {
-      std::cout << asmbl_info(3, i, j) << " ";
-    }
-    std::cout << "\n";
-  }
+  // std::cout << "DOFmap (patch): " << std::endl;
+  // for (std::size_t i = 0; i < asmbl_info.extent(1); ++i)
+  // {
+  //   for (std::size_t j = 0; j < asmbl_info.extent(2); ++j)
+  //   {
+  //     std::cout << asmbl_info(2, i, j) << " ";
+  //   }
+  //   std::cout << "\n";
+  // }
+  // std::cout << "DOFmap (prefactors): " << std::endl;
+  // for (std::size_t i = 0; i < asmbl_info.extent(1); ++i)
+  // {
+  //   for (std::size_t j = 0; j < asmbl_info.extent(2); ++j)
+  //   {
+  //     std::cout << asmbl_info(3, i, j) << " ";
+  //   }
+  //   std::cout << "\n";
+  // }
 
-  std::cout << "detJ: " << std::endl;
-  for (auto j : patch_data.jacobi_determinant())
-  {
-    std::cout << j << " ";
-  }
-  std::cout << "\n";
+  // std::cout << "detJ: " << std::endl;
+  // for (auto j : patch_data.jacobi_determinant())
+  // {
+  //   std::cout << j << " ";
+  // }
+  // std::cout << "\n";
 
   assemble_fluxminimiser<T, id_flux_order, true>(
-      minkernel, patch_data, asmbl_info, 0, patch.requires_flux_bcs(), true);
+      minkernel, patch_data, asmbl_info, ndofs_flux_hdivz, 0,
+      patch.requires_flux_bcs(), true);
 
   // Solve equation system
   patch_data.factorise_system(true);
@@ -226,18 +228,19 @@ void impose_weak_symmetry(const mesh::Geometry& geometry,
   const int ndofs_flux_per_cell
       = gdim * ndofs_flux_fct + patch.ndofs_flux_cell_add();
 
-  std::cout << "Solution patch " << patch.node_i() << std::endl;
-  const int size_exp = patch.ndofs_minspace_flux(true) + patch.nfcts() + 1;
-  for (std::size_t i = 0; i < size_exp; ++i)
-  {
-    std::cout << u_patch(i) << " ";
-  }
-  std::cout << "\n";
+  // std::cout << "Solution patch " << patch.node_i() << std::endl;
+  // const int size_exp = patch.ndofs_minspace_flux(true) + patch.nfcts() + 1;
+  // for (std::size_t i = 0; i < size_exp; ++i)
+  // {
+  //   std::cout << u_patch(i) << " ";
+  // }
+  // std::cout << "\n";
 
   for (std::size_t i_row = 0; i_row < gdim; ++i_row)
   {
     // Global storage of the solution
     std::span<T> x_flux_dhdiv = problem_data.flux(i_row).x()->mutable_array();
+    // mdspan_t<T, 2> coefficients_flux = patch_data.coefficients_flux(i_row);
 
     // Loop over cells
     for (std::int32_t a = 1; a < ncells + 1; ++a)
@@ -252,10 +255,45 @@ void impose_weak_symmetry(const mesh::Geometry& geometry,
         x_flux_dhdiv[asmbl_info(1, a, offset)]
             += asmbl_info(3, a, offset) * u_patch(asmbl_info(2, a, offset));
 
+        // // Update patch-wise solution
+        // coefficients_flux(a - 1, asmbl_info(0, a, offset))
+        //     += asmbl_info(3, a, offset) * u_patch(asmbl_info(2, a, offset));
+
         // Increment offset
         offset += gdim;
       }
     }
   }
+
+  // Check orthogonality
+  // std::cout << "Check orthogonality" << std::endl;
+  // if (!(modified_patch))
+  // {
+  //   // Flattened storage of stress coefficients
+  //   std::span<T> stress_coefficients = patch_data.coefficients_stress();
+
+  //   // Copy the coefficients
+  //   for (std::size_t i_row = 0; i_row < gdim; ++i_row)
+  //   {
+  //     for (std::size_t a = 1; a < ncells + 1; ++a)
+  //     {
+  //       // Set offset
+  //       std::size_t offset = (a - 1) * ndofs_flux * gdim + i_row *
+  //       ndofs_flux;
+
+  //       // Coefficients of flux i on cell a
+  //       std::span<const T> coeffs_rowi_cella
+  //           = patch_data.coefficients_flux(i_row, a);
+
+  //       // Move coefficients to flattened storage
+  //       std::copy_n(coeffs_rowi_cella.begin(), ndofs_flux,
+  //                   stress_coefficients.begin() + offset);
+  //     }
+  //   }
+  // }
+
+  // assemble_fluxminimiser<T, id_flux_order, true>(
+  //     minkernel, patch_data, asmbl_info, ndofs_flux_hdivz, 0,
+  //     patch.requires_flux_bcs(), true);
 }
 } // namespace dolfinx_eqlb

@@ -250,8 +250,7 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
     std::vector<bool> perform_equilibration(n_nodes, true);
 
     // Loop over all patches
-    // for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
-    for (std::size_t i_node = 2; i_node < 3; ++i_node)
+    for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
     {
       if (perform_equilibration[i_node])
       {
@@ -261,19 +260,19 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
         // Create Sub-DOFmap
         patch.create_subdofmap(i_node);
 
-        std::cout << "Cells: " << std::endl;
-        for (auto c : patch.cells())
-        {
-          std::cout << c << " ";
-        }
-        std::cout << "\n";
+        // std::cout << "Cells: " << std::endl;
+        // for (auto c : patch.cells())
+        // {
+        //   std::cout << c << " ";
+        // }
+        // std::cout << "\n";
 
-        std::cout << "Facets: " << std::endl;
-        for (auto f : patch.fcts())
-        {
-          std::cout << f << " ";
-        }
-        std::cout << "\n";
+        // std::cout << "Facets: " << std::endl;
+        // for (auto f : patch.fcts())
+        // {
+        //   std::cout << f << " ";
+        // }
+        // std::cout << "\n";
 
         // Check if equilibration is possible
         if (patch.ncells() == 1)
@@ -284,8 +283,7 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
         }
 
         // Reinitialise patch-data
-        patch_data.reinitialisation(patch.ncells(), patch.nfcts(),
-                                    patch.npnts());
+        patch_data.reinitialisation(patch.type(), patch.ncells());
 
         // Calculate solution patch
         if (((patch.type(0) == PatchType::bound_essnt_dual)
@@ -309,8 +307,7 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
           patch.create_subdofmap(i_node_add);
 
           // Reinitialise patch-data
-          patch_data.reinitialisation(patch.ncells(), patch.nfcts(),
-                                      patch.npnts());
+          patch_data.reinitialisation(patch.type(), patch.ncells());
 
           // Equilibrate fluxes on internal patch
           equilibrate_flux_semiexplt<T, id_flux_order>(
@@ -350,7 +347,7 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
       }
 
       // Reinitialise patch-data
-      patch_data.reinitialisation(patch.ncells(), patch.nfcts(), patch.npnts());
+      patch_data.reinitialisation(patch.type(), patch.ncells());
 
       // Calculate solution patch
       equilibrate_flux_semiexplt<T, id_flux_order>(

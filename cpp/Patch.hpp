@@ -105,6 +105,13 @@ public:
   /// @return Type of the patch
   PatchType type(int index) { return _type[index]; }
 
+  /// Return patch types
+  /// @return List of patch-types
+  std::span<const PatchType> type() const
+  {
+    return std::span<const PatchType>(_type.data(), _nrhs);
+  }
+
   /// Return type-relation
   /// @return Type relation of different LHS
   std::int8_t equal_patch_types() { return _equal_patches; }
@@ -395,6 +402,13 @@ public:
   /// @param index Index of equilibrated flux
   /// @return Type of the patch
   PatchType type(int index) const { return _type[index]; }
+
+  /// Return patch types
+  /// @return List of patch-types
+  std::span<const PatchType> type() const
+  {
+    return std::span<const PatchType>(_type.data(), _nrhs);
+  }
 
   /// Return type-relation
   /// @return Type relation of different LHS

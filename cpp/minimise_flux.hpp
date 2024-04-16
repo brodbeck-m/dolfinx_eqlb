@@ -245,7 +245,7 @@ generate_minimisation_kernel(Kernel type, KernelDataEqlb<T>& kernel_data,
             smdspan_t<const std::int32_t, 2> asmbl_info, const double detJ,
             mdspan_t<const double, 2> J) mutable
   {
-    const int index_load = Te.extent(0) - 1;
+    const int index_load = Te.extent(1);
 
     /* Extract shape functions and quadrature data */
     smdspan_t<double, 3> phi = kernel_data.shapefunctions_flux(J, detJ);
@@ -342,7 +342,11 @@ generate_minimisation_kernel(Kernel type, KernelDataEqlb<T>& kernel_data,
                        smdspan_t<const std::int32_t, 2> asmbl_info,
                        const double detJ, mdspan_t<const double, 2> J) mutable
   {
-    const int index_load = Te.extent(0) - 1;
+    const int index_load = Te.extent(1);
+    const int index_lmp = index_load + 1;
+
+    // std::cout << "Index load, index lmp, extent T_e: " << index_load << " "
+    //           << index_lmp << " " << Te.extent(0) << std::endl;
 
     /* Extract shape functions and quadrature data */
     smdspan_t<double, 3> phi_f = kernel_data.shapefunctions_flux(J, detJ);
@@ -368,8 +372,8 @@ generate_minimisation_kernel(Kernel type, KernelDataEqlb<T>& kernel_data,
     const int offs_cijbase = 2 * ndofs_hdivzero_per_cell;
     const int offs_cbase = offs_cijbase + 2;
 
-    std::cout << "Offset 1: " << offs_cijbase << std::endl;
-    std::cout << "Offset 2: " << offs_cbase << std::endl;
+    // std::cout << "Offset 1: " << offs_cijbase << std::endl;
+    // std::cout << "Offset 2: " << offs_cbase << std::endl;
 
     /* Assemble tangents */
     for (std::size_t iq = 0; iq < quadrature_weights.size(); ++iq)
@@ -481,6 +485,9 @@ generate_minimisation_kernel(Kernel type, KernelDataEqlb<T>& kernel_data,
 
         // System matrix
         Te(index_load, ir) -= phi_i * (sig_r0[1] - sig_r1[0]);
+
+        // Mean-value zero condition
+        Te(index_lmp, i) += phi_i;
       }
     }
 
@@ -574,12 +581,16 @@ template <typename T, int id_flux_order, bool asmbl_systmtrx>
 void assemble_fluxminimiser(kernel_fn<T, asmbl_systmtrx>& minimisation_kernel,
                             PatchDataCstm<T, id_flux_order>& patch_data,
                             mdspan_t<const std::int32_t, 3> asmbl_info,
-                            const int i_rhs, const bool requires_flux_bc,
+                            const int ndofs_flux_minspace, const int i_rhs,
+                            const bool requires_flux_bc,
                             const bool constrained_minimisation)
 {
   assert(id_flux_order < 0);
 
   /* Extract data */
+  // The spatial dimension
+  const int gdim = patch_data.gdim();
+
   // Number of elements/facets on patch
   const int ncells = patch_data.ncells();
 
@@ -606,9 +617,28 @@ void assemble_fluxminimiser(kernel_fn<T, asmbl_systmtrx>& minimisation_kernel,
 
   /* Calculation and assembly */
   const int ndofs_per_cell = Te.extent(1);
+  const int ndofs_constr_per_cell = gdim + 1;
+
   const int index_load = ndofs_per_cell;
-  const int offset_asmblinfo
-      = (constrained_minimisation) ? patch_data.gdim() : 1;
+  const int index_lmp = ndofs_per_cell + 1;
+
+  const int offset_asmblinfo = (constrained_minimisation) ? gdim : 1;
+  const int offset_constr_local = ndofs_per_cell + gdim - ndofs_constr_per_cell;
+  const int offset_constr
+      = patch_data.size_minimisation_system(constrained_minimisation) - 1;
+
+  const bool requires_lmp = (constrained_minimisation)
+                                ? patch_data.meanvalue_zero_condition_required()
+                                : false;
+
+  // if (requires_lmp)
+  // {
+  //   std::cout << "Lagrangian multiplier added!" << std::endl;
+  //   std::cout << "ndofs_per_cell, ndofs_constraint_per_cell, "
+  //                "offset_constr_local, offset_constr: "
+  //             << ndofs_per_cell << " " << ndofs_constr_per_cell << " "
+  //             << offset_constr_local << " " << offset_constr << std::endl;
+  // }
 
   std::span<const T> coefficients;
   // std::span<const T> coefficients, coefficients_test1, coefficients_test2;
@@ -765,6 +795,22 @@ void assemble_fluxminimiser(kernel_fn<T, asmbl_systmtrx>& minimisation_kernel,
           }
         }
 
+        // Add lagrangian multiplier
+        if (requires_lmp)
+        {
+          // std::cout << "Add lagrangian multiplier!" << std::endl;
+          for (std::size_t i = 0; i < ndofs_constr_per_cell; ++i)
+          {
+            int dof_i = asmbl_info_cell(2, offset_constr_local + i);
+            // std::cout << "dof_i: " << dof_i << " ";
+
+            A_patch(dof_i, offset_constr) += Te(index_lmp, i);
+            A_patch(offset_constr, dof_i) += Te(index_lmp, i);
+          }
+          // std::cout << "\n";
+          // A_patch(offset_constr, offset_constr) = 1.0;
+        }
+
         // if (constrained_minimisation)
         // {
         //   std::cout << "Cell: " << a << std::endl;
@@ -788,35 +834,35 @@ void assemble_fluxminimiser(kernel_fn<T, asmbl_systmtrx>& minimisation_kernel,
     }
   }
 
-  if (constrained_minimisation)
-  {
-    std::cout << "A_patch: " << std::endl;
-    for (std::size_t i = 0; i < 15; ++i)
-    {
-      for (std::size_t j = 0; j < 15; ++j)
-      {
-        std::cout << A_patch(i, j) << " ";
-      }
-      std::cout << "\n";
-    }
-    std::cout << "L_patch: " << std::endl;
-    for (std::size_t i = 0; i < 15; ++i)
-    {
-      std::cout << L_patch(i) << " ";
-    }
-    std::cout << "\n";
-  }
-  else
-  {
-    std::cout << "A_patch: " << std::endl;
-    for (std::size_t i = 0; i < 9; ++i)
-    {
-      for (std::size_t j = 0; j < 9; ++j)
-      {
-        std::cout << A_patch(i, j) << " ";
-      }
-      std::cout << "\n";
-    }
-  }
+  // if (constrained_minimisation)
+  // {
+  //   std::cout << "A_patch: " << std::endl;
+  //   for (std::size_t i = 0; i < offset_constr + 1; ++i)
+  //   {
+  //     for (std::size_t j = 0; j < offset_constr + 1; ++j)
+  //     {
+  //       std::cout << A_patch(i, j) << " ";
+  //     }
+  //     std::cout << "\n";
+  //   }
+  //   std::cout << "L_patch: " << std::endl;
+  //   for (std::size_t i = 0; i < offset_constr + 1; ++i)
+  //   {
+  //     std::cout << L_patch(i) << " ";
+  //   }
+  //   std::cout << "\n";
+  // }
+  // else
+  // {
+  //   std::cout << "A_patch: " << std::endl;
+  //   for (std::size_t i = 0; i < 9; ++i)
+  //   {
+  //     for (std::size_t j = 0; j < 9; ++j)
+  //     {
+  //       std::cout << A_patch(i, j) << " ";
+  //     }
+  //     std::cout << "\n";
+  //   }
+  // }
 }
 } // namespace dolfinx_eqlb

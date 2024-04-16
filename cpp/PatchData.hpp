@@ -2,6 +2,7 @@
 
 #include "eigen3/Eigen/Dense"
 
+#include "Patch.hpp"
 #include "utils.hpp"
 
 #include <algorithm>
@@ -79,6 +80,9 @@ public:
     const int ndofs_hdivz_per_cell
         = 2 * ndofs_flux_fct + patch.ndofs_flux_cell_add() - 1;
 
+    // Identifier for mean-value zero condition
+    _meanvalue_condition_required = false;
+
     // Equation system (unconstrained minimisation)
     _A.resize(ndofs_hdivz, ndofs_hdivz);
     _L.resize(ndofs_hdivz);
@@ -87,9 +91,10 @@ public:
     if (symconstr_required)
     {
       // Dimension constraint space
+      // (including lagrangian multiplier for mean-value zero constraint)
       const int npnts_max = nfcts_max + 1;
       const std::size_t ndofs_hdivz_constr
-          = dimension_constrained_minspace(ndofs_hdivz, npnts_max);
+          = dimension_constrained_minspace(ndofs_hdivz, npnts_max) + 1;
 
       // DOFs per cell
       // FIXME -- Incorrect for 3D or non triangular cells
@@ -106,10 +111,10 @@ public:
       // Intermediate storage element contribution
       _shape_Te = {ndofs_hdivz_per_cell + 1, ndofs_hdivz_per_cell};
       _shape_Te_constr
-          = {ndofs_constrhdivz_per_cell + 1, ndofs_constrhdivz_per_cell};
+          = {ndofs_constrhdivz_per_cell + 2, ndofs_constrhdivz_per_cell};
 
-      std::cout << "Shape Te: " << ndofs_constrhdivz_per_cell + 1 << ", "
-                << ndofs_constrhdivz_per_cell << std::endl;
+      // std::cout << "Shape Te: " << ndofs_constrhdivz_per_cell + 1 << ", "
+      //           << ndofs_constrhdivz_per_cell << std::endl;
 
       _data_Te.resize(_shape_Te_constr[0] * _shape_Te_constr[1], 0);
 
@@ -141,13 +146,45 @@ public:
   /// @param ncells The number of cells
   /// @param nfcts  The number of facets
   /// @param npnts  The number of points
-  void reinitialisation(const int ncells, const int nfcts, const int npnts)
+  void reinitialisation(std::span<const PatchType> type_patch, int ncells)
   {
+    // Data parh
     // Set current patch length
     _ncells = ncells;
 
     // Set dimension of minimisation spaces
-    dimension_minspaces(ncells, nfcts, npnts);
+    if (type_patch[0] == PatchType::internal)
+    {
+      // Calculate dimension of minimisation spaces
+      dimension_minspaces(ncells, ncells, ncells + 1);
+
+      // Consider lagrangian multiplier
+      _meanvalue_condition_required = true;
+      _dim_hdivz_constr += 1;
+
+      // std::cout << "patch size with lmp: " << _dim_hdivz_constr << std::endl;
+    }
+    else
+    {
+      // Calculate dimension of minimisation spaces
+      dimension_minspaces(ncells, ncells + 1, ncells + 2);
+
+      // Check if lagrangian multiplier is required
+      _meanvalue_condition_required = false;
+
+      for (std::size_t i = 0; i < _gdim; ++i)
+      {
+        if (type_patch[i] == PatchType::bound_essnt_dual)
+        {
+          _meanvalue_condition_required = true;
+        }
+      }
+
+      if (_meanvalue_condition_required)
+      {
+        _dim_hdivz_constr += 1;
+      }
+    }
 
     // --- Update length of mdspans
     _shape_Mm[0] = ncells;
@@ -388,6 +425,26 @@ public:
 
   /* The equation system */
 
+  /// Check wether constrained minimisation requires lagrangian multiplier
+  /// @return True if lagrangian multiplier is required
+  bool meanvalue_zero_condition_required() const
+  {
+    return _meanvalue_condition_required;
+  }
+
+  /// Size of the current minimisation system
+  int size_minimisation_system(bool constrained_system) const
+  {
+    if (constrained_system)
+    {
+      return _dim_hdivz_constr;
+    }
+    else
+    {
+      return _dim_hdivz;
+    }
+  }
+
   /// The DOFmap of the constrained minimisation space
   ///
   /// id within the first index:
@@ -502,7 +559,7 @@ public:
     {
       _solver_constr.compute(
           _A_constr.topLeftCorner(_dim_hdivz_constr, _dim_hdivz_constr));
-      std::cout << "Size system: " << _dim_hdivz_constr << std::endl;
+      // std::cout << "Size system: " << _dim_hdivz_constr << std::endl;
     }
     else
     {
@@ -645,6 +702,8 @@ protected:
   std::vector<T> _c_ta_div, _cj_ta_ea;
 
   // --- The equation system
+  // marker for addition mean-value constraint
+  bool _meanvalue_condition_required;
   // DOFmap
   std::array<std::size_t, 3> _shape_dofmap;
   std::vector<std::int32_t> _data_dofmap;
