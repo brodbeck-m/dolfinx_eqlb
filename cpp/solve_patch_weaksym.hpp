@@ -235,6 +235,8 @@ void impose_weak_symmetry(const mesh::Geometry& geometry,
   //   std::cout << u_patch(i) << " ";
   // }
   // std::cout << "\n";
+  // std::cout << "Size: " << size_exp << "Lagr. Mult.: " << u_patch(size_exp)
+  //           << std::endl;
 
   for (std::size_t i_row = 0; i_row < gdim; ++i_row)
   {

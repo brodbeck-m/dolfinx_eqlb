@@ -17,6 +17,7 @@ holds. Dirichlet BCs are applied on the boundaries 2 and 4.
 # --- Imports ---
 import numpy as np
 from mpi4py import MPI
+import time
 import typing
 
 import dolfinx
@@ -24,7 +25,12 @@ import dolfinx.fem as dfem
 import dolfinx.mesh as dmesh
 import ufl
 
-from dolfinx_eqlb.eqlb import FluxEqlbSE, fluxbc, check_eqlb_conditions
+from dolfinx_eqlb.eqlb import FluxEqlbSE, fluxbc
+from dolfinx_eqlb.eqlb.check_eqlb_conditions import (
+    check_divergence_condition,
+    check_jump_condition,
+    check_weak_symmetry_condition,
+)
 from dolfinx_eqlb.lsolver import local_projection
 
 
@@ -90,7 +96,11 @@ def create_unit_square_mesh(n_elmt: int):
 
 
 def solve_primal_problem(
-    elmt_order_prime: int, domain: dmesh.Mesh, facet_tags: typing.Any, ds: typing.Any
+    elmt_order_prime: int,
+    domain: dmesh.Mesh,
+    facet_tags: typing.Any,
+    ds: typing.Any,
+    solver: str = "lu",
 ):
     """Solves the linear elasticity based on lagrangian finite elements
 
@@ -100,6 +110,10 @@ def solve_primal_problem(
         facet_tags :                The facet tags
         ds:                         The measure for the boundary integrals
     """
+    # Check input
+    if elmt_order_prime < 2:
+        raise ValueError("Consistency condition for weak symmetry not fulfilled!")
+
     # The spatial dimension
     gdim = domain.geometry.dim
 
@@ -127,16 +141,33 @@ def solve_primal_problem(
     bcs_esnt = [dfem.dirichletbc(u_dirichlet, dofs)]
 
     # Solve problem
-    solveoptions = {
-        "ksp_type": "preonly",
-        "pc_type": "lu",
-        "ksp_rtol": 1e-12,
-        "ksp_atol": 1e-12,
-    }
+    timing = 0
+
+    if solver == "lu":
+        solveoptions = {
+            "ksp_type": "preonly",
+            "pc_type": "lu",
+            "ksp_rtol": 1e-12,
+            "ksp_atol": 1e-12,
+        }
+    else:
+        solveoptions = {
+            "ksp_type": "cg",
+            "pc_type": "hypre",
+            "hypre_type": "boomeramg",
+            "ksp_rtol": 1e-10,
+            "ksp_atol": 1e-12,
+        }
+
     problem_prime = dfem.petsc.LinearProblem(
         a_prime, l_prime, bcs_esnt, petsc_options=solveoptions
     )
+
+    timing -= time.perf_counter()
     u_prime = problem_prime.solve()
+    timing += time.perf_counter()
+
+    print(f"Primal problem solved in {timing:.4e} s")
 
     return u_prime, sigma_ext
 
@@ -162,6 +193,11 @@ def equilibrate_flux(
         uh_prime:                   The primal solution
         sigma_ext:                  The exact stress-tensor
     """
+
+    # Check input
+    if elmt_order_eqlb < 2:
+        raise ValueError("Stress equilibration only possible for k>1")
+
     # The spatial dimension
     gdim = domain.geometry.dim
 
@@ -199,7 +235,45 @@ def equilibrate_flux(
     )
 
     # Solve equilibration
+    timing = 0
+
+    timing -= time.perf_counter()
     equilibrator.equilibrate_fluxes()
+    timing += time.perf_counter()
+
+    print(f"Equilibration solved in {timing:.4e} s")
+
+    # --- Check equilibration conditions ---
+    V_rhs_proj = dfem.VectorFunctionSpace(domain, ("DG", elmt_order_eqlb - 1))
+    rhs_proj_vecval = local_projection(V_rhs_proj, [f])[0]
+
+    stress_eqlb = ufl.as_matrix(
+        [
+            [equilibrator.list_flux[0][0], equilibrator.list_flux[0][1]],
+            [equilibrator.list_flux[1][0], equilibrator.list_flux[1][1]],
+        ]
+    )
+
+    stress_proj = ufl.as_matrix(
+        [
+            [sigma_proj[0][0], sigma_proj[0][1]],
+            [sigma_proj[1][0], sigma_proj[1][1]],
+        ]
+    )
+
+    # Check divergence condition
+    check_divergence_condition(
+        stress_eqlb,
+        stress_proj,
+        rhs_proj_vecval,
+        mesh=domain,
+        degree=elmt_order_eqlb,
+        flux_is_dg=True,
+    )
+
+    # Check if flux is H(div)
+    for i in range(domain.geometry.dim):
+        check_jump_condition(equilibrator.list_flux[i], sigma_proj[i])
 
     return sigma_proj, equilibrator.list_flux
 
@@ -207,26 +281,24 @@ def equilibrate_flux(
 if __name__ == "__main__":
     # --- Parameters ---
     # The orders of the FE spaces
-    elmt_order_prime = 1
+    elmt_order_prime = 2
     elmt_order_eqlb = 2
 
     # The mesh resolution
-    sdisc_nelmt = 10
+    sdisc_nelmt = 100
 
     # --- Execute calculation ---
     # Create mesh
     domain, facet_tags, ds = create_unit_square_mesh(sdisc_nelmt)
 
     # Solve primal problem
-    uh_prime, sigma_ref = solve_primal_problem(elmt_order_prime, domain, facet_tags, ds)
+    uh_prime, sigma_ref = solve_primal_problem(
+        elmt_order_prime, domain, facet_tags, ds, solver="cg"
+    )
 
     # Solve equilibration
     sigma_proj, sigma_eqlb = equilibrate_flux(
         elmt_order_eqlb, domain, facet_tags, uh_prime, sigma_ref, True
-    )
-
-    sigma_proj_nows, sigma_eqlb_nows = equilibrate_flux(
-        elmt_order_eqlb, domain, facet_tags, uh_prime, sigma_ref, False
     )
 
     # --- Export results to ParaView ---
@@ -253,5 +325,3 @@ if __name__ == "__main__":
     outfile.write_function(sigma_eqlb_dg[0], 1)
     outfile.write_function(sigma_eqlb_dg[1], 1)
     outfile.close()
-
-    check_eqlb_conditions.check_weak_symmetry_condition(sigma_eqlb_nows)
