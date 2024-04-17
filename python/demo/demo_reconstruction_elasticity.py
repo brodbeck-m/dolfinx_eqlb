@@ -180,6 +180,7 @@ def equilibrate_flux(
     uh_prime: typing.Any,
     sigma_ext: typing.Any,
     weak_symmetry: bool = True,
+    check_equilibration: bool = True,
 ):
     """Equilibrates the stress-tensor of linear elasticity
 
@@ -244,36 +245,37 @@ def equilibrate_flux(
     print(f"Equilibration solved in {timing:.4e} s")
 
     # --- Check equilibration conditions ---
-    V_rhs_proj = dfem.VectorFunctionSpace(domain, ("DG", elmt_order_eqlb - 1))
-    rhs_proj_vecval = local_projection(V_rhs_proj, [f])[0]
+    if check_equilibration:
+        V_rhs_proj = dfem.VectorFunctionSpace(domain, ("DG", elmt_order_eqlb - 1))
+        rhs_proj_vecval = local_projection(V_rhs_proj, [f])[0]
 
-    stress_eqlb = ufl.as_matrix(
-        [
-            [equilibrator.list_flux[0][0], equilibrator.list_flux[0][1]],
-            [equilibrator.list_flux[1][0], equilibrator.list_flux[1][1]],
-        ]
-    )
+        stress_eqlb = ufl.as_matrix(
+            [
+                [equilibrator.list_flux[0][0], equilibrator.list_flux[0][1]],
+                [equilibrator.list_flux[1][0], equilibrator.list_flux[1][1]],
+            ]
+        )
 
-    stress_proj = ufl.as_matrix(
-        [
-            [sigma_proj[0][0], sigma_proj[0][1]],
-            [sigma_proj[1][0], sigma_proj[1][1]],
-        ]
-    )
+        stress_proj = ufl.as_matrix(
+            [
+                [sigma_proj[0][0], sigma_proj[0][1]],
+                [sigma_proj[1][0], sigma_proj[1][1]],
+            ]
+        )
 
-    # Check divergence condition
-    check_divergence_condition(
-        stress_eqlb,
-        stress_proj,
-        rhs_proj_vecval,
-        mesh=domain,
-        degree=elmt_order_eqlb,
-        flux_is_dg=True,
-    )
+        # Check divergence condition
+        check_divergence_condition(
+            stress_eqlb,
+            stress_proj,
+            rhs_proj_vecval,
+            mesh=domain,
+            degree=elmt_order_eqlb,
+            flux_is_dg=True,
+        )
 
-    # Check if flux is H(div)
-    for i in range(domain.geometry.dim):
-        check_jump_condition(equilibrator.list_flux[i], sigma_proj[i])
+        # Check if flux is H(div)
+        for i in range(domain.geometry.dim):
+            check_jump_condition(equilibrator.list_flux[i], sigma_proj[i])
 
     return sigma_proj, equilibrator.list_flux
 
@@ -285,7 +287,7 @@ if __name__ == "__main__":
     elmt_order_eqlb = 2
 
     # The mesh resolution
-    sdisc_nelmt = 100
+    sdisc_nelmt = 10
 
     # --- Execute calculation ---
     # Create mesh
