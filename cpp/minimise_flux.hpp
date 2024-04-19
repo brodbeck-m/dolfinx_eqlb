@@ -765,9 +765,7 @@ template <typename T, int id_flux_order, bool asmbl_systmtrx>
 void assemble_fluxminimiser(kernel_fn<T, asmbl_systmtrx>& minimisation_kernel,
                             PatchDataCstm<T, id_flux_order>& patch_data,
                             mdspan_t<const std::int32_t, 3> asmbl_info,
-                            const int ndofs_flux_minspace, const int i_rhs,
-                            const bool requires_flux_bc,
-                            const bool constrained_minimisation)
+                            const int i_rhs, const bool requires_flux_bc)
 {
   assert(id_flux_order < 0);
 
@@ -917,26 +915,25 @@ void assemble_fluxminimiser(kernel_fn<T, asmbl_systmtrx>& minimisation_kernel,
   }
 }
 
-// /// Assemble EQS for flux minimisation
-// ///
-// /// Assembles system-matrix and load vector for unconstrained flux
-// /// minimisation on patch-wise divergence free H(div) space. Explicit ansatz
-// /// for such a space see [1, Lemma 12].
-// ///
-// /// [1] Bertrand, F.; Carstensen, C.; Gräßle, B. & Tran, N. T.:
-// ///     Stabilization-free HHO a posteriori error control, 2022
-// ///
-// /// @tparam T                       The scalar type
-// /// @tparam id_flux_order           The flux order (1->RT1, 2->RT2,
-// 3->general)
-// /// @tparam modified_patch          Flag if a modified patch is assembeled
-// /// @param minimisation_kernel      The kernel for minimisation
-// /// @param patch_data               The temporary storage for the patch
-// /// @param asmbl_info               Informations to create the patch-wise
-// ///                                 H(div=0) space
-// /// @param i_rhs                    Index of the right-hand side
-// /// @param requires_flux_bc         Marker if flux BCs are required
-// /// @param constrained_minimisation Flag if constarined system is assembeled
+/// Assemble EQS for constrained stress minimisation
+///
+/// Assembles system-matrix and load vector for constrained flux
+/// minimisation on patch-wise divergence free H(div) space. Explicit ansatz
+/// for such a space see [1, Lemma 12].
+///
+/// [1] Bertrand, F.; Carstensen, C.; Gräßle, B. & Tran, N. T.:
+///     Stabilization-free HHO a posteriori error control, 2022
+///
+/// @tparam T                       The scalar type
+/// @tparam id_flux_order           The flux order (1->RT1, 2->RT2, 3->general)
+/// @tparam modified_patch          Flag if a modified patch is assembeled
+/// @param minimisation_kernel      The kernel for minimisation
+/// @param patch_data               The temporary storage for the patch
+/// @param asmbl_info               Informations to create the patch-wise
+///                                 H(div=0) space
+/// @param i_rhs                    Index of the right-hand side
+/// @param requires_flux_bc         Marker if flux BCs are required
+/// @param constrained_minimisation Flag if constarined system is assembeled
 // template <typename T, int id_flux_order, bool modified_patch>
 // void assemble_stressminimiser(
 //     kernel_fn_schursolver<T, modified_patch>& minimisation_kernel,

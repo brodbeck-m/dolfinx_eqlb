@@ -782,8 +782,8 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
     {
       // Assemble system
       assemble_fluxminimiser<T, id_flux_order, true>(
-          minkernel, patch_data, dofmap_flux, ndofs_hdivz, i_rhs,
-          patch.requires_flux_bcs(i_rhs), false);
+          minkernel, patch_data, dofmap_flux, i_rhs,
+          patch.requires_flux_bcs(i_rhs));
 
       // Factorisation of system matrix
       patch_data.factorise_matrix_A();
@@ -792,8 +792,8 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
     {
       // Assemble linear form
       assemble_fluxminimiser<T, id_flux_order, false>(
-          minkernel_rhs, patch_data, dofmap_flux, ndofs_hdivz, i_rhs,
-          patch.requires_flux_bcs(i_rhs), false);
+          minkernel_rhs, patch_data, dofmap_flux, i_rhs,
+          patch.requires_flux_bcs(i_rhs));
     }
 
     // Solve system
