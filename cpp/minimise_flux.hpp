@@ -555,6 +555,190 @@ generate_minimisation_kernel(Kernel type, KernelDataEqlb<T>& kernel_data,
   }
 }
 
+template <typename T, bool modified_patch>
+kernel_fn_schursolver<T, modified_patch>
+generate_stress_minimisation_kernel(Kernel type, KernelDataEqlb<T>& kernel_data,
+                                    const int gdim, const int facets_per_cell,
+                                    const int degree_rt)
+{
+  /* DOF counters */
+  const int ndofs_flux_fct = degree_rt + 1;
+  const int ndofs_flux_cell_add = 0.5 * degree_rt * (degree_rt - 1);
+
+  const int ndofs_hdivzero_per_cell
+      = 2 * ndofs_flux_fct + ndofs_flux_cell_add - 1;
+  const int ndofs_constr_per_cell
+      = (gdim == 2) ? facets_per_cell : gdim * facets_per_cell;
+
+  /* The kernels */
+
+  /// Kernel for the (constrained) stress correction (2D)
+  ///
+  /// Calculates system-matrix and load vector for constrained stress
+  /// minimisation on patch-wise divergence free H(div) space. Weak symmetry is
+  /// imposed.
+  ///
+  /// @tparam T               The scalar type
+  /// @tparam modified_patch  Flag for kernel for modified boundary patches
+  /// @param Te           Storage for tangent arrays
+  /// @param coefficients The Coefficients
+  /// @param asmbl_info   Information to create the patch-wise H(div=0) space
+  /// @param detJ         The Jacobi determinant
+  /// @param J            The Jacobi matrix
+  kernel_fn_schursolver<T, modified_patch> stress_minimisation_2D
+      = [kernel_data, ndofs_hdivzero_per_cell, ndofs_constr_per_cell,
+         ndofs_flux_fct](mdspan_t<double, 2> Ae, mdspan_t<double, 2> Be,
+                         std::span<double> Ce, std::span<double> Le,
+                         std::span<const T> coefficients,
+                         smdspan_t<const std::int32_t, 2> asmbl_info,
+                         const double detJ, mdspan_t<const double, 2> J) mutable
+  {
+    /* Extract shape functions and quadrature data */
+    smdspan_t<double, 3> phi_f = kernel_data.shapefunctions_flux(J, detJ);
+    smdspan_t<const double, 2> phi_c = kernel_data.shapefunctions_cell_hat();
+
+    std::span<const double> quadrature_weights
+        = kernel_data.quadrature_weights(0);
+
+    // nDOFs flux space
+    const int ndofs_flux = phi_f.extent(1);
+
+    /* Initialisation */
+    // Interpolated solution from step 1
+    std::array<T, 2> sig_r0, sig_r1;
+
+    // Data manipulation of shape function for d0
+    std::int32_t ld0_Eam1 = asmbl_info(0, 0),
+                 ld0_Ea = asmbl_info(0, 2 * ndofs_flux_fct);
+    std::int32_t p_Eam1 = asmbl_info(3, 0),
+                 p_Ea = asmbl_info(3, 2 * ndofs_flux_fct);
+
+    // Offset constrained space
+    const int offs_c = ndofs_hdivzero_per_cell + 1;
+    const int offs_Lc = 2 * ndofs_hdivzero_per_cell;
+
+    /* Assemble tangents */
+    for (std::size_t iq = 0; iq < quadrature_weights.size(); ++iq)
+    {
+      // Interpolate stress
+      sig_r0[0] = 0, sig_r0[1] = 0;
+      sig_r1[0] = 0, sig_r1[1] = 0;
+
+      for (std::size_t i = 0; i < ndofs_flux; ++i)
+      {
+        int offs = ndofs_flux + i;
+
+        sig_r0[0] += coefficients[i] * phi_f(iq, i, 0);
+        sig_r0[1] += coefficients[i] * phi_f(iq, i, 1);
+
+        sig_r1[0] += coefficients[offs] * phi_f(iq, i, 0);
+        sig_r1[1] += coefficients[offs] * phi_f(iq, i, 1);
+      }
+
+      // Manipulate shape function for coefficient d_0
+      phi_f(iq, ld0_Ea, 0)
+          = p_Ea
+            * (p_Eam1 * phi_f(iq, ld0_Eam1, 0) + p_Ea * phi_f(iq, ld0_Ea, 0));
+      phi_f(iq, ld0_Ea, 1)
+          = p_Ea
+            * (p_Eam1 * phi_f(iq, ld0_Eam1, 1) + p_Ea * phi_f(iq, ld0_Ea, 1));
+
+      // Volume integrator
+      double dvol = quadrature_weights[iq] * std::fabs(detJ);
+
+      for (std::size_t i = 0; i < ndofs_hdivzero_per_cell; ++i)
+      {
+        // Offset
+        std::size_t ip1 = i + 1;
+
+        // Cell-local DOF (index i)
+        std::int32_t dl_i = asmbl_info(0, ip1);
+
+        // Manipulate shape functions
+        double alpha = asmbl_info(3, ip1) * dvol;
+
+        double phi_i0 = phi_f(iq, dl_i, 0) * alpha;
+        double phi_i1 = phi_f(iq, dl_i, 1) * alpha;
+
+        if constexpr (modified_patch)
+        {
+          // Load vector L_sigma
+          Le[i] -= sig_r0[0] * phi_i0 + sig_r0[1] * phi_i1;
+          Le[ndofs_hdivzero_per_cell + i]
+              -= sig_r1[0] * phi_i0 + sig_r1[1] * phi_i1;
+
+          // Submatrix A (lower triagular part)
+          for (std::size_t j = 0; j < i + 1; ++j)
+          {
+            // Offset
+            std::size_t jp1 = j + 1;
+
+            // Cell-local DOF (index j)
+            std::int32_t dl_j = asmbl_info(0, jp1);
+
+            // Manipulate shape functions
+            double phi_j0 = phi_f(iq, dl_j, 0) * asmbl_info(3, jp1);
+            double phi_j1 = phi_f(iq, dl_j, 1) * asmbl_info(3, jp1);
+
+            // System matrix
+            Ae(i, j) += phi_i0 * phi_j0 + phi_i1 * phi_j1;
+          }
+        }
+
+        // Submatrices B1 and B2
+        for (std::size_t j = 0; j < ndofs_constr_per_cell; ++j)
+        {
+          // Shape function (index j)
+          double phi_j = phi_c(iq, asmbl_info(0, offs_c + j));
+
+          // System matrix
+          Be(i, j) += phi_i1 * phi_j;
+          Be(i, ndofs_constr_per_cell + j) -= phi_i0 * phi_j;
+        }
+      }
+
+      for (std::size_t i = 0; i < ndofs_constr_per_cell; ++i)
+      {
+        // Manipulate shape function (index i)
+        double phi_i = phi_c(iq, asmbl_info(0, offs_c + i)) * dvol;
+
+        // Submatrix Ce
+        Ce[i] += phi_i;
+
+        // Load vector L_c
+        Le[offs_Lc + i] -= phi_i * (sig_r0[1] - sig_r1[0]);
+      }
+    }
+  };
+
+  switch (type)
+  {
+  case Kernel::StressMin:
+    if (gdim == 2)
+    {
+      return stress_minimisation_2D;
+    }
+    else
+    {
+      throw std::runtime_error(
+          "Kernel for weakly symmetric stresses (3D) not implemented");
+    }
+  case Kernel::StressMinNL:
+    if (gdim == 2)
+    {
+      throw std::runtime_error(
+          "Kernel for weakly symmetric 1.PK stress (2D) not implemented");
+    }
+    else
+    {
+      throw std::runtime_error(
+          "Kernel for weakly symmetric 1.PK stress (3D) not implemented");
+    }
+  default:
+    throw std::invalid_argument("Unrecognised kernel");
+  }
+}
+
 // ------------------------------------------------------------------------------
 
 /// Assemble EQS for flux minimisation
