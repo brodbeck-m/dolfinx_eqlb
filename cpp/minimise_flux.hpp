@@ -779,24 +779,22 @@ void assemble_fluxminimiser(kernel_fn<T, asmbl_systmtrx>& minimisation_kernel,
   const int ncells = patch_data.ncells();
 
   // Tangent storage
-  mdspan_t<T, 2> Te = patch_data.Te(constrained_minimisation);
+  mdspan_t<T, 2> Te = patch_data.Te();
 
-  Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>& A_patch
-      = patch_data.A_patch(constrained_minimisation);
-  Eigen::Matrix<T, Eigen::Dynamic, 1>& L_patch
-      = patch_data.L_patch(constrained_minimisation);
+  Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>& A = patch_data.matrix_A();
+  Eigen::Matrix<T, Eigen::Dynamic, 1>& L = patch_data.vector_L_sigma();
   std::span<const std::int8_t> boundary_markers
-      = patch_data.boundary_markers(constrained_minimisation);
+      = patch_data.boundary_markers(false);
 
   /* Initialisation */
   if constexpr (asmbl_systmtrx)
   {
-    A_patch.setZero();
-    L_patch.setZero();
+    A.setZero();
+    L.setZero();
   }
   else
   {
-    L_patch.setZero();
+    L.setZero();
   }
 
   /* Calculation and assembly */
@@ -804,28 +802,6 @@ void assemble_fluxminimiser(kernel_fn<T, asmbl_systmtrx>& minimisation_kernel,
   const int ndofs_constr_per_cell = gdim + 1;
 
   const int index_load = ndofs_per_cell;
-  const int index_lmp = ndofs_per_cell + 1;
-
-  const int offset_asmblinfo = (constrained_minimisation) ? gdim : 1;
-  const int offset_constr_local = ndofs_per_cell + gdim - ndofs_constr_per_cell;
-  const int offset_constr
-      = patch_data.size_minimisation_system(constrained_minimisation) - 1;
-
-  const bool requires_lmp = (constrained_minimisation)
-                                ? patch_data.meanvalue_zero_condition_required()
-                                : false;
-
-  // if (requires_lmp)
-  // {
-  //   std::cout << "Lagrangian multiplier added!" << std::endl;
-  //   std::cout << "ndofs_per_cell, ndofs_constraint_per_cell, "
-  //                "offset_constr_local, offset_constr: "
-  //             << ndofs_per_cell << " " << ndofs_constr_per_cell << " "
-  //             << offset_constr_local << " " << offset_constr << std::endl;
-  // }
-
-  std::span<const T> coefficients;
-  // std::span<const T> coefficients, coefficients_test1, coefficients_test2;
 
   for (std::size_t a = 1; a < ncells + 1; ++a)
   {
@@ -840,38 +816,10 @@ void assemble_fluxminimiser(kernel_fn<T, asmbl_systmtrx>& minimisation_kernel,
         asmbl_info, stdex::full_extent, a, stdex::full_extent);
 
     // DOFs on cell
-    if (constrained_minimisation)
-    {
-      coefficients = patch_data.coefficients_stress(a);
-      // coefficients_test1 = patch_data.coefficients_flux(0, a);
-      // coefficients_test2 = patch_data.coefficients_flux(1, a);
-
-      // std::cout << "Coefficients: " << std::endl;
-      // for (auto c : coefficients)
-      // {
-      //   std::cout << c << " ";
-      // }
-      // std::cout << " \n";
-      // std::cout << "Coefficients row 1: " << std::endl;
-      // for (auto c : coefficients_test1)
-      // {
-      //   std::cout << c << " ";
-      // }
-      // std::cout << " \n";
-      // std::cout << "Coefficients row 2: " << std::endl;
-      // for (auto c : coefficients_test2)
-      // {
-      //   std::cout << c << " ";
-      // }
-      // std::cout << " \n";
-    }
-    else
-    {
-      coefficients = patch_data.coefficients_flux(i_rhs, a);
-    }
+    std::span<const T> coefficients = patch_data.coefficients_flux(i_rhs, a);
 
     // Evaluate linear- and bilinear form
-    patch_data.reinitialise_Te(constrained_minimisation);
+    patch_data.reinitialise_Te();
     minimisation_kernel(Te, coefficients, asmbl_info_cell, detJ, J);
 
     // Assemble linear- and bilinear form
@@ -880,37 +828,24 @@ void assemble_fluxminimiser(kernel_fn<T, asmbl_systmtrx>& minimisation_kernel,
       if (requires_flux_bc)
       {
         // Assemble linar form
-        L_patch(0) = 0;
+        L(0) = 0;
 
         if constexpr (asmbl_systmtrx)
         {
           // Assemble bilinear form
-          A_patch(0, 0) = 1;
+          A(0, 0) = 1;
         }
       }
       else
       {
         // Assemble linar form
-        L_patch(0) += Te(1, 0);
+        L(0) += Te(1, 0);
 
         if constexpr (asmbl_systmtrx)
         {
           // Assemble bilinear form
-          A_patch(0, 0) += Te(0, 0);
+          A(0, 0) += Te(0, 0);
         }
-
-        // if (constrained_minimisation)
-        // {
-        //   std::cout << "Cell: " << a << std::endl;
-        //   for (std::size_t i = 0; i < ndofs_per_cell; ++i)
-        //   {
-        //     for (std::size_t j = 0; j < ndofs_per_cell; ++j)
-        //     {
-        //       std::cout << Te(i, j) << " ";
-        //     }
-        //     std::cout << "\n";
-        //   }
-        // }
       }
     }
     else
@@ -919,17 +854,17 @@ void assemble_fluxminimiser(kernel_fn<T, asmbl_systmtrx>& minimisation_kernel,
       {
         for (std::size_t i = 0; i < ndofs_per_cell; ++i)
         {
-          std::int32_t dof_i = asmbl_info_cell(2, offset_asmblinfo + i);
+          std::int32_t dof_i = asmbl_info_cell(2, i + 1);
           std::int8_t bmarker_i = boundary_markers[dof_i];
 
           // Assemble load vector
           if (bmarker_i)
           {
-            L_patch(dof_i) = 0;
+            L(dof_i) = 0;
           }
           else
           {
-            L_patch(dof_i) += Te(index_load, i);
+            L(dof_i) += Te(index_load, i);
           }
 
           // Assemble bilinear form
@@ -937,22 +872,22 @@ void assemble_fluxminimiser(kernel_fn<T, asmbl_systmtrx>& minimisation_kernel,
           {
             if (bmarker_i)
             {
-              A_patch(dof_i, dof_i) = 1;
+              A(dof_i, dof_i) = 1;
             }
             else
             {
               for (std::size_t j = 0; j < ndofs_per_cell; ++j)
               {
-                std::int32_t dof_j = asmbl_info_cell(2, offset_asmblinfo + j);
+                std::int32_t dof_j = asmbl_info_cell(2, j + 1);
                 std::int8_t bmarker_j = boundary_markers[dof_j];
 
                 if (bmarker_j)
                 {
-                  A_patch(dof_i, dof_j) = 0;
+                  A(dof_i, dof_j) = 0;
                 }
                 else
                 {
-                  A_patch(dof_i, dof_j) += Te(i, j);
+                  A(dof_i, dof_j) += Te(i, j);
                 }
               }
             }
@@ -963,90 +898,234 @@ void assemble_fluxminimiser(kernel_fn<T, asmbl_systmtrx>& minimisation_kernel,
       {
         for (std::size_t i = 0; i < ndofs_per_cell; ++i)
         {
-          std::int32_t dof_i = asmbl_info_cell(2, offset_asmblinfo + i);
+          std::int32_t dof_i = asmbl_info_cell(2, i + 1);
 
           // Assemble load vector
-          L_patch(dof_i) += Te(index_load, i);
+          L(dof_i) += Te(index_load, i);
 
           // Assemble bilinear form
           if constexpr (asmbl_systmtrx)
           {
             for (std::size_t j = 0; j < ndofs_per_cell; ++j)
             {
-              A_patch(dof_i, asmbl_info_cell(2, offset_asmblinfo + j))
-                  += Te(i, j);
+              A(dof_i, asmbl_info_cell(2, j + 1)) += Te(i, j);
             }
           }
         }
-
-        // Add lagrangian multiplier
-        if (requires_lmp)
-        {
-          // std::cout << "Add lagrangian multiplier!" << std::endl;
-          for (std::size_t i = 0; i < ndofs_constr_per_cell; ++i)
-          {
-            int dof_i = asmbl_info_cell(2, offset_constr_local + i);
-            // std::cout << "dof_i: " << dof_i << " ";
-
-            A_patch(dof_i, offset_constr) += Te(index_lmp, i);
-            A_patch(offset_constr, dof_i) += Te(index_lmp, i);
-          }
-          // std::cout << "\n";
-          // A_patch(offset_constr, offset_constr) = 1.0;
-        }
-
-        // if (constrained_minimisation)
-        // {
-        //   std::cout << "Cell: " << a << std::endl;
-        //   for (std::size_t i = 0; i < ndofs_per_cell; ++i)
-        //   {
-        //     for (std::size_t j = 0; j < ndofs_per_cell; ++j)
-        //     {
-        //       std::cout << Te(i, j) << " ";
-        //     }
-        //     std::cout << "\n";
-        //   }
-        // }
-
-        // std::cout << "Cell: " << a << std::endl;
-        // for (std::size_t i = 0; i < ndofs_per_cell; ++i)
-        // {
-        //   std::cout << Te(index_load, i) << " ";
-        // }
-        // std::cout << "\n";
       }
     }
   }
-
-  // if (constrained_minimisation)
-  // {
-  //   std::cout << "A_patch: " << std::endl;
-  //   for (std::size_t i = 0; i < offset_constr + 1; ++i)
-  //   {
-  //     for (std::size_t j = 0; j < offset_constr + 1; ++j)
-  //     {
-  //       std::cout << A_patch(i, j) << " ";
-  //     }
-  //     std::cout << "\n";
-  //   }
-  //   std::cout << "L_patch: " << std::endl;
-  //   for (std::size_t i = 0; i < offset_constr + 1; ++i)
-  //   {
-  //     std::cout << L_patch(i) << " ";
-  //   }
-  //   std::cout << "\n";
-  // }
-  // else
-  // {
-  //   std::cout << "A_patch: " << std::endl;
-  //   for (std::size_t i = 0; i < 9; ++i)
-  //   {
-  //     for (std::size_t j = 0; j < 9; ++j)
-  //     {
-  //       std::cout << A_patch(i, j) << " ";
-  //     }
-  //     std::cout << "\n";
-  //   }
-  // }
 }
+
+// /// Assemble EQS for flux minimisation
+// ///
+// /// Assembles system-matrix and load vector for unconstrained flux
+// /// minimisation on patch-wise divergence free H(div) space. Explicit ansatz
+// /// for such a space see [1, Lemma 12].
+// ///
+// /// [1] Bertrand, F.; Carstensen, C.; Gräßle, B. & Tran, N. T.:
+// ///     Stabilization-free HHO a posteriori error control, 2022
+// ///
+// /// @tparam T                       The scalar type
+// /// @tparam id_flux_order           The flux order (1->RT1, 2->RT2,
+// 3->general)
+// /// @tparam modified_patch          Flag if a modified patch is assembeled
+// /// @param minimisation_kernel      The kernel for minimisation
+// /// @param patch_data               The temporary storage for the patch
+// /// @param asmbl_info               Informations to create the patch-wise
+// ///                                 H(div=0) space
+// /// @param i_rhs                    Index of the right-hand side
+// /// @param requires_flux_bc         Marker if flux BCs are required
+// /// @param constrained_minimisation Flag if constarined system is assembeled
+// template <typename T, int id_flux_order, bool modified_patch>
+// void assemble_stressminimiser(
+//     kernel_fn_schursolver<T, modified_patch>& minimisation_kernel,
+//     PatchDataCstm<T, id_flux_order>& patch_data,
+//     mdspan_t<const std::int32_t, 3> asmbl_info, const int
+//     ndofs_flux_minspace, const int i_rhs, const bool requires_flux_bc, const
+//     bool constrained_minimisation)
+// {
+//   assert(id_flux_order < 0);
+
+//   /* Extract data */
+//   // The spatial dimension
+//   const int gdim = patch_data.gdim();
+
+//   // Number of elements/facets on patch
+//   const int ncells = patch_data.ncells();
+
+//   // Tangent storage
+//   mdspan_t<T, 2> Te = patch_data.Te(constrained_minimisation);
+
+//   Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>& A_patch
+//       = patch_data.A_patch(constrained_minimisation);
+//   Eigen::Matrix<T, Eigen::Dynamic, 1>& L_patch
+//       = patch_data.L_patch(constrained_minimisation);
+//   std::span<const std::int8_t> boundary_markers
+//       = patch_data.boundary_markers(constrained_minimisation);
+
+//   /* Initialisation */
+//   if constexpr (asmbl_systmtrx)
+//   {
+//     A_patch.setZero();
+//     L_patch.setZero();
+//   }
+//   else
+//   {
+//     L_patch.setZero();
+//   }
+
+//   /* Calculation and assembly */
+//   const int ndofs_per_cell = Te.extent(1);
+//   const int ndofs_constr_per_cell = gdim + 1;
+
+//   const int index_load = ndofs_per_cell;
+//   const int index_lmp = ndofs_per_cell + 1;
+
+//   const int offset_asmblinfo = (constrained_minimisation) ? gdim : 1;
+//   const int offset_constr_local = ndofs_per_cell + gdim -
+//   ndofs_constr_per_cell; const int offset_constr
+//       = patch_data.size_minimisation_system(constrained_minimisation) - 1;
+
+//   const bool requires_lmp = (constrained_minimisation)
+//                                 ?
+//                                 patch_data.meanvalue_zero_condition_required()
+//                                 : false;
+
+//   std::span<const T> coefficients;
+
+//   for (std::size_t a = 1; a < ncells + 1; ++a)
+//   {
+//     int id_a = a - 1;
+
+//     // Isoparametric mapping
+//     const double detJ = patch_data.jacobi_determinant(id_a);
+//     mdspan_t<const double, 2> J = patch_data.jacobian(id_a);
+
+//     // DOFmap on cell
+//     smdspan_t<const std::int32_t, 2> asmbl_info_cell = stdex::submdspan(
+//         asmbl_info, stdex::full_extent, a, stdex::full_extent);
+
+//     // DOFs on cell
+//     if (constrained_minimisation)
+//     {
+//       coefficients = patch_data.coefficients_stress(a);
+//     }
+//     else
+//     {
+//       coefficients = patch_data.coefficients_flux(i_rhs, a);
+//     }
+
+//     // Evaluate linear- and bilinear form
+//     patch_data.reinitialise_Te(constrained_minimisation);
+//     minimisation_kernel(Te, coefficients, asmbl_info_cell, detJ, J);
+
+//     // Assemble linear- and bilinear form
+//     if constexpr (id_flux_order == 1)
+//     {
+//       if (requires_flux_bc)
+//       {
+//         // Assemble linar form
+//         L_patch(0) = 0;
+
+//         if constexpr (asmbl_systmtrx)
+//         {
+//           // Assemble bilinear form
+//           A_patch(0, 0) = 1;
+//         }
+//       }
+//       else
+//       {
+//         // Assemble linar form
+//         L_patch(0) += Te(1, 0);
+
+//         if constexpr (asmbl_systmtrx)
+//         {
+//           // Assemble bilinear form
+//           A_patch(0, 0) += Te(0, 0);
+//         }
+//       }
+//     }
+//     else
+//     {
+//       if (requires_flux_bc)
+//       {
+//         for (std::size_t i = 0; i < ndofs_per_cell; ++i)
+//         {
+//           std::int32_t dof_i = asmbl_info_cell(2, offset_asmblinfo + i);
+//           std::int8_t bmarker_i = boundary_markers[dof_i];
+
+//           // Assemble load vector
+//           if (bmarker_i)
+//           {
+//             L_patch(dof_i) = 0;
+//           }
+//           else
+//           {
+//             L_patch(dof_i) += Te(index_load, i);
+//           }
+
+//           // Assemble bilinear form
+//           if constexpr (asmbl_systmtrx)
+//           {
+//             if (bmarker_i)
+//             {
+//               A_patch(dof_i, dof_i) = 1;
+//             }
+//             else
+//             {
+//               for (std::size_t j = 0; j < ndofs_per_cell; ++j)
+//               {
+//                 std::int32_t dof_j = asmbl_info_cell(2, offset_asmblinfo +
+//                 j); std::int8_t bmarker_j = boundary_markers[dof_j];
+
+//                 if (bmarker_j)
+//                 {
+//                   A_patch(dof_i, dof_j) = 0;
+//                 }
+//                 else
+//                 {
+//                   A_patch(dof_i, dof_j) += Te(i, j);
+//                 }
+//               }
+//             }
+//           }
+//         }
+//       }
+//       else
+//       {
+//         for (std::size_t i = 0; i < ndofs_per_cell; ++i)
+//         {
+//           std::int32_t dof_i = asmbl_info_cell(2, offset_asmblinfo + i);
+
+//           // Assemble load vector
+//           L_patch(dof_i) += Te(index_load, i);
+
+//           // Assemble bilinear form
+//           if constexpr (asmbl_systmtrx)
+//           {
+//             for (std::size_t j = 0; j < ndofs_per_cell; ++j)
+//             {
+//               A_patch(dof_i, asmbl_info_cell(2, offset_asmblinfo + j))
+//                   += Te(i, j);
+//             }
+//           }
+//         }
+
+//         // Add lagrangian multiplier
+//         if (requires_lmp)
+//         {
+//           // std::cout << "Add lagrangian multiplier!" << std::endl;
+//           for (std::size_t i = 0; i < ndofs_constr_per_cell; ++i)
+//           {
+//             int dof_i = asmbl_info_cell(2, offset_constr_local + i);
+
+//             A_patch(dof_i, offset_constr) += Te(index_lmp, i);
+//             A_patch(offset_constr, dof_i) += Te(index_lmp, i);
+//           }
+//         }
+//       }
+//     }
+//   }
+// }
 } // namespace dolfinx_eqlb

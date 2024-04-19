@@ -85,11 +85,17 @@ public:
 
     // Equation system (unconstrained minimisation)
     _A.resize(ndofs_hdivz, ndofs_hdivz);
-    _L.resize(ndofs_hdivz);
-    _u.resize(ndofs_hdivz);
+
+    // Intermediate storage element contribution
+    _shape_Te = {ndofs_hdivz_per_cell + 1, ndofs_hdivz_per_cell};
+    _data_Te.resize(_shape_Te[0] * _shape_Te[1], 0);
 
     if (symconstr_required)
     {
+      // Equation system (unconstrained minimisation)
+      _L_sig.resize(_gdim * ndofs_hdivz);
+      _u_sigma.resize(_gdim * ndofs_hdivz);
+
       // Dimension constraint space
       // (including lagrangian multiplier for mean-value zero constraint)
       const int npnts_max = nfcts_max + 1;
@@ -109,31 +115,20 @@ public:
       _boundary_markers.resize(ndofs_hdivz_constr, false);
 
       // Intermediate storage element contribution
-      _shape_Te = {ndofs_hdivz_per_cell + 1, ndofs_hdivz_per_cell};
-      _shape_Te_constr
-          = {ndofs_constrhdivz_per_cell + 2, ndofs_constrhdivz_per_cell};
-
-      // std::cout << "Shape Te: " << ndofs_constrhdivz_per_cell + 1 << ", "
-      //           << ndofs_constrhdivz_per_cell << std::endl;
-
-      _data_Te.resize(_shape_Te_constr[0] * _shape_Te_constr[1], 0);
 
       // Intermediate storage of the stress coefficients
       _coefficients_stress.resize(ncells_max * _gdim * _ndofs_flux, 0);
 
       // Equation system (constrained minimisation)
-      _A_constr.resize(ndofs_hdivz_constr, ndofs_hdivz_constr);
-      _L_constr.resize(ndofs_hdivz_constr);
-      _u_constr.resize(ndofs_hdivz_constr);
     }
     else
     {
+      // Solution vector for flux/stress
+      _L_sig.resize(ndofs_hdivz);
+      _u_sigma.resize(ndofs_hdivz);
+
       // Boundary markers
       _boundary_markers.resize(ndofs_hdivz, false);
-
-      // Intermediate storage element contribution
-      _shape_Te = {ndofs_hdivz_per_cell + 1, ndofs_hdivz_per_cell};
-      _data_Te.resize(_shape_Te[0] * _shape_Te[1], 0);
     }
   }
 
@@ -161,8 +156,6 @@ public:
       // Consider lagrangian multiplier
       _meanvalue_condition_required = true;
       _dim_hdivz_constr += 1;
-
-      // std::cout << "patch size with lmp: " << _dim_hdivz_constr << std::endl;
     }
     else
     {
@@ -208,17 +201,7 @@ public:
   }
 
   /// Set storage element contribution (minimisation) to zero
-  void reinitialise_Te(const bool constrained_system)
-  {
-    if (constrained_system)
-    {
-      std::fill(_data_Te.begin(), _data_Te.end(), 0.0);
-    }
-    else
-    {
-      std::fill_n(_data_Te.begin(), _shape_Te[0] * _shape_Te[1], 0.0);
-    }
-  }
+  void reinitialise_Te() { std::fill(_data_Te.begin(), _data_Te.end(), 0.0); }
 
   /* Piola mapping */
 
@@ -494,100 +477,42 @@ public:
   /// Storage cell-contribution minimisation system
   /// @param constrained_system Id for constrained minimisation
   /// @return mdspan (ndofs_per_cell + 1, ndofs_per_cell) of the storage
-  mdspan_t<T, 2> Te(bool constrained_system)
-  {
-    if (constrained_system)
-    {
-      return mdspan_t<T, 2>(_data_Te.data(), _shape_Te_constr);
-    }
-    else
-    {
-      return mdspan_t<T, 2>(_data_Te.data(), _shape_Te);
-    }
-  }
+  mdspan_t<T, 2> Te() { return mdspan_t<T, 2>(_data_Te.data(), _shape_Te); }
 
   /// System matrix for minimisation problem
   /// @param constrained_system Id for constrained minimisation
   /// @return Eigen matrix of the minimisation system
-  Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>&
-  A_patch(bool constrained_system)
-  {
-    if (constrained_system)
-    {
-      return _A_constr;
-    }
-    else
-    {
-      return _A;
-    }
-  }
+  Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>& matrix_A() { return _A; }
 
   /// System vector for minimisation problem
   /// @param constrained_system Id for constrained minimisation
   /// @return Eigen vector of the minimisation system
-  Eigen::Matrix<T, Eigen::Dynamic, 1>& L_patch(bool constrained_system)
-  {
-    if (constrained_system)
-    {
-      return _L_constr;
-    }
-    else
-    {
-      return _L;
-    }
-  }
+  Eigen::Matrix<T, Eigen::Dynamic, 1>& vector_L_sigma() { return _L_sig; }
 
   /// Solution vector for minimisation problem
   /// @param constrained_system Id for constrained minimisation
   /// @return Eigen vector of the solution of minimisation problem
-  Eigen::Matrix<T, Eigen::Dynamic, 1>& u_patch(bool constrained_system)
+  Eigen::Matrix<T, Eigen::Dynamic, 1>& vector_u_sigma() { return _u_sigma; }
+
+  /// Factorise matrix A
+  void factorise_matrix_A()
   {
-    if (constrained_system)
+    if constexpr (id_flux_order > 1)
     {
-      return _u_constr;
-    }
-    else
-    {
-      return _u;
+      _solver_A.compute(_A.topLeftCorner(_dim_hdivz, _dim_hdivz));
     }
   }
 
-  /// Factorise the system matrix
-  void factorise_system(bool constrained_system)
+  /// Solve unconstrained minimisation problem
+  void solve_unconstrained_minimisation()
   {
-    if (constrained_system)
+    if constexpr (id_flux_order == 1)
     {
-      _solver_constr.compute(
-          _A_constr.topLeftCorner(_dim_hdivz_constr, _dim_hdivz_constr));
-      // std::cout << "Size system: " << _dim_hdivz_constr << std::endl;
+      _u_sigma(0) = _L_sig(0) / _A(0, 0);
     }
     else
     {
-      if constexpr (id_flux_order > 1)
-      {
-        _solver.compute(_A.topLeftCorner(_dim_hdivz, _dim_hdivz));
-      }
-    }
-  }
-
-  /// Solve the minimisation problem
-  void solve_system(bool constrained_system)
-  {
-    if (constrained_system)
-    {
-      _u_constr.head(_dim_hdivz_constr)
-          = _solver_constr.solve(_L_constr.head(_dim_hdivz_constr));
-    }
-    else
-    {
-      if constexpr (id_flux_order == 1)
-      {
-        _u(0) = _L(0) / _A(0, 0);
-      }
-      else
-      {
-        _u.head(_dim_hdivz) = _solver.solve(_L.head(_dim_hdivz));
-      }
+      _u_sigma.head(_dim_hdivz) = _solver_A.solve(_L_sig.head(_dim_hdivz));
     }
   }
 
@@ -712,15 +637,15 @@ protected:
   std::vector<std::int8_t> _boundary_markers;
 
   // Equation system
-  std::array<std::size_t, 2> _shape_Te, _shape_Te_constr;
-  std::vector<T> _data_Te;
+  std::array<std::size_t, 2> _shape_Te, _shape_Be, _shape_Ce;
+  std::vector<T> _data_Te, _data_Be, _data_Ce, _data_Lse, _data_Lce;
 
-  Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic> _A, _A_constr;
-  Eigen::Matrix<T, Eigen::Dynamic, 1> _L, _L_constr, _u, _u_constr;
+  Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic> _A, _B1, _B2, _C;
+  Eigen::Matrix<T, Eigen::Dynamic, 1> _L_sig, _L_c, _u_sigma, _u_c;
 
   // Solver
-  Eigen::LLT<Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>> _solver;
+  Eigen::LLT<Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>> _solver_A;
   Eigen::PartialPivLU<Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>>
-      _solver_constr;
+      _solver_C;
 };
 } // namespace dolfinx_eqlb

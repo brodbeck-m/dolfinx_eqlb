@@ -786,7 +786,7 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
           patch.requires_flux_bcs(i_rhs), false);
 
       // Factorisation of system matrix
-      patch_data.factorise_system(false);
+      patch_data.factorise_matrix_A();
     }
     else
     {
@@ -797,11 +797,11 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
     }
 
     // Solve system
-    patch_data.solve_system(false);
+    patch_data.solve_unconstrained_minimisation();
 
     /* Move patch-wise solution into global storage */
     // The patch-local solution
-    Eigen::Matrix<T, Eigen::Dynamic, 1>& u_patch = patch_data.u_patch(false);
+    Eigen::Matrix<T, Eigen::Dynamic, 1>& u_sigma = patch_data.vector_u_sigma();
 
     // Global solution vector and DOFmap
     std::span<T> x_flux_dhdiv = problem_data.flux(i_rhs).x()->mutable_array();
@@ -823,16 +823,8 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
       {
         // Apply correction
         coefficients_flux(id_a, dofmap_flux(0, a, i))
-            += dofmap_flux(3, a, i) * u_patch(dofmap_flux(2, a, i));
+            += dofmap_flux(3, a, i) * u_sigma(dofmap_flux(2, a, i));
       }
-
-      // std::cout << "Cell " << a << ": ";
-      // for (std::size_t i = 0; i < ndofs_flux; ++i)
-      // {
-      //   // Apply correction
-      //   std::cout << coefficients_flux(id_a, i) << " ";
-      // }
-      // std::cout << "\n";
 
       // Loop over DOFs an cell
       for (std::size_t i = 0; i < ndofs_flux; ++i)
@@ -901,8 +893,9 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
                                                minkernel, minkernel_rhs, true);
 
   /* Step 2: Enforce weak symmetry constraint */
-  impose_weak_symmetry<T, id_flux_order, false>(
-      geometry, patch, patch_data, problem_data, kernel_data, kernel_weaksym);
+  // impose_weak_symmetry<T, id_flux_order, false>(
+  //     geometry, patch, patch_data, problem_data, kernel_data,
+  //     kernel_weaksym);
 }
 
 } // namespace dolfinx_eqlb
