@@ -38,21 +38,21 @@ using smdspan_t
 /* Interface kernel functions */
 template <typename T, bool asmbl_systmtrx>
 using kernel_fn = std::function<void(
-    stdex::mdspan<double, stdex::dextents<std::size_t, 2>>, std::span<const T>,
+    stdex::mdspan<T, stdex::dextents<std::size_t, 2>>, std::span<const T>,
     stdex::mdspan<const std::int32_t, stdex::dextents<std::size_t, 2>,
                   stdex::layout_stride>,
     const double,
     stdex::mdspan<const double, stdex::dextents<std::size_t, 2>>)>;
 
-template <typename T, bool modified_patch>
+template <typename T>
 using kernel_fn_schursolver = std::function<void(
-    stdex::mdspan<double, stdex::dextents<std::size_t, 2>>,
-    stdex::mdspan<double, stdex::dextents<std::size_t, 2>>, std::span<double>,
-    std::span<double>, std::span<const T>,
+    stdex::mdspan<T, stdex::dextents<std::size_t, 2>>,
+    stdex::mdspan<T, stdex::dextents<std::size_t, 2>>, std::span<T>,
+    std::span<T>, std::span<const T>,
     stdex::mdspan<const std::int32_t, stdex::dextents<std::size_t, 2>,
                   stdex::layout_stride>,
-    const double,
-    stdex::mdspan<const double, stdex::dextents<std::size_t, 2>>)>;
+    const double, stdex::mdspan<const double, stdex::dextents<std::size_t, 2>>,
+    const bool)>;
 
 // ------------------------------------------------------------------------------
 

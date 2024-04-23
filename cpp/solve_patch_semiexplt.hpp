@@ -869,7 +869,7 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
                                 KernelDataEqlb<T>& kernel_data,
                                 kernel_fn<T, true>& minkernel,
                                 kernel_fn<T, false>& minkernel_rhs,
-                                kernel_fn<T, true>& kernel_weaksym)
+                                kernel_fn_schursolver<T>& kernel_weaksym)
 {
   /* Extract data */
   // Spacial dimension
@@ -893,9 +893,8 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
                                                minkernel, minkernel_rhs, true);
 
   /* Step 2: Enforce weak symmetry constraint */
-  // impose_weak_symmetry<T, id_flux_order, false>(
-  //     geometry, patch, patch_data, problem_data, kernel_data,
-  //     kernel_weaksym);
+  impose_weak_symmetry<T, id_flux_order, false>(
+      geometry, patch, patch_data, problem_data, kernel_data, kernel_weaksym);
 }
 
 } // namespace dolfinx_eqlb

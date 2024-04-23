@@ -253,8 +253,8 @@ public:
         dofmap(0, pcell_2, offs) = _inodes_local[pcell_2];
 
         // Patch-local DOF
-        dofmap(2, pcell_1, offs) = _ndof_min_flux;
-        dofmap(2, pcell_2, offs) = _ndof_min_flux;
+        dofmap(2, pcell_1, offs) = 0;
+        dofmap(2, pcell_2, offs) = 0;
 
         // Prefactor for construction of H(div=0) space
         dofmap(3, pcell_1, offs) = 1;
@@ -264,7 +264,7 @@ public:
       {
         int offs_1 = offs + 1;
         int offs_2 = offs + 2;
-        int pdof = _ndof_min_flux + a;
+        int pdof = a;
 
         // Cell-local DOF
         dofmap(0, pcell_1, offs_1) = (std::int32_t)node_local(cell_1, node);
@@ -296,12 +296,12 @@ public:
     if (pfct == 0)
     {
       offs = _offset_dofmap[3] + 2;
-      pdof = _ndof_min_flux + _nfcts - 1;
+      pdof = _nfcts - 1;
     }
     else
     {
       offs = _offset_dofmap[3] + 1;
-      pdof = _ndof_min_flux + _nfcts;
+      pdof = _nfcts;
     }
 
     // Get additional node on facet
