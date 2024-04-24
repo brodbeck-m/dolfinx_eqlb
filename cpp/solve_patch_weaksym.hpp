@@ -51,6 +51,7 @@ void impose_weak_symmetry(const mesh::Geometry& geometry,
 
   // The flux space
   const int ndofs_flux_fct = patch.ndofs_flux_fct();
+  const int ndofs_hdivz = patch.ndofs_flux_hdiz_zero();
 
   /* Initialisations */
   // Patch type and reversion information
@@ -161,9 +162,12 @@ void impose_weak_symmetry(const mesh::Geometry& geometry,
   else
   {
     // Set boundary markers
-    set_boundary_markers(patch_data.boundary_markers(true), Kernel::StressMin,
-                         patch_types, gdim, ncells, ndofs_flux_fct,
-                         patch_reversions);
+    if (patch.is_on_boundary())
+    {
+      set_boundary_markers(patch_data.boundary_markers(true), patch_types,
+                           patch_reversions, ncells, ndofs_hdivz,
+                           ndofs_flux_fct);
+    }
 
     // Assemble equation system
     assemble_stressminimiser<T, id_flux_order, modified_patch>(
@@ -175,7 +179,6 @@ void impose_weak_symmetry(const mesh::Geometry& geometry,
 
   /* Store local solution into global storage */
   // The flux space
-  const int ndofs_hdivz = patch.ndofs_flux_hdiz_zero();
   const int ndofs_hdivz_per_cell
       = gdim * ndofs_flux_fct + patch.ndofs_flux_cell_add();
 

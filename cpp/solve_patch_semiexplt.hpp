@@ -751,9 +751,13 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
 
     /* Step 2: Minimse sigma_delta */
     // Set boundary markers
-    set_boundary_markers(patch_data.boundary_markers(false), Kernel::FluxMin,
-                         {type_patch}, dim, ncells, ndofs_flux_fct,
-                         {reversion_required});
+    if (type_patch == PatchType::bound_essnt_dual
+        || type_patch == PatchType::bound_mixed)
+    {
+      set_boundary_markers(patch_data.boundary_markers(false), {type_patch},
+                           {reversion_required}, ncells, ndofs_hdivz,
+                           ndofs_flux_fct);
+    }
 
     // Check if assembly of entire system is required
     bool assemble_entire_system = false;

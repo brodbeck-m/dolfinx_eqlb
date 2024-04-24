@@ -100,8 +100,6 @@ public:
       const int ndofs_constr_per_cell
           = (_gdim == 2) ? nfcts_per_cell : 3 * nfcts_per_cell;
 
-      // DOFmap
-
       // Boundary markers
       _boundary_markers.resize(_gdim * ndofs_hdivz, false);
 

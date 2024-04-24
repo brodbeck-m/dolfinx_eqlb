@@ -396,66 +396,60 @@ generate_stress_minimisation_kernel(Kernel type, KernelDataEqlb<T>& kernel_data,
 /* Assemblers for patch-wise minimisation problems */
 
 /// Set boundary markers for patch-wise H(div=0) space
-/// @param boundary_markers   The boundary markers
-/// @param type_kernel        The kernel type of the minimisation problem
-/// @param type_patch         The patch type
-/// @param gdim               The geometric dimension
-/// @param ncells             Number of cells on patch
-/// @param ndofs_flux_fct     nDOFs flux-space space per facet
-/// @param reversion_required Patch requires reversion
+/// @param boundary_markers    The boundary markers
+/// @param types_patch         The patch types
+/// @param reversions_required Identifier if patch requires reversion
+/// @param ncells              Number of cells on patch
+/// @param ndofs_flux_hivz     nDOFs patch-wise H(div=0) flux-space
+/// @param ndofs_flux_fct      nDOFs flux-space space per facet
+
 void set_boundary_markers(std::span<std::int8_t> boundary_markers,
-                          const Kernel type_kernel,
-                          std::vector<PatchType> type_patch, const int gdim,
-                          const int ncells, const int ndofs_flux_fct,
-                          std::vector<bool> reversion_required)
+                          std::vector<PatchType> types_patch,
+                          std::vector<bool> reversions_required,
+                          const int ncells, const int ndofs_flux_hivz,
+                          const int ndofs_flux_fct)
 {
   // Reinitialise markers
   std::fill(boundary_markers.begin(), boundary_markers.end(), false);
 
-  // Set markers
-  if ((type_patch[0] != PatchType::internal))
+  // Auxiliaries
+  const int offset_En = ncells * (ndofs_flux_fct - 1);
+
+  // Set boundary markers
+  for (std::size_t i = 0; i < types_patch.size(); ++i)
   {
-    // Check if mixed space required
-    std::size_t bs = (type_kernel == Kernel::FluxMin) ? 1 : gdim;
-
-    // Auxiliaries
-    const int offs_En_base = bs * (ncells * (ndofs_flux_fct - 1));
-
-    // Set boundary markers
-    for (std::size_t i = 0; i < bs; ++i)
+    if (types_patch[i] != PatchType::bound_essnt_primal)
     {
-      if (type_patch[i] != PatchType::bound_essnt_primal)
+      // Basic offset
+      int offset_i = i * ndofs_flux_hivz;
+
+      // Set boundary markers for d0
+      boundary_markers[offset_i] = true;
+
+      for (std::size_t j = 1; j < ndofs_flux_fct; ++j)
       {
-        // Set boundary markers for d0
-        boundary_markers[i] = true;
-
-        for (std::size_t j = 1; j < ndofs_flux_fct; ++j)
+        if (types_patch[i] == PatchType::bound_essnt_dual)
         {
-          if (type_patch[i] == PatchType::bound_essnt_dual)
-          {
-            // Mark DOFs on facet E0
-            int offs_E0 = i + bs * j;
-            boundary_markers[offs_E0] = true;
+          // Mark DOFs on facet E0
+          int offset_E0 = offset_i + j;
+          boundary_markers[offset_E0] = true;
 
-            // Mark DOFs on facet En
-            int offs_En = offs_En_base + offs_E0;
-            boundary_markers[offs_En_base + offs_E0] = true;
+          // Mark DOFs on facet En
+          boundary_markers[offset_E0 + offset_En] = true;
+        }
+        else
+        {
+          if (reversions_required[i])
+          {
+            // Mark DOFs in facet En
+            // (Mixed patch with reversed order)
+            boundary_markers[offset_i + offset_En + j] = true;
           }
           else
           {
-            if (reversion_required[i])
-            {
-              // Mark DOFs in facet En
-              // (Mixed patch with reversed order)
-              int offs_En = offs_En_base + i + bs * j;
-              boundary_markers[offs_En] = true;
-            }
-            else
-            {
-              // Mark DOFs in facet E0
-              // (Mixed patch with original order)
-              boundary_markers[i + bs * j] = true;
-            }
+            // Mark DOFs in facet E0
+            // (Mixed patch with original order)
+            boundary_markers[offset_i + j] = true;
           }
         }
       }
