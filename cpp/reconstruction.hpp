@@ -223,20 +223,20 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
       patch, kernel_data.nipoints_facet(), _symconstr_required);
 
   // Set minimisation kernels
-  kernel_fn<T, true> minkernel = generate_minimisation_kernel<T, true>(
-      Kernel::FluxMin, kernel_data, dim, patch.fcts_per_cell(),
-      patch.degree_raviart_thomas());
+  kernel_fn<T, true> kernel_fluxmin
+      = generate_flux_minimisation_kernel<T, true>(
+          kernel_data, dim, patch.degree_raviart_thomas());
 
-  kernel_fn<T, false> minkernel_rhs = generate_minimisation_kernel<T, false>(
-      Kernel::FluxMin, kernel_data, dim, patch.fcts_per_cell(),
-      patch.degree_raviart_thomas());
+  kernel_fn<T, false> kernel_fluxmin_l
+      = generate_flux_minimisation_kernel<T, false>(
+          kernel_data, dim, patch.degree_raviart_thomas());
 
   // Execute equilibration
   // FIXME - Currently only 2D meshes supported
   if constexpr (symconstr_required)
   {
     // Set kernel for weak symmetry condition
-    kernel_fn_schursolver<T> minkernel_weaksym
+    kernel_fn_schursolver<T> kernel_weaksym
         = generate_stress_minimisation_kernel<T>(Kernel::StressMin, kernel_data,
                                                  dim, patch.fcts_per_cell(),
                                                  patch.degree_raviart_thomas());
@@ -300,7 +300,7 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
         {
           equilibrate_flux_semiexplt<T, id_flux_order>(
               mesh->geometry(), patch, patch_data, problem_data, kernel_data,
-              minkernel, minkernel_rhs, minkernel_weaksym);
+              kernel_fluxmin, kernel_fluxmin_l, kernel_weaksym);
         }
       }
     }
@@ -327,7 +327,7 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
       // Calculate solution patch
       equilibrate_flux_semiexplt<T, id_flux_order>(
           mesh->geometry(), patch, patch_data, problem_data, kernel_data,
-          minkernel, minkernel_rhs);
+          kernel_fluxmin, kernel_fluxmin_l);
     }
   }
 }
