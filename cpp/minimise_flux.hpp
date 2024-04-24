@@ -718,7 +718,6 @@ void assemble_stressminimiser(kernel_fn_schursolver<T>& minimisation_kernel,
         asmbl_info, stdex::full_extent, a, stdex::full_extent);
 
     // DOFs on cell
-    // FIXME: Wrong DOF layout (stresses) for block-wise assembly
     std::span<const T> coefficients = patch_data.coefficients_stress(a);
 
     // Evaluate linear- and bilinear form
@@ -823,53 +822,5 @@ void assemble_stressminimiser(kernel_fn_schursolver<T>& minimisation_kernel,
       }
     }
   }
-
-  // // Debug
-  // std::cout << "A: " << std::endl;
-  // for (int i = 0; i < ndofs_flux_hdivz; ++i)
-  // {
-  //   for (int j = 0; j < ndofs_flux_hdivz; ++j)
-  //   {
-  //     std::cout << A(i, j) << " ";
-  //   }
-  //   std::cout << "\n";
-  // }
-
-  // std::cout << "B1: " << std::endl;
-  // for (int i = 0; i < ndofs_flux_hdivz; ++i)
-  // {
-  //   for (int j = 0; j < ndofs_constr; ++j)
-  //   {
-  //     std::cout << B(i, j) << " ";
-  //   }
-  //   std::cout << "\n";
-  // }
-
-  // std::cout << "B2: " << std::endl;
-  // for (int i = 0; i < ndofs_flux_hdivz; ++i)
-  // {
-  //   for (int j = ndofs_constr; j < 2 * ndofs_constr; ++j)
-  //   {
-  //     std::cout << B(i, j) << " ";
-  //   }
-  //   std::cout << "\n";
-  // }
-
-  // std::cout << "C: " << std::endl;
-  // for (int i = 0; i < ndofs_constr + 1; ++i)
-  // {
-  //   for (int j = 0; j < ndofs_constr + 1; ++j)
-  //   {
-  //     std::cout << C(i, j) << " ";
-  //   }
-  //   std::cout << "\n";
-  // }
-
-  // std::cout << "L: " << std::endl;
-  // for (int i = 0; i < 2 * ndofs_flux_hdivz + ndofs_constr; ++i)
-  // {
-  //   std::cout << L(i) << " ";
-  // }
-  // std::cout << "\n";
 }
 } // namespace dolfinx_eqlb
