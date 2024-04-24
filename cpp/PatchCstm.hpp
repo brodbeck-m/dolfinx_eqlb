@@ -556,39 +556,8 @@ public:
   /// @return Number of additional flux-DOFs on cell
   int ndofs_flux_cell_add() { return _ndof_flux_add_cell; }
 
-  /// @return Number of DOFs on (patch-wise) minimsation space
-  int ndofs_minspace(const bool constrained_system)
-  {
-    if (constrained_system)
-    {
-      if (_dim == 2)
-      {
-        return 2 * _ndof_min_flux + _ndof_min_cons;
-      }
-      else
-      {
-        return 3 * (_ndof_min_flux + _ndof_min_cons);
-      }
-    }
-    else
-    {
-      return _ndof_min_flux;
-    }
-  }
-
-  /// @return Number of flux-DOFs on (patch-wise) minimsation space
-  int ndofs_minspace_flux(const bool constrained_system)
-  {
-    if (constrained_system)
-    {
-
-      return _dim * _ndof_min_flux;
-    }
-    else
-    {
-      return _ndof_min_flux;
-    }
-  }
+  /// @return Number of flux-DOFs on (patch-wise) H(div=0) space
+  int ndofs_flux_hdiz_zero() { return _ndof_min_flux; }
 
   /// Extract assembly information for minnisation problem
   ///

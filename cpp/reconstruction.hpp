@@ -246,7 +246,6 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
 
     // Loop over all patches
     for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
-    // for (std::size_t i_node = 4; i_node < 5; ++i_node)
     {
       if (perform_equilibration[i_node])
       {
@@ -255,20 +254,6 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
 
         // Create Sub-DOFmap
         patch.create_subdofmap(i_node);
-
-        // std::cout << "Cells: " << std::endl;
-        // for (auto c : patch.cells())
-        // {
-        //   std::cout << c << " ";
-        // }
-        // std::cout << "\n";
-
-        // std::cout << "Facets: " << std::endl;
-        // for (auto f : patch.fcts())
-        // {
-        //   std::cout << f << " ";
-        // }
-        // std::cout << "\n";
 
         // Check if equilibration is possible
         if (patch.ncells() == 1)
@@ -342,7 +327,7 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
       // Calculate solution patch
       equilibrate_flux_semiexplt<T, id_flux_order>(
           mesh->geometry(), patch, patch_data, problem_data, kernel_data,
-          minkernel, minkernel_rhs, true);
+          minkernel, minkernel_rhs);
     }
   }
 }
@@ -484,47 +469,5 @@ void reconstruct_fluxes_cstm(
     }
   }
 }
-
-// /// Execute flux calculation based on H(div) conforming equilibration
-// ///
-// /// Equilibration based on semi-explicit formulas and small, unconstrained
-// /// minimisation problems.
-// ///
-// /// @param flux_hdiv           Function that holds the reconstructed flux
-// /// @param flux_dg             Function that holds the projected primal flux
-// /// @param rhs_dg              Function that holds the projected rhs
-// /// @param fct_esntbound_prime Facets of essential BCs of primal problem
-// /// @param fct_esntbound_flux  Facets of essential BCs on flux field
-// /// @param bcs_flux            Essential boundary conditions for the flux
-// template <typename T>
-// void reconstruct_stresses(
-//     std::vector<std::shared_ptr<fem::Function<T>>>& flux_hdiv,
-//     std::shared_ptr<BoundaryData<T>> boundary_data)
-// {
-//   // Order of the flux space
-//   const int order_flux
-//       = flux_hdiv[0]->function_space()->element()->basix_element().degree();
-
-//   /* Set problem data */
-//   ProblemDataStress<T> problem_data
-//       = ProblemDataStress<T>(flux_hdiv, boundary_data);
-
-//   /* Call equilibration */
-//   if (order_flux == 1)
-//   {
-//     // Perform equilibration
-//     reconstruct_stresses_patch<T, 1>(problem_data);
-//   }
-//   else if (order_flux == 2)
-//   {
-//     // Perform equilibration
-//     reconstruct_stresses_patch<T, 2>(problem_data);
-//   }
-//   else
-//   {
-//     // Perform equilibration
-//     reconstruct_stresses_patch<T, 3>(problem_data);
-//   }
-// }
 
 } // namespace dolfinx_eqlb

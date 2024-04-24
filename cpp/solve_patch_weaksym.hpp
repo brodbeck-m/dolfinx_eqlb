@@ -174,29 +174,32 @@ void impose_weak_symmetry(const mesh::Geometry& geometry,
   patch_data.solve_constrained_minimisation(requires_bcs);
 
   /* Store local solution into global storage */
-  const int dim_hdivz = patch.ndofs_minspace_flux(false);
-  const int ndofs_flux_per_cell
+  // The flux space
+  const int ndofs_hdivz = patch.ndofs_flux_hdiz_zero();
+  const int ndofs_hdivz_per_cell
       = gdim * ndofs_flux_fct + patch.ndofs_flux_cell_add();
 
+  // The patch solution
   Eigen::Matrix<T, Eigen::Dynamic, 1>& u_patch = patch_data.vector_u_sigma();
 
+  // Move solution from patch-wise into global storage
   for (std::size_t i_row = 0; i_row < gdim; ++i_row)
   {
     // Global storage of the solution
     std::span<T> x_flux_dhdiv = problem_data.flux(i_row).x()->mutable_array();
 
     // Initialise offset
-    int offset = i_row * dim_hdivz;
+    int offset_u = i_row * ndofs_hdivz;
 
     // Loop over cells
     for (std::int32_t a = 1; a < ncells + 1; ++a)
     {
       // Map solution from H(div=0) to H(div) space
-      for (std::size_t i = 0; i < ndofs_flux_per_cell; ++i)
+      for (std::size_t i = 0; i < ndofs_hdivz_per_cell; ++i)
       {
         // Local to global storage
         x_flux_dhdiv[asmbl_info(1, a, i)]
-            += asmbl_info(3, a, i) * u_patch(offset + asmbl_info(2, a, i));
+            += asmbl_info(3, a, i) * u_patch(offset_u + asmbl_info(2, a, i));
       }
     }
   }
