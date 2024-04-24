@@ -30,7 +30,7 @@ public:
       : _symconstr_required(symconstr_required), _gdim(patch.dim()),
         _degree_flux_rt(patch.degree_raviart_thomas()),
         _ndofs_flux(patch.ndofs_flux()), _ncells_max(patch.ncells_max()),
-        _size_j(_gdim * _gdim)
+        _size_J(_gdim * _gdim)
   {
     // The patch
     const int ncells_max = patch.ncells_max();
@@ -42,8 +42,8 @@ public:
 
     // --- Initialise storage
     // Piola mapping
-    _data_J.resize(_size_j * ncells_max, 0);
-    _data_K.resize(_size_j * ncells_max, 0);
+    _data_J.resize(_size_J * ncells_max, 0);
+    _data_K.resize(_size_J * ncells_max, 0);
     _data_detJ.resize(ncells_max, 0);
 
     // Facet prefactors on cells
@@ -160,7 +160,6 @@ public:
 
       // Consider lagrangian multiplier
       _meanvalue_condition_required = true;
-      _dim_hdivz_constr += 1;
     }
     else
     {
@@ -177,17 +176,11 @@ public:
           _meanvalue_condition_required = true;
         }
       }
-
-      if (_meanvalue_condition_required)
-      {
-        _dim_hdivz_constr += 1;
-      }
     }
 
     // --- Update length of mdspans
     _shape_Mm[0] = ncells;
     _shape_coeffsflux[1] = ncells;
-    _shape_dofmap[1] = ncells + 2;
 
     // --- Re-initialise storage
     // Coefficients of the flux
@@ -226,12 +219,12 @@ public:
                            mdspan_t<const double, 2> J)
   {
     // The offset
-    const int offset = _size_j * cell_id;
+    const int offset = _size_J * cell_id;
 
     // Storage
     _data_detJ[cell_id] = detJ;
 
-    store_piola_matrix(std::span<double>(_data_J.data() + offset, _size_j), J);
+    store_piola_matrix(std::span<double>(_data_J.data() + offset, _size_J), J);
   }
 
   /// Store data for Piola mapping
@@ -244,13 +237,13 @@ public:
                            mdspan_t<const double, 2> K)
   {
     // The offset
-    const int offset = _size_j * cell_id;
+    const int offset = _size_J * cell_id;
 
     // Storage
     _data_detJ[cell_id] = detJ;
 
-    store_piola_matrix(std::span<double>(_data_J.data() + offset, _size_j), J);
-    store_piola_matrix(std::span<double>(_data_K.data() + offset, _size_j), K);
+    store_piola_matrix(std::span<double>(_data_J.data() + offset, _size_J), J);
+    store_piola_matrix(std::span<double>(_data_K.data() + offset, _size_J), K);
   }
 
   // --- Getter methods ---
@@ -279,7 +272,7 @@ public:
   mdspan_t<const double, 2> jacobian(const int cell_id) const
   {
     // Set offset
-    return mdspan_t<const double, 2>(_data_J.data() + _size_j * cell_id, _gdim,
+    return mdspan_t<const double, 2>(_data_J.data() + _size_J * cell_id, _gdim,
                                      _gdim);
   }
 
@@ -289,7 +282,7 @@ public:
   mdspan_t<const double, 2> inverse_jacobian(const int cell_id) const
   {
     // Set offset
-    return mdspan_t<const double, 2>(_data_K.data() + _size_j * cell_id, _gdim,
+    return mdspan_t<const double, 2>(_data_K.data() + _size_J * cell_id, _gdim,
                                      _gdim);
   }
 
@@ -434,33 +427,6 @@ public:
   bool meanvalue_zero_condition_required() const
   {
     return _meanvalue_condition_required;
-  }
-
-  /// Size of the current minimisation system
-  int size_minimisation_system(bool constrained_system) const
-  {
-    if (constrained_system)
-    {
-      return _dim_hdivz_constr;
-    }
-    else
-    {
-      return _dim_hdivz;
-    }
-  }
-
-  /// The DOFmap of the constrained minimisation space
-  ///
-  /// id within the first index:
-  ///   id = 0: local DOFs
-  ///   id = 1: global DOFs
-  ///   id = 2: patch-local DOFs
-  ///   id = 3: prefactor for construction of H(div=0) space
-  ///
-  /// @return mdspan (id x ncells x ndofs_per_cell) of the DOFmap
-  mdspan_t<std::int32_t, 3> assembly_info_constained_minimisation()
-  {
-    return mdspan_t<std::int32_t, 3>(_data_dofmap.data(), _shape_dofmap);
   }
 
   /// The boundary markers (const version)
@@ -706,9 +672,6 @@ protected:
 
     // Number of constraints
     _dim_constr = (_gdim == 2) ? npnt : 3 * npnt;
-
-    // Dimension of the constrained minimisation space
-    _dim_hdivz_constr = dimension_constrained_minspace(_dim_hdivz, npnt);
   }
 
   /* Variables */
@@ -722,7 +685,7 @@ protected:
   const int _degree_flux_rt, _ndofs_flux;
 
   // Dimension H(div=0) space
-  std::size_t _dim_hdivz, _dim_constr, _dim_hdivz_constr;
+  std::size_t _dim_hdivz, _dim_constr;
 
   // The length of the patch
   const int _ncells_max;
@@ -730,7 +693,7 @@ protected:
 
   // --- Patch-wise data (pre-calculated)
   // Storage of data for Piola mapping
-  const int _size_j;
+  const int _size_J;
   std::vector<double> _data_J, _data_K, _data_detJ;
 
   // Pre-factors cell facets
@@ -754,11 +717,8 @@ protected:
   std::vector<T> _c_ta_div, _cj_ta_ea;
 
   // --- The equation system
-  // marker for addition mean-value constraint
+  // Marker for addition mean-value constraint
   bool _meanvalue_condition_required;
-  // DOFmap
-  std::array<std::size_t, 3> _shape_dofmap;
-  std::vector<std::int32_t> _data_dofmap;
 
   // Boundary markers
   std::vector<std::int8_t> _boundary_markers;
