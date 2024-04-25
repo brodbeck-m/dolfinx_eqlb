@@ -217,16 +217,22 @@ def set_arbitrary_bcs(
         u_D = [dfem.Function(V_prime) for i in range(0, len(boundary_id_dirichlet))]
 
         # Set homogenous dirichlet boundary conditions
-        V_bc = dfem.FunctionSpace(domain, ("DG", degree_bc))
+        if V_prime.num_sub_spaces == 0:
+            V_bc = dfem.FunctionSpace(domain, ("DG", degree_bc))
+        else:
+            V_bc = dfem.VectorFunctionSpace(domain, ("DG", degree_bc))
+
         f_bc = dfem.Function(V_bc)
-        f_bc.x.array[:] = 2 * (np.random.rand(V_bc.dofmap.index_map.size_local) + 0.1)
+        f_bc.x.array[:] = 2 * (
+            np.random.rand(V_bc.dofmap.index_map.size_local * V_bc.dofmap.bs) + 0.1
+        )
 
         func_neumann = [f_bc for i in range(0, len(boundary_id_neumann))]
     else:
         raise ValueError("Not implemented!")
 
     # Specify if projection is required
-    if degree_bc < degree_flux - 1:
+    if degree_bc <= degree_flux:
         neumann_projection = [False for i in range(0, len(boundary_id_neumann))]
     else:
         neumann_projection = [True for i in range(0, len(boundary_id_neumann))]
