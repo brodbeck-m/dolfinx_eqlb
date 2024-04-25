@@ -350,7 +350,7 @@ public:
   /// Storage is designed for the maximum patch size occurring within
   /// the current mesh.
   ///
-  /// @param nnodes_proc Numbe rof nodes on current processor
+  /// @param nnodes_proc Number of nodes on current processor
   /// @param mesh        The current mesh
   /// @param bfct_type   List with type of all boundary facets
   OrientedPatch(int nnodes_proc, std::shared_ptr<const mesh::Mesh> mesh,
