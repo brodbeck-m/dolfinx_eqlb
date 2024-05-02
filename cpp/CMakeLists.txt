@@ -64,7 +64,6 @@ set(
   ProblemData.hpp
   ProblemDataFluxCstm.hpp
   ProblemDataFluxEV.hpp
-  ProblemDataStress.hpp
   QuadratureRule.hpp
   StorageStiffness.hpp
   assemble_patch_constrmin.hpp

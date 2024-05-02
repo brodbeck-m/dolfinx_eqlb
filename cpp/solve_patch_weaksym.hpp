@@ -6,7 +6,6 @@
 #include "Patch.hpp"
 #include "PatchCstm.hpp"
 #include "PatchData.hpp"
-#include "ProblemDataStress.hpp"
 #include "minimise_flux.hpp"
 #include "utils.hpp"
 

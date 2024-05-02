@@ -7,7 +7,6 @@
 #include "PatchFluxEV.hpp"
 #include "ProblemDataFluxCstm.hpp"
 #include "ProblemDataFluxEV.hpp"
-#include "ProblemDataStress.hpp"
 #include "StorageStiffness.hpp"
 #include "minimise_flux.hpp"
 #include "solve_patch_constrmin.hpp"
@@ -274,14 +273,6 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
               std::vector<std::int32_t> grouped_patches
                   = patch.group_boundary_patches(i_node, pnt_on_stress_boundary,
                                                  1, 2);
-
-              std::cout << "Grouped patches: ";
-              for (auto i : grouped_patches)
-              {
-                std::cout << i << " ";
-              }
-              std::cout << "\n";
-              throw std::runtime_error("End Debug!");
 
               // Equilibration step 1: Explicit step and minimisation
               for (std::size_t i = grouped_patches.size(); i-- > 0;)
