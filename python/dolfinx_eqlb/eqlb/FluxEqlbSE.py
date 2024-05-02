@@ -85,6 +85,7 @@ class FluxEqlbSE(FluxEquilibrator):
             self.V_flux,
             True,
             list_bfct_prime,
+            self.equilibrate_stresses,
             quadrature_degree,
         )
 

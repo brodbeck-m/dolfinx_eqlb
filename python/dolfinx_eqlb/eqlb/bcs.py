@@ -146,7 +146,9 @@ def boundarydata(
     V: dfem.FunctionSpace,
     custom_rt: bool,
     dirichlet_factes: typing.List[np.ndarray],
+    equilibrate_stress: bool,
     quadrature_degree: typing.Optional[int] = None,
+
 ):
     # Check input
     n_rhs = len(flux_conditions)
@@ -174,4 +176,5 @@ def boundarydata(
         custom_rt,
         qdegree,
         dirichlet_factes,
+        equilibrate_stress,
     )

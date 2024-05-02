@@ -137,6 +137,7 @@ def test_boundary_data_polynomial(mesh_type, degree, rt_space, use_projection):
                 V.sub(0),
                 custom_rt,
                 [[]],
+                True,
             )
         else:
             boundary_data = boundarydata(
@@ -145,6 +146,7 @@ def test_boundary_data_polynomial(mesh_type, degree, rt_space, use_projection):
                 V_flux,
                 custom_rt,
                 [[]],
+                True,
             )
 
         # Interpolate BC into testspace
@@ -217,6 +219,7 @@ def test_boundary_data_general(degree):
         V_flux,
         True,
         [[]],
+        True,
         quadrature_degree=3 * degree,
     )
 
