@@ -29,8 +29,11 @@ public:
                 const int niponts_per_fct, const bool symconstr_required)
       : _symconstr_required(symconstr_required), _gdim(patch.dim()),
         _degree_flux_rt(patch.degree_raviart_thomas()),
-        _ndofs_flux(patch.ndofs_flux()), _ncells_max(patch.ncells_max()),
-        _size_J(_gdim * _gdim)
+        _ndofs_flux(patch.ndofs_flux()),
+        _ndofs_flux_fct(patch.ndofs_flux_fct()),
+        _dim_hdivz_per_cell(_gdim * _ndofs_flux_fct
+                            + patch.ndofs_flux_cell_add() - 1),
+        _ncells_max(patch.ncells_max()), _size_J(_gdim * _gdim)
   {
     // The patch
     const int ncells_max = patch.ncells_max();
@@ -38,7 +41,7 @@ public:
 
     // Counter flux DOFs
     const int ndofs_projflux = patch.ndofs_fluxdg_cell();
-    const int ndofs_flux_fct = patch.ndofs_flux_fct();
+    // const int ndofs_flux_fct = patch.ndofs_flux_fct();
 
     // --- Initialise storage
     // Piola mapping
@@ -50,7 +53,7 @@ public:
     _data_fctprefactors_cell.resize(_gdim * ncells_max);
 
     // Mapped interpolation matrix
-    _shape_Mm = {_ncells_max, ndofs_flux_fct, _gdim, niponts_per_fct};
+    _shape_Mm = {_ncells_max, _ndofs_flux_fct, _gdim, niponts_per_fct};
     _data_Mm.resize(_shape_Mm[0] * _shape_Mm[1] * _shape_Mm[2] * _shape_Mm[3],
                     0);
 
@@ -69,25 +72,30 @@ public:
 
     // Higher order DOFs (explicit solution step)
     _c_ta_div.resize(patch.ndofs_flux_cell_div(), 0);
-    _cj_ta_ea.resize(ndofs_flux_fct - 1, 0);
+    _cj_ta_ea.resize(_ndofs_flux_fct - 1, 0);
 
     // --- Initialise equation system
     // FIXME - ndofs_hdivz_per_cell wrong for 2D quads + 3D
     const int nfcts_max = ncells_max + 1;
 
-    const std::size_t ndofs_hdivz
-        = dimension_uconstrained_minspace(ncells_max, nfcts_max);
-    const int ndofs_hdivz_per_cell
-        = 2 * ndofs_flux_fct + patch.ndofs_flux_cell_add() - 1;
+    const std::size_t ndofs_hdivz_max
+        = (symconstr_required)
+              ? dimension_uconstrained_minspace(ncells_max, nfcts_max)
+                    + 2 * (_ndofs_flux_fct - 1)
+              : dimension_uconstrained_minspace(ncells_max, nfcts_max);
+    // const int ndofs_hdivz_per_cell
+    //     = 2 * ndofs_flux_fct + patch.ndofs_flux_cell_add() - 1;
 
     // Identifier for mean-value zero condition
     _meanvalue_condition_required = false;
 
     // Equation system (unconstrained minimisation)
-    _A.resize(ndofs_hdivz, ndofs_hdivz);
+    _A.resize(ndofs_hdivz_max, ndofs_hdivz_max);
 
     // Intermediate storage element contribution
-    _shape_Te = {ndofs_hdivz_per_cell + 1, ndofs_hdivz_per_cell};
+    const std::size_t dim_hdivz_per_cell_max
+        = _dim_hdivz_per_cell + _ndofs_flux_fct - 1;
+    _shape_Te = {dim_hdivz_per_cell_max + 1, dim_hdivz_per_cell_max};
     _data_Te.resize(_shape_Te[0] * _shape_Te[1], 0);
 
     if (symconstr_required)
@@ -101,37 +109,39 @@ public:
           = (_gdim == 2) ? nfcts_per_cell : 3 * nfcts_per_cell;
 
       // Boundary markers
-      _boundary_markers.resize(_gdim * ndofs_hdivz, false);
+      _boundary_markers.resize(_gdim * ndofs_hdivz_max, false);
 
       // Intermediate storage element contribution
-      _shape_Be = {ndofs_hdivz_per_cell, _gdim * ndofs_constr_per_cell};
+      _shape_Be = {dim_hdivz_per_cell_max, _gdim * ndofs_constr_per_cell};
 
       _data_Be.resize(_shape_Be[0] * _shape_Be[1], 0);
       _data_Ce.resize(ndofs_constr_per_cell, 0);
-      _data_Le.resize(_gdim * ndofs_hdivz_per_cell + ndofs_constr_per_cell, 0);
+      _data_Le.resize(_gdim * dim_hdivz_per_cell_max + ndofs_constr_per_cell,
+                      0);
 
       // Intermediate storage of the stress coefficients
       _coefficients_stress.resize(ncells_max * _gdim * _ndofs_flux, 0);
 
       // Equation system (unconstrained minimisation)
-      _L.resize(_gdim * ndofs_hdivz + ndofs_constr + 1);
-      _Ainv_t_fu.resize(ndofs_hdivz);
-      _u_sigma.resize(_gdim * ndofs_hdivz);
+      _L.resize(_gdim * ndofs_hdivz_max + ndofs_constr + 1);
+      _Ainv_t_fu.resize(ndofs_hdivz_max);
+      _u_sigma.resize(_gdim * ndofs_hdivz_max);
 
       // Equation system (constrained minimisation)
-      _B.resize(ndofs_hdivz, _gdim * ndofs_constr);
-      _Ainv_t_B.resize(ndofs_hdivz, ndofs_constr);
+      _A_rec.resize(ndofs_hdivz_max, ndofs_hdivz_max);
+      _B.resize(ndofs_hdivz_max, _gdim * ndofs_constr);
+      _Ainv_t_B.resize(ndofs_hdivz_max, ndofs_constr);
       _C.resize(ndofs_constr + 1, ndofs_constr + 1);
       _u_c.resize(ndofs_constr + 1);
     }
     else
     {
       // Boundary markers
-      _boundary_markers.resize(ndofs_hdivz, false);
+      _boundary_markers.resize(ndofs_hdivz_max, false);
 
       // Solution vector for flux/stress
-      _L.resize(ndofs_hdivz);
-      _u_sigma.resize(ndofs_hdivz);
+      _L.resize(ndofs_hdivz_max);
+      _u_sigma.resize(ndofs_hdivz_max);
     }
   }
 
@@ -166,13 +176,19 @@ public:
 
       // Check if lagrangian multiplier is required
       _meanvalue_condition_required = false;
+      int condition_count = 0;
 
       for (std::size_t i = 0; i < _gdim; ++i)
       {
         if (type_patch[i] == PatchType::bound_essnt_dual)
         {
-          _meanvalue_condition_required = true;
+          condition_count += 1;
         }
+      }
+
+      if (condition_count == _gdim)
+      {
+        _meanvalue_condition_required = true;
       }
     }
 
@@ -253,6 +269,10 @@ public:
   /// Number of cells on current patch
   /// @return The cell number
   int ncells() const { return _ncells; }
+
+  /// Dimension of of patch-wise H(div=0) space per cell
+  /// @return The dimension
+  int ndofs_flux_hdivz_per_cell() const { return _dim_hdivz_per_cell; }
 
   /// Dimension of of patch-wise H(div=0) space
   /// @return The dimension
@@ -482,6 +502,13 @@ public:
   /// @return Eigen representation of A
   Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>& matrix_A() { return _A; }
 
+  /// The sub-matrix A without boundary conditions
+  /// @return Eigen representation of A
+  Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>& matrix_A_without_bc()
+  {
+    return _A_rec;
+  }
+
   /// The sub-matrces B
   ///
   /// Cumulated storage of B_i: [B_1, ..., B_n]
@@ -534,18 +561,48 @@ public:
     // Offset for vector L_c
     const int offset_Lc = _gdim * _dim_hdivz;
 
+    // std::cout << "Unmodified A:" << std::endl;
+    // for (std::size_t i = 0; i < _dim_hdivz; ++i)
+    // {
+    //   for (std::size_t j = 0; j < _dim_hdivz; ++j)
+    //   {
+    //     std::cout << _A_rec(i, j) << " ";
+    //   }
+    //   std::cout << std::endl;
+    // }
+
     // Calculate Schur complement
     for (int k = 0; k < _gdim; ++k)
     {
       // Offsets
       int offset_Bk = k * _dim_constr;
+      int offset_uk = k * _dim_hdivz;
 
       // Apply boundary conditions on A
       if (requires_flux_bc)
       {
         // Modify A and f_uk
-        throw std::runtime_error(
-            "Schur solver for patches with flux BCs not implemented");
+        apply_bcs_on_A(k);
+
+        // std::cout << "Modified A, k=" << k << std::endl;
+        // for (std::size_t i = 0; i < _dim_hdivz; ++i)
+        // {
+        //   for (std::size_t j = 0; j < _dim_hdivz; ++j)
+        //   {
+        //     std::cout << _A(i, j) << " ";
+        //   }
+        //   std::cout << std::endl;
+        // }
+
+        // std::cout << "B, k=" << k << std::endl;
+        // for (std::size_t i = 0; i < _dim_hdivz; ++i)
+        // {
+        //   for (std::size_t j = 0; j < _dim_constr; ++j)
+        //   {
+        //     std::cout << _B(i, offset_Bk + j) << " ";
+        //   }
+        //   std::cout << std::endl;
+        // }
 
         // Factorise A
         factorise_matrix_A();
@@ -570,18 +627,29 @@ public:
     }
 
     // Factorise schur complement
-    const int dim_c = _dim_constr + 1;
+    const int dim_c
+        = (_meanvalue_condition_required) ? _dim_constr + 1 : _dim_constr;
 
     _solver_C.compute(_C.topLeftCorner(dim_c, dim_c));
 
     // Solve for constraints
+    // std::cout << "dim_c= " << dim_c << std::endl;
     _u_c.head(dim_c) = _solver_C.solve(_L.segment(offset_Lc, dim_c));
+
+    // std::cout << "Solution c:" << std::endl;
+    // for (std::size_t i = 0; i < _dim_constr; ++i)
+    // {
+    //   std::cout << _u_c(i) << " ";
+    // }
+    // std::cout << "\n";
 
     // Solve for u_k
     _u_sigma.setZero();
 
     for (int k = _gdim - 1; k > -1; --k)
     {
+      // std::cout << "Solve u: k=" << k << std::endl;
+
       // Offsets
       int offset_Bk = k * _dim_constr;
       int offset_uk = k * _dim_hdivz;
@@ -589,9 +657,9 @@ public:
       // Refactorise A (with correct boundary conditions)
       if (requires_flux_bc & (k != (_gdim - 1)))
       {
+        // std::cout << "Refactorise A" << std::endl;
         // Modify A and f_uk
-        throw std::runtime_error(
-            "Schur solver for patches with flux BCs not implemented");
+        apply_bcs_on_A(k);
 
         // Factorise A
         factorise_matrix_A();
@@ -602,6 +670,18 @@ public:
           = _solver_A.solve(-_B.block(0, offset_Bk, _dim_hdivz, _dim_constr)
                             * _u_c.head(_dim_constr));
     }
+
+    // if (_meanvalue_condition_required)
+    // {
+    //   std::cout << "Lagrangian multiplier considered" << std::endl;
+    // }
+
+    // std::cout << "Solution u:" << std::endl;
+    // for (std::size_t i = 0; i < 2 * _dim_hdivz; ++i)
+    // {
+    //   std::cout << _u_sigma(i) << " ";
+    // }
+    // std::cout << "\n";
   }
 
 protected:
@@ -672,6 +752,42 @@ protected:
     _dim_constr = (_gdim == 2) ? npnt : 3 * npnt;
   }
 
+  /// Apply boundary conditions on matrix A
+  /// @param subspace_k Id of the row of the stress tensor
+  void apply_bcs_on_A(int subspace_k)
+  {
+    const int offset_uk = subspace_k * _dim_hdivz;
+
+    for (std::size_t i = 0; i < _dim_hdivz; ++i)
+    {
+      // Boundary marker dof_i
+      std::int8_t bmarker_i = _boundary_markers[offset_uk + i];
+
+      if (bmarker_i)
+      {
+        // Let RHS to zero
+        _L(offset_uk + i) = 0.0;
+
+        // Set 1 one main diagonal of A
+        _A(i, i) = 1.0;
+      }
+      else
+      {
+        for (std::size_t j = 0; j < _dim_hdivz; ++j)
+        {
+          if (_boundary_markers[offset_uk + j])
+          {
+            _A(i, j) = 0.0;
+          }
+          else
+          {
+            _A(i, j) = _A_rec(i, j);
+          }
+        }
+      }
+    }
+  }
+
   /* Variables */
   const bool _symconstr_required;
 
@@ -680,9 +796,10 @@ protected:
   const std::size_t _gdim;
 
   // Counter reconstructed flux
-  const int _degree_flux_rt, _ndofs_flux;
+  const int _degree_flux_rt, _ndofs_flux, _ndofs_flux_fct;
 
   // Dimension H(div=0) space
+  const std::size_t _dim_hdivz_per_cell;
   std::size_t _dim_hdivz, _dim_constr;
 
   // The length of the patch
@@ -725,7 +842,8 @@ protected:
   std::array<std::size_t, 2> _shape_Te, _shape_Be;
   std::vector<T> _data_Te, _data_Be, _data_Ce, _data_Le;
 
-  Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic> _A, _B, _Ainv_t_B, _C;
+  Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic> _A, _A_rec, _B, _Ainv_t_B,
+      _C;
   Eigen::Matrix<T, Eigen::Dynamic, 1> _L, _Ainv_t_fu, _u_sigma, _u_c;
 
   // Solver

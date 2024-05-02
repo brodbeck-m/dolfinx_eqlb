@@ -57,14 +57,18 @@ public:
     {
       const std::size_t ndofs_per_cell = _ndof_flux_nz + _fct_per_cell;
       _dofmap_shape = {4, (std::size_t)(_ncells_max + 2), ndofs_per_cell};
+      _ddofmap.resize(_dofmap_shape[0] * _dofmap_shape[1]
+                          * (_dofmap_shape[2] + _ndof_flux_fct),
+                      0);
     }
     else
     {
       _dofmap_shape
           = {4, (std::size_t)(_ncells_max + 2), (std::size_t)_ndof_flux_nz};
+      _ddofmap.resize(_dofmap_shape[0] * _dofmap_shape[1]
+                          * (_dofmap_shape[2] + _ndof_flux_fct),
+                      0);
     }
-
-    _ddofmap.resize(_dofmap_shape[0] * _dofmap_shape[1] * _dofmap_shape[2], 0);
 
     // Specify offsets in DOFmap
     _offset_dofmap.resize(5, 0);
