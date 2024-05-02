@@ -120,7 +120,7 @@ public:
                                           _num_fcts);
   }
 
-  /// Get id id mesh-node is on essential boundary of the stress field
+  /// Marker if mesh-node is on essential boundary of the stress field
   /// @return List of markers for all nodes
   std::span<const std::int8_t> node_on_essnt_boundary_stress() const
   {

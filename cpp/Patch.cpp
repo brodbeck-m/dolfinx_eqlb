@@ -496,6 +496,71 @@ bool OrientedPatch::reversion_required(int index) const
   return patch_reversed;
 }
 
+std::vector<std::int32_t> OrientedPatch::group_boundary_patches(
+    const std::int32_t node_i, std::span<const std::int8_t> pnt_on_essntbndr,
+    const int ncells_min, const int ncells_crit) const
+{
+  // Get adjacent internal patch
+  std::int32_t node_i_internal = get_adjacent_internal_patch(node_i);
+
+  // Initialise vector for adjacent patches
+  std::vector<std::int32_t> grouped_patches = {node_i_internal, node_i};
+
+  // Facets on patch
+  std::span<const std::int32_t> fcts_patch = _node_to_fct->links(node_i);
+
+  // Get adjacent boundary patches
+  for (std::int32_t fct_i : fcts_patch)
+  {
+    // Node on current facet
+    std::span<const std::int32_t> nodes_fct = _fct_to_node->links(fct_i);
+
+    // Check compatibility of adjacent (boundary) patches
+    int nodei_adjacent = (nodes_fct[0] == node_i) ? nodes_fct[1] : nodes_fct[0];
+
+    if (pnt_on_essntbndr[nodei_adjacent])
+    {
+      // Cells on adjacent boundary patch
+      int ncells_adjacet_patch = ncells(nodei_adjacent);
+
+      if (ncells_adjacet_patch > ncells_min)
+      {
+        if (ncells_adjacet_patch == ncells_crit)
+        {
+          // Check if adjacent patch is pure neumann-patch
+          // FIXME - Currently only for 2D
+          int count_efcts = 0;
+          std::span<const std::int32_t> fcts_adjacet_patch
+              = _node_to_fct->links(nodei_adjacent);
+
+          for (std::int32_t fct_ap_i : fcts_adjacet_patch)
+          {
+            if ((_bfct_type(0, fct_ap_i) == PatchFacetType::essnt_dual)
+                || (_bfct_type(1, fct_ap_i) == PatchFacetType::essnt_dual))
+            {
+              count_efcts += 1;
+            }
+          }
+
+          if (count_efcts == 2)
+          {
+            grouped_patches.push_back(nodei_adjacent);
+          }
+        }
+      }
+      else
+      {
+        std::string error_msg = "Patch around node "
+                                + std::to_string(nodei_adjacent) + " has only "
+                                + std::to_string(ncells_min) + " cells";
+        throw std::runtime_error(error_msg);
+      }
+    }
+  }
+
+  return std::move(grouped_patches);
+}
+
 void OrientedPatch::set_max_patch_size(int nnodes_proc)
 {
   // Initialization

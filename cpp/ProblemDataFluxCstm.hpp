@@ -106,6 +106,13 @@ public:
     return _boundary_data->facet_type();
   }
 
+  /// Marker if mesh-node is on essential boundary of the stress field
+  /// @return List of markers for all nodes
+  std::span<const std::int8_t> node_on_essnt_boundary_stress() const
+  {
+    return _boundary_data->node_on_essnt_boundary_stress();
+  }
+
   /// Extract boundary identifiers for l_i
   /// @param index Id of linearform
   /// @return Boundary identifiers of linearform l_i

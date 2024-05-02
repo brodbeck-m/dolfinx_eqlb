@@ -244,7 +244,78 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
     // Initialise list with equilibration markers
     std::vector<bool> perform_equilibration(n_nodes, true);
 
-    // Loop over all patches
+    // Get list with node markers
+    std::span<const std::int8_t> pnt_on_stress_boundary
+        = problem_data.node_on_essnt_boundary_stress();
+
+    // Loop over extended patches on essential boundary
+    if (degree_flux_hdiv == 2)
+    {
+      for (std::int32_t i_node = 0; i_node < n_nodes; ++i_node)
+      {
+        if (pnt_on_stress_boundary[i_node] && perform_equilibration[i_node])
+        {
+          // Number of nodes on patch
+          const int ncells_patch = patch.ncells(i_node);
+
+          // Check if modification of patch is required
+          if (ncells_patch == 1)
+          {
+            std::string error_msg = "Patch around node "
+                                    + std::to_string(i_node)
+                                    + " has only one cell";
+            throw std::runtime_error(error_msg);
+          }
+          else
+          {
+            if (ncells_patch == 2)
+            {
+              // Group patches such that minimisation is possible
+              std::vector<std::int32_t> grouped_patches
+                  = patch.group_boundary_patches(i_node, pnt_on_stress_boundary,
+                                                 1, 2);
+
+              std::cout << "Grouped patches: ";
+              for (auto i : grouped_patches)
+              {
+                std::cout << i << " ";
+              }
+              std::cout << "\n";
+              throw std::runtime_error("End Debug!");
+
+              // Equilibration step 1: Explicit step and minimisation
+              for (std::size_t i = grouped_patches.size(); i-- > 0;)
+              {
+                // Patch-central node
+                const std::int32_t node_i = grouped_patches[i];
+
+                // Create Sub-DOFmap
+                patch.create_subdofmap(node_i);
+
+                // Re-initialise PatchData
+                patch_data.reinitialisation(patch.type(), patch.ncells());
+
+                // Perform equilibration
+                perform_equilibration[node_i] = false;
+                equilibrate_flux_semiexplt<T, id_flux_order>(
+                    mesh->geometry(), patch, patch_data, problem_data,
+                    kernel_data, kernel_fluxmin, kernel_fluxmin_l);
+
+                // Move result to temporary storage
+              }
+
+              // Extend DOFmap on grouped patches
+
+              // Combine patch-wise solutions from step 1
+
+              // Equilibration step 2: Incorporation of eak symmetry condition
+            }
+          }
+        }
+      }
+    }
+
+    // Loop over all other patches
     for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
     // for (std::size_t i_node = 3; i_node < 4; ++i_node)
     {
@@ -272,6 +343,8 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
              || (patch.type(1) == PatchType::bound_essnt_dual))
             && patch.ncells() == 2)
         {
+          // Check how patch has to be modified
+
           // --- Step 1a: Flux equilibration on boundary patch
           // Equilibrate fluxes boundary patch
 
