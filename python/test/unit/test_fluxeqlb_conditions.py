@@ -27,7 +27,7 @@ Check if equilibrated flux
 @pytest.mark.parametrize("mesh_type", ["builtin"])
 @pytest.mark.parametrize("degree", [1, 2, 3])
 @pytest.mark.parametrize("bc_type", ["pure_dirichlet", "neumann_inhom"])
-@pytest.mark.parametrize("equilibrator", [FluxEqlbSE, FluxEqlbSE])
+@pytest.mark.parametrize("equilibrator", [FluxEqlbEV, FluxEqlbSE])
 def test_equilibration_conditions(mesh_type, degree, bc_type, equilibrator):
     # Create mesh
     if mesh_type == "builtin":
