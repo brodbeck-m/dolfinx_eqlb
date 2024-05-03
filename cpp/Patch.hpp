@@ -2,6 +2,7 @@
 
 #include "utils.hpp"
 
+#include <dolfinx/common/IndexMap.h>
 #include <dolfinx/graph/AdjacencyList.h>
 #include <dolfinx/mesh/Mesh.h>
 #include <dolfinx/mesh/Topology.h>
@@ -11,6 +12,7 @@
 #include <iostream>
 #include <memory>
 #include <span>
+#include <tuple>
 #include <vector>
 
 using namespace dolfinx;
@@ -350,11 +352,13 @@ public:
   /// Storage is designed for the maximum patch size occurring within
   /// the current mesh.
   ///
-  /// @param nnodes_proc Number of nodes on current processor
   /// @param mesh        The current mesh
   /// @param bfct_type   List with type of all boundary facets
-  OrientedPatch(int nnodes_proc, std::shared_ptr<const mesh::Mesh> mesh,
-                mdspan_t<const std::int8_t, 2> bfct_type);
+  /// @param ncells_crit Critical number of cells on adjacent boundary patches
+  /// @param pnts_on_bndr Markers for all mesh nodes on boundary
+  OrientedPatch(std::shared_ptr<const mesh::Mesh> mesh,
+                mdspan_t<const std::int8_t, 2> bfct_type, const int ncells_crit,
+                std::span<const std::int8_t> pnts_on_essntbndr);
 
   /// Construction of a sub-DOFmap on each patch
   ///
@@ -430,8 +434,11 @@ public:
                          const int ncells_min, const int ncells_crit) const;
 
   /// Determine maximum patch size
-  /// @param nnodes_proc Number of nodes on current processor
-  void set_max_patch_size(int nnodes_proc);
+  /// @param nnodes_proc  Number of nodes on current processor
+  /// @param ncells_crit  Critical number of cells on adjacent boundary patches
+  /// @param pnts_on_bndr Markers for all mesh nodes on boundary
+  void set_max_patch_size(const int nnodes_proc, const int ncells_crit,
+                          std::span<const std::int8_t> pnts_on_bndr);
 
   /* Setter functions */
 
@@ -640,8 +647,14 @@ protected:
                           std::span<const std::int32_t> fct_cell_i,
                           std::int8_t id_fct_loc) const;
 
+  std::array<std::int32_t, 2>
+  adjacent_boundary_patches(const std::int32_t node_i) const;
+
   // Maximum size of patch
   int _ncells_max;
+
+  // Maximum number of grouped patches
+  int _groupsize_max;
 
   /* Geometry */
   // The mesh

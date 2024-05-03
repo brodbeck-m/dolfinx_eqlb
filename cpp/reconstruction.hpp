@@ -15,6 +15,7 @@
 
 #include <basix/e-lagrange.h>
 #include <basix/finite-element.h>
+#include <dolfinx/common/IndexMap.h>
 #include <dolfinx/fem/CoordinateElement.h>
 #include <dolfinx/fem/DirichletBC.h>
 #include <dolfinx/fem/DofMap.h>
@@ -157,7 +158,6 @@ template <typename T, int id_flux_order, bool symconstr_required>
 void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
 {
   assert(id_flux_order < 0);
-  constexpr bool _symconstr_required = symconstr_required;
 
   /* Geometry */
   // Extract mesh
@@ -179,6 +179,7 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
       = problem_data.fspace_flux_hdiv()->element()->basix_element();
 
   const int degree_flux_hdiv = basix_element_fluxhdiv.degree();
+  const int degree_rt_flux_hdiv = degree_flux_hdiv - 1;
 
   // Basix element of projected flux/ RHS
   const basix::FiniteElement& basix_element_rhs
@@ -198,17 +199,9 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
       false);
 
   /* Equilibration */
-  // Initialise patch
-  PatchFluxCstm<T, id_flux_order> patch = PatchFluxCstm<T, id_flux_order>(
-      n_nodes, mesh, problem_data.facet_type(), problem_data.fspace_flux_hdiv(),
-      problem_data.fspace_flux_dg(), basix_element_rhscg, _symconstr_required);
-
   // Set quadrature rule
   const int quadrature_degree
       = (degree_flux_hdiv == 1) ? 2 : 2 * degree_flux_hdiv + 1;
-  // const int quadrature_degree
-  //     = (degree_flux_hdiv == 1) ? 4 : 2 * degree_flux_hdiv + 3;
-
   QuadratureRule quadrature_rule
       = QuadratureRule(mesh->topology().cell_type(), quadrature_degree, dim);
 
@@ -217,35 +210,42 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
       mesh, std::make_shared<QuadratureRule>(quadrature_rule),
       basix_element_fluxhdiv, basix_element_rhs, basix_element_hat);
 
-  // Initialise storage for equilibration
-  PatchDataCstm<T, id_flux_order> patch_data = PatchDataCstm<T, id_flux_order>(
-      patch, kernel_data.nipoints_facet(), _symconstr_required);
-
-  // Set minimisation kernels
+  // Generate minimisation kernels
   kernel_fn<T, true> kernel_fluxmin
-      = generate_flux_minimisation_kernel<T, true>(
-          kernel_data, dim, patch.degree_raviart_thomas());
+      = generate_flux_minimisation_kernel<T, true>(kernel_data, dim,
+                                                   degree_rt_flux_hdiv);
 
   kernel_fn<T, false> kernel_fluxmin_l
-      = generate_flux_minimisation_kernel<T, false>(
-          kernel_data, dim, patch.degree_raviart_thomas());
+      = generate_flux_minimisation_kernel<T, false>(kernel_data, dim,
+                                                    degree_rt_flux_hdiv);
 
   // Execute equilibration
   // FIXME - Currently only 2D meshes supported
   if constexpr (symconstr_required)
   {
+    // Get list with node markers on stress boundary
+    std::span<const std::int8_t> pnt_on_stress_boundary
+        = problem_data.node_on_essnt_boundary_stress();
+
+    // Initialise patch
+    PatchFluxCstm<T, id_flux_order> patch = PatchFluxCstm<T, id_flux_order>(
+        mesh, problem_data.facet_type(), 2, pnt_on_stress_boundary,
+        problem_data.fspace_flux_hdiv(), problem_data.fspace_flux_dg(),
+        basix_element_rhscg, true);
+
+    // Initialise storage for equilibration
+    PatchDataCstm<T, id_flux_order> patch_data
+        = PatchDataCstm<T, id_flux_order>(patch, kernel_data.nipoints_facet(),
+                                          true);
+
     // Set kernel for weak symmetry condition
     kernel_fn_schursolver<T> kernel_weaksym
         = generate_stress_minimisation_kernel<T>(Kernel::StressMin, kernel_data,
                                                  dim, patch.fcts_per_cell(),
-                                                 patch.degree_raviart_thomas());
+                                                 degree_rt_flux_hdiv);
 
     // Initialise list with equilibration markers
     std::vector<bool> perform_equilibration(n_nodes, true);
-
-    // Get list with node markers
-    std::span<const std::int8_t> pnt_on_stress_boundary
-        = problem_data.node_on_essnt_boundary_stress();
 
     // Loop over extended patches on essential boundary
     if (degree_flux_hdiv == 2)
@@ -372,6 +372,18 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
   }
   else
   {
+    // Initialise patch
+    PatchFluxCstm<T, id_flux_order> patch = PatchFluxCstm<T, id_flux_order>(
+        mesh, problem_data.facet_type(), 0,
+        problem_data.node_on_essnt_boundary_stress(),
+        problem_data.fspace_flux_hdiv(), problem_data.fspace_flux_dg(),
+        basix_element_rhscg, false);
+
+    // Initialise storage for equilibration
+    PatchDataCstm<T, id_flux_order> patch_data
+        = PatchDataCstm<T, id_flux_order>(patch, kernel_data.nipoints_facet(),
+                                          false);
+
     // Loop over all patches
     for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
     {

@@ -22,17 +22,18 @@ public:
   /// Storage is designed for the maximum patch size occurring within
   /// the current mesh.
   ///
-  /// @param nnodes_proc             Number of nodes on current processor
   /// @param mesh                    The current mesh
   /// @param bfct_type               List with type of all boundary facets
+  /// @param ncells_crit             Number of cells on critical patch
+  /// @param pnt_on_essntbndr        List with points on essential flux boundary
   /// @param function_space_fluxhdiv Function space of H(div) flux
   /// @param symconstr_required      Flag for constrained minimisation
-  PatchCstm(
-      int nnodes_proc, std::shared_ptr<const mesh::Mesh> mesh,
-      mdspan_t<const std::int8_t, 2> bfct_type,
-      const std::shared_ptr<const fem::FunctionSpace> function_space_fluxhdiv,
-      const bool symconstr_required)
-      : OrientedPatch(nnodes_proc, mesh, bfct_type),
+  PatchCstm(std::shared_ptr<const mesh::Mesh> mesh,
+            mdspan_t<const std::int8_t, 2> bfct_type, const int ncells_crit,
+            std::span<const std::int8_t> pnt_on_essntbndr,
+            std::shared_ptr<const fem::FunctionSpace> function_space_fluxhdiv,
+            const bool symconstr_required)
+      : OrientedPatch(mesh, bfct_type, ncells_crit, pnt_on_essntbndr),
         _symconstr_required(symconstr_required),
         _degree_elmt_fluxhdiv(
             function_space_fluxhdiv->element()->basix_element().degree() - 1),
@@ -57,16 +58,22 @@ public:
     {
       const std::size_t ndofs_per_cell = _ndof_flux_nz + _fct_per_cell;
       _dofmap_shape = {4, (std::size_t)(_ncells_max + 2), ndofs_per_cell};
-      _ddofmap.resize(_dofmap_shape[0] * _dofmap_shape[1]
-                          * (_dofmap_shape[2] + _ndof_flux_fct),
-                      0);
+
+      if (_groupsize_max == 1)
+      {
+        _ddofmap.resize(_dofmap_shape[0] * _dofmap_shape[1] * _dofmap_shape[2],
+                        0);
+      }
+      else
+      {
+        _ddofmap.resize(_dofmap_shape[0] * _dofmap_shape[1] * _ndof_flux, 0);
+      }
     }
     else
     {
       _dofmap_shape
           = {4, (std::size_t)(_ncells_max + 2), (std::size_t)_ndof_flux_nz};
-      _ddofmap.resize(_dofmap_shape[0] * _dofmap_shape[1]
-                          * (_dofmap_shape[2] + _ndof_flux_fct),
+      _ddofmap.resize(_dofmap_shape[0] * _dofmap_shape[1] * _dofmap_shape[2],
                       0);
     }
 
@@ -619,23 +626,25 @@ public:
   /// Storage is designed for the maximum patch size occurring within
   /// the current mesh. (Cell-IDs start at 1, facet-IDs at 0!)
   ///
-  /// @param nnodes_proc             Number of nodes on current processor
   /// @param mesh                    The current mesh
   /// @param bfct_type               List with type of all boundary facets
+  /// @param ncells_crit             Number of cells on critical patch
+  /// @param pnt_on_essntbndr        List with points on essential flux boundary
   /// @param function_space_fluxhdiv Function space of H(div) flux
   /// @param function_space_fluxdg   Function space of projected flux
   /// @param basix_element_fluxdg    BasiX element of projected flux
   ///                                (continuous version for required
   ///                                entity_closure_dofs)
   PatchFluxCstm(
-      int nnodes_proc, std::shared_ptr<const mesh::Mesh> mesh,
-      mdspan_t<const std::int8_t, 2> bfct_type,
+      std::shared_ptr<const mesh::Mesh> mesh,
+      mdspan_t<const std::int8_t, 2> bfct_type, const int ncells_crit,
+      std::span<const std::int8_t> pnt_on_essntbndr,
       const std::shared_ptr<const fem::FunctionSpace> function_space_fluxhdiv,
       const std::shared_ptr<const fem::FunctionSpace> function_space_fluxdg,
       const basix::FiniteElement& basix_element_fluxdg,
       const bool symconstr_required)
-      : PatchCstm<T, id_flux_order>(nnodes_proc, mesh, bfct_type,
-                                    function_space_fluxhdiv,
+      : PatchCstm<T, id_flux_order>(mesh, bfct_type, ncells_crit,
+                                    pnt_on_essntbndr, function_space_fluxhdiv,
                                     symconstr_required),
         _degree_elmt_fluxdg(basix_element_fluxdg.degree()),
         _function_space_fluxdg(function_space_fluxdg),
