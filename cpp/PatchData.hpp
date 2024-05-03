@@ -33,15 +33,15 @@ public:
         _ndofs_flux_fct(patch.ndofs_flux_fct()),
         _dim_hdivz_per_cell(_gdim * _ndofs_flux_fct
                             + patch.ndofs_flux_cell_add() - 1),
-        _ncells_max(patch.ncells_max()), _size_J(_gdim * _gdim)
+        _size_J(_gdim * _gdim)
   {
     // The patch
     const int ncells_max = patch.ncells_max();
+    const int groupsize_max = patch.groupsize_max();
     const int nfcts_per_cell = patch.fcts_per_cell();
 
     // Counter flux DOFs
     const int ndofs_projflux = patch.ndofs_fluxdg_cell();
-    // const int ndofs_flux_fct = patch.ndofs_flux_fct();
 
     // --- Initialise storage
     // Piola mapping
@@ -53,7 +53,7 @@ public:
     _data_fctprefactors_cell.resize(_gdim * ncells_max);
 
     // Mapped interpolation matrix
-    _shape_Mm = {_ncells_max, _ndofs_flux_fct, _gdim, niponts_per_fct};
+    _shape_Mm = {ncells_max, _ndofs_flux_fct, _gdim, niponts_per_fct};
     _data_Mm.resize(_shape_Mm[0] * _shape_Mm[1] * _shape_Mm[2] * _shape_Mm[3],
                     0);
 
@@ -62,7 +62,7 @@ public:
     _coefficients_G_Tap1.resize(ncells_max * ndofs_projflux, 0);
     _coefficients_G_Ta.resize(ncells_max * ndofs_projflux, 0);
 
-    _shape_coeffsflux = {patch.nrhs(), _ncells_max, _ndofs_flux};
+    _shape_coeffsflux = {patch.nrhs(), ncells_max, _ndofs_flux};
     _coefficients_flux.resize(
         _shape_coeffsflux[0] * _shape_coeffsflux[1] * _shape_coeffsflux[2], 0);
 
@@ -77,14 +77,11 @@ public:
     // --- Initialise equation system
     // FIXME - ndofs_hdivz_per_cell wrong for 2D quads + 3D
     const int nfcts_max = ncells_max + 1;
-
     const std::size_t ndofs_hdivz_max
-        = (symconstr_required)
+        = (groupsize_max == 1)
               ? dimension_uconstrained_minspace(ncells_max, nfcts_max)
-                    + 2 * (_ndofs_flux_fct - 1)
-              : dimension_uconstrained_minspace(ncells_max, nfcts_max);
-    // const int ndofs_hdivz_per_cell
-    //     = 2 * ndofs_flux_fct + patch.ndofs_flux_cell_add() - 1;
+              : dimension_uconstrained_minspace(ncells_max, nfcts_max)
+                    + groupsize_max * (_ndofs_flux_fct - 1);
 
     // Identifier for mean-value zero condition
     _meanvalue_condition_required = false;
@@ -803,7 +800,6 @@ protected:
   std::size_t _dim_hdivz, _dim_constr;
 
   // The length of the patch
-  const int _ncells_max;
   int _ncells;
 
   // --- Patch-wise data (pre-calculated)

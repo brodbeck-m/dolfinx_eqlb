@@ -531,6 +531,9 @@ public:
   /// @return Number of facets per cell
   int fcts_per_cell() const { return _fct_per_cell; }
 
+  // Return the maximal number of grouped patches
+  int groupsize_max() const { return _groupsize_max; }
+
   // Return the maximal number of cells per patch
   int ncells_max() const { return _ncells_max; }
 
