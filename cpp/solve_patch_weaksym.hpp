@@ -49,6 +49,7 @@ void impose_weak_symmetry(const mesh::Geometry& geometry,
   const int ncells = patch.ncells();
 
   // The flux space
+  const int ndofs_flux = patch.ndofs_flux();
   const int ndofs_flux_fct = patch.ndofs_flux_fct();
   const int ndofs_hdivz = patch.ndofs_flux_hdiz_zero();
 
@@ -116,30 +117,17 @@ void impose_weak_symmetry(const mesh::Geometry& geometry,
                                     patch_data.jacobi_determinant());
   }
 
-  // Coefficients of the stress tensor
+  // --- Coefficients of the stress tensor (contribution current patch)
   if (!(modified_patch))
   {
-    // Dimension of the flux space
-    const int ndofs_flux = patch.ndofs_flux();
-
-    // Flattened storage of stress coefficients
-    std::span<T> stress_coefficients = patch_data.coefficients_stress();
-
     // Copy the coefficients
     for (std::size_t i_row = 0; i_row < gdim; ++i_row)
     {
       for (std::size_t a = 1; a < ncells + 1; ++a)
       {
-        // Set offset
-        std::size_t offset = (a - 1) * ndofs_flux * gdim + i_row * ndofs_flux;
-
-        // Coefficients of flux i on cell a
-        std::span<const T> coeffs_rowi_cella
-            = patch_data.coefficients_flux(i_row, a);
-
         // Move coefficients to flattened storage
-        std::copy_n(coeffs_rowi_cella.begin(), ndofs_flux,
-                    stress_coefficients.begin() + offset);
+        std::copy_n(patch_data.coefficients_flux(i_row, a).begin(), ndofs_flux,
+                    patch_data.coefficients_stress(i_row, a).begin());
       }
     }
   }

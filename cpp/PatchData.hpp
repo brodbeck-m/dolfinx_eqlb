@@ -368,18 +368,6 @@ public:
                               _shape_coeffsflux[2]);
   }
 
-  /// Coefficients of the stress tensor
-  ///
-  /// Structure [[dofs_T1_r0, ..., dofs_T1_rn], ...,
-  ///            [dofs_Tm_r0, ...,dofs_Tm_rn]]
-  ///
-  /// @return span of the coefficients
-  std::span<T> coefficients_stress()
-  {
-    const int size = _ncells * _gdim * _ndofs_flux;
-    return std::span<T>(_coefficients_stress.data(), size);
-  }
-
   /// Coefficients of the stress tensor on cell a
   /// @param a The cell id (starting at 1)
   /// @return span of the coefficients
@@ -388,6 +376,16 @@ public:
     const int size = _gdim * _ndofs_flux;
     const int offset = (a - 1) * size;
     return std::span<const T>(_coefficients_stress.data() + offset, size);
+  }
+
+  /// Coefficients of the stress tensor (row i) on cell a
+  /// @param i The id of the stress row (starting at 0)
+  /// @param a The cell id (starting at 1)
+  /// @return span of the coefficients
+  std::span<T> coefficients_stress(const int i, const int a)
+  {
+    const int offset = ((a - 1) * _gdim + i) * _ndofs_flux;
+    return std::span<T>(_coefficients_stress.data() + offset, _ndofs_flux);
   }
 
   /// Coefficients of the projected flux (cell Ta)
