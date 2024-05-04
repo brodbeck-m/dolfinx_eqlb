@@ -30,7 +30,7 @@ from demo_reconstruction_elasticity import (
 # --- Input parameters ---
 # The orders of the FE spaces
 elmt_order_prime = 2
-elmt_order_eqlb = 2
+elmt_order_eqlb = 3
 
 # The mesh resolution
 sdisc_nelmt_init = 1
@@ -128,7 +128,7 @@ for i in range(convstudy_nref):
     )
 
     # H(div) error flux
-    diff = ufl.div(sigma - stress_ref)
+    diff = ufl.div(sigma + stress_ref)
     err_sighdiv = np.sqrt(
         domain.comm.allreduce(
             dfem.assemble_scalar(dfem.form(ufl.inner(diff, diff) * dvol)),
