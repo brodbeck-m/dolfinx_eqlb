@@ -8,13 +8,12 @@ import ufl
 from dolfinx_eqlb.eqlb import FluxEqlbEV, FluxEqlbSE
 
 from utils import create_unitsquare_builtin, flux_error, error_hdiv0
+from testcase_general import set_manufactured_rhs, set_manufactured_bcs
 from testcase_poisson import (
-    exact_solution_poisson,
-    exact_flux_ufl_poisson,
-    set_manufactured_rhs,
-    set_manufactured_bcs,
-    solve_poisson_problem,
-    equilibrate_poisson,
+    exact_solution,
+    exact_flux,
+    solve_primal_problem,
+    equilibrate_fluxes,
 )
 
 
@@ -22,10 +21,6 @@ from testcase_poisson import (
 @pytest.mark.parametrize("bc_type", ["pure_dirichlet", "neumann_hom", "neumann_inhom"])
 @pytest.mark.parametrize("equilibrator", [FluxEqlbEV, FluxEqlbSE])
 def test_convrate(degree, bc_type, equilibrator):
-    # Initialise exact solution
-    uext_ufl = exact_solution_poisson(ufl)
-    uext_np = exact_solution_poisson(np)
-
     # Initialise boundary conditions
     if bc_type == "pure_dirichlet":
         boundary_id_dirichlet = [1, 2, 3, 4]
@@ -56,9 +51,11 @@ def test_convrate(degree, bc_type, equilibrator):
             n_elmt, dmesh.CellType.triangle, dmesh.DiagonalType.crossed
         )
 
-        # Exact flux as ufl-argument
+        # Exact solution
         x = ufl.SpatialCoordinate(geometry.mesh)
-        sigma_ext_ufl = exact_flux_ufl_poisson(x)
+
+        u_ext = exact_solution(x)
+        flux_ext = exact_flux(x)
 
         # Set function space
         V_prime = dfem.FunctionSpace(geometry.mesh, ("P", degree))
@@ -67,7 +64,7 @@ def test_convrate(degree, bc_type, equilibrator):
         degree_proj = degree - 1
 
         # Set RHS
-        rhs, rhs_projected = set_manufactured_rhs(uext_ufl, geometry.mesh, degree_proj)
+        rhs, rhs_projected = set_manufactured_rhs(flux_ext, geometry.mesh, degree_proj)
 
         # Set boundary conditions
         (
@@ -75,11 +72,16 @@ def test_convrate(degree, bc_type, equilibrator):
             neumann_functions,
             neumann_projection,
         ) = set_manufactured_bcs(
-            V_prime, boundary_id_dirichlet, boundary_id_neumann, uext_np, sigma_ext_ufl
+            V_prime,
+            boundary_id_dirichlet,
+            boundary_id_neumann,
+            u_ext,
+            flux_ext,
+            vector_valued=False,
         )
 
         # Solve equilibration
-        u_prime, sigma_projected = solve_poisson_problem(
+        u_prime, sigma_projected = solve_primal_problem(
             V_prime,
             geometry,
             boundary_id_neumann,
@@ -91,7 +93,7 @@ def test_convrate(degree, bc_type, equilibrator):
         )
 
         # Solve equilibration
-        sigma_eq, _ = equilibrate_poisson(
+        sigma_eq, _ = equilibrate_fluxes(
             equilibrator,
             degree,
             geometry,
@@ -106,17 +108,17 @@ def test_convrate(degree, bc_type, equilibrator):
         # --- Compute convergence rate ---
         data_convstudy[i, 0] = 1 / n_elmt
 
-        # Calculate error
+        # Calculate erroru
         if equilibrator == FluxEqlbSE:
             data_convstudy[i, 1] = flux_error(
                 sigma_eq[0] + sigma_projected,
-                sigma_ext_ufl,
+                flux_ext,
                 error_hdiv0,
                 uex_is_ufl=True,
             )
         else:
             data_convstudy[i, 1] = flux_error(
-                sigma_eq[0], sigma_ext_ufl, error_hdiv0, uex_is_ufl=True
+                sigma_eq[0], flux_ext, error_hdiv0, uex_is_ufl=True
             )
 
     # Calculate convergence rate

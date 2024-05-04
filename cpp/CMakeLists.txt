@@ -59,10 +59,11 @@ set(
   KernelData.hpp
   Patch.hpp
   PatchFluxEV.hpp
-  PatchFluxCstm.hpp
+  PatchCstm.hpp
+  PatchData.hpp
   ProblemData.hpp
-  ProblemDataFluxEV.hpp
   ProblemDataFluxCstm.hpp
+  ProblemDataFluxEV.hpp
   QuadratureRule.hpp
   StorageStiffness.hpp
   assemble_patch_constrmin.hpp
@@ -72,6 +73,7 @@ set(
   reconstruction.hpp
   solve_patch_constrmin.hpp
   solve_patch_semiexplt.hpp
+  solve_patch_weaksym.hpp
   utils.hpp
 )
 

@@ -1,58 +1,69 @@
 # --- Includes ---
 import numpy as np
-import typing
+from typing import Any, List
 
 import dolfinx.fem as dfem
 import ufl
 
 from dolfinx_eqlb.lsolver import local_projection
-from dolfinx_eqlb.eqlb import fluxbc
+from dolfinx_eqlb.eqlb import fluxbc, FluxEqlbSE
 
-from utils import Geometry
+from utils import Geometry, interpolate_ufl_to_function
 
 """
-Setup variable test-cases for the poisson problem
+Setup variable test-cases for linear elasticity
 
 Supported variants:
-    - manufactured solution based on u_ext = sin(2*pi * x) * cos(2*pi * y)
+    - manufactured solution based on 
+      u_ext = [sin(2*pi * x) * cos(2*pi * y), -cos(2*pi * x) * sin(2*pi * y)]
     - arbitrary right-hand side
 """
 
 
-# --- The exact solution
+# --- Definition of manufactured solution
 def exact_solution(x):
-    """Exact solution (Poisson)
-    u_ext = sin(2*pi * x) * cos(2*pi * y)
+    """Exact solution
+    u_ext = [sin(2*pi * x) * cos(2*pi * y), -cos(2*pi * x) * sin(2*pi * y)]
 
     Args:
         x (ufl.SpatialCoordinate): The position x
     Returns:
         The exact function as ufl-expression
     """
-    return ufl.sin(2 * ufl.pi * x[0]) * ufl.cos(2 * ufl.pi * x[1])
+    return ufl.as_vector(
+        [
+            ufl.sin(2 * ufl.pi * x[0]) * ufl.cos(2 * ufl.pi * x[1]),
+            -ufl.cos(2 * ufl.pi * x[0]) * ufl.cos(2 * ufl.pi * x[1]),
+        ]
+    )
 
 
-def exact_flux(x):
-    """Exact flux (Poisson)
-    flux_ext = -Grad[sin(2*pi * x) * cos(2*pi * y)]
+def exact_stress_linelast(x, gdim=2):
+    """Exact flux
+    sigma_ext = 2 * epsilon(u_ext) + div(u_ext) * I
 
     Args:
         x (ufl.SpatialCoordinate): The position x
+        gdim (int): The spatial dimension
     Returns:
-        The exact flux as ufl expression
+        The exact stress at positions x as ufl expression
     """
-    return -ufl.grad(exact_solution(x))
+
+    # The exact displacement
+    u_ext = exact_solution(x)
+
+    return 2 * ufl.sym(ufl.grad(u_ext)) + ufl.div(u_ext) * ufl.Identity(gdim)
 
 
 # --- Solution routines
 def solve_primal_problem(
     V_prime: dfem.FunctionSpace,
     geometry: Geometry,
-    bc_id_neumann: typing.List[int],
-    bc_id_dirichlet: typing.List[int],
-    ufl_rhs: typing.Any,
-    ufl_neumann: typing.List[typing.Any],
-    u_dirichlet: typing.List[dfem.Function],
+    bc_id_neumann: List[int],
+    bc_id_dirichlet: List[int],
+    ufl_rhs: Any,
+    ufl_neumann: List[Any],
+    u_dirichlet: List[dfem.Function],
     degree_projection: int = -1,
 ):
     """Solves a poisson problem based on lagrangian finite elements
@@ -74,11 +85,16 @@ def solve_primal_problem(
     if len(list(set(bc_id_dirichlet) & set(bc_id_neumann))) > 0:
         raise ValueError("Overlapping boundary data!")
 
+    # The spatial dimension
+    gdim = geometry.mesh.topology.dim
+
     # Set variational form
     u = ufl.TrialFunction(V_prime)
     v = ufl.TestFunction(V_prime)
 
-    a_prime = ufl.inner(ufl.grad(u), ufl.grad(v)) * ufl.dx
+    sigma = 2 * ufl.sym(ufl.grad(u)) + ufl.div(u) * ufl.Identity(gdim)
+
+    a_prime = ufl.inner(sigma, ufl.sym(ufl.grad(v))) * ufl.dx
     l_prime = ufl.inner(ufl_rhs, v) * ufl.dx
 
     # Set dirichlet boundary conditions
@@ -91,15 +107,14 @@ def solve_primal_problem(
 
     # Set neumann boundary conditions
     for i, id in enumerate(bc_id_neumann):
-        l_prime -= ufl.inner(ufl_neumann[i], v) * geometry.ds(id)
+        l_prime += ufl.inner(ufl_neumann[i], v) * geometry.ds(id)
 
     # Solve problem
     solveoptions = {
-        "ksp_type": "cg",
-        "pc_type": "hypre",
-        "pc_hypre_type": "boomeramg",
-        "ksp_rtol": 1e-10,
-        "ksp_atol": 1e-10,
+        "ksp_type": "preonly",
+        "pc_type": "lu",
+        "ksp_rtol": 1e-12,
+        "ksp_atol": 1e-12,
     }
     problem_prime = dfem.petsc.LinearProblem(
         a_prime, l_prime, bcs_esnt, petsc_options=solveoptions
@@ -110,27 +125,33 @@ def solve_primal_problem(
     if degree_projection < 0:
         degree_projection = V_prime.element.basix_element.degree - 1
 
+    sigma_h = -2 * ufl.sym(ufl.grad(u_prime)) - ufl.div(u_prime) * ufl.Identity(gdim)
+
     V_flux = dfem.VectorFunctionSpace(geometry.mesh, ("DG", degree_projection))
-    sig_proj = local_projection(V_flux, [-ufl.grad(u_prime)])[0]
+    sig_proj = local_projection(
+        V_flux,
+        [
+            ufl.as_vector([sigma_h[0, 0], sigma_h[0, 1]]),
+            ufl.as_vector([sigma_h[1, 0], sigma_h[1, 1]]),
+        ],
+    )
 
     return u_prime, sig_proj
 
 
-def equilibrate_fluxes(
-    Equilibrator: typing.Any,
+def equilibrate_stresses(
     degree_flux: int,
     geometry: Geometry,
-    sig_proj: typing.List[dfem.Function],
-    rhs_proj: typing.List[dfem.Function],
-    bc_id_neumann: typing.List[typing.List[int]],
-    bc_id_dirichlet: typing.List[typing.List[int]],
-    flux_neumann: typing.List[typing.Any],
-    neumann_projection: typing.List[bool],
+    sig_proj: List[dfem.Function],
+    rhs_proj: List[dfem.Function],
+    bc_id_neumann: List[List[int]],
+    bc_id_dirichlet: List[List[int]],
+    flux_neumann: List[Any],
+    neumann_projection: List[bool],
 ):
     """Equilibrates the fluxes of the primal problem
 
     Args:
-        Equilibrator (equilibration.FluxEquilibrator): The equilibrator object
         degree_flux (int):                             Degree of flux space
         geometry (Geometry):                           The geometry of the domain
         sig_proj (List[dfem.Function]):                List of projected fluxes
@@ -150,7 +171,7 @@ def equilibrate_fluxes(
     fct_values = geometry.facet_function.values
 
     # Set equilibrator
-    equilibrator = Equilibrator(degree_flux, geometry.mesh, rhs_proj, sig_proj)
+    equilibrator = FluxEqlbSE(degree_flux, geometry.mesh, rhs_proj, sig_proj, True)
 
     # Mark dirichlet facets of primal problem
     fct_bcesnt_primal = []
@@ -176,7 +197,7 @@ def equilibrate_fluxes(
                 list_fcts = geometry.facet_function.indices[fct_values == id_flux]
                 list_flux_bc.append(
                     fluxbc(
-                        flux_neumann[i][j],
+                        -flux_neumann[i][j],
                         list_fcts,
                         equilibrator.V_flux,
                         neumann_projection[i][j],
@@ -190,7 +211,7 @@ def equilibrate_fluxes(
     # Set equilibrator
     equilibrator.set_boundary_conditions(fct_bcesnt_primal, bc_esnt_flux)
 
-    # Solve equilibration
+    # Step 1: Equilibrate stress tensor without symmetry
     equilibrator.equilibrate_fluxes()
 
     return equilibrator.list_flux, equilibrator.list_bfunctions

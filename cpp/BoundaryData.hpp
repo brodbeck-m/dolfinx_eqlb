@@ -63,7 +63,8 @@ public:
       std::vector<std::shared_ptr<fem::Function<T>>>& boundary_flux,
       std::shared_ptr<const fem::FunctionSpace> V_flux_hdiv,
       bool rtflux_is_custom, int quadrature_degree,
-      const std::vector<std::vector<std::int32_t>>& fct_esntbound_prime);
+      const std::vector<std::vector<std::int32_t>>& fct_esntbound_prime,
+      const bool reconstruct_stress);
 
   /// Calculate the boundary DOFs for a patch problem
   ///
@@ -117,6 +118,14 @@ public:
   {
     return mdspan_t<const std::int8_t, 2>(_facet_type.data(), _num_rhs,
                                           _num_fcts);
+  }
+
+  /// Marker if mesh-node is on essential boundary of the stress field
+  /// @return List of markers for all nodes
+  std::span<const std::int8_t> node_on_essnt_boundary_stress() const
+  {
+    return std::span<const std::int8_t>(_pnt_on_esnt_boundary.data(),
+                                        _pnt_on_esnt_boundary.size());
   }
 
   /// Get list of boundary markers
@@ -238,6 +247,10 @@ protected:
 
   // Offset for different RHS
   std::vector<std::int32_t> _offset_dofdata;
+
+  // --- Data per node
+  // The boundary markers
+  std::vector<std::int8_t> _pnt_on_esnt_boundary;
 
   // --- Data per facet
   // The boundary DOFs (per facet)

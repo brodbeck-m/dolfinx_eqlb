@@ -12,12 +12,15 @@ from dolfinx_eqlb.cpp import FluxBC, BoundaryData
 
 
 class FluxEquilibrator:
-    def __init__(self, degree_flux: int, n_eqlbs: int):
+    def __init__(self, degree_flux: int, n_eqlbs: int, equilibrate_stress: bool):
         # Order of reconstructed flux
         self.degree_flux = degree_flux
 
         # Number of reconstructed fluxes
         self.n_fluxes = n_eqlbs
+
+        # Equilibrate stresses
+        self.equilibrate_stresses = equilibrate_stress
 
         # --- The flux ---
         # Function space

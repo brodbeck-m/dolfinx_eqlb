@@ -92,14 +92,19 @@ void declare_fluxeqlb(py::module& m)
       [](std::vector<std::shared_ptr<dolfinx::fem::Function<T>>>& flux_hdiv,
          std::vector<std::shared_ptr<dolfinx::fem::Function<T>>>& flux_dg,
          std::vector<std::shared_ptr<dolfinx::fem::Function<T>>>& rhs_dg,
-         std::shared_ptr<BoundaryData<T>> boundary_data) {
-        reconstruct_fluxes_cstm<T>(flux_hdiv, flux_dg, rhs_dg, boundary_data);
+         std::shared_ptr<BoundaryData<T>> boundary_data,
+         const bool reconstruct_stress)
+      {
+        reconstruct_fluxes_cstm<T>(flux_hdiv, flux_dg, rhs_dg, boundary_data,
+                                   reconstruct_stress);
       },
       py::arg("flux_hdiv"), py::arg("flux_dg"), py::arg("rhs_dg"),
-      py::arg("boundary_data"),
+      py::arg("boundary_data"), py::arg("reconstruct_stress"),
       "Local equilibration of H(div) conforming fluxes, using an explicit "
-      "determination of the flues alongside with an unconstrained ministration "
-      "problem on a reduced space.");
+      "determination of the fluxes followed by a  ministration on a reduced "
+      "space. If apply_weal_symmetry is true, the first gdim fluxes are "
+      "treated as rows of a (symmetric) stress tensors, with weak imposition "
+      "of the symmetry constraint.");
 }
 
 template <typename T>
@@ -162,16 +167,18 @@ void declare_bcs(py::module& m)
                  std::shared_ptr<const fem::FunctionSpace> V_flux_hdiv,
                  bool rtflux_is_custom, int quadrature_degree,
                  const std::vector<std::vector<std::int32_t>>&
-                     fct_esntbound_prime)
+                     fct_esntbound_prime,
+                 const bool reconstruct_stress)
               {
                 // Return class
                 return BoundaryData<T>(list_bcs, boundary_flux, V_flux_hdiv,
                                        rtflux_is_custom, quadrature_degree,
-                                       fct_esntbound_prime);
+                                       fct_esntbound_prime, reconstruct_stress);
               }),
           py::arg("list_of_bcs"), py::arg("list_of_boundary_fluxes"),
           py::arg("V_flux_hdiv"), py::arg("rtflux_is_custom"),
-          py::arg("quadrature_degree"), py::arg("list_bfcts_prime"));
+          py::arg("quadrature_degree"), py::arg("list_bfcts_prime"),
+          py::arg("reconstruct_stress"));
 }
 
 PYBIND11_MODULE(cpp, m)

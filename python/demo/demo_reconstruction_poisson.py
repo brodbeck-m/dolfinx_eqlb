@@ -17,6 +17,7 @@ holds. Dirichlet BCs are applied on the boundaries 2 and 4.
 # --- Imports ---
 import numpy as np
 from mpi4py import MPI
+import time
 
 import dolfinx
 import dolfinx.fem as dfem
@@ -99,13 +100,25 @@ def solve_primal_problem(elmt_order_prime, domain, facet_tags, ds):
     bc_essnt = [dfem.dirichletbc(uD, dofs_essnt)]
 
     # Solve primal problem
+    timing = 0
     problem = dfem.petsc.LinearProblem(
         a,
         l,
         bcs=bc_essnt,
-        petsc_options={"ksp_type": "cg", "ksp_rtol": 1e-10, "ksp_atol": 1e-12},
+        petsc_options={
+            "ksp_type": "cg",
+            "pc_type": "hypre",
+            "hypre_type": "boomeramg",
+            "ksp_rtol": 1e-10,
+            "ksp_atol": 1e-12,
+        },
     )
+
+    timing -= time.perf_counter()
     uh_prime = problem.solve()
+    timing += time.perf_counter()
+
+    print(f"Primal problem solved in {timing:.4e} s")
 
     return uh_prime
 
@@ -120,7 +133,7 @@ def equilibrate_flux(
 
     # Project flux and RHS into required DG space
     V_rhs_proj = dfem.FunctionSpace(domain, ("DG", elmt_order_eqlb - 1))
-    # (elmt_order_eqlb - 1 would be sufficient but not implemented for semi-explicit eqlb.)
+    # (elmt_order_prime - 1 would be sufficient but not implemented for semi-explicit eqlb.)
     V_flux_proj = dfem.VectorFunctionSpace(domain, ("DG", elmt_order_eqlb - 1))
 
     sigma_proj = local_projection(V_flux_proj, [-ufl.grad(uh_prime)])
@@ -162,19 +175,25 @@ def equilibrate_flux(
     )
 
     # Solve equilibration
+    timing = 0
+
+    timing -= time.perf_counter()
     equilibrator.equilibrate_fluxes()
+    timing += time.perf_counter()
+
+    print(f"Equilibration solved in {timing:.4e} s")
 
     return sigma_proj[0], equilibrator.list_flux[0]
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     # --- Parameters ---
     # The considered equilibration strategy
     Equilibrator = FluxEqlbSE
 
     # The orders of the FE spaces
     elmt_order_prime = 1
-    elmt_order_eqlb = 1
+    elmt_order_eqlb = 2
 
     # The mesh resolution
     sdisc_nelmt = 20
@@ -203,7 +222,7 @@ if __name__ == '__main__':
     )
 
     if Equilibrator == FluxEqlbEV:
-        sigma_eqlb_dg = local_projection(V_dg_hdiv, sigma_eqlb)
+        sigma_eqlb_dg = local_projection(V_dg_hdiv, [sigma_eqlb])
     else:
         sigma_eqlb_dg = local_projection(V_dg_hdiv, [sigma_eqlb + sigma_proj])
 
@@ -219,3 +238,4 @@ if __name__ == '__main__':
     outfile.write_function(sigma_ref[0], 1)
     outfile.write_function(sigma_proj, 1)
     outfile.write_function(sigma_eqlb_dg[0], 1)
+    outfile.close()

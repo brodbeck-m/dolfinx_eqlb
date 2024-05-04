@@ -8,7 +8,7 @@ Patch::Patch(int nnodes_proc, std::shared_ptr<const mesh::Mesh> mesh,
     : _mesh(mesh), _bfct_type(bfct_type), _dim(mesh->geometry().dim()),
       _dim_fct(mesh->geometry().dim() - 1),
       _type(bfct_type.extent(0), PatchType::internal),
-      _npatches(bfct_type.extent(0))
+      _nrhs(bfct_type.extent(0))
 {
   // Initialize connectivities
   _node_to_cell = _mesh->topology().connectivity(0, _dim);
@@ -326,7 +326,7 @@ std::int8_t Patch::get_fctid_local(std::int32_t fct_i,
   return fct_loc;
 }
 
-std::int8_t Patch::nodei_local(std::int32_t cell_i)
+std::int8_t Patch::node_local(std::int32_t cell_i, std::int32_t node_i)
 {
   // Initialize cell-local node-id
   std::int8_t id_node_loc_ci = 0;
@@ -334,12 +334,17 @@ std::int8_t Patch::nodei_local(std::int32_t cell_i)
   // Get nodes on cell_i
   std::span<const std::int32_t> node_cell_i = _cell_to_node->links(cell_i);
 
-  while (node_cell_i[id_node_loc_ci] != _nodei)
+  while (node_cell_i[id_node_loc_ci] != node_i)
   {
     id_node_loc_ci += 1;
   }
 
   return id_node_loc_ci;
+}
+
+std::int8_t Patch::nodei_local(std::int32_t cell_i)
+{
+  return node_local(cell_i, _nodei);
 }
 
 std::int32_t
@@ -419,4 +424,654 @@ Patch::next_facet_triangle(std::int32_t cell_i,
   }
 
   return fct_next;
+}
+
+// ---------------------------------------------------------------------------------------------------
+OrientedPatch::OrientedPatch(std::shared_ptr<const mesh::Mesh> mesh,
+                             mdspan_t<const std::int8_t, 2> bfct_type,
+                             const int ncells_crit,
+                             std::span<const std::int8_t> pnts_on_bndr)
+    : _mesh(mesh), _bfct_type(bfct_type), _dim(mesh->geometry().dim()),
+      _dim_fct(mesh->geometry().dim() - 1),
+      _type(bfct_type.extent(0), PatchType::internal),
+      _nrhs(bfct_type.extent(0))
+{
+  // Initialize connectivities
+  _node_to_cell = _mesh->topology().connectivity(0, _dim);
+  _node_to_fct = _mesh->topology().connectivity(0, _dim_fct);
+  _fct_to_node = _mesh->topology().connectivity(_dim_fct, 0);
+  _fct_to_cell = _mesh->topology().connectivity(_dim_fct, _dim);
+  _cell_to_fct = _mesh->topology().connectivity(_dim, _dim_fct);
+  _cell_to_node = _mesh->topology().connectivity(_dim, 0);
+
+  // The patch size
+  set_max_patch_size(mesh->topology().index_map(0)->size_local(), ncells_crit,
+                     pnts_on_bndr);
+
+  // Initialize number of facets per cell
+  _fct_per_cell = _cell_to_fct->links(0).size();
+
+  // Reserve storage for patch geometry
+  if (_dim == 2)
+  {
+    const int sp1 = _ncells_max + 1, sp2 = _ncells_max + 2;
+
+    _cells.resize(sp2);
+    _fcts.resize(sp1);
+    _fcts_sorted.resize(sp1);
+    _fcts_local.resize(2 * sp1);
+    _inodes_local.resize(sp2);
+
+    // Check for triangular elements
+    if (_fct_per_cell != 3)
+    {
+      throw std::runtime_error("Only triangular elements supported!");
+    }
+  }
+  else
+  {
+    throw std::runtime_error("Only 2D meshes supported!");
+  }
+}
+
+PatchType OrientedPatch::determine_patch_type(const std::int32_t node_i) const
+{
+  // Get facets on patch
+  std::span<const std::int32_t> fcts_patch = _node_to_fct->links(node_i);
+
+  // Check facet types
+  int count_pessnt_bfct = 0;
+  int count_dessnt_dfct = 0;
+
+  for (std::int32_t fct : fcts_patch)
+  {
+    if (_bfct_type(0, fct) == PatchFacetType::essnt_primal)
+    {
+      count_pessnt_bfct += 1;
+    }
+    else if (_bfct_type(0, fct) == PatchFacetType::essnt_dual)
+    {
+      count_dessnt_dfct += 1;
+    }
+  }
+
+  // Determine patch type
+  if ((count_dessnt_dfct + count_pessnt_bfct) == 0)
+  {
+    return PatchType::internal;
+  }
+  else
+  {
+    if (count_pessnt_bfct == 2)
+    {
+      return PatchType::bound_essnt_primal;
+    }
+    else if (count_dessnt_dfct == 2)
+    {
+      return PatchType::bound_essnt_dual;
+    }
+    else
+    {
+      return PatchType::bound_mixed;
+    }
+  }
+}
+
+std::vector<std::int32_t> OrientedPatch::group_boundary_patches(
+    const std::int32_t node_i, std::span<const std::int8_t> pnt_on_essntbndr,
+    const int ncells_min, const int ncells_crit) const
+{
+
+  // FIXME -- Check only on boundary patch neighbored by node_i --> Extend!
+
+  // Get adjacent internal patch
+  std::int32_t node_i_internal = get_adjacent_internal_patch(node_i);
+
+  // Initialise vector for adjacent patches
+  std::vector<std::int32_t> grouped_patches = {node_i_internal, node_i};
+
+  // Facets on patch
+  std::span<const std::int32_t> fcts_patch = _node_to_fct->links(node_i);
+
+  // Get adjacent boundary patches
+  for (std::int32_t fct_i : fcts_patch)
+  {
+    // Node on current facet
+    std::span<const std::int32_t> nodes_fct = _fct_to_node->links(fct_i);
+
+    // Check compatibility of adjacent (boundary) patches
+    int nodei_adjacent = (nodes_fct[0] == node_i) ? nodes_fct[1] : nodes_fct[0];
+
+    if (pnt_on_essntbndr[nodei_adjacent])
+    {
+      // Cells on adjacent boundary patch
+      int ncells_adjacet_patch = ncells(nodei_adjacent);
+
+      if (ncells_adjacet_patch > ncells_min)
+      {
+        if (ncells_adjacet_patch == ncells_crit)
+        {
+          // Check if adjacent patch is pure neumann-patch
+          // FIXME - Currently only for 2D
+          int count_efcts = 0;
+          std::span<const std::int32_t> fcts_adjacet_patch
+              = _node_to_fct->links(nodei_adjacent);
+
+          for (std::int32_t fct_ap_i : fcts_adjacet_patch)
+          {
+            if ((_bfct_type(0, fct_ap_i) == PatchFacetType::essnt_dual)
+                || (_bfct_type(1, fct_ap_i) == PatchFacetType::essnt_dual))
+            {
+              count_efcts += 1;
+            }
+          }
+
+          if (count_efcts == 2)
+          {
+            grouped_patches.push_back(nodei_adjacent);
+          }
+        }
+      }
+      else
+      {
+        std::string error_msg = "Patch around node "
+                                + std::to_string(nodei_adjacent) + " has only "
+                                + std::to_string(ncells_min) + " cells";
+        throw std::runtime_error(error_msg);
+      }
+    }
+  }
+
+  return std::move(grouped_patches);
+}
+
+bool OrientedPatch::reversion_required(int index) const
+{
+  // Initialise output
+  bool patch_reversed = false;
+
+  if ((index > 0) && requires_flux_bcs(index))
+  {
+    // Get type of the subsequent RHSs
+    const PatchType type_i = _type[index];
+    const PatchType type_im1 = _type[index - 1];
+
+    // Check if patch has to be reversed
+    if ((type_i != type_im1) || type_i == PatchType::bound_mixed)
+    {
+      if (_bfct_type(index, _fcts[0]) != PatchFacetType::essnt_dual)
+      {
+        patch_reversed = true;
+      }
+    }
+  }
+
+  return patch_reversed;
+}
+
+// --- Protected methods
+void OrientedPatch::set_max_patch_size(
+    const int nnodes_proc, const int ncells_crit,
+    std::span<const std::int8_t> pnts_on_bndr)
+{
+  // Initialization
+  _ncells_max = 0;
+  _groupsize_max = 1;
+
+  if (ncells_crit == 0)
+  {
+    for (std::size_t i_node = 0; i_node < nnodes_proc; ++i_node)
+    {
+      // Get number of cells on patch
+      int n_cells = _node_to_cell->links(i_node).size();
+
+      if (n_cells > _ncells_max)
+      {
+        _ncells_max = n_cells;
+      }
+    }
+  }
+  else
+  {
+    // Loop over all nodes
+    for (std::size_t node_i = 0; node_i < nnodes_proc; ++node_i)
+    {
+      // Get number of cells on patch
+      int n_cells = _node_to_cell->links(node_i).size();
+
+      // Check if maximal patch size hast to be updated
+      if (n_cells > _ncells_max)
+      {
+        _ncells_max = n_cells;
+      }
+
+      // Check if patches have to be grouped
+      if ((pnts_on_bndr[node_i]) && (n_cells == ncells_crit))
+      {
+        // Check patch type
+        PatchType patch_type = determine_patch_type(node_i);
+
+        if (patch_type == PatchType::bound_essnt_dual)
+        {
+          // Increment group size
+          int groupsize = 2;
+
+          // Adjacent boundary facets
+          std::array<std::int32_t, 2> adjacent_patches
+              = adjacent_boundary_patches(node_i);
+
+          // Check if adjacet patches are also small
+          for (std::int32_t node : adjacent_patches)
+          {
+            std::int32_t node_i_adjacent = node;
+
+            while (ncells(node_i_adjacent) == ncells_crit)
+            {
+              // Increment group size
+              groupsize += 1;
+
+              // Get adjacent boundary patches
+              std::array<std::int32_t, 2> adjacent_patches
+                  = adjacent_boundary_patches(node_i_adjacent);
+
+              // Update node_i
+              node_i_adjacent = (adjacent_patches[0] == node_i)
+                                    ? adjacent_patches[1]
+                                    : adjacent_patches[0];
+            }
+          }
+
+          // Check if  maximal group size has to be updated
+          if (groupsize > _groupsize_max)
+          {
+            _groupsize_max = groupsize;
+          }
+        }
+      }
+    }
+  }
+}
+
+void OrientedPatch::initialize_patch(const int node_i)
+{
+  // Set central node
+  _nodei = node_i;
+
+  /* Get cells/facet on current patch */
+  std::span<const std::int32_t> cells = _node_to_cell->links(node_i);
+  std::span<const std::int32_t> fcts = _node_to_fct->links(node_i);
+
+  _ncells = cells.size();
+  _nfcts = fcts.size();
+
+  // Creat sorted list of facets
+  std::span<std::int32_t> fcts_sorted(_fcts_sorted.data(), _nfcts);
+  std::copy(fcts.begin(), fcts.end(), _fcts_sorted.begin());
+  std::sort(_fcts_sorted.begin(), std::next(_fcts_sorted.begin(), _nfcts));
+
+  /* Initialise patch type */
+  std::fill(_type.begin(), _type.end(), PatchType::internal);
+  _equal_patches = true;
+
+  std::int32_t fct_first = fcts[0];
+  if (_nfcts > _ncells)
+  {
+    /* Determine patch type: i_rhs = 0 */
+    std::array<std::int32_t, 2> fct_ef = {-1, -1};
+    std::array<std::int32_t, 2> fct_ep = {-1, -1};
+
+    // Check for boundary facets
+    for (std::int32_t id_fct : fcts)
+    {
+      if (_bfct_type(0, id_fct) == PatchFacetType::essnt_primal)
+      {
+        // Mark first facet for DOFmap construction
+        if (fct_ep[0] < 0)
+        {
+          fct_ep[0] = id_fct;
+        }
+        else
+        {
+          fct_ep[1] = id_fct;
+        }
+      }
+      else if (_bfct_type(0, id_fct) == PatchFacetType::essnt_dual)
+      {
+        // Mark first facet for DOFmap construction
+        if (fct_ef[0] < 0)
+        {
+          fct_ef[0] = id_fct;
+        }
+        else
+        {
+          fct_ef[1] = id_fct;
+        }
+      }
+    }
+
+    // Set patch type
+    if (fct_ef[0] < 0)
+    {
+      _type[0] = PatchType::bound_essnt_primal;
+
+      // Start patch construction on dirichlet facet
+      fct_first = fct_ep[0];
+    }
+    else
+    {
+      if (fct_ep[0] < 0)
+      {
+        _type[0] = PatchType::bound_essnt_dual;
+      }
+      else
+      {
+        _type[0] = PatchType::bound_mixed;
+      }
+
+      // Start patch construction on neumann facet
+      fct_first = fct_ef[0];
+    }
+
+    /* Set types of following RHS */
+    if (_bfct_type.extent(0) > 1)
+    {
+      for (std::size_t i_rhs = 1; i_rhs < _bfct_type.extent(0); ++i_rhs)
+      {
+        // Extract (global) Ids of first and last facet
+        std::int32_t fct_0, fct_n;
+
+        if (_type[0] == PatchType::bound_essnt_primal)
+        {
+          fct_0 = fct_ep[0];
+          fct_n = fct_ep[1];
+        }
+        else if (_type[0] == PatchType::bound_essnt_dual)
+        {
+          fct_0 = fct_ef[0];
+          fct_n = fct_ef[1];
+        }
+        else
+        {
+          fct_0 = fct_ef[0];
+          fct_n = fct_ep[0];
+        }
+
+        // Identify patch type of current RHS
+        if (_bfct_type(i_rhs, fct_0) == _bfct_type(i_rhs, fct_n))
+        {
+          if (_bfct_type(i_rhs, fct_0) == PatchFacetType::essnt_primal)
+          {
+            _type[i_rhs] = PatchType::bound_essnt_primal;
+          }
+          else
+          {
+            _type[i_rhs] = PatchType::bound_essnt_dual;
+          }
+        }
+        else
+        {
+          _type[i_rhs] = PatchType::bound_mixed;
+        }
+      }
+
+      // Check if all patches have the same type
+      if (std::adjacent_find(_type.begin(), _type.end(), std::not_equal_to<>())
+          == _type.end())
+      {
+        _equal_patches = false;
+      }
+    }
+  }
+
+  // Store first facet
+  if (is_internal())
+  {
+    _fcts[1] = fct_first;
+  }
+  else
+  {
+    _fcts[0] = fct_first;
+  }
+
+  /* Structure sub-mesh */
+  // Extract data
+  PatchType type = _type[0];
+  mdspan_t<std::int8_t, 2> fcts_local(_fcts_local.data(), _nfcts, 2);
+
+  // Initialisation
+  int lloop = _ncells + 1;
+
+  if (type == PatchType::internal)
+  {
+    _cells[1] = _fct_to_cell->links(_fcts[1])[1];
+  }
+  else
+  {
+    // Set cell a=1
+    _cells[1] = _fct_to_cell->links(_fcts[0])[0];
+
+    // Get local facet ids
+    std::int8_t lfct
+        = get_fctid_local(fct_first, _cell_to_fct->links(_cells[1]));
+    fcts_local(0, 0) = lfct;
+    fcts_local(0, 1) = lfct;
+
+    // Get next facet
+    _fcts[1] = next_facet(_cells[1], _cell_to_fct->links(_cells[1]), lfct);
+
+    // Adjust loop counter
+    lloop = _ncells;
+  }
+
+  // Loop over internal facets
+  for (std::size_t a = 1; a < lloop; ++a)
+  {
+    std::size_t ap1 = a + 1;
+    std::int32_t fct_a = _fcts[a], cell_a = _cells[a];
+
+    // Get cells adjacent to facet E_a
+    std::span<const std::int32_t> cells_fct = _fct_to_cell->links(fct_a);
+
+    // Set next cell T_(a+1) on patch
+    std::int32_t cell_ap1
+        = (cells_fct[0] == cell_a) ? cells_fct[1] : cells_fct[0];
+    _cells[ap1] = cell_ap1;
+
+    // Get local facet IDs
+    std::span<const std::int32_t> fcts_cell_ap1 = _cell_to_fct->links(cell_ap1);
+    std::int8_t lfct_cell_ap1 = get_fctid_local(fct_a, fcts_cell_ap1);
+
+    fcts_local(a, 0) = get_fctid_local(fct_a, _cell_to_fct->links(cell_a));
+    fcts_local(a, 1) = lfct_cell_ap1;
+
+    // Get local node ID on patch-central node
+    _inodes_local[a] = node_local(cell_a, _nodei);
+
+    // Determine next facet
+    _fcts[a + 1] = next_facet(cell_ap1, fcts_cell_ap1, lfct_cell_ap1);
+  }
+
+  // Complete Definition of patch
+  if (is_on_boundary())
+  {
+    // Get local node ID on patch-central node
+    _inodes_local[_ncells] = node_local(_cells[_ncells], _nodei);
+
+    // Get local facet IDs
+    std::int8_t lfct_cell
+        = get_fctid_local(_fcts[_ncells], _cell_to_fct->links(_cells[_ncells]));
+
+    fcts_local(_ncells, 0) = lfct_cell;
+    fcts_local(_ncells, 1) = lfct_cell;
+  }
+  else
+  {
+    // Set cell 0 and cell n+1
+    _cells[0] = _cells[_ncells];
+    _cells[_ncells + 1] = _cells[1];
+
+    // Set ID of patch-central node in cell 0 and cell n+1
+    _inodes_local[0] = _inodes_local[_ncells];
+    _inodes_local[_ncells + 1] = _inodes_local[1];
+
+    // Set facet 0
+    _fcts[0] = _fcts[_nfcts];
+
+    // Local facets
+    _fcts_local[0] = _fcts_local[2 * _nfcts];
+    _fcts_local[1] = _fcts_local[2 * _nfcts + 1];
+  }
+}
+
+std::int8_t OrientedPatch::get_fctid_local(std::int32_t fct_i,
+                                           std::int32_t cell_i) const
+{
+  // Get facets on cell
+  std::span<const std::int32_t> fct_cell_i = _cell_to_fct->links(cell_i);
+
+  return get_fctid_local(fct_i, fct_cell_i);
+}
+
+std::int8_t
+OrientedPatch::get_fctid_local(std::int32_t fct_i,
+                               std::span<const std::int32_t> fct_cell_i) const
+{
+  // Initialize local id
+  std::int8_t fct_loc = 0;
+
+  // Get id (cell_local) of fct_i
+  while (fct_cell_i[fct_loc] != fct_i && fct_loc < _fct_per_cell)
+  {
+    fct_loc += 1;
+  }
+
+  // Check for face not on cell
+  assert(fct_loc < _fct_per_cell);
+
+  return fct_loc;
+}
+
+std::int8_t OrientedPatch::node_local(std::int32_t cell_i,
+                                      std::int32_t node_i) const
+{
+  // Initialize cell-local node-id
+  std::int8_t id_node_loc_ci = 0;
+
+  // Get nodes on cell_i
+  std::span<const std::int32_t> node_cell_i = _cell_to_node->links(cell_i);
+
+  while (node_cell_i[id_node_loc_ci] != node_i)
+  {
+    id_node_loc_ci += 1;
+  }
+
+  return id_node_loc_ci;
+}
+
+std::int32_t OrientedPatch::next_facet(std::int32_t cell_i,
+                                       std::span<const std::int32_t> fct_cell_i,
+                                       std::int8_t id_fct_loc) const
+{
+  // Get remaining facets in correct order
+  std::vector<std::int32_t> fct_es(2);
+  std::int32_t fct_next;
+
+  switch (id_fct_loc)
+  {
+  case 0:
+    if (fct_cell_i[1] < fct_cell_i[2])
+    {
+      fct_es[0] = fct_cell_i[1];
+      fct_es[1] = fct_cell_i[2];
+    }
+    else
+    {
+      fct_es[0] = fct_cell_i[2];
+      fct_es[1] = fct_cell_i[1];
+    }
+    break;
+  case 1:
+    if (fct_cell_i[0] < fct_cell_i[2])
+    {
+      fct_es[0] = fct_cell_i[0];
+      fct_es[1] = fct_cell_i[2];
+    }
+    else
+    {
+      fct_es[0] = fct_cell_i[2];
+      fct_es[1] = fct_cell_i[0];
+    }
+    break;
+  case 2:
+    if (fct_cell_i[0] < fct_cell_i[1])
+    {
+      fct_es[0] = fct_cell_i[0];
+      fct_es[1] = fct_cell_i[1];
+    }
+    else
+    {
+      fct_es[0] = fct_cell_i[1];
+      fct_es[1] = fct_cell_i[0];
+    }
+    break;
+  default:
+    assert(id_fct_loc < 2);
+  }
+
+  // Get next facet
+  if (fct_es[0] < _fcts_sorted[0])
+  {
+    fct_next = fct_es[1];
+  }
+  else
+  {
+    if (fct_es[1] > _fcts_sorted[_nfcts - 1])
+    {
+      fct_next = fct_es[0];
+    }
+    else
+    {
+      // Full search
+      if (std::count(_fcts_sorted.begin(),
+                     std::next(_fcts_sorted.begin(), _nfcts), fct_es[0]))
+      {
+        fct_next = fct_es[0];
+      }
+      else
+      {
+        fct_next = fct_es[1];
+      }
+    }
+  }
+
+  return fct_next;
+}
+
+std::array<std::int32_t, 2>
+OrientedPatch::adjacent_boundary_patches(const std::int32_t node_i) const
+{
+  // Initialisation
+  std::array<std::int32_t, 2> adjacent_patches;
+
+  // Facets on current patch
+  std::span<const std::int32_t> fcts_patch = _node_to_fct->links(node_i);
+
+  // Loop over facets
+  int count = 0;
+  for (std::int32_t fct : fcts_patch)
+  {
+    // Check compatibility of adjacent (boundary) patches
+    if (_bfct_type(0, fct) != PatchFacetType::internal)
+    {
+      // Nodes on current facet
+      std::span<const std::int32_t> pnts_fct = _fct_to_node->links(fct);
+
+      // Get central node of adjacet boundary patch
+      adjacent_patches[count]
+          = (pnts_fct[0] == node_i) ? pnts_fct[1] : pnts_fct[0];
+      count += 1;
+    }
+  }
+
+  return std::move(adjacent_patches);
 }

@@ -4,6 +4,8 @@ import typing
 
 import basix
 import dolfinx.fem as dfem
+import dolfinx.fem.petsc as dfem_petsc
+import dolfinx.mesh as dmesh
 import ufl
 
 from dolfinx_eqlb.lsolver import local_projection
@@ -97,7 +99,12 @@ def check_boundary_conditions(
 
 
 def check_divergence_condition(
-    sigma_eq: dfem.Function, sigma_proj: dfem.Function, rhs_proj: dfem.Function
+    sigma_eq: typing.Union[dfem.Function, typing.Any],
+    sigma_proj: typing.Union[dfem.Function, typing.Any],
+    rhs_proj: dfem.Function,
+    mesh: typing.Optional[dmesh.Mesh] = None,
+    degree: typing.Optional[int] = None,
+    flux_is_dg: typing.Optional[bool] = None,
 ):
     """Check the divergence condition
 
@@ -110,13 +117,33 @@ def check_divergence_condition(
     are performed.
 
     Args:
-        sigma_eq:       The equilibrated flux
-        sigma_proj:     The projected flux
-        rhs_proj:       The projected right-hand side
+        sigma_eq (Function or ufl-Argument):   The equilibrated flux
+        sigma_proj (Function or ufl-Argument): The projected flux
+        rhs_proj (Function):                   The projected right-hand side
+        mesh (optional, dmesh.Mesh):           The mesh (optional, only for ufl flux required)
+        degree (optional, int):                The flux degree (optional, only for ufl flux required)
+        flux_is_dg (optional, bool):           Identifier id flux is in DRT space (optional, only for ufl flux required)
     """
     # --- Extract solution data
-    # the mesh
-    mesh = sigma_eq.function_space.mesh
+    if type(sigma_eq) is dfem.Function:
+        # the mesh
+        mesh = sigma_eq.function_space.mesh
+
+        # degree of the flux space
+        degree = sigma_eq.function_space.element.basix_element.degree
+
+        # check if flux space is discontinuous
+        flux_is_dg = sigma_eq.function_space.element.basix_element.discontinuous
+    else:
+        # Check input
+        if mesh is None:
+            raise ValueError("Mesh must be provided")
+
+        if degree is None:
+            raise ValueError("Flux degree must be provided")
+
+        if flux_is_dg is None:
+            raise ValueError("Flux type must be provided")
 
     # the geometry DOFmap
     gdmap = mesh.geometry.dofmap
@@ -124,14 +151,11 @@ def check_divergence_condition(
     # number of cells in mesh
     n_cells = mesh.topology.index_map(2).size_local
 
-    # degree of the flux space
-    degree = sigma_eq.function_space.element.basix_element.degree
-
-    # check if flux space is discontinuous
-    flux_is_dg = sigma_eq.function_space.element.basix_element.discontinuous
-
     # --- Calculate divergence of the equilibrated flux
-    V_div = dfem.FunctionSpace(mesh, ("DG", degree - 1))
+    if rhs_proj.function_space.dofmap.index_map_bs == 1:
+        V_div = dfem.FunctionSpace(mesh, ("DG", degree - 1))
+    else:
+        V_div = dfem.VectorFunctionSpace(mesh, ("DG", degree - 1))
 
     if flux_is_dg:
         div_sigeq = local_projection(V_div, [ufl.div(sigma_eq + sigma_proj)])[0]
@@ -271,3 +295,46 @@ def check_jump_condition(sigma_eq: dfem.Function, sig_proj: dfem.Function):
                 # check continuity of facet-normal flux
                 if not np.isclose(flux_plus + flux_minus, 0):
                     raise ValueError("Jump condition not satisfied")
+
+
+def check_weak_symmetry_condition(sigma_eq: dfem.Function):
+    """Check the weak symmetry condition
+
+    Let sigma_eq be the equilibrated flux, then
+
+                (sig_eq, J(theta)) = 0
+
+    must hold.
+
+    Args:
+        sigma_eq (Function):   The equilibrated flux
+    """
+    # --- Extract solution data
+    # The mesh
+    mesh = sigma_eq[0].function_space.mesh
+
+    # --- Assemble weak symmetry condition
+    #  The (continuous) test space
+    V_test = dfem.FunctionSpace(mesh, ("P", 1))
+
+    # The test functional
+    if mesh.topology.dim == 2:
+        # The test function
+        v = ufl.TestFunction(V_test)
+
+        # The linear form
+        l_weaksym = dfem.form(ufl.inner(sigma_eq[0][1] - sigma_eq[1][0], v) * ufl.dx)
+    else:
+        raise ValueError("Test on weak symmetry condition not implemented for 3D")
+
+    # Assemble linear form
+    L = dfem_petsc.create_vector(l_weaksym)
+
+    with L.localForm() as loc:
+        loc.set(0)
+
+    dfem_petsc.assemble_vector(L, l_weaksym)
+
+    # --- Test weak-symmetry condition
+    if not np.allclose(L.array, 0):
+        raise ValueError("Weak symmetry condition not satisfied")

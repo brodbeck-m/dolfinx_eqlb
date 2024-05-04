@@ -20,7 +20,7 @@ class FluxEqlbEV(FluxEquilibrator):
         list_proj_flux: typing.List[dfem.function.Function],
     ):
         # Constructor of base class
-        super().__init__(degree_flux, len(list_rhs))
+        super().__init__(degree_flux, len(list_rhs), False)
 
         # --- Storage of variational problem (equilibration) ---
         # --- Function spaces
@@ -124,6 +124,7 @@ class FluxEqlbEV(FluxEquilibrator):
             self.V.sub(0),
             False,
             list_bfct_prime,
+            self.equilibrate_stresses,
             quadrature_degree,
         )
 
