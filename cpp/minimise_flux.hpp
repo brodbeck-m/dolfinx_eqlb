@@ -821,12 +821,5 @@ void assemble_stressminimiser(kernel_fn_schursolver<T>& minimisation_kernel,
       }
     }
   }
-
-  // std::cout << "The load vector: " << std::endl;
-  // for (int i = 0; i < (2 * ndofs_flux_hdivz + ndofs_constr); ++i)
-  // {
-  //   std::cout << L(i) << " ";
-  // }
-  // std::cout << "\n";
 }
 } // namespace dolfinx_eqlb
