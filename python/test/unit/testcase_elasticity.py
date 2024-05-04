@@ -92,10 +92,10 @@ def solve_primal_problem(
     u = ufl.TrialFunction(V_prime)
     v = ufl.TestFunction(V_prime)
 
-    sigma = -2 * ufl.sym(ufl.grad(u)) - ufl.div(u) * ufl.Identity(gdim)
+    sigma = 2 * ufl.sym(ufl.grad(u)) + ufl.div(u) * ufl.Identity(gdim)
 
     a_prime = ufl.inner(sigma, ufl.sym(ufl.grad(v))) * ufl.dx
-    l_prime = ufl.inner(-ufl_rhs, v) * ufl.dx
+    l_prime = ufl.inner(ufl_rhs, v) * ufl.dx
 
     # Set dirichlet boundary conditions
     bcs_esnt = []
@@ -197,7 +197,7 @@ def equilibrate_stresses(
                 list_fcts = geometry.facet_function.indices[fct_values == id_flux]
                 list_flux_bc.append(
                     fluxbc(
-                        flux_neumann[i][j],
+                        -flux_neumann[i][j],
                         list_fcts,
                         equilibrator.V_flux,
                         neumann_projection[i][j],
