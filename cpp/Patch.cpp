@@ -653,9 +653,6 @@ void OrientedPatch::set_max_patch_size(
 
         if (patch_type == PatchType::bound_essnt_dual)
         {
-          // std::cout << "Maximum group size based on patches around node "
-          //           << node_i << std::endl;
-
           // Increment group size
           int groupsize = 2;
 
