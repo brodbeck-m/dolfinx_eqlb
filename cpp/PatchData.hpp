@@ -556,16 +556,6 @@ public:
     // Offset for vector L_c
     const int offset_Lc = _gdim * _dim_hdivz;
 
-    // std::cout << "Unmodified A:" << std::endl;
-    // for (std::size_t i = 0; i < _dim_hdivz; ++i)
-    // {
-    //   for (std::size_t j = 0; j < _dim_hdivz; ++j)
-    //   {
-    //     std::cout << _A_rec(i, j) << " ";
-    //   }
-    //   std::cout << std::endl;
-    // }
-
     // Calculate Schur complement
     for (int k = 0; k < _gdim; ++k)
     {
@@ -579,36 +569,8 @@ public:
         // Modify A and f_uk
         apply_bcs_on_A(k);
 
-        // std::cout << "Modified A, k=" << k << std::endl;
-        // for (std::size_t i = 0; i < _dim_hdivz; ++i)
-        // {
-        //   for (std::size_t j = 0; j < _dim_hdivz; ++j)
-        //   {
-        //     std::cout << _A(i, j) << " ";
-        //   }
-        //   std::cout << std::endl;
-        // }
-
-        // std::cout << "B, k=" << k << std::endl;
-        // for (std::size_t i = 0; i < _dim_hdivz; ++i)
-        // {
-        //   for (std::size_t j = 0; j < _dim_constr; ++j)
-        //   {
-        //     std::cout << _B(i, offset_Bk + j) << " ";
-        //   }
-        //   std::cout << std::endl;
-        // }
-
         // Factorise A
         factorise_matrix_A();
-
-        // Additional constribution to L_c
-        // FIXME - Check if this is correct!!!
-        _Ainv_t_fu.head(_dim_hdivz)
-            = _solver_A.solve(_L.segment(k * _dim_hdivz, _dim_hdivz));
-        _L.segment(offset_Lc, _dim_constr).noalias()
-            -= _B.block(0, offset_Bk, _dim_hdivz, _dim_constr).transpose()
-               * _Ainv_t_fu;
       }
 
       // Compute invers(A) * B_k
@@ -628,23 +590,13 @@ public:
     _solver_C.compute(_C.topLeftCorner(dim_c, dim_c));
 
     // Solve for constraints
-    // std::cout << "dim_c= " << dim_c << std::endl;
     _u_c.head(dim_c) = _solver_C.solve(_L.segment(offset_Lc, dim_c));
-
-    // std::cout << "Solution c:" << std::endl;
-    // for (std::size_t i = 0; i < _dim_constr; ++i)
-    // {
-    //   std::cout << _u_c(i) << " ";
-    // }
-    // std::cout << "\n";
 
     // Solve for u_k
     _u_sigma.setZero();
 
     for (int k = _gdim - 1; k > -1; --k)
     {
-      // std::cout << "Solve u: k=" << k << std::endl;
-
       // Offsets
       int offset_Bk = k * _dim_constr;
       int offset_uk = k * _dim_hdivz;
@@ -652,7 +604,6 @@ public:
       // Refactorise A (with correct boundary conditions)
       if (requires_flux_bc & (k != (_gdim - 1)))
       {
-        // std::cout << "Refactorise A" << std::endl;
         // Modify A and f_uk
         apply_bcs_on_A(k);
 
@@ -665,18 +616,6 @@ public:
           = _solver_A.solve(-_B.block(0, offset_Bk, _dim_hdivz, _dim_constr)
                             * _u_c.head(_dim_constr));
     }
-
-    // if (_meanvalue_condition_required)
-    // {
-    //   std::cout << "Lagrangian multiplier considered" << std::endl;
-    // }
-
-    // std::cout << "Solution u:" << std::endl;
-    // for (std::size_t i = 0; i < 2 * _dim_hdivz; ++i)
-    // {
-    //   std::cout << _u_sigma(i) << " ";
-    // }
-    // std::cout << "\n";
   }
 
 protected:
