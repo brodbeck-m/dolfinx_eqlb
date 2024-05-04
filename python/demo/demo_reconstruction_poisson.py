@@ -133,7 +133,7 @@ def equilibrate_flux(
 
     # Project flux and RHS into required DG space
     V_rhs_proj = dfem.FunctionSpace(domain, ("DG", elmt_order_eqlb - 1))
-    # (elmt_order_eqlb - 1 would be sufficient but not implemented for semi-explicit eqlb.)
+    # (elmt_order_prime - 1 would be sufficient but not implemented for semi-explicit eqlb.)
     V_flux_proj = dfem.VectorFunctionSpace(domain, ("DG", elmt_order_eqlb - 1))
 
     sigma_proj = local_projection(V_flux_proj, [-ufl.grad(uh_prime)])
