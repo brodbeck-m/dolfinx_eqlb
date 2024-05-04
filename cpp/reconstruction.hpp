@@ -233,9 +233,6 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
         problem_data.fspace_flux_hdiv(), problem_data.fspace_flux_dg(),
         basix_element_rhscg, true);
 
-    // std::cout << "Maximum patch size: " << patch.ncells_max() << ", "
-    //           << patch.groupsize_max() << std::endl;
-
     // Initialise storage for equilibration
     PatchDataCstm<T, id_flux_order> patch_data
         = PatchDataCstm<T, id_flux_order>(patch, kernel_data.nipoints_facet(),
@@ -272,16 +269,11 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
           {
             if (ncells_patch == 2)
             {
-              // std::cout << "Check patch around node " << i_node << std::endl;
-
               // Get patch type
               PatchType patch_type = patch.determine_patch_type(i_node);
 
               if (patch_type == PatchType::bound_essnt_dual)
               {
-                // std::cout << "Modified patch around node " << i_node
-                //           << std::endl;
-
                 // Group patches such that minimisation is possible
                 std::vector<std::int32_t> grouped_patches
                     = patch.group_boundary_patches(
@@ -292,8 +284,6 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
                 {
                   // Patch-central node
                   const std::int32_t node_i = grouped_patches[i];
-
-                  // std::cout << "Step one in patch " << node_i << std::endl;
 
                   // Check if patch has already been considered
                   if (!perform_equilibration[node_i])
@@ -328,16 +318,11 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
       }
     }
 
-    // std::cout << "Equilibration of remaining patches" << std::endl;
-
     // Loop over all other patches
     for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
     {
       if (perform_equilibration[i_node])
       {
-        // std::cout << "Equilibration of patch around node " << i_node
-        //           << std::endl;
-
         // Set marker for patch
         perform_equilibration[i_node] = false;
 
@@ -379,9 +364,6 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
     // Loop over all patches
     for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
     {
-      // std::cout << "Equilibration of patch around node " << i_node <<
-      // std::endl;
-
       // Create Sub-DOFmap
       patch.create_subdofmap(i_node);
 
