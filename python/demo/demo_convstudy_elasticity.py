@@ -128,7 +128,7 @@ for i in range(convstudy_nref):
     )
 
     # H(div) error flux
-    diff = ufl.div(sigma - stress_ref)
+    diff = ufl.div(sigma + stress_ref)
     err_sighdiv = np.sqrt(
         domain.comm.allreduce(
             dfem.assemble_scalar(dfem.form(ufl.inner(diff, diff) * dvol)),

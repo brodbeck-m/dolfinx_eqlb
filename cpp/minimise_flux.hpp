@@ -32,7 +32,7 @@ namespace stdex = std::experimental;
 
 // ------------------------------------------------------------------------------
 
-/* Routines for flux minimisation */
+/* The minimisation kernels */
 
 enum class Kernel
 {
@@ -41,179 +41,17 @@ enum class Kernel
   StressMinNL,
 };
 
-/// Create mixed-space DOFmap
-///
-/// Patch-wise divergence free H(div) space requires special DOFmap and
-/// prefacers during assembly. Following [1, Lemma 12], the DOFmap is
-/// created based on the following patch-wise ordering:
-///
-/// {d0}_i, {{d^l_E0}, ..., {d^l_En}}_i, {d^r_T1}_i, ..., {d^r_Tn}_i,
-/// {d_c}_j
-///
-/// The indexes i resp. j thereby denotes the block.size of flux resp.
-/// constraints. Cell wise structure of the DOFmap:
-///
-/// [{dofs_TaEam1}_i, {dofs_TaEa}_i, {dofs_Ta-add}_i, {dofs_Ta-c}_j]
-///
-/// [1] Bertrand, F.; Carstensen, C.; Gräßle, B. & Tran, N. T.:
-///     Stabilization-free HHO a posteriori error control, 2022
-///
-/// @tparam T               The scalar type
-/// @tparam id_flux_order   The flux order (1->RT1, 2->RT2, 3->general)
-/// @param patch            The patch
-/// @param asmbl_info       The assembly information of the constrained space
-template <typename T, int id_flux_order>
-void set_flux_dofmap(PatchFluxCstm<T, id_flux_order>& patch,
-                     mdspan_t<std::int32_t, 3> asmbl_info)
-{
-  /* Extract data */
-  // Te spacial dimension
-  const int gdim = patch.dim();
-
-  // Number of facets per cell
-  const int fcts_per_cell = patch.fcts_per_cell();
-
-  // Nodes on cell
-  const int nnodes_per_cell = fcts_per_cell;
-
-  // Number of cells on patch
-  const int ncells = patch.ncells();
-
-  // DOF counters
-  const int ndofs_flux_fct = patch.ndofs_flux_fct();
-  const int ndofs_flux_cell_add = patch.ndofs_flux_cell_add();
-  const int ndofs_flux_hdivz = patch.ndofs_minspace_flux(false);
-
-  // Assembly information for non-mixed space
-  mdspan_t<const std::int32_t, 3> asmbl_info_base
-      = patch.assembly_info_minimisation();
-
-  /* Initialisation */
-  // Number of (mixed) DOFs per cell
-  const int bsize_flux_per_cell = gdim * ndofs_flux_fct + ndofs_flux_cell_add;
-  const int bsize_constr_per_cell = fcts_per_cell;
-  const int bsize_per_cell = bsize_flux_per_cell + bsize_constr_per_cell;
-
-  const int size_flux_per_cell = gdim * bsize_flux_per_cell;
-  const int size_constr_per_cell
-      = (gdim == 2) ? bsize_constr_per_cell : bsize_flux_per_cell * gdim;
-  const int size_per_cell = size_flux_per_cell + size_constr_per_cell;
-
-  /* Recreate assembly-informations */
-  const std::size_t lbound_a = (patch.is_internal()) ? 0 : 1;
-  const std::size_t ubound_a = (patch.is_internal()) ? ncells + 2 : ncells + 1;
-  const std::size_t ubound_j
-      = (gdim == 2) ? bsize_flux_per_cell : bsize_per_cell;
-
-  for (std::size_t a = lbound_a; a < ubound_a; ++a)
-  {
-    for (std::size_t i = 0; i < gdim; ++i)
-    {
-      for (std::size_t j = 0; j < ubound_j; ++j)
-      {
-        int offs = i + gdim * j;
-
-        asmbl_info(0, a, offs) = asmbl_info_base(0, a, j);
-        asmbl_info(1, a, offs) = asmbl_info_base(1, a, j);
-        asmbl_info(3, a, offs) = asmbl_info_base(3, a, j);
-
-        // Set new patch-wise DOF
-        asmbl_info(2, a, offs) = gdim * asmbl_info_base(2, a, j) + i;
-      }
-    }
-
-    // Extra handling for constraint DOFs (gdim == 2)
-    if (gdim == 2)
-    {
-      for (std::size_t j = 0; j < nnodes_per_cell; ++j)
-      {
-        int offs_n = size_flux_per_cell + j;
-        int offs_b = bsize_flux_per_cell + j;
-
-        asmbl_info(0, a, offs_n) = asmbl_info_base(0, a, offs_b);
-        asmbl_info(3, a, offs_n) = 1;
-
-        // Set new patch-wise DOF
-        asmbl_info(2, a, offs_n)
-            = asmbl_info_base(2, a, offs_b) + ndofs_flux_hdivz;
-      }
-    }
-  }
-}
-
-/// Set boundary markers for patch-wise H(div=0) space
-/// @param boundary_markers   The boundary markers
-/// @param type_kernel        The kernel type of the minimisation problem
-/// @param type_patch         The patch type
-/// @param gdim               The geometric dimension
-/// @param ncells             Number of cells on patch
-/// @param ndofs_flux_fct     nDOFs flux-space space per facet
-/// @param reversion_required Patch requires reversion
-void set_boundary_markers(std::span<std::int8_t> boundary_markers,
-                          const Kernel type_kernel,
-                          std::vector<PatchType> type_patch, const int gdim,
-                          const int ncells, const int ndofs_flux_fct,
-                          std::vector<bool> reversion_required)
-{
-  // Reinitialise markers
-  std::fill(boundary_markers.begin(), boundary_markers.end(), false);
-
-  // Set markers
-  if ((type_patch[0] != PatchType::internal))
-  {
-    // Check if mixed space required
-    std::size_t bs = (type_kernel == Kernel::FluxMin) ? 1 : gdim;
-
-    // Auxiliaries
-    const int offs_En_base = bs * (ncells * (ndofs_flux_fct - 1));
-
-    // Set boundary markers
-    for (std::size_t i = 0; i < bs; ++i)
-    {
-      if (type_patch[i] != PatchType::bound_essnt_primal)
-      {
-        // Set boundary markers for d0
-        boundary_markers[i] = true;
-
-        for (std::size_t j = 1; j < ndofs_flux_fct; ++j)
-        {
-          if (type_patch[i] == PatchType::bound_essnt_dual)
-          {
-            // Mark DOFs on facet E0
-            int offs_E0 = i + bs * j;
-            boundary_markers[offs_E0] = true;
-
-            // Mark DOFs on facet En
-            int offs_En = offs_En_base + offs_E0;
-            boundary_markers[offs_En_base + offs_E0] = true;
-          }
-          else
-          {
-            if (reversion_required[i])
-            {
-              // Mark DOFs in facet En
-              // (Mixed patch with reversed order)
-              int offs_En = offs_En_base + i + bs * j;
-              boundary_markers[offs_En] = true;
-            }
-            else
-            {
-              // Mark DOFs in facet E0
-              // (Mixed patch with original order)
-              boundary_markers[i + bs * j] = true;
-            }
-          }
-        }
-      }
-    }
-  }
-}
-
+/// Generate kernel for the assembly flux minimisation
+/// @tparam T              The scalar type
+/// @tparam asmbl_systmtrx Id if entire tangent or only load vector is assembled
+/// @param kernel_data     The kernel data
+/// @param gdim            The spatial dimension
+/// @param degree_rt       The degree of the Raviart-Thomas space
+/// @return                The kernel function
 template <typename T, bool asmbl_systmtrx = true>
 kernel_fn<T, asmbl_systmtrx>
-generate_minimisation_kernel(Kernel type, KernelDataEqlb<T>& kernel_data,
-                             const int gdim, const int facets_per_cell,
-                             const int degree_rt)
+generate_flux_minimisation_kernel(KernelDataEqlb<T>& kernel_data,
+                                  const int gdim, const int degree_rt)
 {
   /* DOF counters */
   const int ndofs_flux_fct = degree_rt + 1;
@@ -221,10 +59,8 @@ generate_minimisation_kernel(Kernel type, KernelDataEqlb<T>& kernel_data,
 
   const int ndofs_hdivzero_per_cell
       = 2 * ndofs_flux_fct + ndofs_flux_cell_add - 1;
-  const int ndofs_constr_per_cell
-      = (gdim == 2) ? facets_per_cell : gdim * facets_per_cell;
 
-  /* The kernels */
+  /* The kernel */
 
   /// Kernel for unconstrained flux minimisation
   ///
@@ -240,12 +76,12 @@ generate_minimisation_kernel(Kernel type, KernelDataEqlb<T>& kernel_data,
   /// @param detJ         The Jacobi determinant
   /// @param J            The Jacobi matrix
   kernel_fn<T, asmbl_systmtrx> unconstrained_flux_minimisation
-      = [kernel_data, ndofs_hdivzero_per_cell, ndofs_flux_fct](
-            mdspan_t<double, 2> Te, std::span<const T> coefficients,
-            smdspan_t<const std::int32_t, 2> asmbl_info, const double detJ,
-            mdspan_t<const double, 2> J) mutable
+      = [kernel_data, ndofs_hdivzero_per_cell,
+         ndofs_flux_fct](mdspan_t<T, 2> Te, std::span<const T> coefficients,
+                         smdspan_t<const std::int32_t, 2> asmbl_info,
+                         const double detJ, mdspan_t<const double, 2> J) mutable
   {
-    const int index_load = Te.extent(1);
+    const int index_load = ndofs_hdivzero_per_cell;
 
     /* Extract shape functions and quadrature data */
     smdspan_t<double, 3> phi = kernel_data.shapefunctions_flux(J, detJ);
@@ -336,18 +172,68 @@ generate_minimisation_kernel(Kernel type, KernelDataEqlb<T>& kernel_data,
     }
   };
 
-  kernel_fn<T, asmbl_systmtrx> constrained_stress_minimisation_2D =
-      [kernel_data, ndofs_hdivzero_per_cell, ndofs_constr_per_cell,
-       ndofs_flux_fct](mdspan_t<double, 2> Te, std::span<const T> coefficients,
-                       smdspan_t<const std::int32_t, 2> asmbl_info,
-                       const double detJ, mdspan_t<const double, 2> J) mutable
+  if (gdim == 2)
   {
-    const int index_load = Te.extent(1);
-    const int index_lmp = index_load + 1;
+    return unconstrained_flux_minimisation;
+  }
+  else
+  {
+    throw std::runtime_error(
+        "Kernel for flux minimisation (3D) not implemented");
+  }
+}
 
-    // std::cout << "Index load, index lmp, extent T_e: " << index_load << " "
-    //           << index_lmp << " " << Te.extent(0) << std::endl;
+/// Generate kernel for the assembly stress minimsation user consideration of a
+/// weak symmetry condition
+/// @tparam T              The scalar type
+/// @param type            The kernel type
+/// @param kernel_data     The kernel data
+/// @param gdim            The spatial dimension
+/// @param facets_per_cell The number of facets per cell
+/// @param degree_rt       The degree of the Raviart-Thomas space
+/// @return                The kernel function
+template <typename T>
+kernel_fn_schursolver<T>
+generate_stress_minimisation_kernel(Kernel type, KernelDataEqlb<T>& kernel_data,
+                                    const int gdim, const int facets_per_cell,
+                                    const int degree_rt)
+{
+  /* DOF counters */
+  const int ndofs_flux_fct = degree_rt + 1;
+  const int ndofs_flux_cell_add = 0.5 * degree_rt * (degree_rt - 1);
 
+  const int ndofs_hdivzero_per_cell
+      = 2 * ndofs_flux_fct + ndofs_flux_cell_add - 1;
+  const int ndofs_constr_per_cell
+      = (gdim == 2) ? facets_per_cell : gdim * facets_per_cell;
+
+  /* The kernel */
+
+  /// Kernel for the (constrained) stress correction (2D)
+  ///
+  /// Calculates system-matrix and load vector for constrained stress
+  /// minimisation on patch-wise divergence free H(div=0) space. Weak symmetry
+  /// is zero-tested against a patch-wise continuous P1 space.
+  ///
+  /// @tparam T             The scalar type
+  /// @param Ae             Storage for sub-matrix Ae
+  /// @param Be             Storage for sub-matrices Be_k
+  /// @param Ce             Storage for sub-matrix Ce
+  ///                       (contribution of the Lagrangian multiplier)
+  /// @param Le             Storage for load vector Le
+  /// @param coefficients   The coefficients
+  /// @param asmbl_info     Information to create the patch-wise H(div=0) space
+  /// @param detJ           The Jacobi determinant
+  /// @param J              The Jacobi matrix
+  /// @param assemble_A     Flag if sub-matrix A has to be assembled
+  kernel_fn_schursolver<T> stress_minimisation_2D
+      = [kernel_data, ndofs_hdivzero_per_cell, ndofs_constr_per_cell,
+         ndofs_flux_fct](mdspan_t<T, 2> Ae, mdspan_t<T, 2> Be, std::span<T> Ce,
+                         std::span<T> Le, std::span<const T> coefficients,
+                         smdspan_t<const std::int32_t, 2> asmbl_info,
+                         const double detJ, mdspan_t<const double, 2> J,
+                         const bool assemble_A) mutable
+  {
     /* Extract shape functions and quadrature data */
     smdspan_t<double, 3> phi_f = kernel_data.shapefunctions_flux(J, detJ);
     smdspan_t<const double, 2> phi_c = kernel_data.shapefunctions_cell_hat();
@@ -364,16 +250,13 @@ generate_minimisation_kernel(Kernel type, KernelDataEqlb<T>& kernel_data,
 
     // Data manipulation of shape function for d0
     std::int32_t ld0_Eam1 = asmbl_info(0, 0),
-                 ld0_Ea = asmbl_info(0, 2 * ndofs_flux_fct);
+                 ld0_Ea = asmbl_info(0, ndofs_flux_fct);
     std::int32_t p_Eam1 = asmbl_info(3, 0),
-                 p_Ea = asmbl_info(3, 2 * ndofs_flux_fct);
+                 p_Ea = asmbl_info(3, ndofs_flux_fct);
 
     // Offset constrained space
-    const int offs_cijbase = 2 * ndofs_hdivzero_per_cell;
-    const int offs_cbase = offs_cijbase + 2;
-
-    // std::cout << "Offset 1: " << offs_cijbase << std::endl;
-    // std::cout << "Offset 2: " << offs_cbase << std::endl;
+    const int offs_c = ndofs_hdivzero_per_cell + 1;
+    const int offs_Lc = 2 * ndofs_hdivzero_per_cell;
 
     /* Assemble tangents */
     for (std::size_t iq = 0; iq < quadrature_weights.size(); ++iq)
@@ -393,10 +276,6 @@ generate_minimisation_kernel(Kernel type, KernelDataEqlb<T>& kernel_data,
         sig_r1[1] += coefficients[offs] * phi_f(iq, i, 1);
       }
 
-      // std::cout << "sig_r0_0, sig_r0_1, sig_r1_0, sig_r1_1: " << sig_r0[0]
-      //           << " " << sig_r0[1] << " " << sig_r1[0] << " " << sig_r1[1]
-      //           << std::endl;
-
       // Manipulate shape function for coefficient d_0
       phi_f(iq, ld0_Ea, 0)
           = p_Ea
@@ -408,118 +287,77 @@ generate_minimisation_kernel(Kernel type, KernelDataEqlb<T>& kernel_data,
       // Volume integrator
       double dvol = quadrature_weights[iq] * std::fabs(detJ);
 
-      // Equations for flux DOFs
       for (std::size_t i = 0; i < ndofs_hdivzero_per_cell; ++i)
       {
-        // Offsets due to mixed space
-        int offs_i = 2 * i + 2;
-        int ir0 = 2 * i;
-        int ir1 = ir0 + 1;
+        // Offset
+        std::size_t ip1 = i + 1;
 
         // Cell-local DOF (index i)
-        std::int32_t dl_i = asmbl_info(0, offs_i);
+        std::int32_t dl_i = asmbl_info(0, ip1);
 
         // Manipulate shape functions
-        double alpha = asmbl_info(3, offs_i) * dvol;
+        double alpha = asmbl_info(3, ip1) * dvol;
 
         double phi_i0 = phi_f(iq, dl_i, 0) * alpha;
         double phi_i1 = phi_f(iq, dl_i, 1) * alpha;
 
-        // Load vector
-        Te(index_load, ir0) -= sig_r0[0] * phi_i0 + sig_r0[1] * phi_i1;
-        Te(index_load, ir1) -= sig_r1[0] * phi_i0 + sig_r1[1] * phi_i1;
-
-        if constexpr (asmbl_systmtrx)
+        if (assemble_A)
         {
-          // Block k_sig_sig
+          // Load vector L_sigma
+          Le[i] -= sig_r0[0] * phi_i0 + sig_r0[1] * phi_i1;
+          Le[ndofs_hdivzero_per_cell + i]
+              -= sig_r1[0] * phi_i0 + sig_r1[1] * phi_i1;
+
+          // Submatrix A
           for (std::size_t j = i; j < ndofs_hdivzero_per_cell; ++j)
           {
-            // Offsets due to mixed space
-            int offs_j = 2 * j + 2;
-            int jr0 = 2 * j;
-            int jr1 = jr0 + 1;
+            // Offset
+            std::size_t jp1 = j + 1;
 
             // Cell-local DOF (index j)
-            std::int32_t dl_j = asmbl_info(0, offs_j);
+            std::int32_t dl_j = asmbl_info(0, jp1);
 
             // Manipulate shape functions
-            double phi_j0 = phi_f(iq, dl_j, 0) * asmbl_info(3, offs_j);
-            double phi_j1 = phi_f(iq, dl_j, 1) * asmbl_info(3, offs_j);
+            double phi_j0 = phi_f(iq, dl_j, 0) * asmbl_info(3, jp1);
+            double phi_j1 = phi_f(iq, dl_j, 1) * asmbl_info(3, jp1);
 
             // System matrix
-            double val = phi_i0 * phi_j0 + phi_i1 * phi_j1;
-
-            Te(ir0, jr0) += val;
-            Te(ir1, jr1) += val;
+            Ae(i, j) += phi_i0 * phi_j0 + phi_i1 * phi_j1;
           }
+        }
 
-          // Block k_sig_gamma
-          for (std::size_t j = 0; j < ndofs_constr_per_cell; ++j)
-          {
-            // Offsets due to mixed space
-            int offs_j = offs_cbase + j;
-            int jr = offs_cijbase + j;
+        // Submatrices B1 and B2
+        for (std::size_t j = 0; j < ndofs_constr_per_cell; ++j)
+        {
+          // Shape function (index j)
+          double phi_j = phi_c(iq, asmbl_info(0, offs_c + j));
 
-            // Cell local DOF (index j)
-            std::int32_t dl_j = asmbl_info(0, offs_j);
-
-            // System matrix
-            Te(ir0, jr) += phi_i1 * phi_c(iq, dl_j);
-            Te(ir1, jr) -= phi_i0 * phi_c(iq, dl_j);
-          }
+          // System matrix
+          Be(i, j) += phi_i1 * phi_j;
+          Be(i, ndofs_constr_per_cell + j) -= phi_i0 * phi_j;
         }
       }
 
-      // Equations for constrained DOFs
       for (std::size_t i = 0; i < ndofs_constr_per_cell; ++i)
       {
-        // Offsets due to mixed space
-        int offs_i = offs_cbase + i;
-        int ir = offs_cijbase + i;
+        // Manipulate shape function (index i)
+        double phi_i = phi_c(iq, asmbl_info(0, offs_c + i)) * dvol;
 
-        // Cell local DOF (index j)
-        std::int32_t dl_i = asmbl_info(0, offs_i);
+        // Submatrix Ce
+        Ce[i] += phi_i;
 
-        // Manipulate shape functions
-        double phi_i = phi_c(iq, dl_i) * dvol;
-
-        // System matrix
-        Te(index_load, ir) -= phi_i * (sig_r0[1] - sig_r1[0]);
-
-        // Mean-value zero condition
-        Te(index_lmp, i) += phi_i;
+        // Load vector L_c
+        Le[offs_Lc + i] -= phi_i * (sig_r0[1] - sig_r1[0]);
       }
     }
 
-    /* Apply symmetrie conditions on system matrix */
-    if constexpr (asmbl_systmtrx)
+    if (assemble_A)
     {
-      // Add symmetric part of k_sig_sig
-      if (ndofs_hdivzero_per_cell > 1)
+      for (std::size_t i = 1; i < ndofs_hdivzero_per_cell; ++i)
       {
-        for (std::size_t i = 1; i < 2 * ndofs_hdivzero_per_cell; ++i)
+        for (std::size_t j = 0; j < i; ++j)
         {
-          for (std::size_t j = 0; j < i; ++j)
-          {
-            Te(i, j) = Te(j, i);
-          }
-        }
-      }
-
-      // Add k_gamma_sig = k_sig_gamma^T
-      for (std::size_t i = 0; i < ndofs_constr_per_cell; ++i)
-      {
-        // Offset due to mixed space
-        int ir = offs_cijbase + i;
-
-        for (std::size_t j = 0; j < ndofs_hdivzero_per_cell; ++j)
-        {
-          // Offset due to mixed space
-          int jr0 = 2 * j;
-          int jr1 = jr0 + 1;
-
-          Te(ir, jr0) = Te(jr0, ir);
-          Te(ir, jr1) = Te(jr1, ir);
+          Ae(i, j) = Ae(j, i);
         }
       }
     }
@@ -527,12 +365,10 @@ generate_minimisation_kernel(Kernel type, KernelDataEqlb<T>& kernel_data,
 
   switch (type)
   {
-  case Kernel::FluxMin:
-    return unconstrained_flux_minimisation;
   case Kernel::StressMin:
     if (gdim == 2)
     {
-      return constrained_stress_minimisation_2D;
+      return stress_minimisation_2D;
     }
     else
     {
@@ -557,6 +393,70 @@ generate_minimisation_kernel(Kernel type, KernelDataEqlb<T>& kernel_data,
 
 // ------------------------------------------------------------------------------
 
+/* Assemblers for patch-wise minimisation problems */
+
+/// Set boundary markers for patch-wise H(div=0) space
+/// @param boundary_markers    The boundary markers
+/// @param types_patch         The patch types
+/// @param reversions_required Identifier if patch requires reversion
+/// @param ncells              Number of cells on patch
+/// @param ndofs_flux_hivz     nDOFs patch-wise H(div=0) flux-space
+/// @param ndofs_flux_fct      nDOFs flux-space space per facet
+
+void set_boundary_markers(std::span<std::int8_t> boundary_markers,
+                          std::vector<PatchType> types_patch,
+                          std::vector<bool> reversions_required,
+                          const int ncells, const int ndofs_flux_hivz,
+                          const int ndofs_flux_fct)
+{
+  // Reinitialise markers
+  std::fill(boundary_markers.begin(), boundary_markers.end(), false);
+
+  // Auxiliaries
+  const int offset_En = ncells * (ndofs_flux_fct - 1);
+
+  // Set boundary markers
+  for (std::size_t i = 0; i < types_patch.size(); ++i)
+  {
+    if (types_patch[i] != PatchType::bound_essnt_primal)
+    {
+      // Basic offset
+      int offset_i = i * ndofs_flux_hivz;
+
+      // Set boundary markers for d0
+      boundary_markers[offset_i] = true;
+
+      for (std::size_t j = 1; j < ndofs_flux_fct; ++j)
+      {
+        if (types_patch[i] == PatchType::bound_essnt_dual)
+        {
+          // Mark DOFs on facet E0
+          int offset_E0 = offset_i + j;
+          boundary_markers[offset_E0] = true;
+
+          // Mark DOFs on facet En
+          boundary_markers[offset_E0 + offset_En] = true;
+        }
+        else
+        {
+          if (reversions_required[i])
+          {
+            // Mark DOFs in facet En
+            // (Mixed patch with reversed order)
+            boundary_markers[offset_i + offset_En + j] = true;
+          }
+          else
+          {
+            // Mark DOFs in facet E0
+            // (Mixed patch with original order)
+            boundary_markers[offset_i + j] = true;
+          }
+        }
+      }
+    }
+  }
+}
+
 /// Assemble EQS for flux minimisation
 ///
 /// Assembles system-matrix and load vector for unconstrained flux
@@ -572,18 +472,14 @@ generate_minimisation_kernel(Kernel type, KernelDataEqlb<T>& kernel_data,
 ///                                 vector is assembled
 /// @param minimisation_kernel      The kernel for minimisation
 /// @param patch_data               The temporary storage for the patch
-/// @param asmbl_info               Informations to create the patch-wise
-///                                 H(div=0) space
+/// @param asmbl_info               Informations patch-wise H(div=0) space
 /// @param i_rhs                    Index of the right-hand side
 /// @param requires_flux_bc         Marker if flux BCs are required
-/// @param constrained_minimisation Flag if constarined system is assembeled
 template <typename T, int id_flux_order, bool asmbl_systmtrx>
 void assemble_fluxminimiser(kernel_fn<T, asmbl_systmtrx>& minimisation_kernel,
                             PatchDataCstm<T, id_flux_order>& patch_data,
                             mdspan_t<const std::int32_t, 3> asmbl_info,
-                            const int ndofs_flux_minspace, const int i_rhs,
-                            const bool requires_flux_bc,
-                            const bool constrained_minimisation)
+                            const int i_rhs, const bool requires_flux_bc)
 {
   assert(id_flux_order < 0);
 
@@ -595,53 +491,29 @@ void assemble_fluxminimiser(kernel_fn<T, asmbl_systmtrx>& minimisation_kernel,
   const int ncells = patch_data.ncells();
 
   // Tangent storage
-  mdspan_t<T, 2> Te = patch_data.Te(constrained_minimisation);
+  mdspan_t<T, 2> Te = patch_data.Te();
 
-  Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>& A_patch
-      = patch_data.A_patch(constrained_minimisation);
-  Eigen::Matrix<T, Eigen::Dynamic, 1>& L_patch
-      = patch_data.L_patch(constrained_minimisation);
+  Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>& A = patch_data.matrix_A();
+  Eigen::Matrix<T, Eigen::Dynamic, 1>& L = patch_data.vector_L();
   std::span<const std::int8_t> boundary_markers
-      = patch_data.boundary_markers(constrained_minimisation);
+      = patch_data.boundary_markers(false);
 
   /* Initialisation */
   if constexpr (asmbl_systmtrx)
   {
-    A_patch.setZero();
-    L_patch.setZero();
+    A.setZero();
+    L.setZero();
   }
   else
   {
-    L_patch.setZero();
+    L.setZero();
   }
 
   /* Calculation and assembly */
-  const int ndofs_per_cell = Te.extent(1);
+  const int ndofs_per_cell = patch_data.ndofs_flux_hdivz_per_cell();
   const int ndofs_constr_per_cell = gdim + 1;
 
   const int index_load = ndofs_per_cell;
-  const int index_lmp = ndofs_per_cell + 1;
-
-  const int offset_asmblinfo = (constrained_minimisation) ? gdim : 1;
-  const int offset_constr_local = ndofs_per_cell + gdim - ndofs_constr_per_cell;
-  const int offset_constr
-      = patch_data.size_minimisation_system(constrained_minimisation) - 1;
-
-  const bool requires_lmp = (constrained_minimisation)
-                                ? patch_data.meanvalue_zero_condition_required()
-                                : false;
-
-  // if (requires_lmp)
-  // {
-  //   std::cout << "Lagrangian multiplier added!" << std::endl;
-  //   std::cout << "ndofs_per_cell, ndofs_constraint_per_cell, "
-  //                "offset_constr_local, offset_constr: "
-  //             << ndofs_per_cell << " " << ndofs_constr_per_cell << " "
-  //             << offset_constr_local << " " << offset_constr << std::endl;
-  // }
-
-  std::span<const T> coefficients;
-  // std::span<const T> coefficients, coefficients_test1, coefficients_test2;
 
   for (std::size_t a = 1; a < ncells + 1; ++a)
   {
@@ -656,38 +528,10 @@ void assemble_fluxminimiser(kernel_fn<T, asmbl_systmtrx>& minimisation_kernel,
         asmbl_info, stdex::full_extent, a, stdex::full_extent);
 
     // DOFs on cell
-    if (constrained_minimisation)
-    {
-      coefficients = patch_data.coefficients_stress(a);
-      // coefficients_test1 = patch_data.coefficients_flux(0, a);
-      // coefficients_test2 = patch_data.coefficients_flux(1, a);
-
-      // std::cout << "Coefficients: " << std::endl;
-      // for (auto c : coefficients)
-      // {
-      //   std::cout << c << " ";
-      // }
-      // std::cout << " \n";
-      // std::cout << "Coefficients row 1: " << std::endl;
-      // for (auto c : coefficients_test1)
-      // {
-      //   std::cout << c << " ";
-      // }
-      // std::cout << " \n";
-      // std::cout << "Coefficients row 2: " << std::endl;
-      // for (auto c : coefficients_test2)
-      // {
-      //   std::cout << c << " ";
-      // }
-      // std::cout << " \n";
-    }
-    else
-    {
-      coefficients = patch_data.coefficients_flux(i_rhs, a);
-    }
+    std::span<const T> coefficients = patch_data.coefficients_flux(i_rhs, a);
 
     // Evaluate linear- and bilinear form
-    patch_data.reinitialise_Te(constrained_minimisation);
+    patch_data.reinitialise_Te();
     minimisation_kernel(Te, coefficients, asmbl_info_cell, detJ, J);
 
     // Assemble linear- and bilinear form
@@ -696,37 +540,24 @@ void assemble_fluxminimiser(kernel_fn<T, asmbl_systmtrx>& minimisation_kernel,
       if (requires_flux_bc)
       {
         // Assemble linar form
-        L_patch(0) = 0;
+        L(0) = 0;
 
         if constexpr (asmbl_systmtrx)
         {
           // Assemble bilinear form
-          A_patch(0, 0) = 1;
+          A(0, 0) = 1;
         }
       }
       else
       {
         // Assemble linar form
-        L_patch(0) += Te(1, 0);
+        L(0) += Te(1, 0);
 
         if constexpr (asmbl_systmtrx)
         {
           // Assemble bilinear form
-          A_patch(0, 0) += Te(0, 0);
+          A(0, 0) += Te(0, 0);
         }
-
-        // if (constrained_minimisation)
-        // {
-        //   std::cout << "Cell: " << a << std::endl;
-        //   for (std::size_t i = 0; i < ndofs_per_cell; ++i)
-        //   {
-        //     for (std::size_t j = 0; j < ndofs_per_cell; ++j)
-        //     {
-        //       std::cout << Te(i, j) << " ";
-        //     }
-        //     std::cout << "\n";
-        //   }
-        // }
       }
     }
     else
@@ -735,17 +566,17 @@ void assemble_fluxminimiser(kernel_fn<T, asmbl_systmtrx>& minimisation_kernel,
       {
         for (std::size_t i = 0; i < ndofs_per_cell; ++i)
         {
-          std::int32_t dof_i = asmbl_info_cell(2, offset_asmblinfo + i);
+          std::int32_t dof_i = asmbl_info_cell(2, i + 1);
           std::int8_t bmarker_i = boundary_markers[dof_i];
 
           // Assemble load vector
           if (bmarker_i)
           {
-            L_patch(dof_i) = 0;
+            L(dof_i) = 0;
           }
           else
           {
-            L_patch(dof_i) += Te(index_load, i);
+            L(dof_i) += Te(index_load, i);
           }
 
           // Assemble bilinear form
@@ -753,22 +584,22 @@ void assemble_fluxminimiser(kernel_fn<T, asmbl_systmtrx>& minimisation_kernel,
           {
             if (bmarker_i)
             {
-              A_patch(dof_i, dof_i) = 1;
+              A(dof_i, dof_i) = 1;
             }
             else
             {
               for (std::size_t j = 0; j < ndofs_per_cell; ++j)
               {
-                std::int32_t dof_j = asmbl_info_cell(2, offset_asmblinfo + j);
+                std::int32_t dof_j = asmbl_info_cell(2, j + 1);
                 std::int8_t bmarker_j = boundary_markers[dof_j];
 
                 if (bmarker_j)
                 {
-                  A_patch(dof_i, dof_j) = 0;
+                  A(dof_i, dof_j) = 0;
                 }
                 else
                 {
-                  A_patch(dof_i, dof_j) += Te(i, j);
+                  A(dof_i, dof_j) += Te(i, j);
                 }
               }
             }
@@ -779,90 +610,216 @@ void assemble_fluxminimiser(kernel_fn<T, asmbl_systmtrx>& minimisation_kernel,
       {
         for (std::size_t i = 0; i < ndofs_per_cell; ++i)
         {
-          std::int32_t dof_i = asmbl_info_cell(2, offset_asmblinfo + i);
+          std::int32_t dof_i = asmbl_info_cell(2, i + 1);
 
           // Assemble load vector
-          L_patch(dof_i) += Te(index_load, i);
+          L(dof_i) += Te(index_load, i);
 
           // Assemble bilinear form
           if constexpr (asmbl_systmtrx)
           {
             for (std::size_t j = 0; j < ndofs_per_cell; ++j)
             {
-              A_patch(dof_i, asmbl_info_cell(2, offset_asmblinfo + j))
-                  += Te(i, j);
+              A(dof_i, asmbl_info_cell(2, j + 1)) += Te(i, j);
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+/// Assemble EQS for constrained stress minimisation
+///
+/// Assembles system-matrix and load vector for constrained flux
+/// minimisation on patch-wise divergence free H(div) space. Explicit ansatz
+/// for such a space see [1, Lemma 12].
+///
+/// [1] Bertrand, F.; Carstensen, C.; Gräßle, B. & Tran, N. T.:
+///     Stabilization-free HHO a posteriori error control, 2022
+///
+/// @tparam T                       The scalar type
+/// @tparam id_flux_order           The flux order (1->RT1, 2->RT2, 3->general)
+/// @tparam requires_bcs            Flag if BCs have to be considered
+/// @param minimisation_kernel      The kernel for minimisation
+/// @param patch_data               The temporary storage for the patch
+/// @param asmbl_info               Informations patch-wise H(div=0) space
+template <typename T, int id_flux_order, bool bcs_required>
+void assemble_stressminimiser(kernel_fn_schursolver<T>& minimisation_kernel,
+                              PatchDataCstm<T, id_flux_order>& patch_data,
+                              mdspan_t<const std::int32_t, 3> asmbl_info)
+{
+  assert(id_flux_order < 0);
+
+  /* Extract data */
+  // The spatial dimension
+  const int gdim = patch_data.gdim();
+
+  // Number of elements/facets on patch
+  const int ncells = patch_data.ncells();
+
+  // Check if Lagrange multiplier is required
+  const bool requires_lagrmp = patch_data.meanvalue_zero_condition_required();
+
+  // Tangent storage
+  mdspan_t<T, 2> Ae = patch_data.Ae();
+  mdspan_t<T, 2> Be = patch_data.Be();
+  std::span<T> Ce = patch_data.Ce();
+  std::span<T> Le = patch_data.Le();
+
+  Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>& A
+      = patch_data.matrix_A_without_bc();
+  Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>& B = patch_data.matrix_B();
+  Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>& C = patch_data.matrix_C();
+  Eigen::Matrix<T, Eigen::Dynamic, 1>& L = patch_data.vector_L();
+
+  // The boundary markers
+  std::span<const std::int8_t> boundary_markers
+      = patch_data.boundary_markers(true);
+
+  // DOF counters
+  const int ndofs_flux_hdivz = patch_data.ndofs_flux_hdivz();
+  const int ndofs_constr = patch_data.ndofs_constraint();
+
+  const int ndofs_flux_per_cell = patch_data.ndofs_flux_hdivz_per_cell();
+  ;
+  const int ndofs_constr_per_cell = gdim + 1;
+
+  /* Initialisation */
+  if constexpr (bcs_required)
+  {
+    A.setZero();
+    B.setZero();
+    C.setZero();
+    L.setZero();
+  }
+  else
+  {
+    B.setZero();
+    C.setZero();
+    L.setZero();
+  }
+
+  /* Assembly of the system matrices */
+  // Offsets
+  const int offset_dofmap_c = ndofs_flux_per_cell + 1;
+  const int offset_Lc = gdim * ndofs_flux_hdivz;
+  const int offset_Lec = gdim * ndofs_flux_per_cell;
+
+  for (std::size_t a = 1; a < ncells + 1; ++a)
+  {
+    int id_a = a - 1;
+
+    // Isoparametric mapping
+    const double detJ = patch_data.jacobi_determinant(id_a);
+    mdspan_t<const double, 2> J = patch_data.jacobian(id_a);
+
+    // DOFmap on cell
+    smdspan_t<const std::int32_t, 2> asmbl_info_cell = stdex::submdspan(
+        asmbl_info, stdex::full_extent, a, stdex::full_extent);
+
+    // DOFs on cell
+    std::span<const T> coefficients = patch_data.coefficients_stress(a);
+
+    // Evaluate linear- and bilinear form
+    if constexpr (bcs_required)
+    {
+      // Initilaisation stoarge of element contributions
+      patch_data.reinitialise_Ae();
+      patch_data.reinitialise_Be();
+      patch_data.reinitialise_Ce();
+      patch_data.reinitialise_Le();
+
+      // Evaluate kernel
+      minimisation_kernel(Ae, Be, Ce, Le, coefficients, asmbl_info_cell, detJ,
+                          J, true);
+    }
+    else
+    {
+      // Initilaisation stoarge of element contributions
+      patch_data.reinitialise_Be();
+      patch_data.reinitialise_Ce();
+      patch_data.reinitialise_Le();
+
+      // Evaluate kernel
+      minimisation_kernel(Ae, Be, Ce, Le, coefficients, asmbl_info_cell, detJ,
+                          J, false);
+    }
+
+    for (std::size_t k = 0; k < gdim; ++k)
+    {
+      // Offsets
+      int offset_uk = k * ndofs_flux_hdivz;
+      int offset_uek = k * ndofs_flux_per_cell;
+      int offset_bk = k * ndofs_constr;
+      int offset_bek = k * ndofs_constr_per_cell;
+
+      // Assemble A, B_k and L_uk
+      for (std::size_t i = 0; i < ndofs_flux_per_cell; ++i)
+      {
+        std::int32_t dof_i = asmbl_info_cell(2, i + 1);
+
+        if constexpr (bcs_required)
+        {
+          // Linearforms L_uk
+          L(offset_uk + dof_i) += Le[offset_uek + i];
+
+          // Sub-matrix A
+          if (k == 0)
+          {
+            for (std::size_t j = 0; j < ndofs_flux_per_cell; ++j)
+            {
+              A(dof_i, asmbl_info_cell(2, j + 1)) += Ae(i, j);
             }
           }
         }
 
-        // Add lagrangian multiplier
-        if (requires_lmp)
+        // Sub-matrices B_k
+        for (std::size_t j = 0; j < ndofs_constr_per_cell; ++j)
         {
-          // std::cout << "Add lagrangian multiplier!" << std::endl;
+          std::int32_t dof_j = asmbl_info_cell(2, offset_dofmap_c + j);
+
+          if constexpr (bcs_required)
+          {
+            if (!(boundary_markers[offset_uk + dof_i]))
+            {
+              B(dof_i, offset_bk + dof_j) += Be(i, offset_bek + j);
+            }
+          }
+          else
+          {
+            B(dof_i, offset_bk + dof_j) += Be(i, offset_bek + j);
+          }
+        }
+      }
+
+      // Assemble C and L_c
+      if (k == 0)
+      {
+        if (requires_lagrmp)
+        {
           for (std::size_t i = 0; i < ndofs_constr_per_cell; ++i)
           {
-            int dof_i = asmbl_info_cell(2, offset_constr_local + i);
-            // std::cout << "dof_i: " << dof_i << " ";
+            std::int32_t dof_i = asmbl_info_cell(2, offset_dofmap_c + i);
 
-            A_patch(dof_i, offset_constr) += Te(index_lmp, i);
-            A_patch(offset_constr, dof_i) += Te(index_lmp, i);
+            // Sub-Matrix C
+            C(dof_i, ndofs_constr) += Ce[i];
+            C(ndofs_constr, dof_i) += Ce[i];
+
+            // Linear form Lc
+            L(offset_Lc + dof_i) += Le[offset_Lec + i];
           }
-          // std::cout << "\n";
-          // A_patch(offset_constr, offset_constr) = 1.0;
         }
-
-        // if (constrained_minimisation)
-        // {
-        //   std::cout << "Cell: " << a << std::endl;
-        //   for (std::size_t i = 0; i < ndofs_per_cell; ++i)
-        //   {
-        //     for (std::size_t j = 0; j < ndofs_per_cell; ++j)
-        //     {
-        //       std::cout << Te(i, j) << " ";
-        //     }
-        //     std::cout << "\n";
-        //   }
-        // }
-
-        // std::cout << "Cell: " << a << std::endl;
-        // for (std::size_t i = 0; i < ndofs_per_cell; ++i)
-        // {
-        //   std::cout << Te(index_load, i) << " ";
-        // }
-        // std::cout << "\n";
+        else
+        {
+          for (std::size_t i = 0; i < ndofs_constr_per_cell; ++i)
+          {
+            std::int32_t dof_i = asmbl_info_cell(2, offset_dofmap_c + i);
+            L(offset_Lc + dof_i) += Le[offset_Lec + i];
+          }
+        }
       }
     }
   }
-
-  // if (constrained_minimisation)
-  // {
-  //   std::cout << "A_patch: " << std::endl;
-  //   for (std::size_t i = 0; i < offset_constr + 1; ++i)
-  //   {
-  //     for (std::size_t j = 0; j < offset_constr + 1; ++j)
-  //     {
-  //       std::cout << A_patch(i, j) << " ";
-  //     }
-  //     std::cout << "\n";
-  //   }
-  //   std::cout << "L_patch: " << std::endl;
-  //   for (std::size_t i = 0; i < offset_constr + 1; ++i)
-  //   {
-  //     std::cout << L_patch(i) << " ";
-  //   }
-  //   std::cout << "\n";
-  // }
-  // else
-  // {
-  //   std::cout << "A_patch: " << std::endl;
-  //   for (std::size_t i = 0; i < 9; ++i)
-  //   {
-  //     for (std::size_t j = 0; j < 9; ++j)
-  //     {
-  //       std::cout << A_patch(i, j) << " ";
-  //     }
-  //     std::cout << "\n";
-  //   }
-  // }
 }
 } // namespace dolfinx_eqlb

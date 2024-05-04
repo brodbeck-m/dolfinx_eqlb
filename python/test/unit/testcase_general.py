@@ -196,11 +196,16 @@ def set_arbitrary_bcs(
         # Set homogenous dirichlet boundary conditions
         u_D = [dfem.Function(V_prime) for i in range(0, len(boundary_id_dirichlet))]
 
-        # Set homogenous dirichlet boundary conditions
-        func_neumann = [
-            dfem.Constant(domain, PETSc.ScalarType(0.0))
-            for i in range(0, len(boundary_id_neumann))
-        ]
+        # Set homogenous neumann boundary conditions
+        if V_prime.num_sub_spaces == 0:
+            hom_nbc = dfem.Constant(domain, PETSc.ScalarType(0.0))
+        else:
+            if V_prime.num_sub_spaces == 2:
+                hom_nbc = ufl.as_vector([0, 0])
+            else:
+                hom_nbc = ufl.as_vector([0, 0, 0])
+
+        func_neumann = [hom_nbc for i in range(0, len(boundary_id_neumann))]
     elif bc_type == "neumann_inhom":
         # The mesh
         domain = V_prime.mesh
@@ -216,17 +221,23 @@ def set_arbitrary_bcs(
         # Set homogenous dirichlet boundary conditions
         u_D = [dfem.Function(V_prime) for i in range(0, len(boundary_id_dirichlet))]
 
-        # Set homogenous dirichlet boundary conditions
-        V_bc = dfem.FunctionSpace(domain, ("DG", degree_bc))
+        # Set inhomogenous neumann boundary conditions
+        if V_prime.num_sub_spaces == 0:
+            V_bc = dfem.FunctionSpace(domain, ("DG", degree_bc))
+        else:
+            V_bc = dfem.VectorFunctionSpace(domain, ("DG", degree_bc))
+
         f_bc = dfem.Function(V_bc)
-        f_bc.x.array[:] = 2 * (np.random.rand(V_bc.dofmap.index_map.size_local) + 0.1)
+        f_bc.x.array[:] = 2 * (
+            np.random.rand(V_bc.dofmap.index_map.size_local * V_bc.dofmap.bs) + 0.1
+        )
 
         func_neumann = [f_bc for i in range(0, len(boundary_id_neumann))]
     else:
         raise ValueError("Not implemented!")
 
     # Specify if projection is required
-    if degree_bc < degree_flux - 1:
+    if degree_bc <= degree_flux:
         neumann_projection = [False for i in range(0, len(boundary_id_neumann))]
     else:
         neumann_projection = [True for i in range(0, len(boundary_id_neumann))]

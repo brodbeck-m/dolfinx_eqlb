@@ -36,7 +36,7 @@ namespace dolfinx_eqlb
 namespace stdex = std::experimental;
 
 /// Evaluate jump (projected flux) on internal surface
-/// @tparam T The data type of the Flux
+/// @tparam T                      The data type of the Flux
 /// @param[in] ipoint_n            Id of the interpolation point
 /// @param[in] coefficients_G_Tap1 The flux DOFs (cell Tap1)
 /// @param[in] shp_Tap1Ea          The shape functions (cell Tap1, facet Ea)
@@ -86,8 +86,8 @@ void calculate_jump(std::size_t ipoint_n,
 /// [1] Bertrand, F.; Carstensen, C.; Gräßle, B. & Tran, N. T.:
 ///     Stabilization-free HHO a posteriori error control, 2022
 ///
-/// @tparam T             The scalar type
-/// @tparam id_flux_order Parameter for flux order (1->RT1, 2->RT2, 3->general)
+/// @tparam T              The scalar type
+/// @tparam id_flux_order  Parameter for flux order (1->RT1, 2->RT2, 3->general)
 /// @param geometry        The geometry
 /// @param patch           The patch
 /// @param patch_data      The temporary storage for the patch
@@ -95,8 +95,6 @@ void calculate_jump(std::size_t ipoint_n,
 /// @param kernel_data     The kernel data (Quadrature data, tabulated basis)
 /// @param minkernel       The kernel for unconstrained minimisation
 /// @param minkernel_rhs   The kernel (RHS) for unconstrained minimisation
-/// @param consider_result If false patch solution will not be added into global
-///                        storage
 template <typename T, int id_flux_order>
 void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
                                 PatchFluxCstm<T, id_flux_order>& patch,
@@ -104,8 +102,7 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
                                 ProblemDataFluxCstm<T>& problem_data,
                                 KernelDataEqlb<T>& kernel_data,
                                 kernel_fn<T, true>& minkernel,
-                                kernel_fn<T, false>& minkernel_rhs,
-                                const bool consider_result)
+                                kernel_fn<T, false>& minkernel_rhs)
 {
   /* Extract data */
   // Spacial dimension
@@ -170,7 +167,7 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
 
   /* Initialise Step 2 */
   // Number of DOFs on patch-wise H(div=0) space
-  const int ndofs_hdivz = patch.ndofs_minspace_flux(false);
+  const int ndofs_hdivz = patch.ndofs_flux_hdiz_zero();
   const int ndofs_hdivz_per_cell = 2 * ndofs_flux_fct + ndofs_flux_cell_add;
 
   /* Pre-evaluate repeatedly used cell data */
@@ -754,9 +751,13 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
 
     /* Step 2: Minimse sigma_delta */
     // Set boundary markers
-    set_boundary_markers(patch_data.boundary_markers(false), Kernel::FluxMin,
-                         {type_patch}, dim, ncells, ndofs_flux_fct,
-                         {reversion_required});
+    if (type_patch == PatchType::bound_essnt_dual
+        || type_patch == PatchType::bound_mixed)
+    {
+      set_boundary_markers(patch_data.boundary_markers(false), {type_patch},
+                           {reversion_required}, ncells, ndofs_hdivz,
+                           ndofs_flux_fct);
+    }
 
     // Check if assembly of entire system is required
     bool assemble_entire_system = false;
@@ -782,26 +783,26 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
     {
       // Assemble system
       assemble_fluxminimiser<T, id_flux_order, true>(
-          minkernel, patch_data, dofmap_flux, ndofs_hdivz, i_rhs,
-          patch.requires_flux_bcs(i_rhs), false);
+          minkernel, patch_data, dofmap_flux, i_rhs,
+          patch.requires_flux_bcs(i_rhs));
 
       // Factorisation of system matrix
-      patch_data.factorise_system(false);
+      patch_data.factorise_matrix_A();
     }
     else
     {
       // Assemble linear form
       assemble_fluxminimiser<T, id_flux_order, false>(
-          minkernel_rhs, patch_data, dofmap_flux, ndofs_hdivz, i_rhs,
-          patch.requires_flux_bcs(i_rhs), false);
+          minkernel_rhs, patch_data, dofmap_flux, i_rhs,
+          patch.requires_flux_bcs(i_rhs));
     }
 
     // Solve system
-    patch_data.solve_system(false);
+    patch_data.solve_unconstrained_minimisation();
 
     /* Move patch-wise solution into global storage */
     // The patch-local solution
-    Eigen::Matrix<T, Eigen::Dynamic, 1>& u_patch = patch_data.u_patch(false);
+    Eigen::Matrix<T, Eigen::Dynamic, 1>& u_sigma = patch_data.vector_u_sigma();
 
     // Global solution vector and DOFmap
     std::span<T> x_flux_dhdiv = problem_data.flux(i_rhs).x()->mutable_array();
@@ -809,7 +810,6 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
         = problem_data.fspace_flux_hdiv()->dofmap()->list();
 
     // Move cell contributions
-    // std::cout << "i_ths: " << unsigned(i_rhs) << std::endl;
     for (std::int32_t a = 1; a < ncells + 1; ++a)
     {
       // Set id for accessing storage
@@ -823,16 +823,8 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
       {
         // Apply correction
         coefficients_flux(id_a, dofmap_flux(0, a, i))
-            += dofmap_flux(3, a, i) * u_patch(dofmap_flux(2, a, i));
+            += dofmap_flux(3, a, i) * u_sigma(dofmap_flux(2, a, i));
       }
-
-      // std::cout << "Cell " << a << ": ";
-      // for (std::size_t i = 0; i < ndofs_flux; ++i)
-      // {
-      //   // Apply correction
-      //   std::cout << coefficients_flux(id_a, i) << " ";
-      // }
-      // std::cout << "\n";
 
       // Loop over DOFs an cell
       for (std::size_t i = 0; i < ndofs_flux; ++i)
@@ -848,18 +840,19 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
 ///
 /// Calculates sig in pice-wise H(div) that fulfills jump and divergence
 /// condition on patch (see [1, Appendix A, Algorithm 2]). The explicit setp is
-/// followed by a unconstrained minimisation on a patch-wise H(div=0) space. On
-/// the first gdim fluxes symmetry of the reuslting stress tensor is enforced in
-/// a weak sense following [2].
+/// followed by a unconstrained minimisation on a patch-wise H(div=0) space. The
+/// first gdim fluxes form the stress tensor, wich has to fulfill a weak
+/// symmetry condition. Is is enforced based on a constrained minimisation
+/// problem, follwoing [2].
 ///
 /// [1] Bertrand, F., Carstensen, C., Gräßle, B. & Tran, N. T.:
 ///     Stabilization-free HHO a posteriori error control, 2022
-/// [2] Bertrand, F., Kober, B., Moldenhauer M. & Starke, G.: Weakly symmetric
-///     stress equilibration and a posteriori error estimation for linear
-///     elasticity, 2021
+/// [2] Bertrand, F., Kober, B., Moldenhauer M. & Starke, G.: Weakly
+///     symmetric stress equilibration and a posteriori error estimation for
+///     linear elasticity, 2021
 ///
-/// @tparam T             The scalar type
-/// @tparam id_flux_order Parameter for flux order (1->RT1, 2->RT2, 3->general)
+/// @tparam T              The scalar type
+/// @tparam id_flux_order  Parameter for flux order (1->RT1, 2->RT2, 3->general)
 /// @param geometry        The geometry
 /// @param patch           The patch
 /// @param patch_data      The temporary storage for the patch
@@ -877,28 +870,12 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
                                 KernelDataEqlb<T>& kernel_data,
                                 kernel_fn<T, true>& minkernel,
                                 kernel_fn<T, false>& minkernel_rhs,
-                                kernel_fn<T, true>& kernel_weaksym)
+                                kernel_fn_schursolver<T>& kernel_weaksym)
 {
-  /* Extract data */
-  // Spacial dimension
-  const int dim = 2;
-
-  // The patch
-  const int ncells = patch.ncells();
-  const int nfcts = patch.nfcts();
-
-  // Nodes constructing one element
-  const int nnodes_cell = kernel_data.nnodes_cell();
-
-  // DOF-counts function spaces
-  const int degree_flux_rt = patch.degree_raviart_thomas();
-
-  const int ndofs_flux = patch.ndofs_flux();
-
   /* Step 1: Unconstrained flux equilibration */
   equilibrate_flux_semiexplt<T, id_flux_order>(geometry, patch, patch_data,
                                                problem_data, kernel_data,
-                                               minkernel, minkernel_rhs, true);
+                                               minkernel, minkernel_rhs);
 
   /* Step 2: Enforce weak symmetry constraint */
   impose_weak_symmetry<T, id_flux_order, false>(

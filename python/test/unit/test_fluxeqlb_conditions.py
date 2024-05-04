@@ -41,13 +41,16 @@ def test_equilibration_conditions(mesh_type, degree, bc_type, equilibrator):
 
     # Initialise loop over degree of boundary flux
     if bc_type != "neumann_inhom":
-        degree_max_rhs = 1
+        degree_bc = 1
     else:
-        degree_max_rhs = degree
+        if degree == 1:
+            degree_bc = degree
+        else:
+            degree_bc = degree + 1
 
     # Perform tests
-    for degree_bc in range(0, degree_max_rhs):
-        for degree_prime in range(1, degree + 1):
+    for degree_bc in range(0, degree_bc):
+        for degree_prime in range(max(1, degree - 1), degree + 1):
             for degree_rhs in range(0, degree):
                 # Set function space
                 V_prime = dfem.FunctionSpace(geometry.mesh, ("P", degree_prime))

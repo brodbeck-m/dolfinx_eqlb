@@ -124,6 +124,7 @@ class FluxEqlbEV(FluxEquilibrator):
             self.V.sub(0),
             False,
             list_bfct_prime,
+            self.equilibrate_stresses,
             quadrature_degree,
         )
 

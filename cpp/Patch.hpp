@@ -2,6 +2,7 @@
 
 #include "utils.hpp"
 
+#include <dolfinx/common/IndexMap.h>
 #include <dolfinx/graph/AdjacencyList.h>
 #include <dolfinx/mesh/Mesh.h>
 #include <dolfinx/mesh/Topology.h>
@@ -11,6 +12,7 @@
 #include <iostream>
 #include <memory>
 #include <span>
+#include <tuple>
 #include <vector>
 
 using namespace dolfinx;
@@ -350,11 +352,63 @@ public:
   /// Storage is designed for the maximum patch size occurring within
   /// the current mesh.
   ///
-  /// @param nnodes_proc Numbe rof nodes on current processor
   /// @param mesh        The current mesh
   /// @param bfct_type   List with type of all boundary facets
-  OrientedPatch(int nnodes_proc, std::shared_ptr<const mesh::Mesh> mesh,
-                mdspan_t<const std::int8_t, 2> bfct_type);
+  /// @param ncells_crit Critical number of cells on adjacent boundary patches
+  /// @param pnts_on_bndr Markers for all mesh nodes on boundary
+  OrientedPatch(std::shared_ptr<const mesh::Mesh> mesh,
+                mdspan_t<const std::int8_t, 2> bfct_type, const int ncells_crit,
+                std::span<const std::int8_t> pnts_on_essntbndr);
+
+  /// Determine type of an arbitrary patch
+  /// @param node_i Id of the patch-central node
+  /// @return The patch type
+  PatchType determine_patch_type(const std::int32_t node_i) const;
+
+  /// Returns an adjacent intern. patch of boundary patch
+  /// @param node_i Processor-local id of patch-central node
+  /// @return The patch-central node of the internal patch
+  std::int32_t get_adjacent_internal_patch(const std::int32_t node_i) const
+  {
+    // Facets on patch
+    std::span<const std::int32_t> fcts_patch = _node_to_fct->links(node_i);
+
+    // Adjacent internal patch
+    std::int32_t inner_node;
+
+    for (std::int32_t fct : fcts_patch)
+    {
+      if (_bfct_type(0, fct) == PatchFacetType::internal)
+      {
+        // Nodes on facet
+        std::span<const std::int32_t> nodes_fct = _fct_to_node->links(fct);
+
+        // Output patch-central node
+        inner_node = (nodes_fct[0] == node_i) ? nodes_fct[1] : nodes_fct[0];
+        break;
+      }
+    }
+
+    return inner_node;
+  }
+
+  /// Group patches such that minimisation is possible
+  ///
+  /// Routine works only on boundary patches! It returns a list of adjacent
+  /// patches around node_i. Theby the patch is connected with one internal and
+  /// adjacent boundary patches (type PatchType::bound_essnt_dual) which have
+  /// ncells_crit cells.
+  ///
+  /// @param node_i           Processor-local id of patch-central node
+  /// @param pnt_on_essntbndr Markers for all mesh nodes on essential boundary
+  /// @param initial_length   Initial length of the output vector
+  /// @param ncells_min       Minimum number of cells on adjacent patches
+  /// @param ncells_crit      Critical number of cells on adjacent patches
+  /// @return                 The central nodes of critical, adjacent patches
+  std::vector<std::int32_t>
+  group_boundary_patches(const std::int32_t node_i,
+                         std::span<const std::int8_t> pnt_on_essntbndr,
+                         const int ncells_min, const int ncells_crit) const;
 
   /// Construction of a sub-DOFmap on each patch
   ///
@@ -383,10 +437,6 @@ public:
   /// @param[in] index     Index of sub-problem
   /// @param[out] required true if reversion is required
   bool reversion_required(int index) const;
-
-  /// Determine maximum patch size
-  /// @param nnodes_proc Number of nodes on current processor
-  void set_max_patch_size(int nnodes_proc);
 
   /* Setter functions */
 
@@ -479,12 +529,22 @@ public:
   /// @return Number of facets per cell
   int fcts_per_cell() const { return _fct_per_cell; }
 
+  // Return the maximal number of grouped patches
+  int groupsize_max() const { return _groupsize_max; }
+
   // Return the maximal number of cells per patch
   int ncells_max() const { return _ncells_max; }
 
   /// Return number of cells on patch
   /// @return Number of cells on patch
   int ncells() const { return _ncells; }
+
+  /// Return number of cells on arbitrary patch
+  /// @return Number of cells on patch
+  int ncells(std::int32_t node_i) const
+  {
+    return _node_to_cell->links(node_i).size();
+  }
 
   /// Return number of facets on patch
   /// @return Number of facets on patch
@@ -547,6 +607,13 @@ public:
   }
 
 protected:
+  /// Determine maximum patch size
+  /// @param nnodes_proc  Number of nodes on current processor
+  /// @param ncells_crit  Critical number of cells on adjacent boundary patches
+  /// @param pnts_on_bndr Markers for all mesh nodes on boundary
+  void set_max_patch_size(const int nnodes_proc, const int ncells_crit,
+                          std::span<const std::int8_t> pnts_on_bndr);
+
   /// Initializes patch
   ///
   /// Sets patch type and creates sorted list of patch-facets.
@@ -588,8 +655,14 @@ protected:
                           std::span<const std::int32_t> fct_cell_i,
                           std::int8_t id_fct_loc) const;
 
+  std::array<std::int32_t, 2>
+  adjacent_boundary_patches(const std::int32_t node_i) const;
+
   // Maximum size of patch
   int _ncells_max;
+
+  // Maximum number of grouped patches
+  int _groupsize_max;
 
   /* Geometry */
   // The mesh

@@ -22,17 +22,18 @@ public:
   /// Storage is designed for the maximum patch size occurring within
   /// the current mesh.
   ///
-  /// @param nnodes_proc             Number of nodes on current processor
   /// @param mesh                    The current mesh
   /// @param bfct_type               List with type of all boundary facets
+  /// @param ncells_crit             Number of cells on critical patch
+  /// @param pnt_on_essntbndr        List with points on essential flux boundary
   /// @param function_space_fluxhdiv Function space of H(div) flux
   /// @param symconstr_required      Flag for constrained minimisation
-  PatchCstm(
-      int nnodes_proc, std::shared_ptr<const mesh::Mesh> mesh,
-      mdspan_t<const std::int8_t, 2> bfct_type,
-      const std::shared_ptr<const fem::FunctionSpace> function_space_fluxhdiv,
-      const bool symconstr_required)
-      : OrientedPatch(nnodes_proc, mesh, bfct_type),
+  PatchCstm(std::shared_ptr<const mesh::Mesh> mesh,
+            mdspan_t<const std::int8_t, 2> bfct_type, const int ncells_crit,
+            std::span<const std::int8_t> pnt_on_essntbndr,
+            std::shared_ptr<const fem::FunctionSpace> function_space_fluxhdiv,
+            const bool symconstr_required)
+      : OrientedPatch(mesh, bfct_type, ncells_crit, pnt_on_essntbndr),
         _symconstr_required(symconstr_required),
         _degree_elmt_fluxhdiv(
             function_space_fluxhdiv->element()->basix_element().degree() - 1),
@@ -53,17 +54,9 @@ public:
     _ndof_flux_nz = _ndof_flux - (_fct_per_cell - 2) * _ndof_flux_fct;
 
     // Resize storage of DOFmap
-    if (_symconstr_required)
-    {
-      const std::size_t ndofs_per_cell = _ndof_flux_nz + _fct_per_cell;
-      _dofmap_shape = {4, (std::size_t)(_ncells_max + 2), ndofs_per_cell};
-    }
-    else
-    {
-      _dofmap_shape
-          = {4, (std::size_t)(_ncells_max + 2), (std::size_t)_ndof_flux_nz};
-    }
-
+    const std::size_t ndofs_per_cell
+        = (_symconstr_required) ? _ndof_flux_nz + _fct_per_cell : _ndof_flux_nz;
+    _dofmap_shape = {4, (std::size_t)(_ncells_max + 2), ndofs_per_cell};
     _ddofmap.resize(_dofmap_shape[0] * _dofmap_shape[1] * _dofmap_shape[2], 0);
 
     // Specify offsets in DOFmap
@@ -253,8 +246,8 @@ public:
         dofmap(0, pcell_2, offs) = _inodes_local[pcell_2];
 
         // Patch-local DOF
-        dofmap(2, pcell_1, offs) = _ndof_min_flux;
-        dofmap(2, pcell_2, offs) = _ndof_min_flux;
+        dofmap(2, pcell_1, offs) = 0;
+        dofmap(2, pcell_2, offs) = 0;
 
         // Prefactor for construction of H(div=0) space
         dofmap(3, pcell_1, offs) = 1;
@@ -264,7 +257,7 @@ public:
       {
         int offs_1 = offs + 1;
         int offs_2 = offs + 2;
-        int pdof = _ndof_min_flux + a;
+        int pdof = a;
 
         // Cell-local DOF
         dofmap(0, pcell_1, offs_1) = (std::int32_t)node_local(cell_1, node);
@@ -296,12 +289,12 @@ public:
     if (pfct == 0)
     {
       offs = _offset_dofmap[3] + 2;
-      pdof = _ndof_min_flux + _nfcts - 1;
+      pdof = _nfcts - 1;
     }
     else
     {
       offs = _offset_dofmap[3] + 1;
-      pdof = _ndof_min_flux + _nfcts;
+      pdof = _nfcts;
     }
 
     // Get additional node on facet
@@ -556,39 +549,8 @@ public:
   /// @return Number of additional flux-DOFs on cell
   int ndofs_flux_cell_add() { return _ndof_flux_add_cell; }
 
-  /// @return Number of DOFs on (patch-wise) minimsation space
-  int ndofs_minspace(const bool constrained_system)
-  {
-    if (constrained_system)
-    {
-      if (_dim == 2)
-      {
-        return 2 * _ndof_min_flux + _ndof_min_cons;
-      }
-      else
-      {
-        return 3 * (_ndof_min_flux + _ndof_min_cons);
-      }
-    }
-    else
-    {
-      return _ndof_min_flux;
-    }
-  }
-
-  /// @return Number of flux-DOFs on (patch-wise) minimsation space
-  int ndofs_minspace_flux(const bool constrained_system)
-  {
-    if (constrained_system)
-    {
-
-      return _dim * _ndof_min_flux;
-    }
-    else
-    {
-      return _ndof_min_flux;
-    }
-  }
+  /// @return Number of flux-DOFs on (patch-wise) H(div=0) space
+  int ndofs_flux_hdiz_zero() { return _ndof_min_flux; }
 
   /// Extract assembly information for minnisation problem
   ///
@@ -646,23 +608,25 @@ public:
   /// Storage is designed for the maximum patch size occurring within
   /// the current mesh. (Cell-IDs start at 1, facet-IDs at 0!)
   ///
-  /// @param nnodes_proc             Number of nodes on current processor
   /// @param mesh                    The current mesh
   /// @param bfct_type               List with type of all boundary facets
+  /// @param ncells_crit             Number of cells on critical patch
+  /// @param pnt_on_essntbndr        List with points on essential flux boundary
   /// @param function_space_fluxhdiv Function space of H(div) flux
   /// @param function_space_fluxdg   Function space of projected flux
   /// @param basix_element_fluxdg    BasiX element of projected flux
   ///                                (continuous version for required
   ///                                entity_closure_dofs)
   PatchFluxCstm(
-      int nnodes_proc, std::shared_ptr<const mesh::Mesh> mesh,
-      mdspan_t<const std::int8_t, 2> bfct_type,
+      std::shared_ptr<const mesh::Mesh> mesh,
+      mdspan_t<const std::int8_t, 2> bfct_type, const int ncells_crit,
+      std::span<const std::int8_t> pnt_on_essntbndr,
       const std::shared_ptr<const fem::FunctionSpace> function_space_fluxhdiv,
       const std::shared_ptr<const fem::FunctionSpace> function_space_fluxdg,
       const basix::FiniteElement& basix_element_fluxdg,
       const bool symconstr_required)
-      : PatchCstm<T, id_flux_order>(nnodes_proc, mesh, bfct_type,
-                                    function_space_fluxhdiv,
+      : PatchCstm<T, id_flux_order>(mesh, bfct_type, ncells_crit,
+                                    pnt_on_essntbndr, function_space_fluxhdiv,
                                     symconstr_required),
         _degree_elmt_fluxdg(basix_element_fluxdg.degree()),
         _function_space_fluxdg(function_space_fluxdg),

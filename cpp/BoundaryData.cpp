@@ -9,7 +9,8 @@ BoundaryData<T>::BoundaryData(
     std::vector<std::shared_ptr<fem::Function<T>>>& boundary_flux,
     std::shared_ptr<const fem::FunctionSpace> V_flux_hdiv,
     bool rtflux_is_custom, int quadrature_degree,
-    const std::vector<std::vector<std::int32_t>>& fct_esntbound_prime)
+    const std::vector<std::vector<std::int32_t>>& fct_esntbound_prime,
+    const bool reconstruct_stress)
     : _flux_degree(V_flux_hdiv->element()->basix_element().degree()),
       _num_rhs(list_bcs.size()), _gdim(V_flux_hdiv->mesh()->geometry().dim()),
       _num_fcts(
@@ -46,6 +47,14 @@ BoundaryData<T>::BoundaryData(
   _facet_type.resize(size_fctdata, PatchFacetType::internal);
   _offset_fctdata.resize(_num_rhs + 1);
 
+  if (reconstruct_stress)
+  {
+    std::int32_t size_nodedata
+        = V_flux_hdiv->mesh()->topology().index_map(0)->size_local()
+          + V_flux_hdiv->mesh()->topology().index_map(0)->num_ghosts();
+    _pnt_on_esnt_boundary.resize(size_nodedata, false);
+  }
+
   // Set offsets
   std::int32_t num_dofs = _num_dofs;
   std::generate(_offset_dofdata.begin(), _offset_dofdata.end(),
@@ -65,6 +74,8 @@ BoundaryData<T>::BoundaryData(
   // Required conductivities
   std::shared_ptr<const graph::AdjacencyList<std::int32_t>> cell_to_fct
       = mesh->topology().connectivity(_gdim, _gdim - 1);
+  std::shared_ptr<const graph::AdjacencyList<std::int32_t>> fct_to_pnt
+      = mesh->topology().connectivity(_gdim - 1, 0);
 
   // Geometry DOFmap and nodal coordinates
   const graph::AdjacencyList<std::int32_t>& dofmap_geom
@@ -324,6 +335,16 @@ BoundaryData<T>::BoundaryData(
         {
           boundary_markers_i[boundary_dofs_fct[i]] = true;
           x_bvals[boundary_dofs_fct[i]] = boundary_values_fct[i];
+        }
+
+        if ((reconstruct_stress) && (i_rhs < (_gdim - 1)))
+        {
+          std::span<const std::int32_t> pnts_fct = fct_to_pnt->links(fct);
+
+          for (auto pnt : pnts_fct)
+          {
+            _pnt_on_esnt_boundary[pnt] = true;
+          }
         }
       }
     }

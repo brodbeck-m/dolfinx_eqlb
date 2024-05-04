@@ -31,7 +31,7 @@ from demo_reconstruction_poisson import (
 
 # --- Input parameters ---
 # The considered equilibration strategy
-Equilibrator = FluxEqlbEV
+Equilibrator = FluxEqlbSE
 
 # The orders of the FE spaces
 elmt_order_prime = 1

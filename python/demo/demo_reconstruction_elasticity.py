@@ -15,8 +15,9 @@ holds. Dirichlet BCs are applied on the boundaries 2 and 4.
 """
 
 # --- Imports ---
-import numpy as np
 from mpi4py import MPI
+import numpy as np
+from petsc4py import PETSc
 import time
 import typing
 
@@ -130,14 +131,21 @@ def solve_primal_problem(
 
     sigma = 2 * ufl.sym(ufl.grad(u)) + ufl.div(u) * ufl.Identity(gdim)
 
-    a_prime = ufl.inner(sigma, ufl.grad(v)) * ufl.dx
+    a_prime = ufl.inner(sigma, ufl.sym(ufl.grad(v))) * ufl.dx
     l_prime = ufl.inner(-ufl.div(sigma_ext), v) * ufl.dx
+
+    # Set neumann boundary conditions
+    normal = ufl.FacetNormal(domain)
+    l_prime += ufl.inner(ufl.dot(sigma_ext, normal), v) * ds(1)
+    l_prime += ufl.inner(ufl.dot(sigma_ext, normal), v) * ds(3)
 
     # Set dirichlet boundary conditions
     u_dirichlet = dfem.Function(V_prime)
     interpolate_ufl_to_function(u_ext, u_dirichlet)
 
-    dofs = dfem.locate_dofs_topological(V_prime, 1, facet_tags.indices)
+    markers = np.logical_or(facet_tags.values == 2, facet_tags.values == 4)
+    fcts = facet_tags.indices[markers]
+    dofs = dfem.locate_dofs_topological(V_prime, 1, fcts)
     bcs_esnt = [dfem.dirichletbc(u_dirichlet, dofs)]
 
     # Solve problem
@@ -182,7 +190,7 @@ def equilibrate_flux(
     weak_symmetry: bool = True,
     check_equilibration: bool = True,
 ):
-    """Equilibrates the stress-tensor of linear elasticity
+    """Equilibrates the negative stress-tensor of linear elasticity
 
     The RHS is assumed to be the divergence of the exact stress
     tensor (manufactured solution).
@@ -203,10 +211,10 @@ def equilibrate_flux(
     gdim = domain.geometry.dim
 
     # The approximate solution
-    sigma_h = 2 * ufl.sym(ufl.grad(uh_prime)) + ufl.div(uh_prime) * ufl.Identity(gdim)
+    sigma_h = -2 * ufl.sym(ufl.grad(uh_prime)) - ufl.div(uh_prime) * ufl.Identity(gdim)
 
     # Set source term
-    f = ufl.div(sigma_ext)
+    f = -ufl.div(sigma_ext)
 
     # Projected flux
     # (elmt_order_eqlb - 1 would be sufficient but not implemented for semi-explicit eqlb.)
@@ -229,9 +237,58 @@ def equilibrate_flux(
     )
 
     # Set boundary conditions
+    # Get facets on essential boundary surfaces
+    fcts_essnt = facet_tags.indices[
+        np.logical_or(facet_tags.values == 2, facet_tags.values == 4)
+    ]
+
+    # Specify flux boundary conditions
+    bc_dual_row0 = []
+    bc_dual_row1 = []
+
+    bc_dual_row0.append(
+        fluxbc(
+            sigma_ext[0, 0],
+            facet_tags.indices[facet_tags.values == 1],
+            equilibrator.V_flux,
+            requires_projection=True,
+            quadrature_degree=3 * elmt_order_eqlb,
+        )
+    )
+
+    bc_dual_row0.append(
+        fluxbc(
+            -sigma_ext[0, 0],
+            facet_tags.indices[facet_tags.values == 3],
+            equilibrator.V_flux,
+            requires_projection=True,
+            quadrature_degree=3 * elmt_order_eqlb,
+        )
+    )
+
+    bc_dual_row1.append(
+        fluxbc(
+            sigma_ext[1, 0],
+            facet_tags.indices[facet_tags.values == 1],
+            equilibrator.V_flux,
+            requires_projection=True,
+            quadrature_degree=3 * elmt_order_eqlb,
+        )
+    )
+
+    bc_dual_row1.append(
+        fluxbc(
+            -sigma_ext[1, 0],
+            facet_tags.indices[facet_tags.values == 3],
+            equilibrator.V_flux,
+            requires_projection=True,
+            quadrature_degree=3 * elmt_order_eqlb,
+        )
+    )
+
     equilibrator.set_boundary_conditions(
-        [facet_tags.indices, facet_tags.indices],
-        [[], []],
+        [fcts_essnt, fcts_essnt],
+        [bc_dual_row0, bc_dual_row1],
         quadrature_degree=3 * elmt_order_eqlb,
     )
 
@@ -289,6 +346,9 @@ if __name__ == "__main__":
     # The mesh resolution
     sdisc_nelmt = 10
 
+    # Check equilibration
+    check_equilibration = True
+
     # --- Execute calculation ---
     # Create mesh
     domain, facet_tags, ds = create_unit_square_mesh(sdisc_nelmt)
@@ -300,7 +360,13 @@ if __name__ == "__main__":
 
     # Solve equilibration
     sigma_proj, sigma_eqlb = equilibrate_flux(
-        elmt_order_eqlb, domain, facet_tags, uh_prime, sigma_ref, True
+        elmt_order_eqlb,
+        domain,
+        facet_tags,
+        uh_prime,
+        sigma_ref,
+        weak_symmetry=True,
+        check_equilibration=check_equilibration,
     )
 
     # --- Export results to ParaView ---
