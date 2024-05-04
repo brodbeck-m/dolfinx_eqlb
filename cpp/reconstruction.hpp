@@ -233,6 +233,9 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
         problem_data.fspace_flux_hdiv(), problem_data.fspace_flux_dg(),
         basix_element_rhscg, true);
 
+    // std::cout << "Maximum patch size: " << patch.ncells_max() << ", "
+    //           << patch.groupsize_max() << std::endl;
+
     // Initialise storage for equilibration
     PatchDataCstm<T, id_flux_order> patch_data
         = PatchDataCstm<T, id_flux_order>(patch, kernel_data.nipoints_facet(),
@@ -269,49 +272,72 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
           {
             if (ncells_patch == 2)
             {
-              // Group patches such that minimisation is possible
-              std::vector<std::int32_t> grouped_patches
-                  = patch.group_boundary_patches(i_node, pnt_on_stress_boundary,
-                                                 1, 2);
+              // std::cout << "Check patch around node " << i_node << std::endl;
 
-              // Equilibration step 1: Explicit step and minimisation
-              for (std::size_t i = grouped_patches.size(); i-- > 0;)
+              // Get patch type
+              PatchType patch_type = patch.determine_patch_type(i_node);
+
+              if (patch_type == PatchType::bound_essnt_dual)
               {
-                // Patch-central node
-                const std::int32_t node_i = grouped_patches[i];
+                // std::cout << "Modified patch around node " << i_node
+                //           << std::endl;
 
-                // Create Sub-DOFmap
-                patch.create_subdofmap(node_i);
+                // Group patches such that minimisation is possible
+                std::vector<std::int32_t> grouped_patches
+                    = patch.group_boundary_patches(
+                        i_node, pnt_on_stress_boundary, 1, 2);
 
-                // Re-initialise PatchData
-                patch_data.reinitialisation(patch.type(), patch.ncells());
+                // Equilibration step 1: Explicit step and minimisation
+                for (std::size_t i = grouped_patches.size(); i-- > 0;)
+                {
+                  // Patch-central node
+                  const std::int32_t node_i = grouped_patches[i];
 
-                // Perform equilibration
-                perform_equilibration[node_i] = false;
-                equilibrate_flux_semiexplt<T, id_flux_order>(
+                  // std::cout << "Step one in patch " << node_i << std::endl;
+
+                  // Check if patch has already been considered
+                  if (!perform_equilibration[node_i])
+                  {
+                    throw std::runtime_error(
+                        "Incompatible mesh! To many patches "
+                        "with 2 cells on neumann boundary.");
+                  }
+
+                  // Create Sub-DOFmap
+                  patch.create_subdofmap(node_i);
+
+                  // Re-initialise PatchData
+                  patch_data.reinitialisation(patch.type(), patch.ncells());
+
+                  // Perform equilibration
+                  perform_equilibration[node_i] = false;
+                  equilibrate_flux_semiexplt<T, id_flux_order>(
+                      mesh->geometry(), patch, patch_data, problem_data,
+                      kernel_data, kernel_fluxmin, kernel_fluxmin_l);
+                }
+
+                // Equilibration step 2: Incorporation of weak symmetry
+                // condition
+                impose_weak_symmetry<T, id_flux_order, true>(
                     mesh->geometry(), patch, patch_data, problem_data,
-                    kernel_data, kernel_fluxmin, kernel_fluxmin_l);
-
-                // Move result to temporary storage
+                    kernel_data, kernel_weaksym);
               }
-
-              // Extend DOFmap on grouped patches
-
-              // Combine patch-wise solutions from step 1
-
-              // Equilibration step 2: Incorporation of eak symmetry condition
             }
           }
         }
       }
     }
 
+    // std::cout << "Equilibration of remaining patches" << std::endl;
+
     // Loop over all other patches
     for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
-    // for (std::size_t i_node = 3; i_node < 4; ++i_node)
     {
       if (perform_equilibration[i_node])
       {
+        // std::cout << "Equilibration of patch around node " << i_node
+        //           << std::endl;
+
         // Set marker for patch
         perform_equilibration[i_node] = false;
 
@@ -330,43 +356,9 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
         patch_data.reinitialisation(patch.type(), patch.ncells());
 
         // Calculate solution patch
-        if (((patch.type(0) == PatchType::bound_essnt_dual)
-             || (patch.type(1) == PatchType::bound_essnt_dual))
-            && patch.ncells() == 2)
-        {
-          // Check how patch has to be modified
-
-          // --- Step 1a: Flux equilibration on boundary patch
-          // Equilibrate fluxes boundary patch
-
-          // Move solution of boundary patch into temporary storage
-          // FIXME - Implement temporary storage of patch-solution
-
-          // --- Step 1b: Flux equilibration on additional patch
-          // Get central node of additional internal patch
-          const int i_node_add = 0;
-
-          // Create Sub-DOFmap
-          patch.create_subdofmap(i_node_add);
-
-          // Reinitialise patch-data
-          patch_data.reinitialisation(patch.type(), patch.ncells());
-
-          // Equilibrate fluxes on internal patch
-
-          // Set marker for additional patch
-          perform_equilibration[i_node_add] = false;
-
-          // --- Step 2: Weak symmetry constraint
-          throw std::runtime_error("Weak symmetry condition for patches with"
-                                   "pure neumann not implemented");
-        }
-        else
-        {
-          equilibrate_flux_semiexplt<T, id_flux_order>(
-              mesh->geometry(), patch, patch_data, problem_data, kernel_data,
-              kernel_fluxmin, kernel_fluxmin_l, kernel_weaksym);
-        }
+        equilibrate_flux_semiexplt<T, id_flux_order>(
+            mesh->geometry(), patch, patch_data, problem_data, kernel_data,
+            kernel_fluxmin, kernel_fluxmin_l, kernel_weaksym);
       }
     }
   }
@@ -387,6 +379,9 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
     // Loop over all patches
     for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
     {
+      // std::cout << "Equilibration of patch around node " << i_node <<
+      // std::endl;
+
       // Create Sub-DOFmap
       patch.create_subdofmap(i_node);
 

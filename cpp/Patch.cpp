@@ -474,28 +474,47 @@ OrientedPatch::OrientedPatch(std::shared_ptr<const mesh::Mesh> mesh,
   }
 }
 
-bool OrientedPatch::reversion_required(int index) const
+PatchType OrientedPatch::determine_patch_type(const std::int32_t node_i) const
 {
-  // Initialise output
-  bool patch_reversed = false;
+  // Get facets on patch
+  std::span<const std::int32_t> fcts_patch = _node_to_fct->links(node_i);
 
-  if ((index > 0) && requires_flux_bcs(index))
+  // Check facet types
+  int count_pessnt_bfct = 0;
+  int count_dessnt_dfct = 0;
+
+  for (std::int32_t fct : fcts_patch)
   {
-    // Get type of the subsequent RHSs
-    const PatchType type_i = _type[index];
-    const PatchType type_im1 = _type[index - 1];
-
-    // Check if patch has to be reversed
-    if ((type_i != type_im1) || type_i == PatchType::bound_mixed)
+    if (_bfct_type(0, fct) == PatchFacetType::essnt_primal)
     {
-      if (_bfct_type(index, _fcts[0]) != PatchFacetType::essnt_dual)
-      {
-        patch_reversed = true;
-      }
+      count_pessnt_bfct += 1;
+    }
+    else if (_bfct_type(0, fct) == PatchFacetType::essnt_dual)
+    {
+      count_dessnt_dfct += 1;
     }
   }
 
-  return patch_reversed;
+  // Determine patch type
+  if ((count_dessnt_dfct + count_pessnt_bfct) == 0)
+  {
+    return PatchType::internal;
+  }
+  else
+  {
+    if (count_pessnt_bfct == 2)
+    {
+      return PatchType::bound_essnt_primal;
+    }
+    else if (count_dessnt_dfct == 2)
+    {
+      return PatchType::bound_essnt_dual;
+    }
+    else
+    {
+      return PatchType::bound_mixed;
+    }
+  }
 }
 
 std::vector<std::int32_t> OrientedPatch::group_boundary_patches(
@@ -566,6 +585,31 @@ std::vector<std::int32_t> OrientedPatch::group_boundary_patches(
   return std::move(grouped_patches);
 }
 
+bool OrientedPatch::reversion_required(int index) const
+{
+  // Initialise output
+  bool patch_reversed = false;
+
+  if ((index > 0) && requires_flux_bcs(index))
+  {
+    // Get type of the subsequent RHSs
+    const PatchType type_i = _type[index];
+    const PatchType type_im1 = _type[index - 1];
+
+    // Check if patch has to be reversed
+    if ((type_i != type_im1) || type_i == PatchType::bound_mixed)
+    {
+      if (_bfct_type(index, _fcts[0]) != PatchFacetType::essnt_dual)
+      {
+        patch_reversed = true;
+      }
+    }
+  }
+
+  return patch_reversed;
+}
+
+// --- Protected methods
 void OrientedPatch::set_max_patch_size(
     const int nnodes_proc, const int ncells_crit,
     std::span<const std::int8_t> pnts_on_bndr)
@@ -604,87 +648,51 @@ void OrientedPatch::set_max_patch_size(
       // Check if patches have to be grouped
       if ((pnts_on_bndr[node_i]) && (n_cells == ncells_crit))
       {
-        // Increment group size
-        int groupsize = 2;
+        // Check patch type
+        PatchType patch_type = determine_patch_type(node_i);
 
-        // Adjacent boundary facets
-        std::array<std::int32_t, 2> adjacent_patches
-            = adjacent_boundary_patches(node_i);
-
-        // Check if adjacet patches are also small
-        for (std::int32_t node : adjacent_patches)
+        if (patch_type == PatchType::bound_essnt_dual)
         {
-          std::int32_t node_i_adjacent = node;
+          // std::cout << "Maximum group size based on patches around node "
+          //           << node_i << std::endl;
 
-          while (ncells(node_i_adjacent) == ncells_crit)
+          // Increment group size
+          int groupsize = 2;
+
+          // Adjacent boundary facets
+          std::array<std::int32_t, 2> adjacent_patches
+              = adjacent_boundary_patches(node_i);
+
+          // Check if adjacet patches are also small
+          for (std::int32_t node : adjacent_patches)
           {
-            // Increment group size
-            groupsize += 1;
+            std::int32_t node_i_adjacent = node;
 
-            // Get adjacent boundary patches
-            std::array<std::int32_t, 2> adjacent_patches
-                = adjacent_boundary_patches(node_i_adjacent);
+            while (ncells(node_i_adjacent) == ncells_crit)
+            {
+              // Increment group size
+              groupsize += 1;
 
-            // Update node_i
-            node_i_adjacent = (adjacent_patches[0] == node_i)
-                                  ? adjacent_patches[1]
-                                  : adjacent_patches[0];
+              // Get adjacent boundary patches
+              std::array<std::int32_t, 2> adjacent_patches
+                  = adjacent_boundary_patches(node_i_adjacent);
+
+              // Update node_i
+              node_i_adjacent = (adjacent_patches[0] == node_i)
+                                    ? adjacent_patches[1]
+                                    : adjacent_patches[0];
+            }
           }
-        }
 
-        // Check if  maximal group size has to be updated
-        if (groupsize > _groupsize_max)
-        {
-          _groupsize_max = groupsize;
+          // Check if  maximal group size has to be updated
+          if (groupsize > _groupsize_max)
+          {
+            _groupsize_max = groupsize;
+          }
         }
       }
     }
   }
-}
-
-std::int8_t OrientedPatch::get_fctid_local(std::int32_t fct_i,
-                                           std::int32_t cell_i) const
-{
-  // Get facets on cell
-  std::span<const std::int32_t> fct_cell_i = _cell_to_fct->links(cell_i);
-
-  return get_fctid_local(fct_i, fct_cell_i);
-}
-
-std::int8_t
-OrientedPatch::get_fctid_local(std::int32_t fct_i,
-                               std::span<const std::int32_t> fct_cell_i) const
-{
-  // Initialize local id
-  std::int8_t fct_loc = 0;
-
-  // Get id (cell_local) of fct_i
-  while (fct_cell_i[fct_loc] != fct_i && fct_loc < _fct_per_cell)
-  {
-    fct_loc += 1;
-  }
-
-  // Check for face not on cell
-  assert(fct_loc < _fct_per_cell);
-
-  return fct_loc;
-}
-
-std::int8_t OrientedPatch::node_local(std::int32_t cell_i,
-                                      std::int32_t node_i) const
-{
-  // Initialize cell-local node-id
-  std::int8_t id_node_loc_ci = 0;
-
-  // Get nodes on cell_i
-  std::span<const std::int32_t> node_cell_i = _cell_to_node->links(cell_i);
-
-  while (node_cell_i[id_node_loc_ci] != node_i)
-  {
-    id_node_loc_ci += 1;
-  }
-
-  return id_node_loc_ci;
 }
 
 void OrientedPatch::initialize_patch(const int node_i)
@@ -916,6 +924,51 @@ void OrientedPatch::initialize_patch(const int node_i)
     _fcts_local[0] = _fcts_local[2 * _nfcts];
     _fcts_local[1] = _fcts_local[2 * _nfcts + 1];
   }
+}
+
+std::int8_t OrientedPatch::get_fctid_local(std::int32_t fct_i,
+                                           std::int32_t cell_i) const
+{
+  // Get facets on cell
+  std::span<const std::int32_t> fct_cell_i = _cell_to_fct->links(cell_i);
+
+  return get_fctid_local(fct_i, fct_cell_i);
+}
+
+std::int8_t
+OrientedPatch::get_fctid_local(std::int32_t fct_i,
+                               std::span<const std::int32_t> fct_cell_i) const
+{
+  // Initialize local id
+  std::int8_t fct_loc = 0;
+
+  // Get id (cell_local) of fct_i
+  while (fct_cell_i[fct_loc] != fct_i && fct_loc < _fct_per_cell)
+  {
+    fct_loc += 1;
+  }
+
+  // Check for face not on cell
+  assert(fct_loc < _fct_per_cell);
+
+  return fct_loc;
+}
+
+std::int8_t OrientedPatch::node_local(std::int32_t cell_i,
+                                      std::int32_t node_i) const
+{
+  // Initialize cell-local node-id
+  std::int8_t id_node_loc_ci = 0;
+
+  // Get nodes on cell_i
+  std::span<const std::int32_t> node_cell_i = _cell_to_node->links(cell_i);
+
+  while (node_cell_i[id_node_loc_ci] != node_i)
+  {
+    id_node_loc_ci += 1;
+  }
+
+  return id_node_loc_ci;
 }
 
 std::int32_t OrientedPatch::next_facet(std::int32_t cell_i,

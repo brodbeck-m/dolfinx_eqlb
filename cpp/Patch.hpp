@@ -360,33 +360,10 @@ public:
                 mdspan_t<const std::int8_t, 2> bfct_type, const int ncells_crit,
                 std::span<const std::int8_t> pnts_on_essntbndr);
 
-  /// Construction of a sub-DOFmap on each patch
-  ///
-  /// Determines type of patch and creates sorted DOFmap. Sorting of
-  /// facets/elements/DOFs follows [1,2]. The sub-DOFmap is created for
-  /// sub-problem 0. If patch- type differs between different patches, use
-  /// recreate_subdofmap for sub-problem i>0.
-  ///
-  /// [1] Moldenhauer, M.: Stress reconstructionand a-posteriori error
-  ///     estimationfor elasticity (PhdThesis)
-  /// [2] Bertrand, F.; Carstensen, C.; Gräßle, B. & Tran, N. T.:
-  ///     Stabilization-free HHO a posteriori error control, 2022
-  ///
-  /// @param node_i Processor-local id of current node
-  void create_subdofmap(const int node_i)
-  {
-    throw std::runtime_error("Patch-DOFmap not implemented!");
-  }
-
-  /// Check if reversion of patch is required
-  ///
-  /// Sorting convention of patch: fct_0 is located on the neumann boundary.
-  /// Changing of the RHS can violate this convention. This routine checks
-  /// wether this is the case.
-  ///
-  /// @param[in] index     Index of sub-problem
-  /// @param[out] required true if reversion is required
-  bool reversion_required(int index) const;
+  /// Determine type of an arbitrary patch
+  /// @param node_i Id of the patch-central node
+  /// @return The patch type
+  PatchType determine_patch_type(const std::int32_t node_i) const;
 
   /// Returns an adjacent intern. patch of boundary patch
   /// @param node_i Processor-local id of patch-central node
@@ -433,12 +410,33 @@ public:
                          std::span<const std::int8_t> pnt_on_essntbndr,
                          const int ncells_min, const int ncells_crit) const;
 
-  /// Determine maximum patch size
-  /// @param nnodes_proc  Number of nodes on current processor
-  /// @param ncells_crit  Critical number of cells on adjacent boundary patches
-  /// @param pnts_on_bndr Markers for all mesh nodes on boundary
-  void set_max_patch_size(const int nnodes_proc, const int ncells_crit,
-                          std::span<const std::int8_t> pnts_on_bndr);
+  /// Construction of a sub-DOFmap on each patch
+  ///
+  /// Determines type of patch and creates sorted DOFmap. Sorting of
+  /// facets/elements/DOFs follows [1,2]. The sub-DOFmap is created for
+  /// sub-problem 0. If patch- type differs between different patches, use
+  /// recreate_subdofmap for sub-problem i>0.
+  ///
+  /// [1] Moldenhauer, M.: Stress reconstructionand a-posteriori error
+  ///     estimationfor elasticity (PhdThesis)
+  /// [2] Bertrand, F.; Carstensen, C.; Gräßle, B. & Tran, N. T.:
+  ///     Stabilization-free HHO a posteriori error control, 2022
+  ///
+  /// @param node_i Processor-local id of current node
+  void create_subdofmap(const int node_i)
+  {
+    throw std::runtime_error("Patch-DOFmap not implemented!");
+  }
+
+  /// Check if reversion of patch is required
+  ///
+  /// Sorting convention of patch: fct_0 is located on the neumann boundary.
+  /// Changing of the RHS can violate this convention. This routine checks
+  /// wether this is the case.
+  ///
+  /// @param[in] index     Index of sub-problem
+  /// @param[out] required true if reversion is required
+  bool reversion_required(int index) const;
 
   /* Setter functions */
 
@@ -609,6 +607,13 @@ public:
   }
 
 protected:
+  /// Determine maximum patch size
+  /// @param nnodes_proc  Number of nodes on current processor
+  /// @param ncells_crit  Critical number of cells on adjacent boundary patches
+  /// @param pnts_on_bndr Markers for all mesh nodes on boundary
+  void set_max_patch_size(const int nnodes_proc, const int ncells_crit,
+                          std::span<const std::int8_t> pnts_on_bndr);
+
   /// Initializes patch
   ///
   /// Sets patch type and creates sorted list of patch-facets.

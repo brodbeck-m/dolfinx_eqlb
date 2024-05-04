@@ -74,53 +74,46 @@ void impose_weak_symmetry(const mesh::Geometry& geometry,
     }
   }
 
-  // Data for Piola mapping
+  // Coefficients of the stress tensor
   if constexpr (modified_patch)
   {
-    /* Extract data */
-    // The geometry
-    const graph::AdjacencyList<std::int32_t>& x_dofmap = geometry.dofmap();
-    std::span<const double> x = geometry.x();
+    // if (patch.is_internal())
+    // {
+    //   std::cout << "Weak symmetry on internal patch" << std::endl;
+    // }
 
-    // The patch
+    // Cells on current patch
     std::span<const std::int32_t> cells = patch.cells();
 
-    /* Initialisation */
-    // Isoparametric mapping
-    std::array<double, 9> Jb;
-    std::array<double, 18> detJ_scratch;
-    mdspan_t<double, 2> J(Jb.data(), 2, 2);
+    // (Global) DOFmap of the flux space
+    const graph::AdjacencyList<std::int32_t>& flux_dofmap
+        = problem_data.fspace_flux_hdiv()->dofmap()->list();
 
-    // Storage cell geometry
-    std::array<double, 12> coordinate_dofs_e;
-    mdspan_t<const double, 2> coords(coordinate_dofs_e.data(),
-                                     kernel_data.nnodes_cell(), 3);
-
-    /* Evaluate Piola mapping */
-    for (std::size_t a = 1; a < ncells + 1; ++a)
+    for (std::size_t i = 0; i < gdim; ++i)
     {
-      // Current cell
-      std::size_t id_a = a - 1;
-      std::int32_t c = cells[a];
+      // Global storage of the stress (row i)
+      std::span<const T> x_flux = problem_data.flux(i).x()->array();
 
-      // Copy points of current cell
-      std::span<const std::int32_t> x_dofs = x_dofmap.links(c);
-      copy_cell_data<double, 3>(x, x_dofs, coordinate_dofs_e, 3);
+      // Loop over cells
+      for (std::int32_t a = 1; a < ncells + 1; ++a)
+      {
+        // Global DOFs
+        std::span<const std::int32_t> gdofs = flux_dofmap.links(cells[a]);
 
-      // Calculate Jacobi matrix and determinant
-      double detJ = kernel_data.compute_jacobian(J, detJ_scratch, coords);
-      patch_data.store_piola_mapping(id_a, detJ, J);
+        // Flattened storage of stress
+        std::span<T> stress_coefficients = patch_data.coefficients_stress(i, a);
+
+        // Loop over DOFs an cell
+        for (std::size_t i = 0; i < ndofs_flux; ++i)
+        {
+          // Set zero-order DOFs on facets
+          stress_coefficients[i] = x_flux[gdofs[i]];
+        }
+      }
     }
-
-    /* Initialise assembly informations */
-    patch.set_assembly_informations(kernel_data.fct_normal_is_outward(),
-                                    patch_data.jacobi_determinant());
   }
-
-  // --- Coefficients of the stress tensor (contribution current patch)
-  if (!(modified_patch))
+  else
   {
-    // Copy the coefficients
     for (std::size_t i_row = 0; i_row < gdim; ++i_row)
     {
       for (std::size_t a = 1; a < ncells + 1; ++a)
@@ -137,53 +130,40 @@ void impose_weak_symmetry(const mesh::Geometry& geometry,
   mdspan_t<const std::int32_t, 3> asmbl_info
       = patch.assembly_info_minimisation();
 
-  // Assemble equation system
-  if constexpr (modified_patch)
+  // std::cout << "DOFmap: ";
+  // for (std::size_t i = 0; i < asmbl_info.extent(1); ++i)
+  // {
+  //   for (std::size_t j = 0; j < asmbl_info.extent(2); ++j)
+  //   {
+  //     std::cout << asmbl_info(2, i, j) << " ";
+  //   }
+  //   std::cout << "\n";
+  // }
+
+  // Set boundary markers
+  if (patch.is_on_boundary())
   {
-    // Create DOFmap on modified patch
+    set_boundary_markers(patch_data.boundary_markers(true), patch_types,
+                         patch_reversions, ncells, ndofs_hdivz, ndofs_flux_fct);
 
-    // Set boundary markers
+    // std::cout << "Boundary markers: ";
+    // for (auto m : patch_data.boundary_markers(true))
+    // {
+    //   std::cout << unsigned(m) << " ";
+    // }
+    // std::cout << "\n";
+  }
 
-    // Assemble equation system
+  // Assemble equation system
+  if (requires_bcs)
+  {
+    assemble_stressminimiser<T, id_flux_order, true>(kernel, patch_data,
+                                                     asmbl_info);
   }
   else
   {
-    // std::cout << "DOFmap: ";
-    // for (std::size_t i = 0; i < asmbl_info.extent(1); ++i)
-    // {
-    //   for (std::size_t j = 0; j < asmbl_info.extent(2); ++j)
-    //   {
-    //     std::cout << asmbl_info(2, i, j) << " ";
-    //   }
-    //   std::cout << "\n";
-    // }
-
-    // Set boundary markers
-    if (patch.is_on_boundary())
-    {
-      set_boundary_markers(patch_data.boundary_markers(true), patch_types,
-                           patch_reversions, ncells, ndofs_hdivz,
-                           ndofs_flux_fct);
-
-      // std::cout << "Boundary markers: ";
-      // for (auto m : patch_data.boundary_markers(true))
-      // {
-      //   std::cout << unsigned(m) << " ";
-      // }
-      // std::cout << "\n";
-    }
-
-    // Assemble equation system
-    if (requires_bcs)
-    {
-      assemble_stressminimiser<T, id_flux_order, true>(kernel, patch_data,
-                                                       asmbl_info);
-    }
-    else
-    {
-      assemble_stressminimiser<T, id_flux_order, false>(kernel, patch_data,
-                                                        asmbl_info);
-    }
+    assemble_stressminimiser<T, id_flux_order, false>(kernel, patch_data,
+                                                      asmbl_info);
   }
 
   // Solve equation system
@@ -198,63 +178,91 @@ void impose_weak_symmetry(const mesh::Geometry& geometry,
   Eigen::Matrix<T, Eigen::Dynamic, 1>& u_patch = patch_data.vector_u_sigma();
 
   // Move solution from patch-wise into global storage
-  for (std::size_t i_row = 0; i_row < gdim; ++i_row)
+  for (std::size_t i = 0; i < gdim; ++i)
   {
     // Global storage of the solution
-    std::span<T> x_flux_dhdiv = problem_data.flux(i_row).x()->mutable_array();
-    // mdspan_t<T, 2> coefficients_flux = patch_data.coefficients_flux(i_row);
+    std::span<T> x_stress = problem_data.flux(i).x()->mutable_array();
+    // mdspan_t<T, 2> coefficients_flux = patch_data.coefficients_flux(i);
 
     // Initialise offset
-    int offset_u = i_row * ndofs_hdivz;
+    int offset_u = i * ndofs_hdivz;
 
     // Loop over cells
     for (std::int32_t a = 1; a < ncells + 1; ++a)
     {
       // Map solution from H(div=0) to H(div) space
-      for (std::size_t i = 0; i < ndofs_hdivz_per_cell; ++i)
+      for (std::size_t j = 0; j < ndofs_hdivz_per_cell; ++j)
       {
         // Local to global storage
-        x_flux_dhdiv[asmbl_info(1, a, i)]
-            += asmbl_info(3, a, i) * u_patch(offset_u + asmbl_info(2, a, i));
+        x_stress[asmbl_info(1, a, j)]
+            += asmbl_info(3, a, j) * u_patch(offset_u + asmbl_info(2, a, j));
 
         // // Update patch-wise solution
-        // coefficients_flux(a - 1, asmbl_info(0, a, i))
-        //     += asmbl_info(3, a, i) * u_patch(offset_u + asmbl_info(2, a, i));
+        // coefficients_flux(a - 1, asmbl_info(0, a, j))
+        //     += asmbl_info(3, a, j) * u_patch(offset_u + asmbl_info(2, a, j));
       }
     }
   }
 
   // // Check orthogonality
-  // std::cout << "Check orthogonality" << std::endl;
-  // if (!(modified_patch))
+  // // std::cout << "Check orthogonality" << std::endl;
+
+  // if constexpr (modified_patch)
   // {
-  //   // Dimension of the flux space
-  //   const int ndofs_flux = patch.ndofs_flux();
+  //   // Cells on current patch
+  //   std::span<const std::int32_t> cells = patch.cells();
 
-  //   // Flattened storage of stress coefficients
-  //   std::span<T> stress_coefficients = patch_data.coefficients_stress();
+  //   // (Global) DOFmap of the flux space
+  //   const graph::AdjacencyList<std::int32_t>& flux_dofmap
+  //       = problem_data.fspace_flux_hdiv()->dofmap()->list();
 
-  //   // Copy the coefficients
+  //   for (std::size_t i = 0; i < gdim; ++i)
+  //   {
+  //     // Global storage of the stress (row i)
+  //     std::span<const T> x_flux = problem_data.flux(i).x()->array();
+
+  //     // Loop over cells
+  //     for (std::int32_t a = 1; a < ncells + 1; ++a)
+  //     {
+  //       // Global DOFs
+  //       std::span<const std::int32_t> gdofs = flux_dofmap.links(cells[a]);
+
+  //       // Flattened storage of stress
+  //       std::span<T> stress_coefficients = patch_data.coefficients_stress(i,
+  //       a);
+
+  //       // Loop over DOFs an cell
+  //       for (std::size_t i = 0; i < ndofs_flux; ++i)
+  //       {
+  //         // Set zero-order DOFs on facets
+  //         stress_coefficients[i] = x_flux[gdofs[i]];
+  //       }
+  //     }
+  //   }
+  // }
+  // else
+  // {
   //   for (std::size_t i_row = 0; i_row < gdim; ++i_row)
   //   {
   //     for (std::size_t a = 1; a < ncells + 1; ++a)
   //     {
-  //       // Set offset
-  //       std::size_t offset = (a - 1) * ndofs_flux * gdim + i_row *
-  //       ndofs_flux;
-
-  //       // Coefficients of flux i on cell a
-  //       std::span<const T> coeffs_rowi_cella
-  //           = patch_data.coefficients_flux(i_row, a);
-
   //       // Move coefficients to flattened storage
-  //       std::copy_n(coeffs_rowi_cella.begin(), ndofs_flux,
-  //                   stress_coefficients.begin() + offset);
+  //       std::copy_n(patch_data.coefficients_flux(i_row, a).begin(),
+  //       ndofs_flux,
+  //                   patch_data.coefficients_stress(i_row, a).begin());
   //     }
   //   }
   // }
 
-  // assemble_stressminimiser<T, id_flux_order, false>(kernel, patch_data,
-  //                                                   asmbl_info);
+  // if (requires_bcs)
+  // {
+  //   assemble_stressminimiser<T, id_flux_order, true>(kernel, patch_data,
+  //                                                    asmbl_info);
+  // }
+  // else
+  // {
+  //   assemble_stressminimiser<T, id_flux_order, false>(kernel, patch_data,
+  //                                                     asmbl_info);
+  // }
 }
 } // namespace dolfinx_eqlb
