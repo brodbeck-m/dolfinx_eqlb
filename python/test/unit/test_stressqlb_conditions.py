@@ -30,9 +30,11 @@ Check if equilibrated flux
 
 @pytest.mark.parametrize("mesh_type", ["builtin"])
 @pytest.mark.parametrize("degree", [2, 3, 4])
-@pytest.mark.parametrize("bc_type", ["pure_dirichlet"])
+@pytest.mark.parametrize("bc_type", ["pure_dirichlet", "neumann_hom", "neumann_inhom"])
 def test_equilibration_conditions(mesh_type, degree, bc_type):
     # Create mesh
+    gdim = 2
+
     if mesh_type == "builtin":
         geometry = create_unitsquare_builtin(
             2, dmesh.CellType.triangle, dmesh.DiagonalType.crossed
@@ -42,27 +44,19 @@ def test_equilibration_conditions(mesh_type, degree, bc_type):
     else:
         raise ValueError("Unknown mesh type")
 
-    outfile = dolfinx.io.XDMFFile(MPI.COMM_WORLD, "TestMesh.xdmf", "w")
-    outfile.write_mesh(geometry.mesh)
-    outfile.close()
-
     # Initialise loop over degree of boundary flux
     if bc_type != "neumann_inhom":
-        degree_max_rhs = 1
+        degree_bc = 1
     else:
-        degree_max_rhs = degree
+        if degree == 2:
+            degree_bc = 2
+        else:
+            degree_bc = degree + 1
 
     # Perform tests
-    for degree_bc in range(0, degree_max_rhs):
+    for degree_bc in range(0, degree_bc):
         for degree_prime in range(2, degree + 1):
             for degree_rhs in range(0, degree):
-
-                # print(
-                #     "degree flux: {}, degree prime: {}, degree rhs: {}".format(
-                #         degree, degree_prime, degree_rhs
-                #     )
-                # )
-
                 # Set function space
                 V_prime = dfem.VectorFunctionSpace(geometry.mesh, ("P", degree_prime))
 
@@ -98,8 +92,10 @@ def test_equilibration_conditions(mesh_type, degree, bc_type):
                     degree_projection=degree_proj,
                 )
 
-                # Solve equilibration
+                # --- Solve equilibration
+                # RHS and Neumann BCs for each row of the stress tensor
                 rhs_projected_row = []
+                neumann_functions_row = [[] for _ in range(gdim)]
 
                 V_aux = dfem.FunctionSpace(
                     geometry.mesh,
@@ -109,10 +105,14 @@ def test_equilibration_conditions(mesh_type, degree, bc_type):
                 for i in range(geometry.mesh.geometry.dim):
                     rhs_projected_row.append(dfem.Function(V_aux))
 
-                    # Set values from mixed space
+                    # RHS: Get values from vector values space
                     rhs_projected_row[-1].x.array[:] = (
                         rhs_projected.sub(i).collapse().x.array[:]
                     )
+
+                    # Neumann BCs: Get values from ufl-vector
+                    for bc_ufl in neumann_functions:
+                        neumann_functions_row[i].append(bc_ufl[i])
 
                 sigma_eq, boundary_dofvalues = equilibrate_stresses(
                     degree,
@@ -121,15 +121,20 @@ def test_equilibration_conditions(mesh_type, degree, bc_type):
                     rhs_projected_row,
                     [boundary_id_neumann, boundary_id_neumann],
                     [boundary_id_dirichlet, boundary_id_dirichlet],
-                    [neumann_functions, neumann_functions],
+                    neumann_functions_row,
                     [neumann_projection, neumann_projection],
                 )
 
                 # --- Check boundary conditions ---
                 if bc_type != "pure_dirichlet":
-                    raise NotImplementedError(
-                        "Neumann boundary conditions not implemented yet"
-                    )
+                    for i in range(gdim):
+                        eqlb_checker.check_boundary_conditions(
+                            sigma_eq[i],
+                            sigma_projected[i],
+                            boundary_dofvalues[i],
+                            geometry.facet_function,
+                            boundary_id_neumann,
+                        )
 
                 # --- Check divergence condition ---
                 stress_eq = ufl.as_matrix(
@@ -163,4 +168,3 @@ if __name__ == "__main__":
     import sys
 
     pytest.main(sys.argv)
-    # test_equilibration_conditions("builtin", 3, "pure_dirichlet")

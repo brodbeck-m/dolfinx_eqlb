@@ -92,9 +92,9 @@ def solve_primal_problem(
     u = ufl.TrialFunction(V_prime)
     v = ufl.TestFunction(V_prime)
 
-    sigma = 2 * ufl.sym(ufl.grad(u)) + ufl.div(u) * ufl.Identity(gdim)
+    sigma = -2 * ufl.sym(ufl.grad(u)) - ufl.div(u) * ufl.Identity(gdim)
 
-    a_prime = ufl.inner(sigma, ufl.grad(v)) * ufl.dx
+    a_prime = ufl.inner(sigma, ufl.sym(ufl.grad(v))) * ufl.dx
     l_prime = ufl.inner(-ufl_rhs, v) * ufl.dx
 
     # Set dirichlet boundary conditions
@@ -107,7 +107,7 @@ def solve_primal_problem(
 
     # Set neumann boundary conditions
     for i, id in enumerate(bc_id_neumann):
-        l_prime -= ufl.inner(ufl_neumann[i], v) * geometry.ds(id)
+        l_prime += ufl.inner(ufl_neumann[i], v) * geometry.ds(id)
 
     # Solve problem
     solveoptions = {
@@ -125,7 +125,7 @@ def solve_primal_problem(
     if degree_projection < 0:
         degree_projection = V_prime.element.basix_element.degree - 1
 
-    sigma_h = 2 * ufl.sym(ufl.grad(u_prime)) + ufl.div(u_prime) * ufl.Identity(gdim)
+    sigma_h = -2 * ufl.sym(ufl.grad(u_prime)) - ufl.div(u_prime) * ufl.Identity(gdim)
 
     V_flux = dfem.VectorFunctionSpace(geometry.mesh, ("DG", degree_projection))
     sig_proj = local_projection(

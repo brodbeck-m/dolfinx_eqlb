@@ -196,11 +196,16 @@ def set_arbitrary_bcs(
         # Set homogenous dirichlet boundary conditions
         u_D = [dfem.Function(V_prime) for i in range(0, len(boundary_id_dirichlet))]
 
-        # Set homogenous dirichlet boundary conditions
-        func_neumann = [
-            dfem.Constant(domain, PETSc.ScalarType(0.0))
-            for i in range(0, len(boundary_id_neumann))
-        ]
+        # Set homogenous neumann boundary conditions
+        if V_prime.num_sub_spaces == 0:
+            hom_nbc = dfem.Constant(domain, PETSc.ScalarType(0.0))
+        else:
+            if V_prime.num_sub_spaces == 2:
+                hom_nbc = ufl.as_vector([0, 0])
+            else:
+                hom_nbc = ufl.as_vector([0, 0, 0])
+
+        func_neumann = [hom_nbc for i in range(0, len(boundary_id_neumann))]
     elif bc_type == "neumann_inhom":
         # The mesh
         domain = V_prime.mesh
@@ -216,7 +221,7 @@ def set_arbitrary_bcs(
         # Set homogenous dirichlet boundary conditions
         u_D = [dfem.Function(V_prime) for i in range(0, len(boundary_id_dirichlet))]
 
-        # Set homogenous dirichlet boundary conditions
+        # Set inhomogenous neumann boundary conditions
         if V_prime.num_sub_spaces == 0:
             V_bc = dfem.FunctionSpace(domain, ("DG", degree_bc))
         else:
