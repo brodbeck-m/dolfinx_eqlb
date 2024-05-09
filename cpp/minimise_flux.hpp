@@ -834,24 +834,24 @@ void assemble_fluxminimiser(kernel_fn<T, asmbl_systmtrx>& minimisation_kernel,
     }
   }
 
-  // if (constrained_minimisation)
-  // {
-  //   std::cout << "A_patch: " << std::endl;
-  //   for (std::size_t i = 0; i < offset_constr + 1; ++i)
-  //   {
-  //     for (std::size_t j = 0; j < offset_constr + 1; ++j)
-  //     {
-  //       std::cout << A_patch(i, j) << " ";
-  //     }
-  //     std::cout << "\n";
-  //   }
-  //   std::cout << "L_patch: " << std::endl;
-  //   for (std::size_t i = 0; i < offset_constr + 1; ++i)
-  //   {
-  //     std::cout << L_patch(i) << " ";
-  //   }
-  //   std::cout << "\n";
-  // }
+  if (constrained_minimisation)
+  {
+    std::cout << "A_patch: " << std::endl;
+    for (std::size_t i = 0; i < offset_constr + 1; ++i)
+    {
+      for (std::size_t j = 0; j < offset_constr + 1; ++j)
+      {
+        std::cout << A_patch(i, j) << " ";
+      }
+      std::cout << "\n";
+    }
+    std::cout << "L_patch: " << std::endl;
+    for (std::size_t i = 0; i < offset_constr + 1; ++i)
+    {
+      std::cout << L_patch(i) << " ";
+    }
+    std::cout << "\n";
+  }
   // else
   // {
   //   std::cout << "A_patch: " << std::endl;

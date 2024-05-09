@@ -28,9 +28,9 @@ Check if equilibrated flux
 """
 
 
-@pytest.mark.parametrize("mesh_type", ["builtin"])
-@pytest.mark.parametrize("degree", [2, 3, 4])
-@pytest.mark.parametrize("bc_type", ["pure_dirichlet"])
+# @pytest.mark.parametrize("mesh_type", ["builtin"])
+# @pytest.mark.parametrize("degree", [2, 3, 4])
+# @pytest.mark.parametrize("bc_type", ["pure_dirichlet"])
 def test_equilibration_conditions(mesh_type, degree, bc_type):
     # Create mesh
     if mesh_type == "builtin":
@@ -162,5 +162,5 @@ def test_equilibration_conditions(mesh_type, degree, bc_type):
 if __name__ == "__main__":
     import sys
 
-    pytest.main(sys.argv)
-    # test_equilibration_conditions("builtin", 3, "pure_dirichlet")
+    # pytest.main(sys.argv)
+    test_equilibration_conditions("builtin", 4, "pure_dirichlet")

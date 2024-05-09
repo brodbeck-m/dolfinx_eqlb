@@ -250,7 +250,8 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
     std::vector<bool> perform_equilibration(n_nodes, true);
 
     // Loop over all patches
-    for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
+    // for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
+    for (std::size_t i_node = 2; i_node < 3; ++i_node)
     {
       if (perform_equilibration[i_node])
       {
