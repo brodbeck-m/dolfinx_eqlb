@@ -66,6 +66,8 @@ template <typename T>
 void reconstruct_fluxes_patch(const fem::Form<T>& a, const fem::Form<T>& l_pen,
                               ProblemDataFluxEV<T>& problem_data)
 {
+  const std::int32_t n_repetition = 250000;
+
   /* Geometry */
   const mesh::Geometry& geometry = a.mesh()->geometry();
   const int dim = geometry.dim();
@@ -128,17 +130,71 @@ void reconstruct_fluxes_patch(const fem::Form<T>& a, const fem::Form<T>& l_pen,
   StorageStiffness<T> storage_stiffness
       = StorageStiffness<T>(n_cells, patch.ndofs_elmt(), patch.ndofs_cons());
 
-  /* Solve flux reconstruction on each patch */
-  // Loop over all nodes and solve patch problem
-  for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
-  {
-    // Create Sub-DOFmap
-    patch.create_subdofmap(i_node);
+  /* Timing */
+  // Initialise timing
+  std::chrono::time_point<std::chrono::system_clock> begin, end;
+  std::vector<std::int32_t> nodes{2, 4};
 
-    // Solve patch problem
-    equilibrate_flux_constrmin(geometry, patch, dofmap0->list(), dof_transform,
-                               dof_transform_to_transpose, cell_info, kernel_a,
-                               kernel_lpen, problem_data, storage_stiffness);
+  for (std::int32_t i_node : nodes)
+  {
+    // --- Time patch creation
+    begin = std::chrono::system_clock::now();
+    for (std::size_t i = 0; i < n_repetition; ++i)
+    {
+      // Create patch
+      patch.create_subdofmap(i_node);
+    }
+    end = std::chrono::system_clock::now();
+
+    std::chrono::duration<double> total_create_patch = end - begin;
+
+    // Time equilibration: Assemble equation system
+    begin = std::chrono::system_clock::now();
+    for (std::size_t i = 0; i < n_repetition; ++i)
+    {
+      // Create Sub-DOFmap
+      patch.create_subdofmap(i_node);
+
+      // Solve patch problem
+      equilibrate_flux_constrmin<T, 1>(
+          geometry, patch, dofmap0->list(), dof_transform,
+          dof_transform_to_transpose, cell_info, kernel_a, kernel_lpen,
+          problem_data, storage_stiffness, n_repetition);
+    }
+    end = std::chrono::system_clock::now();
+
+    std::chrono::duration<double> total_eqlb_assembly = end - begin;
+
+    // Time equilibration: Assemble equation system
+    begin = std::chrono::system_clock::now();
+    for (std::size_t i = 0; i < n_repetition; ++i)
+    {
+      // Create Sub-DOFmap
+      patch.create_subdofmap(i_node);
+
+      // Solve patch problem
+      equilibrate_flux_constrmin<T, 2>(
+          geometry, patch, dofmap0->list(), dof_transform,
+          dof_transform_to_transpose, cell_info, kernel_a, kernel_lpen,
+          problem_data, storage_stiffness, n_repetition);
+    }
+    end = std::chrono::system_clock::now();
+
+    std::chrono::duration<double> total_eqlb_solve = end - begin;
+
+    // --- Output timings
+    double timing_eqlb_assembly
+        = total_eqlb_assembly.count() - total_create_patch.count();
+    double timing_eqlb_solve
+        = total_eqlb_solve.count() - total_eqlb_assembly.count();
+
+    std::cout << "Timings for patch-size " << patch.ncells() << std::endl;
+    std::cout << "Patch creation: " << total_create_patch.count() << std::endl;
+    std::cout << "Eqlb. - assembly flux minimisation: " << timing_eqlb_assembly
+              << std::endl;
+    std::cout << "Eqlb. - solve flux minimisation: " << timing_eqlb_solve
+              << std::endl;
+    std::cout << "Eqlb. - total: " << total_eqlb_solve.count() << std::endl;
   }
 }
 
