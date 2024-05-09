@@ -95,14 +95,15 @@ void calculate_jump(std::size_t ipoint_n,
 /// @param kernel_data     The kernel data (Quadrature data, tabulated basis)
 /// @param minkernel       The kernel for unconstrained minimisation
 /// @param minkernel_rhs   The kernel (RHS) for unconstrained minimisation
-template <typename T, int id_flux_order>
+template <typename T, int id_flux_order, int timing_parameter>
 void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
                                 PatchFluxCstm<T, id_flux_order>& patch,
                                 PatchDataCstm<T, id_flux_order>& patch_data,
                                 ProblemDataFluxCstm<T>& problem_data,
                                 KernelDataEqlb<T>& kernel_data,
                                 kernel_fn<T, true>& minkernel,
-                                kernel_fn<T, false>& minkernel_rhs)
+                                kernel_fn<T, false>& minkernel_rhs,
+                                const std::int32_t n_repetitions)
 {
   /* Extract data */
   // Spacial dimension
@@ -749,56 +750,65 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
       }
     }
 
-    /* Step 2: Minimse sigma_delta */
-    // Set boundary markers
-    if (type_patch == PatchType::bound_essnt_dual
-        || type_patch == PatchType::bound_mixed)
+    if constexpr (timing_parameter > 0)
     {
-      set_boundary_markers(patch_data.boundary_markers(false), {type_patch},
-                           {reversion_required}, ncells, ndofs_hdivz,
-                           ndofs_flux_fct);
-    }
-
-    // Check if assembly of entire system is required
-    bool assemble_entire_system = false;
-
-    if (i_rhs == 0)
-    {
-      assemble_entire_system = true;
-    }
-    else
-    {
-      if (patch.is_on_boundary())
+      /* Step 2: Minimse sigma_delta */
+      // Set boundary markers
+      if (type_patch == PatchType::bound_essnt_dual
+          || type_patch == PatchType::bound_mixed)
       {
-        if (patch.type(i_rhs) != patch.type(i_rhs - 1)
-            || patch.type(i_rhs) == PatchType::bound_mixed)
+        set_boundary_markers(patch_data.boundary_markers(false), {type_patch},
+                             {reversion_required}, ncells, ndofs_hdivz,
+                             ndofs_flux_fct);
+      }
+
+      // Check if assembly of entire system is required
+      bool assemble_entire_system = false;
+
+      if (i_rhs == 0)
+      {
+        assemble_entire_system = true;
+      }
+      else
+      {
+        if (patch.is_on_boundary())
         {
-          assemble_entire_system = true;
+          if (patch.type(i_rhs) != patch.type(i_rhs - 1)
+              || patch.type(i_rhs) == PatchType::bound_mixed)
+          {
+            assemble_entire_system = true;
+          }
         }
       }
-    }
 
-    // Assemble equation system
-    if (assemble_entire_system)
-    {
-      // Assemble system
-      assemble_fluxminimiser<T, id_flux_order, true>(
-          minkernel, patch_data, dofmap_flux, i_rhs,
-          patch.requires_flux_bcs(i_rhs));
+      // Assemble equation system
+      if (assemble_entire_system)
+      {
+        // Assemble system
+        assemble_fluxminimiser<T, id_flux_order, true>(
+            minkernel, patch_data, dofmap_flux, i_rhs,
+            patch.requires_flux_bcs(i_rhs));
 
-      // Factorisation of system matrix
-      patch_data.factorise_matrix_A();
-    }
-    else
-    {
-      // Assemble linear form
-      assemble_fluxminimiser<T, id_flux_order, false>(
-          minkernel_rhs, patch_data, dofmap_flux, i_rhs,
-          patch.requires_flux_bcs(i_rhs));
-    }
+        // Factorisation of system matrix
+        if constexpr (timing_parameter > 1)
+        {
+          patch_data.factorise_matrix_A();
+        }
+      }
+      else
+      {
+        // Assemble linear form
+        assemble_fluxminimiser<T, id_flux_order, false>(
+            minkernel_rhs, patch_data, dofmap_flux, i_rhs,
+            patch.requires_flux_bcs(i_rhs));
+      }
 
-    // Solve system
-    patch_data.solve_unconstrained_minimisation();
+      if constexpr (timing_parameter > 1)
+      {
+        // Solve system
+        patch_data.solve_unconstrained_minimisation();
+      }
+    }
 
     /* Move patch-wise solution into global storage */
     // The patch-local solution
@@ -819,18 +829,21 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
       std::span<const std::int32_t> gdofs = flux_dofmap.links(cells[a]);
 
       // Map solution from H(div=0) to H(div) space
-      for (std::size_t i = 0; i < ndofs_hdivz_per_cell; ++i)
+      if constexpr (timing_parameter > 1)
       {
-        // Apply correction
-        coefficients_flux(id_a, dofmap_flux(0, a, i))
-            += dofmap_flux(3, a, i) * u_sigma(dofmap_flux(2, a, i));
+        for (std::size_t i = 0; i < ndofs_hdivz_per_cell; ++i)
+        {
+          // Apply correction
+          coefficients_flux(id_a, dofmap_flux(0, a, i))
+              += dofmap_flux(3, a, i) * u_sigma(dofmap_flux(2, a, i));
+        }
       }
 
       // Loop over DOFs an cell
       for (std::size_t i = 0; i < ndofs_flux; ++i)
       {
         // Set zero-order DOFs on facets
-        x_flux_dhdiv[gdofs[i]] += coefficients_flux(id_a, i);
+        x_flux_dhdiv[gdofs[i]] += coefficients_flux(id_a, i) / n_repetitions;
       }
     }
   }
@@ -862,24 +875,25 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
 /// @param minkernel_rhs   The kernel (RHS) for unconstrained minimisation
 /// @param kernel_weaksym  The kernel for imposition of the weak symmetry
 ///                        constraind
-template <typename T, int id_flux_order>
-void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
-                                PatchFluxCstm<T, id_flux_order>& patch,
-                                PatchDataCstm<T, id_flux_order>& patch_data,
-                                ProblemDataFluxCstm<T>& problem_data,
-                                KernelDataEqlb<T>& kernel_data,
-                                kernel_fn<T, true>& minkernel,
-                                kernel_fn<T, false>& minkernel_rhs,
-                                kernel_fn_schursolver<T>& kernel_weaksym)
+template <typename T, int id_flux_order, int timing_parameter>
+void equilibrate_flux_semiexplt(
+    const mesh::Geometry& geometry, PatchFluxCstm<T, id_flux_order>& patch,
+    PatchDataCstm<T, id_flux_order>& patch_data,
+    ProblemDataFluxCstm<T>& problem_data, KernelDataEqlb<T>& kernel_data,
+    kernel_fn<T, true>& minkernel, kernel_fn<T, false>& minkernel_rhs,
+    kernel_fn_schursolver<T>& kernel_weaksym, const std::int32_t n_repetitions)
 {
   /* Step 1: Unconstrained flux equilibration */
-  equilibrate_flux_semiexplt<T, id_flux_order>(geometry, patch, patch_data,
-                                               problem_data, kernel_data,
-                                               minkernel, minkernel_rhs);
+  equilibrate_flux_semiexplt<T, id_flux_order, timing_parameter>(
+      geometry, patch, patch_data, problem_data, kernel_data, minkernel,
+      minkernel_rhs, n_repetitions);
 
   /* Step 2: Enforce weak symmetry constraint */
-  impose_weak_symmetry<T, id_flux_order, false>(
-      geometry, patch, patch_data, problem_data, kernel_data, kernel_weaksym);
+  if constexpr (timing_parameter > 2)
+  {
+    impose_weak_symmetry<T, id_flux_order, false, timing_parameter>(
+        geometry, patch, patch_data, problem_data, kernel_data, kernel_weaksym);
+  }
 }
 
 } // namespace dolfinx_eqlb

@@ -33,7 +33,8 @@ namespace dolfinx_eqlb
 
 namespace stdex = std::experimental;
 
-template <typename T, int id_flux_order, bool modified_patch>
+template <typename T, int id_flux_order, bool modified_patch,
+          int timing_parameter>
 void impose_weak_symmetry(const mesh::Geometry& geometry,
                           PatchFluxCstm<T, id_flux_order>& patch,
                           PatchDataCstm<T, id_flux_order>& patch_data,
@@ -145,34 +146,37 @@ void impose_weak_symmetry(const mesh::Geometry& geometry,
   }
 
   // Solve equation system
-  patch_data.solve_constrained_minimisation(requires_bcs);
-
-  /* Store local solution into global storage */
-  // The flux space
-  const int ndofs_hdivz_per_cell
-      = gdim * ndofs_flux_fct + patch.ndofs_flux_cell_add();
-
-  // The patch solution
-  Eigen::Matrix<T, Eigen::Dynamic, 1>& u_patch = patch_data.vector_u_sigma();
-
-  // Move solution from patch-wise into global storage
-  for (std::size_t i = 0; i < gdim; ++i)
+  if constexpr (timing_parameter > 3)
   {
-    // Global storage of the solution
-    std::span<T> x_stress = problem_data.flux(i).x()->mutable_array();
+    patch_data.solve_constrained_minimisation(requires_bcs);
 
-    // Initialise offset
-    int offset_u = i * ndofs_hdivz;
+    /* Store local solution into global storage */
+    // The flux space
+    const int ndofs_hdivz_per_cell
+        = gdim * ndofs_flux_fct + patch.ndofs_flux_cell_add();
 
-    // Loop over cells
-    for (std::int32_t a = 1; a < ncells + 1; ++a)
+    // The patch solution
+    Eigen::Matrix<T, Eigen::Dynamic, 1>& u_patch = patch_data.vector_u_sigma();
+
+    // Move solution from patch-wise into global storage
+    for (std::size_t i = 0; i < gdim; ++i)
     {
-      // Map solution from H(div=0) to H(div) space
-      for (std::size_t j = 0; j < ndofs_hdivz_per_cell; ++j)
+      // Global storage of the solution
+      std::span<T> x_stress = problem_data.flux(i).x()->mutable_array();
+
+      // Initialise offset
+      int offset_u = i * ndofs_hdivz;
+
+      // Loop over cells
+      for (std::int32_t a = 1; a < ncells + 1; ++a)
       {
-        // Local to global storage
-        x_stress[asmbl_info(1, a, j)]
-            += asmbl_info(3, a, j) * u_patch(offset_u + asmbl_info(2, a, j));
+        // Map solution from H(div=0) to H(div) space
+        for (std::size_t j = 0; j < ndofs_hdivz_per_cell; ++j)
+        {
+          // Local to global storage
+          x_stress[asmbl_info(1, a, j)]
+              += asmbl_info(3, a, j) * u_patch(offset_u + asmbl_info(2, a, j));
+        }
       }
     }
   }

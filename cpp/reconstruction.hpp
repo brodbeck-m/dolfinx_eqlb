@@ -32,6 +32,7 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <exception>
 #include <functional>
 #include <iostream>
@@ -159,6 +160,8 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
 {
   assert(id_flux_order < 0);
 
+  const std::int32_t n_repetition = 250000;
+
   /* Geometry */
   // Extract mesh
   std::shared_ptr<const mesh::Mesh> mesh = problem_data.mesh();
@@ -219,6 +222,9 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
       = generate_flux_minimisation_kernel<T, false>(kernel_data, dim,
                                                     degree_rt_flux_hdiv);
 
+  // Initialise timing
+  std::chrono::time_point<std::chrono::system_clock> begin, end;
+
   // Execute equilibration
   // FIXME - Currently only 2D meshes supported
   if constexpr (symconstr_required)
@@ -244,107 +250,144 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
                                                  dim, patch.fcts_per_cell(),
                                                  degree_rt_flux_hdiv);
 
-    // Initialise list with equilibration markers
-    std::vector<bool> perform_equilibration(n_nodes, true);
+    std::vector<std::int32_t> nodes{2, 4};
 
-    // Loop over extended patches on essential boundary
-    if (degree_flux_hdiv == 2)
+    for (std::int32_t i_node : nodes)
     {
-      for (std::int32_t i_node = 0; i_node < n_nodes; ++i_node)
+      // --- Time patch creation
+      begin = std::chrono::system_clock::now();
+      for (std::size_t i = 0; i < n_repetition; ++i)
       {
-        if (pnt_on_stress_boundary[i_node] && perform_equilibration[i_node])
-        {
-          // Number of nodes on patch
-          const int ncells_patch = patch.ncells(i_node);
-
-          // Check if modification of patch is required
-          if (ncells_patch == 1)
-          {
-            std::string error_msg = "Patch around node "
-                                    + std::to_string(i_node)
-                                    + " has only one cell";
-            throw std::runtime_error(error_msg);
-          }
-          else
-          {
-            if (ncells_patch == 2)
-            {
-              // Get patch type
-              PatchType patch_type = patch.determine_patch_type(i_node);
-
-              if (patch_type == PatchType::bound_essnt_dual)
-              {
-                // Group patches such that minimisation is possible
-                std::vector<std::int32_t> grouped_patches
-                    = patch.group_boundary_patches(
-                        i_node, pnt_on_stress_boundary, 1, 2);
-
-                // Equilibration step 1: Explicit step and minimisation
-                for (std::size_t i = grouped_patches.size(); i-- > 0;)
-                {
-                  // Patch-central node
-                  const std::int32_t node_i = grouped_patches[i];
-
-                  // Check if patch has already been considered
-                  if (!perform_equilibration[node_i])
-                  {
-                    throw std::runtime_error(
-                        "Incompatible mesh! To many patches "
-                        "with 2 cells on neumann boundary.");
-                  }
-
-                  // Create Sub-DOFmap
-                  patch.create_subdofmap(node_i);
-
-                  // Re-initialise PatchData
-                  patch_data.reinitialisation(patch.type(), patch.ncells());
-
-                  // Perform equilibration
-                  perform_equilibration[node_i] = false;
-                  equilibrate_flux_semiexplt<T, id_flux_order>(
-                      mesh->geometry(), patch, patch_data, problem_data,
-                      kernel_data, kernel_fluxmin, kernel_fluxmin_l);
-                }
-
-                // Equilibration step 2: Incorporation of weak symmetry
-                // condition
-                impose_weak_symmetry<T, id_flux_order, true>(
-                    mesh->geometry(), patch, patch_data, problem_data,
-                    kernel_data, kernel_weaksym);
-              }
-            }
-          }
-        }
-      }
-    }
-
-    // Loop over all other patches
-    for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
-    {
-      if (perform_equilibration[i_node])
-      {
-        // Set marker for patch
-        perform_equilibration[i_node] = false;
-
-        // Create Sub-DOFmap
+        // Create patch
         patch.create_subdofmap(i_node);
 
-        // Check if equilibration is possible
-        if (patch.ncells() == 1)
-        {
-          std::string error_msg = "Patch around node " + std::to_string(i_node)
-                                  + " has only one cell";
-          throw std::runtime_error(error_msg);
-        }
+        // Reinitialise patch-data
+        patch_data.reinitialisation(patch.type(), patch.ncells());
+      }
+      end = std::chrono::system_clock::now();
+
+      std::chrono::duration<double> total_create_patch = end - begin;
+
+      //  --- Time equilibration: Explicit setp
+      begin = std::chrono::system_clock::now();
+      for (std::size_t i = 0; i < n_repetition; ++i)
+      {
+        // Create patch
+        patch.create_subdofmap(i_node);
 
         // Reinitialise patch-data
         patch_data.reinitialisation(patch.type(), patch.ncells());
 
-        // Calculate solution patch
-        equilibrate_flux_semiexplt<T, id_flux_order>(
+        // Explicit setp equilibration
+        equilibrate_flux_semiexplt<T, id_flux_order, 0>(
             mesh->geometry(), patch, patch_data, problem_data, kernel_data,
-            kernel_fluxmin, kernel_fluxmin_l, kernel_weaksym);
+            kernel_fluxmin, kernel_fluxmin_l, kernel_weaksym, n_repetition);
       }
+      end = std::chrono::system_clock::now();
+
+      std::chrono::duration<double> total_eqlb_explicit = end - begin;
+
+      //  --- Time equilibration: Assembly flux minimisation
+      begin = std::chrono::system_clock::now();
+      for (std::size_t i = 0; i < n_repetition; ++i)
+      {
+        // Create patch
+        patch.create_subdofmap(i_node);
+
+        // Reinitialise patch-data
+        patch_data.reinitialisation(patch.type(), patch.ncells());
+
+        // Explicit setp equilibration
+        equilibrate_flux_semiexplt<T, id_flux_order, 1>(
+            mesh->geometry(), patch, patch_data, problem_data, kernel_data,
+            kernel_fluxmin, kernel_fluxmin_l, kernel_weaksym, n_repetition);
+      }
+      end = std::chrono::system_clock::now();
+
+      std::chrono::duration<double> total_eqlb_fluxmin_assembly = end - begin;
+
+      //  --- Time equilibration: Assembly flux minimisation
+      begin = std::chrono::system_clock::now();
+      for (std::size_t i = 0; i < n_repetition; ++i)
+      {
+        // Create patch
+        patch.create_subdofmap(i_node);
+
+        // Reinitialise patch-data
+        patch_data.reinitialisation(patch.type(), patch.ncells());
+
+        // Explicit setp equilibration
+        equilibrate_flux_semiexplt<T, id_flux_order, 2>(
+            mesh->geometry(), patch, patch_data, problem_data, kernel_data,
+            kernel_fluxmin, kernel_fluxmin_l, kernel_weaksym, n_repetition);
+      }
+      end = std::chrono::system_clock::now();
+
+      std::chrono::duration<double> total_eqlb_fluxmin_solve = end - begin;
+
+      //  --- Time equilibration: Assembly imposition weak symmetry
+      begin = std::chrono::system_clock::now();
+      for (std::size_t i = 0; i < n_repetition; ++i)
+      {
+        // Create patch
+        patch.create_subdofmap(i_node);
+
+        // Reinitialise patch-data
+        patch_data.reinitialisation(patch.type(), patch.ncells());
+
+        // Explicit setp equilibration
+        equilibrate_flux_semiexplt<T, id_flux_order, 3>(
+            mesh->geometry(), patch, patch_data, problem_data, kernel_data,
+            kernel_fluxmin, kernel_fluxmin_l, kernel_weaksym, n_repetition);
+      }
+      end = std::chrono::system_clock::now();
+
+      std::chrono::duration<double> total_eqlb_weaksym_assembly = end - begin;
+
+      //  --- Time equilibration: Solve imposition weak symmetry
+      begin = std::chrono::system_clock::now();
+      for (std::size_t i = 0; i < n_repetition; ++i)
+      {
+        // Create patch
+        patch.create_subdofmap(i_node);
+
+        // Reinitialise patch-data
+        patch_data.reinitialisation(patch.type(), patch.ncells());
+
+        // Explicit setp equilibration
+        equilibrate_flux_semiexplt<T, id_flux_order, 4>(
+            mesh->geometry(), patch, patch_data, problem_data, kernel_data,
+            kernel_fluxmin, kernel_fluxmin_l, kernel_weaksym, n_repetition);
+      }
+      end = std::chrono::system_clock::now();
+
+      std::chrono::duration<double> total_eqlb_weaksym_solve = end - begin;
+
+      // --- Output timings
+      double timing_eqlb_explicit
+          = total_eqlb_explicit.count() - total_create_patch.count();
+      double timing_eqlb_fluxmin_assembly
+          = total_eqlb_fluxmin_assembly.count() - total_eqlb_explicit.count();
+      double timing_eqlb_fluxmin_solve = total_eqlb_fluxmin_solve.count()
+                                         - total_eqlb_fluxmin_assembly.count();
+      double timing_weaksym_assembly = total_eqlb_weaksym_assembly.count()
+                                       - total_eqlb_fluxmin_solve.count();
+      double timing_weaksym_solve = total_eqlb_weaksym_solve.count()
+                                    - total_eqlb_weaksym_assembly.count();
+
+      std::cout << "Timings for patch-size " << patch.ncells() << std::endl;
+      std::cout << "Patch creation: " << total_create_patch.count()
+                << std::endl;
+      std::cout << "Eqlb. - explicit setp: " << timing_eqlb_explicit
+                << std::endl;
+      std::cout << "Eqlb. - assembly flux minimisation: "
+                << timing_eqlb_fluxmin_assembly << std::endl;
+      std::cout << "Eqlb. - solve flux minimisation: "
+                << timing_eqlb_fluxmin_solve << std::endl;
+      std::cout << "Weak sym. - assembly: " << timing_weaksym_assembly
+                << std::endl;
+      std::cout << "Weak sym. - solve: " << timing_weaksym_solve << std::endl;
+      std::cout << "Total: " << total_eqlb_weaksym_solve.count() << std::endl;
     }
   }
   else
@@ -361,27 +404,100 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
         = PatchDataCstm<T, id_flux_order>(patch, kernel_data.nipoints_facet(),
                                           false);
 
-    // Loop over all patches
-    for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
+    // --- Time patch creation
+    std::vector<std::int32_t> nodes{2, 4};
+
+    for (std::int32_t i_node : nodes)
     {
-      // Create Sub-DOFmap
-      patch.create_subdofmap(i_node);
-
-      // Check if equilibration is possible
-      if (patch.ncells() == 1)
+      begin = std::chrono::system_clock::now();
+      for (std::size_t i = 0; i < n_repetition; ++i)
       {
-        std::string error_msg = "Patch around node " + std::to_string(i_node)
-                                + " has only one cell";
-        throw std::runtime_error(error_msg);
+        // Create patch
+        patch.create_subdofmap(i_node);
+
+        // Reinitialise patch-data
+        patch_data.reinitialisation(patch.type(), patch.ncells());
       }
+      end = std::chrono::system_clock::now();
 
-      // Reinitialise patch-data
-      patch_data.reinitialisation(patch.type(), patch.ncells());
+      std::chrono::duration<double> total_create_patch = end - begin;
 
-      // Calculate solution patch
-      equilibrate_flux_semiexplt<T, id_flux_order>(
-          mesh->geometry(), patch, patch_data, problem_data, kernel_data,
-          kernel_fluxmin, kernel_fluxmin_l);
+      //  --- Time equilibration: Explicit setp
+      begin = std::chrono::system_clock::now();
+      for (std::size_t i = 0; i < n_repetition; ++i)
+      {
+        // Create patch
+        patch.create_subdofmap(i_node);
+
+        // Reinitialise patch-data
+        patch_data.reinitialisation(patch.type(), patch.ncells());
+
+        // Explicit setp equilibration
+        equilibrate_flux_semiexplt<T, id_flux_order, 0>(
+            mesh->geometry(), patch, patch_data, problem_data, kernel_data,
+            kernel_fluxmin, kernel_fluxmin_l, n_repetition);
+      }
+      end = std::chrono::system_clock::now();
+
+      std::chrono::duration<double> total_eqlb_explicit = end - begin;
+
+      //  --- Time equilibration: Assembly flux minimisation
+      begin = std::chrono::system_clock::now();
+      for (std::size_t i = 0; i < n_repetition; ++i)
+      {
+        // Create patch
+        patch.create_subdofmap(i_node);
+
+        // Reinitialise patch-data
+        patch_data.reinitialisation(patch.type(), patch.ncells());
+
+        // Explicit setp equilibration
+        equilibrate_flux_semiexplt<T, id_flux_order, 1>(
+            mesh->geometry(), patch, patch_data, problem_data, kernel_data,
+            kernel_fluxmin, kernel_fluxmin_l, n_repetition);
+      }
+      end = std::chrono::system_clock::now();
+
+      std::chrono::duration<double> total_eqlb_fluxmin_assembly = end - begin;
+
+      //  --- Time equilibration: Assembly flux minimisation
+      begin = std::chrono::system_clock::now();
+      for (std::size_t i = 0; i < n_repetition; ++i)
+      {
+        // Create patch
+        patch.create_subdofmap(i_node);
+
+        // Reinitialise patch-data
+        patch_data.reinitialisation(patch.type(), patch.ncells());
+
+        // Explicit setp equilibration
+        equilibrate_flux_semiexplt<T, id_flux_order, 2>(
+            mesh->geometry(), patch, patch_data, problem_data, kernel_data,
+            kernel_fluxmin, kernel_fluxmin_l, n_repetition);
+      }
+      end = std::chrono::system_clock::now();
+
+      std::chrono::duration<double> total_eqlb_fluxmin_solve = end - begin;
+
+      // --- Output timings
+      double timing_eqlb_explicit
+          = total_eqlb_explicit.count() - total_create_patch.count();
+      double timing_eqlb_fluxmin_assembly
+          = total_eqlb_fluxmin_assembly.count() - total_eqlb_explicit.count();
+      double timing_eqlb_fluxmin_solve = total_eqlb_fluxmin_solve.count()
+                                         - total_eqlb_fluxmin_assembly.count();
+
+      std::cout << "Timings for patch-size " << patch.ncells() << std::endl;
+      std::cout << "Patch creation: " << total_create_patch.count()
+                << std::endl;
+      std::cout << "Eqlb. - explicit setp: " << timing_eqlb_explicit
+                << std::endl;
+      std::cout << "Eqlb. - assembly flux minimisation: "
+                << timing_eqlb_fluxmin_assembly << std::endl;
+      std::cout << "Eqlb. - solve flux minimisation: "
+                << timing_eqlb_fluxmin_solve << std::endl;
+      std::cout << "Eqlb. - total: " << total_eqlb_fluxmin_solve.count()
+                << std::endl;
     }
   }
 }
