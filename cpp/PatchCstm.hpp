@@ -24,16 +24,24 @@ public:
   ///
   /// @param mesh                    The current mesh
   /// @param bfct_type               List with type of all boundary facets
-  /// @param ncells_crit             Number of cells on critical patch
-  /// @param pnt_on_essntbndr        List with points on essential flux boundary
+  /// @param pnt_on_essntbndr        List with points on essential stress
+  /// boundary
+  ///                                (only for stress eqlb. required --> empty
+  ///                                else)
   /// @param function_space_fluxhdiv Function space of H(div) flux
   /// @param symconstr_required      Flag for constrained minimisation
+  /// @param ncells_min              Minimum number of cells patches
+  ///                                (below: Error)
+  /// @param ncells_crit             Critical number of cells on a boundary
+  ///                                patch (modification required)
   PatchCstm(std::shared_ptr<const mesh::Mesh> mesh,
-            mdspan_t<const std::int8_t, 2> bfct_type, const int ncells_crit,
+            mdspan_t<const std::int8_t, 2> bfct_type,
             std::span<const std::int8_t> pnt_on_essntbndr,
             std::shared_ptr<const fem::FunctionSpace> function_space_fluxhdiv,
-            const bool symconstr_required)
-      : OrientedPatch(mesh, bfct_type, ncells_crit, pnt_on_essntbndr),
+            const bool symconstr_required, const int ncells_min,
+            const int ncells_crit)
+      : OrientedPatch(mesh, bfct_type, pnt_on_essntbndr, ncells_min,
+                      ncells_crit),
         _symconstr_required(symconstr_required),
         _degree_elmt_fluxhdiv(
             function_space_fluxhdiv->element()->basix_element().degree() - 1),
@@ -611,23 +619,30 @@ public:
   /// @param mesh                    The current mesh
   /// @param bfct_type               List with type of all boundary facets
   /// @param ncells_crit             Number of cells on critical patch
-  /// @param pnt_on_essntbndr        List with points on essential flux boundary
+  /// @param pnt_on_essntbndr        List with points on essnt. stress boundary
+  ///                                (only for stress eqlb. required
+  ///                                 --> empty else)
   /// @param function_space_fluxhdiv Function space of H(div) flux
   /// @param function_space_fluxdg   Function space of projected flux
   /// @param basix_element_fluxdg    BasiX element of projected flux
   ///                                (continuous version for required
   ///                                entity_closure_dofs)
+  /// @param symconstr_required      Flag for constrained minimisation
+  /// @param ncells_min              Minimum number of cells patches
+  ///                                (below: Error)
+  /// @param ncells_crit             Critical number of cells on a boundary
+  ///                                patch (modification required)
   PatchFluxCstm(
       std::shared_ptr<const mesh::Mesh> mesh,
-      mdspan_t<const std::int8_t, 2> bfct_type, const int ncells_crit,
+      mdspan_t<const std::int8_t, 2> bfct_type,
       std::span<const std::int8_t> pnt_on_essntbndr,
       const std::shared_ptr<const fem::FunctionSpace> function_space_fluxhdiv,
       const std::shared_ptr<const fem::FunctionSpace> function_space_fluxdg,
       const basix::FiniteElement& basix_element_fluxdg,
-      const bool symconstr_required)
-      : PatchCstm<T, id_flux_order>(mesh, bfct_type, ncells_crit,
-                                    pnt_on_essntbndr, function_space_fluxhdiv,
-                                    symconstr_required),
+      bool symconstr_required = false, int ncells_min = 1, int ncells_crit = 1)
+      : PatchCstm<T, id_flux_order>(mesh, bfct_type, pnt_on_essntbndr,
+                                    function_space_fluxhdiv, symconstr_required,
+                                    ncells_min, ncells_crit),
         _degree_elmt_fluxdg(basix_element_fluxdg.degree()),
         _function_space_fluxdg(function_space_fluxdg),
         _entity_dofs_fluxcg(basix_element_fluxdg.entity_closure_dofs())
