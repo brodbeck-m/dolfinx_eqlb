@@ -347,14 +347,6 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
       // Create Sub-DOFmap
       patch.create_subdofmap(i_node);
 
-      // Check if equilibration is possible
-      if (patch.ncells() == 1)
-      {
-        std::string error_msg = "Patch around node " + std::to_string(i_node)
-                                + " has only one cell";
-        throw std::runtime_error(error_msg);
-      }
-
       // Reinitialise patch-data
       patch_data.reinitialisation(patch.type(), patch.ncells());
 

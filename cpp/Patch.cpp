@@ -457,7 +457,7 @@ OrientedPatch::OrientedPatch(std::shared_ptr<const mesh::Mesh> mesh,
     const int sp1 = _ncells_max + 1, sp2 = _ncells_max + 2;
 
     _cells.resize(sp2);
-    _fcts.resize(sp1);
+    _fcts.resize(sp2);
     _fcts_sorted.resize(sp1);
     _fcts_local.resize(2 * sp1);
     _inodes_local.resize(sp2);
@@ -867,7 +867,7 @@ void OrientedPatch::initialize_patch(const int node_i)
     _inodes_local[a] = node_local(cell_a, _nodei);
 
     // Determine next facet
-    _fcts[a + 1] = next_facet(cell_ap1, fcts_cell_ap1, lfct_cell_ap1);
+    _fcts[ap1] = next_facet(cell_ap1, fcts_cell_ap1, lfct_cell_ap1);
   }
 
   // Complete Definition of patch
