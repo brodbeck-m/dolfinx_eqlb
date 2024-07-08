@@ -337,7 +337,7 @@ BoundaryData<T>::BoundaryData(
           x_bvals[boundary_dofs_fct[i]] = boundary_values_fct[i];
         }
 
-        if ((reconstruct_stress) && (i_rhs < (_gdim - 1)))
+        if ((reconstruct_stress) && (i_rhs < _gdim))
         {
           std::span<const std::int32_t> pnts_fct = fct_to_pnt->links(fct);
 
