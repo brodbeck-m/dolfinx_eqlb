@@ -374,13 +374,12 @@ public:
   /// @param pnt_on_bndr      Markers for all mesh nodes on essential boundary
   ///                         (stresses)
   /// @param initial_length   Initial length of the output vector
-  /// @param ncells_min       Minimum number of cells on adjacent patches
-  /// @param ncells_crit      Critical number of cells on adjacent patches
+  /// @param ncells_crit      Critical number of cells on patches
   /// @return                 The central nodes of critical, adjacent patches
   std::vector<std::int32_t>
   group_boundary_patches(const std::int32_t node_i,
                          std::span<const std::int8_t> pnt_on_bndr,
-                         const int ncells_min, const int ncells_crit) const;
+                         const int ncells_crit) const;
 
   /// Construction of a sub-DOFmap on each patch
   ///

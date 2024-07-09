@@ -474,99 +474,42 @@ OrientedPatch::OrientedPatch(std::shared_ptr<const mesh::Mesh> mesh,
   }
 }
 
-std::vector<std::int32_t> OrientedPatch::group_boundary_patches(
-    const std::int32_t node_i, std::span<const std::int8_t> pnts_on_bndr,
-    const int ncells_min, const int ncells_crit) const
+std::vector<std::int32_t>
+OrientedPatch::group_boundary_patches(const std::int32_t node_i,
+                                      std::span<const std::int8_t> pnts_on_bndr,
+                                      const int ncells_crit) const
 {
   // Initialisation
   std::vector<std::int32_t> grouped_patches;
 
   // Check the actual boundary patch
-  if (ncells(node_i) == ncells_crit)
+  if ((pnts_on_bndr[node_i]) && (ncells(node_i) == ncells_crit))
   {
-    // Storage for neighboring patches
-    std::array<std::int32_t, 2> neighbor_pnts, neighbor_fcts;
+    // Get adjacent inner patch
+    std::int32_t node_i_internal = adjacent_internal_patch(node_i);
+    grouped_patches.push_back(node_i_internal);
 
-    // Facets on current patch
-    std::span<const std::int32_t> fcts_patch = _node_to_fct->links(node_i);
+    // Cells on inner patch
+    std::span<const std::int32_t> pcells
+        = _node_to_cell->links(node_i_internal);
 
-    // Check if one of the stress patches if of type bound_essnt_dual
-    int count_bfcts = 0;
-
-    for (std::int32_t fct : fcts_patch)
+    // Find boundary nodes of inner patch
+    for (std::int32_t cell : pcells)
     {
-      // Check if patch is of type bound_essnt_dual
-      if (_bfct_type(0, fct) != PatchFacetType::internal)
+      // Nodes of current cell
+      std::span<const std::int32_t> cpnts = _cell_to_node->links(cell);
+
+      // Check boundary patches
+      for (std::int32_t pnt : cpnts)
       {
-        // Get nodes on facet
-        std::span<const std::int32_t> nodes_fct = _fct_to_node->links(fct);
-
-        // Check if facet is on neumann boundary
-        if ((pnts_on_bndr[nodes_fct[0]]) && (pnts_on_bndr[nodes_fct[1]]))
+        if (pnts_on_bndr[pnt])
         {
-          // Get nodes on facet
-          std::span<const std::int32_t> nodes_fct = _fct_to_node->links(fct);
-
-          // Store central node of neighboring patch
-          neighbor_pnts[count_bfcts]
-              = (nodes_fct[0] == node_i) ? nodes_fct[1] : nodes_fct[0];
-
-          // Store common facet with neighboring patch
-          neighbor_fcts[count_bfcts] = fct;
-
-          // Increment counter
-          count_bfcts += 1;
-        }
-      }
-    }
-
-    if (count_bfcts == 2)
-    {
-      // Get adjacent internal patch
-      std::int32_t node_i_internal = adjacent_internal_patch(node_i);
-      grouped_patches.push_back(node_i_internal);
-
-      // Append list of grouped patches
-      grouped_patches.push_back(node_i);
-
-      // Check adjacent patches
-      for (int i = 0; i < 2; i++)
-      {
-        std::int32_t neighbor_pnt = neighbor_pnts[i];
-        std::int32_t neighbor_fct = neighbor_fcts[i];
-        bool proceed_search = true;
-
-        while (proceed_search && (ncells(neighbor_pnt) == ncells_crit))
-        {
-          // Check if patch is of type bound_essnt_dual
-          std::span<const std::int32_t> fcts_patch
-              = _node_to_fct->links(neighbor_pnt);
-
-          for (std::int32_t fct : fcts_patch)
+          if (std::find(grouped_patches.begin(), grouped_patches.end(), pnt)
+              == grouped_patches.end())
           {
-            if ((_bfct_type(0, fct) != PatchFacetType::internal)
-                && (fct != neighbor_fct))
+            if (ncells(pnt) == ncells_crit)
             {
-              // Get nodes on facet
-              std::span<const std::int32_t> nodes_fct
-                  = _fct_to_node->links(fct);
-
-              // Check if patch is on essential boundary
-              if ((pnts_on_bndr[nodes_fct[0]]) && (pnts_on_bndr[nodes_fct[1]]))
-              {
-                // Append list of grouped patches
-                grouped_patches.push_back(neighbor_pnt);
-
-                // Data for next patch
-                neighbor_pnt = (nodes_fct[0] == neighbor_pnt) ? nodes_fct[1]
-                                                              : nodes_fct[0];
-                neighbor_fct = fct;
-              }
-              else
-              {
-                proceed_search = false;
-              }
-              break;
+              grouped_patches.push_back(pnt);
             }
           }
         }
@@ -659,8 +602,8 @@ void OrientedPatch::set_max_patch_size(
       }
 
       // Check if patches have to be grouped
-      std::vector<std::int32_t> grouped_bndr_patches = group_boundary_patches(
-          node_i, pnts_on_bndr, ncells_min, ncells_crit);
+      std::vector<std::int32_t> grouped_bndr_patches
+          = group_boundary_patches(node_i, pnts_on_bndr, ncells_crit);
       int groupsize = grouped_bndr_patches.size() - 1;
 
       if (groupsize > _groupsize_max)

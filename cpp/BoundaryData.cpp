@@ -343,10 +343,19 @@ BoundaryData<T>::BoundaryData(
 
           for (auto pnt : pnts_fct)
           {
-            _pnt_on_esnt_boundary[pnt] = true;
+            _pnt_on_esnt_boundary[pnt] += 1;
           }
         }
       }
+    }
+  }
+
+  // Finalise markers for pure essential stress BCs
+  if (reconstruct_stress && (_gdim == 2))
+  {
+    for (std::size_t i = 0; i < _pnt_on_esnt_boundary.size(); ++i)
+    {
+      _pnt_on_esnt_boundary[i] = (_pnt_on_esnt_boundary[i] == 4) ? true : false;
     }
   }
 }

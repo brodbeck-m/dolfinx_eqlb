@@ -254,23 +254,13 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
       {
         if (pnt_on_stress_boundary[i_node] && perform_equilibration[i_node])
         {
-          // Number of nodes on patch
-          const int ncells_patch = patch.ncells(i_node);
-
           // Group the patches
           std::vector<std::int32_t> grouped_patches
-              = patch.group_boundary_patches(i_node, pnt_on_stress_boundary, 1,
-                                             2);
+              = patch.group_boundary_patches(i_node, pnt_on_stress_boundary, 2);
 
           // Check if modification of patch is required
           if (grouped_patches.size() >= 2)
           {
-            // TODO - Generalise implementation to arbitrary group sizes!
-            if (grouped_patches.size() > 2)
-            {
-              throw std::runtime_error("Unsupported patch-grouping required!");
-            }
-
             // Equilibration step 1: Explicit step and minimisation
             for (std::size_t i = grouped_patches.size(); i-- > 0;)
             {
@@ -283,6 +273,10 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
                 throw std::runtime_error("Incompatible mesh! To many patches "
                                          "with 2 cells on neumann boundary.");
               }
+              else
+              {
+                perform_equilibration[node_i] = false;
+              }
 
               // Create Sub-DOFmap
               patch.create_subdofmap(node_i);
@@ -291,7 +285,6 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
               patch_data.reinitialisation(patch.type(), patch.ncells());
 
               // Perform equilibration
-              perform_equilibration[node_i] = false;
               equilibrate_flux_semiexplt<T, id_flux_order>(
                   mesh->geometry(), patch, patch_data, problem_data,
                   kernel_data, kernel_fluxmin, kernel_fluxmin_l);
