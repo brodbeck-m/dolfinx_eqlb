@@ -1,4 +1,5 @@
 # --- Imports ---
+from mpi4py import MPI
 import numpy as np
 import typing
 
@@ -186,7 +187,52 @@ def check_divergence_condition(
             raise ValueError("Divergence condition not satisfied")
 
 
-def check_jump_condition(sigma_eq: dfem.Function, sig_proj: dfem.Function):
+def check_jump_condition(sigma_eq: dfem.Function, sigma_proj: dfem.Function):
+    """Check the jump condition
+
+    For the semi-explicit equilibration procedure the flux within the H(div)
+    conforming RT-space is constructed from the projected flux as well as a
+    reconstruction within the element-wise RT space. This routine checks if
+    the normal component of sigma_proj + sigma_eq is continuous across all
+    internal facets by comparing the H(div) norm of an H(div) interpolant
+    of sigma_proj + sigma_eq with the function itself.
+
+    Args:
+        sigma_eq:       The equilibrated flux
+        sigma_proj:     The projected flux
+    """
+
+    # --- Extract data
+    # The mesh
+    domain = sigma_eq.function_space.mesh
+
+    # The flux degree
+    degree = sigma_eq.function_space.element.basix_element.degree
+
+    # Create test-function
+    V_test = dfem.FunctionSpace(domain, ("RT", degree))
+    f_test = dfem.Function(V_test)
+
+    # Project equilibrated flux into DG_k (RT_k in DG_k)
+    V_flux = dfem.VectorFunctionSpace(domain, ("DG", degree))
+    sigma_eq_dg = local_projection(V_flux, [sigma_eq + sigma_proj])[0]
+
+    # Interpolate sigma_R into f_test
+    f_test.interpolate(sigma_eq_dg)
+
+    # Check if sigma_eq is in H(div)
+    err = f_test - sigma_eq_dg
+    form_error = dfem.form(
+        (ufl.inner(err, err) + ufl.inner(ufl.div(err), ufl.div(err))) * ufl.dx
+    )
+
+    error = domain.comm.allreduce(dfem.assemble_scalar(form_error), op=MPI.SUM)
+
+    if not np.isclose(error, 0.0, atol=1.0e-12):
+        raise ValueError("Jump condition not satisfied")
+
+
+def check_jump_condition_per_facet(sigma_eq: dfem.Function, sig_proj: dfem.Function):
     """Check the jump condition
 
     For the semi-explicit equilibration procedure the flux within the H(div)
