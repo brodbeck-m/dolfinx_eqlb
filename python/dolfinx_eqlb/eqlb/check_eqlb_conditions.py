@@ -15,7 +15,10 @@ from dolfinx_eqlb.lsolver import local_projection
 # --- Check the mesh ---
 
 
-def mesh_has_reversed_edges(domain: dmesh.Mesh) -> bool:
+def mesh_has_reversed_edges(
+    domain: dmesh.Mesh,
+    print_debug_information: typing.Optional[bool] = False,
+) -> bool:
     """Check mech for facets with reversed definition
 
     Args:
@@ -36,7 +39,7 @@ def mesh_has_reversed_edges(domain: dmesh.Mesh) -> bool:
     fct_permutations = domain.topology.get_facet_permutations().reshape((n_cells, 3))
 
     # --- Check for reversed edges
-    checksum = 0
+    reversed_fcts = np.zeros((0, 3))
 
     for f in range(0, n_fcts):
         # get cells adjacent to f
@@ -52,11 +55,17 @@ def mesh_has_reversed_edges(domain: dmesh.Mesh) -> bool:
             perm_minus = fct_permutations[cells[1], if_minus]
 
             if perm_plus != perm_minus:
-                checksum += 1
+                reversed_fcts = np.append(
+                    reversed_fcts, [[f, cells[0], cells[1]]], axis=0
+                )
 
-    if checksum == 0:
+    if reversed_fcts.shape[0] == 0:
         return False
     else:
+        if print_debug_information:
+            print("Facets with reversed edges:")
+            print(reversed_fcts)
+
         return True
 
 
@@ -174,6 +183,9 @@ def check_divergence_condition(
     is calculated and compared to the RHS. Therefore point-evaluations on a test-set
     are performed.
 
+    Available debug information:
+        - List of cells, where norm is greater than tolerance
+
     Args:
         sigma_eq (Function or ufl-Argument):      The equilibrated flux
         sigma_proj (Function or ufl-Argument):    The projected flux
@@ -257,7 +269,11 @@ def check_divergence_condition(
         return False
 
 
-def check_jump_condition(sigma_eq: dfem.Function, sigma_proj: dfem.Function) -> bool:
+def check_jump_condition(
+    sigma_eq: dfem.Function,
+    sigma_proj: dfem.Function,
+    print_debug_information: typing.Optional[bool] = False,
+) -> bool:
     """Check the jump condition
 
     For the semi-explicit equilibration procedure the flux within the H(div)
@@ -267,9 +283,13 @@ def check_jump_condition(sigma_eq: dfem.Function, sigma_proj: dfem.Function) -> 
     internal facets by comparing the H(div) norm of an H(div) interpolant
     of sigma_proj + sigma_eq with the function itself.
 
+    Available debug information:
+        - List of cells, where norm is greater than tolerance
+
     Args:
-        sigma_eq:       The equilibrated flux
-        sigma_proj:     The projected flux
+        sigma_eq:                                 The equilibrated flux
+        sigma_proj:                               The projected flux
+        print_debug_information (optional, bool): Print debug information (optional)
     """
 
     # --- Extract data
@@ -279,9 +299,13 @@ def check_jump_condition(sigma_eq: dfem.Function, sigma_proj: dfem.Function) -> 
     # The flux degree
     degree = sigma_eq.function_space.element.basix_element.degree
 
-    # Create test-function
+    # The test function
     V_test = dfem.FunctionSpace(domain, ("RT", degree))
     f_test = dfem.Function(V_test)
+
+    # The marker space
+    V_marker = dfem.FunctionSpace(domain, ("DG", 0))
+    v_m = ufl.TestFunction(V_marker)
 
     # Project equilibrated flux into DG_k (RT_k in DG_k)
     V_flux = dfem.VectorFunctionSpace(domain, ("DG", degree))
@@ -293,10 +317,18 @@ def check_jump_condition(sigma_eq: dfem.Function, sigma_proj: dfem.Function) -> 
     # Check if sigma_eq is in H(div)
     err = f_test - sigma_eq_dg
     form_error = dfem.form(
-        (ufl.inner(err, err) + ufl.inner(ufl.div(err), ufl.div(err))) * ufl.dx
+        (ufl.inner(err, err) + ufl.inner(ufl.div(err), ufl.div(err))) * v_m * ufl.dx
     )
 
-    error = domain.comm.allreduce(dfem.assemble_scalar(form_error), op=MPI.SUM)
+    L_error = dfem_petsc.create_vector(form_error)
+    dfem_petsc.assemble_vector(L_error, form_error)
+
+    error = np.sum(L_error.array)
+
+    # Print debug-information
+    if print_debug_information:
+        print("Cells with non-zero ||f - I_RT(f)||_H(div):")
+        print(np.where(np.isclose(L_error.array, 0.0, atol=1.0e-12))[0])
 
     return np.isclose(error, 0.0, atol=1.0e-12)
 
@@ -432,11 +464,15 @@ def check_jump_condition_per_facet(
 
                     # Set error information
                     if perm_plus == perm_minus:
-                        error_cells.append([cells[0], cells[1], 1, i, error])
+                        error_cells = np.append(
+                            error_cells, [[cells[0], cells[1], 1, i, error]], axis=0
+                        )
                     else:
-                        error_cells.append([cells[0], cells[1], 0, i, error])
+                        error_cells = np.append(
+                            error_cells, [[cells[0], cells[1], 0, i, error]], axis=0
+                        )
 
-        if error_cells.size[0] == 0:
+        if error_cells.shape[0] == 0:
             return True
         else:
             if print_debug_information:
