@@ -454,16 +454,14 @@ def check_jump_condition_per_facet(
                     flux_minus = x_sig_rt[dof_minus] * (-sign_minus)
 
                 # check continuity of facet-normal flux
-                if not np.isclose(flux_plus + flux_minus, 0):
+                fsum_lr = flux_plus + flux_minus
+                if not np.isclose(fsum_lr, 0):
                     # Get facet permutation
                     perm_plus = fct_permutations[cells[0], if_plus]
                     perm_minus = fct_permutations[cells[1], if_minus]
 
                     # Relative error
-                    error = max(
-                        abs((flux_plus + flux_minus) / flux_plus),
-                        abs((flux_plus + flux_minus) / flux_minus),
-                    )
+                    error = max(abs(fsum_lr / flux_plus), abs(fsum_lr / flux_minus))
 
                     # Set error information
                     if perm_plus == perm_minus:
