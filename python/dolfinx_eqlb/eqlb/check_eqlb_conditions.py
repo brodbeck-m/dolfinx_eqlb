@@ -12,6 +12,57 @@ import ufl
 from dolfinx_eqlb.lsolver import local_projection
 
 
+# --- Check the mesh ---
+
+
+def mesh_has_reversed_edges(domain: dmesh.Mesh) -> bool:
+    """Check mech for facets with reversed definition
+
+    Args:
+        domain: The mesh
+    """
+
+    # --- Extract geometry data
+    # number of cells/ factes in mesh
+    n_fcts = domain.topology.index_map(1).size_local
+    n_cells = domain.topology.index_map(2).size_local
+
+    # facet/cell connectivity
+    fct_to_cell = domain.topology.connectivity(1, 2)
+    cell_to_fct = domain.topology.connectivity(2, 1)
+
+    # initialise facet orientations
+    domain.topology.create_entity_permutations()
+    fct_permutations = domain.topology.get_facet_permutations().reshape((n_cells, 3))
+
+    # --- Check for reversed edges
+    checksum = 0
+
+    for f in range(0, n_fcts):
+        # get cells adjacent to f
+        cells = fct_to_cell.links(f)
+
+        if len(cells) > 1:
+            # local facet id of cell
+            if_plus = np.where(cell_to_fct.links(cells[0]) == f)[0][0]
+            if_minus = np.where(cell_to_fct.links(cells[1]) == f)[0][0]
+
+            # Get facet permutation
+            perm_plus = fct_permutations[cells[0], if_plus]
+            perm_minus = fct_permutations[cells[1], if_minus]
+
+            if perm_plus != perm_minus:
+                checksum += 1
+
+    if checksum == 0:
+        return False
+    else:
+        return True
+
+
+# --- Check Boundary Conditions ---
+
+
 def check_boundary_conditions(
     sigma_eq: dfem.Function,
     sigma_proj: dfem.Function,
@@ -19,7 +70,7 @@ def check_boundary_conditions(
     facet_function: typing.Any,
     boundary_facets: typing.List[int],
 ) -> bool:
-    """Check if boundary conditions
+    """Check boundary conditions
 
     Function checks if projected flux boundary conditions are satisfied after
     the equilibration.
@@ -99,6 +150,9 @@ def check_boundary_conditions(
         return True
     else:
         return False
+
+
+# --- Check the equilibration ---
 
 
 def check_divergence_condition(
