@@ -460,7 +460,10 @@ def check_jump_condition_per_facet(
                     perm_minus = fct_permutations[cells[1], if_minus]
 
                     # Relative error
-                    error = (flux_plus + flux_minus) / flux_plus
+                    error = max(
+                        abs((flux_plus + flux_minus) / flux_plus),
+                        abs((flux_plus + flux_minus) / flux_minus),
+                    )
 
                     # Set error information
                     if perm_plus == perm_minus:
@@ -472,14 +475,24 @@ def check_jump_condition_per_facet(
                             error_cells, [[cells[0], cells[1], 0, i, error]], axis=0
                         )
 
-        if error_cells.shape[0] == 0:
-            return True
-        else:
-            if print_debug_information:
-                print("Cells with jump error:")
-                print(error_cells)
+    if error_cells.shape[0] == 0:
+        return True
+    else:
+        if print_debug_information:
+            print("Cells with jump error:")
+            for i in range(0, error_cells.shape[0]):
+                tf = "true" if np.isclose(error_cells[i, 2], 1) else "false"
+                print(
+                    "cells: {0:d}, {1:d} - fct aligned: {2:s} - dof: {3:d} - error: {4:.2e}".format(
+                        error_cells[i, 0],
+                        error_cells[i, 1],
+                        tf,
+                        error_cells[i, 3],
+                        error_cells[i, 4],
+                    )
+                )
 
-            return False
+        return False
 
 
 def check_weak_symmetry_condition(sigma_eq: dfem.Function):
