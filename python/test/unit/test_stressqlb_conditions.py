@@ -128,13 +128,16 @@ def test_equilibration_conditions(mesh_type, degree, bc_type):
                 # --- Check boundary conditions ---
                 if bc_type != "pure_dirichlet":
                     for i in range(gdim):
-                        eqlb_checker.check_boundary_conditions(
+                        boundary_condition = eqlb_checker.check_boundary_conditions(
                             sigma_eq[i],
                             sigma_projected[i],
                             boundary_dofvalues[i],
                             geometry.facet_function,
                             boundary_id_neumann,
                         )
+
+                        if not boundary_condition:
+                            raise ValueError("Boundary conditions not fulfilled")
 
                 # --- Check divergence condition ---
                 stress_eq = ufl.as_matrix(
@@ -147,7 +150,7 @@ def test_equilibration_conditions(mesh_type, degree, bc_type):
                     ]
                 )
 
-                eqlb_checker.check_divergence_condition(
+                div_condition = eqlb_checker.check_divergence_condition(
                     stress_eq,
                     stress_projected,
                     rhs_projected,
@@ -156,12 +159,23 @@ def test_equilibration_conditions(mesh_type, degree, bc_type):
                     flux_is_dg=True,
                 )
 
+                if not div_condition:
+                    raise ValueError("Divergence conditions not fulfilled")
+
                 # --- Check jump condition (only required for semi-explicit equilibrator)
                 for i in range(geometry.mesh.geometry.dim):
-                    eqlb_checker.check_jump_condition(sigma_eq[i], sigma_projected[i])
+                    jump_condition = eqlb_checker.check_jump_condition(
+                        sigma_eq[i], sigma_projected[i]
+                    )
+
+                    if not jump_condition:
+                        raise ValueError("Boundary conditions not fulfilled")
 
                 # --- Check weak symmetry
-                eqlb_checker.check_weak_symmetry_condition(sigma_eq)
+                wsym_condition = eqlb_checker.check_weak_symmetry_condition(sigma_eq)
+
+                if not wsym_condition:
+                    raise ValueError("Weak symmetry conditions not fulfilled")
 
 
 if __name__ == "__main__":

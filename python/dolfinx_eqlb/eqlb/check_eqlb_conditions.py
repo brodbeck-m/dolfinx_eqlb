@@ -18,7 +18,7 @@ def check_boundary_conditions(
     boundary_function: dfem.Function,
     facet_function: typing.Any,
     boundary_facets: typing.List[int],
-):
+) -> bool:
     """Check if boundary conditions
 
     Function checks if projected flux boundary conditions are satisfied after
@@ -92,11 +92,13 @@ def check_boundary_conditions(
         boundary_dofs_data = boundary_dofs_eflux
 
     # Check boundary DOFs
-    if not np.allclose(
+    if np.allclose(
         sigma.x.array[boundary_dofs_eflux],
         sigma_bc.x.array[boundary_dofs_data],
     ):
-        raise ValueError("Boundary conditions not satisfied")
+        return True
+    else:
+        return False
 
 
 def check_divergence_condition(
@@ -106,7 +108,8 @@ def check_divergence_condition(
     mesh: typing.Optional[dmesh.Mesh] = None,
     degree: typing.Optional[int] = None,
     flux_is_dg: typing.Optional[bool] = None,
-):
+    print_debug_information: typing.Optional[bool] = False,
+) -> bool:
     """Check the divergence condition
 
     Let sigma_eq be the equilibrated flux, then
@@ -118,12 +121,13 @@ def check_divergence_condition(
     are performed.
 
     Args:
-        sigma_eq (Function or ufl-Argument):   The equilibrated flux
-        sigma_proj (Function or ufl-Argument): The projected flux
-        rhs_proj (Function):                   The projected right-hand side
-        mesh (optional, dmesh.Mesh):           The mesh (optional, only for ufl flux required)
-        degree (optional, int):                The flux degree (optional, only for ufl flux required)
-        flux_is_dg (optional, bool):           Identifier id flux is in DRT space (optional, only for ufl flux required)
+        sigma_eq (Function or ufl-Argument):      The equilibrated flux
+        sigma_proj (Function or ufl-Argument):    The projected flux
+        rhs_proj (Function):                      The projected right-hand side
+        mesh (optional, dmesh.Mesh):              The mesh (optional, only for ufl flux required)
+        degree (optional, int):                   The flux degree (optional, only for ufl flux required)
+        flux_is_dg (optional, bool):              Identifier id flux is in DRT space (optional, only for ufl flux required)
+        print_debug_information (optional, bool): Print debug information (optional)
     """
     # --- Extract solution data
     if type(sigma_eq) is dfem.Function:
@@ -168,6 +172,8 @@ def check_divergence_condition(
     points_3d = np.zeros((n_points, 3))
 
     # loop over cells
+    error_cells = []
+
     for c in range(0, n_cells):
         # points on current element
         x = np.sort(np.random.rand(2, n_points), axis=0)
@@ -184,10 +190,20 @@ def check_divergence_condition(
         val_rhs = rhs_proj.eval(points_3d, n_points * [c])
 
         if not np.allclose(val_div_sigeq, val_rhs):
-            raise ValueError("Divergence condition not satisfied")
+            error_cells.append(c)
+
+    if len(error_cells) == 0:
+        return True
+    else:
+        # Print cells with divergence error
+        if print_debug_information:
+            print("Cells with divergence error:")
+            print(error_cells)
+
+        return False
 
 
-def check_jump_condition(sigma_eq: dfem.Function, sigma_proj: dfem.Function):
+def check_jump_condition(sigma_eq: dfem.Function, sigma_proj: dfem.Function) -> bool:
     """Check the jump condition
 
     For the semi-explicit equilibration procedure the flux within the H(div)
@@ -228,11 +244,14 @@ def check_jump_condition(sigma_eq: dfem.Function, sigma_proj: dfem.Function):
 
     error = domain.comm.allreduce(dfem.assemble_scalar(form_error), op=MPI.SUM)
 
-    if not np.isclose(error, 0.0, atol=1.0e-12):
-        raise ValueError("Jump condition not satisfied")
+    return np.isclose(error, 0.0, atol=1.0e-12)
 
 
-def check_jump_condition_per_facet(sigma_eq: dfem.Function, sig_proj: dfem.Function):
+def check_jump_condition_per_facet(
+    sigma_eq: dfem.Function,
+    sig_proj: dfem.Function,
+    print_debug_information: typing.Optional[bool] = False,
+) -> bool:
     """Check the jump condition
 
     For the semi-explicit equilibration procedure the flux within the H(div)
@@ -241,9 +260,13 @@ def check_jump_condition_per_facet(sigma_eq: dfem.Function, sig_proj: dfem.Funct
     the normal component of sigma_proj + sigma_eq is continuous across all
     internal facets.
 
+    Available debug information:
+        [[cell+, cell-, reversed orientation, DOF, relative error]]
+
     Args:
-        sigma_eq:       The equilibrated flux
-        sigma_proj:     The projected flux
+        sigma_eq:                                 The equilibrated flux
+        sigma_proj:                               The projected flux
+        print_debug_information (optional, bool): Print debug information (optional)
     """
     # --- Extract geometry data
     # the mesh
@@ -256,6 +279,10 @@ def check_jump_condition_per_facet(sigma_eq: dfem.Function, sig_proj: dfem.Funct
     # facet/cell connectivity
     fct_to_cell = domain.topology.connectivity(1, 2)
     cell_to_fct = domain.topology.connectivity(2, 1)
+
+    # initialise facet orientations
+    domain.topology.create_entity_permutations()
+    fct_permutations = domain.topology.get_facet_permutations().reshape((n_cells, 3))
 
     # --- Interpolate proj./equilibr. flux into Baisx RT space
     # the flux degree
@@ -309,6 +336,8 @@ def check_jump_condition_per_facet(sigma_eq: dfem.Function, sig_proj: dfem.Funct
         sign_detj[c] = np.sign(detj)
 
     # --- Check jump condition on all facets
+    error_cells = np.zeros((0, 5))
+
     for f in range(0, n_fcts):
         # get cells adjacent to f
         cells = fct_to_cell.links(f)
@@ -340,7 +369,27 @@ def check_jump_condition_per_facet(sigma_eq: dfem.Function, sig_proj: dfem.Funct
 
                 # check continuity of facet-normal flux
                 if not np.isclose(flux_plus + flux_minus, 0):
-                    raise ValueError("Jump condition not satisfied")
+                    # Get facet permutation
+                    perm_plus = fct_permutations[cells[0], if_plus]
+                    perm_minus = fct_permutations[cells[1], if_minus]
+
+                    # Relative error
+                    error = (flux_plus + flux_minus) / flux_plus
+
+                    # Set error information
+                    if perm_plus == perm_minus:
+                        error_cells.append([cells[0], cells[1], 1, i, error])
+                    else:
+                        error_cells.append([cells[0], cells[1], 0, i, error])
+
+        if error_cells.size[0] == 0:
+            return True
+        else:
+            if print_debug_information:
+                print("Cells with jump error:")
+                print(error_cells)
+
+            return False
 
 
 def check_weak_symmetry_condition(sigma_eq: dfem.Function):
@@ -348,9 +397,9 @@ def check_weak_symmetry_condition(sigma_eq: dfem.Function):
 
     Let sigma_eq be the equilibrated flux, then
 
-                (sig_eq, J(theta)) = 0
+                (sig_eq, J(z)) = 0
 
-    must hold.
+    must hold, for all z in P1. This routine checks if this condition holds true.
 
     Args:
         sigma_eq (Function):   The equilibrated flux
@@ -382,5 +431,7 @@ def check_weak_symmetry_condition(sigma_eq: dfem.Function):
     dfem_petsc.assemble_vector(L, l_weaksym)
 
     # --- Test weak-symmetry condition
-    if not np.allclose(L.array, 0):
-        raise ValueError("Weak symmetry condition not satisfied")
+    if np.allclose(L.array, 0):
+        return True
+    else:
+        return False
