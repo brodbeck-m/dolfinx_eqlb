@@ -481,7 +481,7 @@ def check_jump_condition_per_facet(
             for i in range(0, error_cells.shape[0]):
                 tf = "true" if np.isclose(error_cells[i, 2], 1) else "false"
                 print(
-                    "cells: {0:d}, {1:d} - fct aligned: {2:s} - dof: {3:d} - error: {4:.2e}".format(
+                    "cells: {0:.0f}, {1:.0f} - fct aligned: {2:s} - dof: {3:.0f} - error: {4:.2e}".format(
                         error_cells[i, 0],
                         error_cells[i, 1],
                         tf,
