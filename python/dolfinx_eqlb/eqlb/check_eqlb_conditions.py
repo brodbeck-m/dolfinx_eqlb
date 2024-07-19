@@ -58,6 +58,17 @@ def mesh_has_reversed_edges(
                 reversed_fcts = np.append(
                     reversed_fcts, [[f, cells[0], cells[1]]], axis=0
                 )
+        else:
+            # local facet id of cell
+            if_plus = np.where(cell_to_fct.links(cells[0]) == f)[0][0]
+
+            # Get facet permutation
+            perm_plus = fct_permutations[cells[0], if_plus]
+
+            if perm_plus != 0:
+                reversed_fcts = np.append(
+                    reversed_fcts, [[f, cells[0], cells[0]]], axis=0
+                )
 
     if reversed_fcts.shape[0] == 0:
         return False
@@ -422,7 +433,7 @@ def check_jump_condition_per_facet(
         sign_detj[c] = np.sign(detj)
 
     # --- Check jump condition on all facets
-    error_cells = np.zeros((0, 5))
+    error_cells = np.zeros((0, 6))
 
     for f in range(0, n_fcts):
         # get cells adjacent to f
@@ -466,11 +477,11 @@ def check_jump_condition_per_facet(
                     # Set error information
                     if perm_plus == perm_minus:
                         error_cells = np.append(
-                            error_cells, [[cells[0], cells[1], 1, i, error]], axis=0
+                            error_cells, [[f, cells[0], cells[1], 1, i, error]], axis=0
                         )
                     else:
                         error_cells = np.append(
-                            error_cells, [[cells[0], cells[1], 0, i, error]], axis=0
+                            error_cells, [[f, cells[0], cells[1], 0, i, error]], axis=0
                         )
 
     if error_cells.shape[0] == 0:
@@ -479,14 +490,15 @@ def check_jump_condition_per_facet(
         if print_debug_information:
             print("Cells with jump error:")
             for i in range(0, error_cells.shape[0]):
-                tf = "true" if np.isclose(error_cells[i, 2], 1) else "false"
+                tf = "true" if np.isclose(error_cells[i, 3], 1) else "false"
                 print(
-                    "cells: {0:.0f}, {1:.0f} - fct aligned: {2:s} - dof: {3:.0f} - error: {4:.2e}".format(
+                    "facte: {0:.0f} - cells: {1:.0f}, {2:.0f} - fct aligned: {3:s} - dof: {4:.0f} - error: {5:.2e}".format(
                         error_cells[i, 0],
                         error_cells[i, 1],
+                        error_cells[i, 2],
                         tf,
-                        error_cells[i, 3],
                         error_cells[i, 4],
+                        error_cells[i, 5],
                     )
                 )
 
