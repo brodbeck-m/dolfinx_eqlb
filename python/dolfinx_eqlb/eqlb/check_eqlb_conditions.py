@@ -31,7 +31,9 @@ def mesh_has_reversed_edges(
     n_cells = domain.topology.index_map(2).size_local
 
     # facet/cell connectivity
+    domain.topology.create_connectivity(1, 2)
     fct_to_cell = domain.topology.connectivity(1, 2)
+    domain.topology.create_connectivity(2, 1)
     cell_to_fct = domain.topology.connectivity(2, 1)
 
     # initialise facet orientations
