@@ -348,7 +348,7 @@ def check_jump_condition(
 
 def check_jump_condition_per_facet(
     sigma_eq: dfem.Function,
-    sig_proj: dfem.Function,
+    sigma_proj: dfem.Function,
     print_debug_information: typing.Optional[bool] = False,
 ) -> bool:
     """Check the jump condition
@@ -383,31 +383,43 @@ def check_jump_condition_per_facet(
     domain.topology.create_entity_permutations()
     fct_permutations = domain.topology.get_facet_permutations().reshape((n_cells, 3))
 
-    # --- Interpolate proj./equilibr. flux into Baisx RT space
-    # the flux degree
-    degree = sigma_eq.function_space.element.basix_element.degree
+    # --- Express the equilibrated flux in DRT
+    # the function space
+    V_drt = sigma_eq.function_space
 
-    # create discontinuous RT space
-    P_drt = basix.create_element(
-        basix.ElementFamily.RT,
-        basix.CellType.triangle,
-        degree,
-        basix.LagrangeVariant.equispaced,
-        True,
-    )
-
-    V_drt = dfem.FunctionSpace(domain, basix.ufl_wrapper.BasixElement(P_drt))
+    degree_sigrt = V_drt.element.basix_element.degree
     dofmap_sigrt = V_drt.dofmap.list
 
-    # interpolate functions into space
-    sig_eq_rt = dfem.Function(V_drt)
-    sig_eq_rt.interpolate(sigma_eq)
+    # project sigma_proj into DRT
+    sigma_proj_rt = local_projection(V_drt, [sigma_proj])[0]
 
-    sig_proj_rt = dfem.Function(V_drt)
-    sig_proj_rt.interpolate(sig_proj)
+    # calculate reconstructed flux
+    x_sig_rt = sigma_proj_rt.x.array[:] + sigma_eq.x.array[:]
 
-    # calculate reconstructed flux (use default RT-space)
-    x_sig_rt = sig_proj_rt.x.array[:] + sig_eq_rt.x.array[:]
+    # # the flux degree
+    # degree = sigma_eq.function_space.element.basix_element.degree
+
+    # # create discontinuous RT space
+    # P_drt = basix.create_element(
+    #     basix.ElementFamily.RT,
+    #     basix.CellType.triangle,
+    #     degree,
+    #     basix.LagrangeVariant.equispaced,
+    #     True,
+    # )
+
+    # V_drt = dfem.FunctionSpace(domain, basix.ufl_wrapper.BasixElement(P_drt))
+    # dofmap_sigrt = V_drt.dofmap.list
+
+    # # interpolate functions into space
+    # sig_eq_rt = dfem.Function(V_drt)
+    # sig_eq_rt.interpolate(sigma_eq)
+
+    # sig_proj_rt = dfem.Function(V_drt)
+    # sig_proj_rt.interpolate(sig_proj)
+
+    # # calculate reconstructed flux (use default RT-space)
+    # x_sig_rt = sig_proj_rt.x.array[:] + sig_eq_rt.x.array[:]
 
     # --- Determine sign of detj per cell
     # tabulate shape functions of geometry element
@@ -450,10 +462,10 @@ def check_jump_condition_per_facet(
             if_plus = np.where(cell_to_fct.links(cells[0]) == f)[0][0]
             if_minus = np.where(cell_to_fct.links(cells[1]) == f)[0][0]
 
-            for i in range(0, degree):
+            for i in range(0, degree_sigrt):
                 # local dof id of facet-normal flux
-                dof_plus = dofmap_sigrt.links(cells[0])[if_plus * degree + i]
-                dof_minus = dofmap_sigrt.links(cells[1])[if_minus * degree + i]
+                dof_plus = dofmap_sigrt.links(cells[0])[if_plus * degree_sigrt + i]
+                dof_minus = dofmap_sigrt.links(cells[1])[if_minus * degree_sigrt + i]
 
                 # calculate outward flux
                 if if_plus == 1:
