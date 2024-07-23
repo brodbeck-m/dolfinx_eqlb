@@ -361,7 +361,7 @@ def check_jump_condition_per_facet(
     internal facets.
 
     Available debug information:
-        [[cell+, cell-, reversed orientation, DOF, relative error]]
+        [[cell+, cell-, reversed orientation]]
 
     Args:
         sigma_eq:                                 The equilibrated flux
@@ -377,6 +377,7 @@ def check_jump_condition_per_facet(
     n_cells = domain.topology.index_map(2).size_local
 
     # facet/cell connectivity
+    fct_to_pnt = domain.topology.connectivity(1, 0)
     fct_to_cell = domain.topology.connectivity(1, 2)
     cell_to_fct = domain.topology.connectivity(2, 1)
 
@@ -389,115 +390,55 @@ def check_jump_condition_per_facet(
     V_drt = sigma_eq.function_space
 
     degree_sigrt = V_drt.element.basix_element.degree
-    dofmap_sigrt = V_drt.dofmap.list
 
     # project sigma_proj into DRT
-    sigma_proj_rt = local_projection(V_drt, [sigma_proj])[0]
+    sigma_rt = local_projection(V_drt, [sigma_proj])[0]
 
     # calculate reconstructed flux
-    x_sig_rt = sigma_proj_rt.x.array[:] + sigma_eq.x.array[:]
-
-    # # the flux degree
-    # degree = sigma_eq.function_space.element.basix_element.degree
-
-    # # create discontinuous RT space
-    # P_drt = basix.create_element(
-    #     basix.ElementFamily.RT,
-    #     basix.CellType.triangle,
-    #     degree,
-    #     basix.LagrangeVariant.equispaced,
-    #     True,
-    # )
-
-    # V_drt = dfem.FunctionSpace(domain, basix.ufl_wrapper.BasixElement(P_drt))
-    # dofmap_sigrt = V_drt.dofmap.list
-
-    # # interpolate functions into space
-    # sig_eq_rt = dfem.Function(V_drt)
-    # sig_eq_rt.interpolate(sigma_eq)
-
-    # sig_proj_rt = dfem.Function(V_drt)
-    # sig_proj_rt.interpolate(sig_proj)
-
-    # # calculate reconstructed flux (use default RT-space)
-    # x_sig_rt = sig_proj_rt.x.array[:] + sig_eq_rt.x.array[:]
-
-    # --- Determine sign of detj per cell
-    # tabulate shape functions of geometry element
-    c_element = basix.create_element(
-        basix.ElementFamily.P,
-        basix.CellType.triangle,
-        1,
-        basix.LagrangeVariant.gll_warped,
-    )
-
-    dphi_geom = c_element.tabulate(1, np.array([[0, 0]]))[1 : 2 + 1, 0, :, 0]
-
-    # determine sign of detj per cell
-    sign_detj = np.zeros(n_cells, dtype=np.float64)
-    gdofs = np.zeros((3, 2), dtype=np.float64)
-
-    for c in range(0, n_cells):
-        # evaluate detj
-        gdofs[:] = domain.geometry.x[domain.geometry.dofmap.links(c), :2]
-
-        J_q = np.dot(gdofs.T, dphi_geom.T)
-        detj = np.linalg.det(J_q)
-
-        # determine sign of detj
-        sign_detj[c] = np.sign(detj)
+    sigma_rt.x.array[:] += sigma_eq.x.array[:]
 
     # --- Check jump condition on all facets
-    error_cells = np.zeros((0, 6))
+    error_cells = np.zeros((0, 4))
 
     for f in range(0, n_fcts):
         # get cells adjacent to f
         cells = fct_to_cell.links(f)
 
         if len(cells) > 1:
-            # signs of cell jacobians
-            sign_plus = sign_detj[cells[0]]
-            sign_minus = sign_detj[cells[1]]
+            # get points on facet
+            pnts = fct_to_pnt.links(f)
 
-            # local facet id of cell
+            # the local facet ids
             if_plus = np.where(cell_to_fct.links(cells[0]) == f)[0][0]
             if_minus = np.where(cell_to_fct.links(cells[1]) == f)[0][0]
 
-            for i in range(0, degree_sigrt):
-                # local dof id of facet-normal flux
-                dof_plus = dofmap_sigrt.links(cells[0])[if_plus * degree_sigrt + i]
-                dof_minus = dofmap_sigrt.links(cells[1])[if_minus * degree_sigrt + i]
+            # the permutation information
+            perm_plus = fct_permutations[cells[0], if_plus]
+            perm_minus = fct_permutations[cells[1], if_minus]
 
-                # calculate outward flux
-                if if_plus == 1:
-                    flux_plus = x_sig_rt[dof_plus] * sign_plus
+            # Create checkpoints
+            dx = domain.geometry.x[pnts[1], :] - domain.geometry.x[pnts[0], :]
+            pnts_3d = (
+                domain.geometry.x[pnts[0], :]
+                + dx * np.linspace(0, 1, degree_sigrt + 4)[1:-1, np.newaxis]
+            )
+
+            # determine facet values
+            val_plus = sigma_rt.eval(pnts_3d, pnts_3d.shape[0] * [cells[0]])
+            val_minus = sigma_rt.eval(pnts_3d, pnts_3d.shape[0] * [cells[1]])
+
+            # the normal components
+            normal = (1 / np.sqrt(dx[0] ** 2 + dx[1] ** 2)) * np.array([-dx[1], dx[0]])
+
+            if not np.allclose(np.dot(val_plus, normal), np.dot(val_minus, normal)):
+                if perm_plus == perm_minus:
+                    error_cells = np.append(
+                        error_cells, [[f, cells[0], cells[1], 1]], axis=0
+                    )
                 else:
-                    flux_plus = x_sig_rt[dof_plus] * (-sign_plus)
-
-                if if_minus == 1:
-                    flux_minus = x_sig_rt[dof_minus] * sign_minus
-                else:
-                    flux_minus = x_sig_rt[dof_minus] * (-sign_minus)
-
-                # check continuity of facet-normal flux
-                fsum_lr = flux_plus + flux_minus
-                if not np.isclose(fsum_lr, 0):
-                    # Get facet permutation
-                    perm_plus = fct_permutations[cells[0], if_plus]
-                    perm_minus = fct_permutations[cells[1], if_minus]
-
-                    # Relative error
-                    error = max(abs(fsum_lr / flux_plus), abs(fsum_lr / flux_minus))
-
-                    # Set error information
-                    if perm_plus == perm_minus:
-                        error_cells = np.append(
-                            error_cells, [[f, cells[0], cells[1], 1, i, error]], axis=0
-                        )
-                    else:
-                        error_cells = np.append(
-                            error_cells, [[f, cells[0], cells[1], 0, i, error]], axis=0
-                        )
+                    error_cells = np.append(
+                        error_cells, [[f, cells[0], cells[1], 0]], axis=0
+                    )
 
     if error_cells.shape[0] == 0:
         return True
@@ -507,13 +448,8 @@ def check_jump_condition_per_facet(
             for i in range(0, error_cells.shape[0]):
                 tf = "true" if np.isclose(error_cells[i, 3], 1) else "false"
                 print(
-                    "facte: {0:.0f} - cells: {1:.0f}, {2:.0f} - fct aligned: {3:s} - dof: {4:.0f} - error: {5:.2e}".format(
-                        error_cells[i, 0],
-                        error_cells[i, 1],
-                        error_cells[i, 2],
-                        tf,
-                        error_cells[i, 4],
-                        error_cells[i, 5],
+                    "facet: {0:.0f} - cells: {1:.0f}, {2:.0f} - fct aligned: {3:s}".format(
+                        error_cells[i, 0], error_cells[i, 1], error_cells[i, 2], tf
                     )
                 )
 
