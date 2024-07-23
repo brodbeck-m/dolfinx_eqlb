@@ -56,7 +56,7 @@ public:
     _data_reversedfct_cell.resize(_gdim * ncells_max);
 
     // Mapped interpolation matrix
-    _shape_Mm = {ncells_max, _ndofs_flux_fct, _gdim, niponts_per_fct};
+    _shape_Mm = {ncells_max, _ndofs_flux_fct + 1, _gdim, niponts_per_fct};
     _data_Mm.resize(_shape_Mm[0] * _shape_Mm[1] * _shape_Mm[2] * _shape_Mm[3],
                     0);
 

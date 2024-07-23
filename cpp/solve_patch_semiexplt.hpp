@@ -289,21 +289,22 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
               << prefactor_dof(index, 1) << std::endl;
 
     /* Apply push-back on interpolation matrix M */
-    for (std::size_t i = 0; i < ndofs_flux_fct; ++i)
+    for (std::size_t i = 0; i < M_mapped.extent(1); ++i)
     {
-      for (std::size_t j = 0; j < kernel_data.nipoints_facet(); ++j)
+      for (std::size_t j = 0; j < M_mapped.extent(3); ++j)
       {
         // Select facet
-        // (Zero-order moment on facet Eama, higer order moments on Ea)
+        // (Zero-order moment on facet Eam1 and Ea, higher-order moments on Ea)
         const std::int8_t fctid = (i == 0) ? fctloc_ta_eam1 : fctloc_ta_ea;
+        const std::int8_t ii = (i < 2) ? 0 : i - 1;
 
         // Map interpolation cell Tam1
         M_mapped(index, i, 0, j)
             = detJ
-              * (M(fctid, i, 0, j) * K(0, 0) + M(fctid, i, 1, j) * K(1, 0));
+              * (M(fctid, ii, 0, j) * K(0, 0) + M(fctid, ii, 1, j) * K(1, 0));
         M_mapped(index, i, 1, j)
             = detJ
-              * (M(fctid, i, 0, j) * K(0, 1) + M(fctid, i, 1, j) * K(1, 1));
+              * (M(fctid, ii, 0, j) * K(0, 1) + M(fctid, ii, 1, j) * K(1, 1));
       }
     }
   }
@@ -663,8 +664,8 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
         {
           if constexpr (id_flux_order == 2)
           {
-            T MjG = M_mapped(id_a, 1, 0, n) * jG_Ea[0]
-                    + M_mapped(id_a, 1, 1, n) * jG_Ea[1];
+            T MjG = M_mapped(id_a, 2, 0, n) * jG_Ea[0]
+                    + M_mapped(id_a, 2, 1, n) * jG_Ea[1];
             cj_ta_ea[0] += hat_TaEa(n, node_i_Ta) * MjG;
           }
           else
@@ -674,9 +675,9 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
                                         jG_Ea[1] * hat_TaEa(n, node_i_Ta)};
 
             // Evaluate facet DOFs
-            for (std::size_t j = 1; j < ndofs_flux_fct; ++j)
+            for (std::size_t j = 2; j < M_mapped.extent(1); ++j)
             {
-              cj_ta_ea[j - 1] += M_mapped(id_a, j, 0, n) * jGha_Ea[0]
+              cj_ta_ea[j - 2] += M_mapped(id_a, j, 0, n) * jGha_Ea[0]
                                  + M_mapped(id_a, j, 1, n) * jGha_Ea[1];
             }
           }
