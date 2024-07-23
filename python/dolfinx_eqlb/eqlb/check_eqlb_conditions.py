@@ -340,8 +340,9 @@ def check_jump_condition(
 
     # Print debug-information
     if print_debug_information:
-        print("Cells with non-zero ||f - I_RT(f)||_H(div):")
-        print(np.where(np.isclose(L_error.array, 0.0, atol=1.0e-12))[0])
+        if not np.isclose(error, 0.0, atol=1.0e-12):
+            print("Cells with non-zero ||f - I_RT(f)||_H(div):")
+            print(np.where(~np.isclose(L_error.array, 0.0, atol=1.0e-12))[0])
 
     return np.isclose(error, 0.0, atol=1.0e-12)
 
