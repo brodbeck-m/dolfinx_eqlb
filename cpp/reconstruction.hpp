@@ -164,6 +164,10 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
   std::shared_ptr<const mesh::Mesh> mesh = problem_data.mesh();
   const fem::CoordinateElement& cmap = mesh->geometry().cmap();
 
+  // Permutations of facets
+  const std::vector<std::uint8_t>& fct_perms
+      = mesh->topology().get_facet_permutations();
+
   // Spacial dimension
   const int dim = mesh->geometry().dim();
 
@@ -286,7 +290,7 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
 
               // Perform equilibration
               equilibrate_flux_semiexplt<T, id_flux_order>(
-                  mesh->geometry(), patch, patch_data, problem_data,
+                  mesh->geometry(), fct_perms, patch, patch_data, problem_data,
                   kernel_data, kernel_fluxmin, kernel_fluxmin_l);
             }
 
@@ -315,8 +319,8 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
 
         // Calculate solution patch
         equilibrate_flux_semiexplt<T, id_flux_order>(
-            mesh->geometry(), patch, patch_data, problem_data, kernel_data,
-            kernel_fluxmin, kernel_fluxmin_l, kernel_weaksym);
+            mesh->geometry(), fct_perms, patch, patch_data, problem_data,
+            kernel_data, kernel_fluxmin, kernel_fluxmin_l, kernel_weaksym);
       }
     }
   }
@@ -343,10 +347,13 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
       // Reinitialise patch-data
       patch_data.reinitialisation(patch.type(), patch.ncells());
 
+      std::cout << "Patch " << i_node << " starting with cell "
+                << patch.cells()[1] << std::endl;
+
       // Calculate solution patch
       equilibrate_flux_semiexplt<T, id_flux_order>(
-          mesh->geometry(), patch, patch_data, problem_data, kernel_data,
-          kernel_fluxmin, kernel_fluxmin_l);
+          mesh->geometry(), fct_perms, patch, patch_data, problem_data,
+          kernel_data, kernel_fluxmin, kernel_fluxmin_l);
     }
   }
 }

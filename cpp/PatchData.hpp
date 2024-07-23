@@ -52,6 +52,9 @@ public:
     // Facet prefactors on cells
     _data_fctprefactors_cell.resize(_gdim * ncells_max);
 
+    // Markers for reversed edges
+    _data_reversedfct_cell.resize(_gdim * ncells_max);
+
     // Mapped interpolation matrix
     _shape_Mm = {ncells_max, _ndofs_flux_fct, _gdim, niponts_per_fct};
     _data_Mm.resize(_shape_Mm[0] * _shape_Mm[1] * _shape_Mm[2] * _shape_Mm[3],
@@ -323,8 +326,14 @@ public:
   /// @return mdspan (cells x dim) of the prefactors
   mdspan_t<T, 2> prefactors_facet_per_cell()
   {
-    // Set offset
     return mdspan_t<T, 2>(_data_fctprefactors_cell.data(), _ncells, _gdim);
+  }
+
+  /// Marker for reversed facets on patch cells
+  /// @return mdspan (cells x dim) of the markers
+  mdspan_t<std::uint8_t, 2> reversed_facets_per_cell()
+  {
+    return mdspan_t<uint8_t, 2>(_data_reversedfct_cell.data(), _ncells, _gdim);
   }
 
   /// Mapped interpolation matrix
@@ -747,6 +756,9 @@ protected:
 
   // Pre-factors cell facets
   std::vector<T> _data_fctprefactors_cell;
+
+  // Marker for reversed edges
+  std::vector<std::uint8_t> _data_reversedfct_cell;
 
   // The mapped interpolation matrix
   std::array<std::size_t, 4> _shape_Mm;
