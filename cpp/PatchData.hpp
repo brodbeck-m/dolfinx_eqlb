@@ -70,8 +70,9 @@ public:
         _shape_coeffsflux[0] * _shape_coeffsflux[1] * _shape_coeffsflux[2], 0);
 
     // Jumps of the projected flux
-    _shape_jGEam1 = {niponts_per_fct, _gdim};
-    _data_jumpG_Eam1.resize(_shape_jGEam1[0] * _shape_jGEam1[1], 0);
+    _shape_jGEam1 = {niponts_per_fct, 2, _gdim};
+    _data_jumpG_Eam1.resize(
+        _shape_jGEam1[0] * _shape_jGEam1[1] * _shape_jGEam1[2], 0);
 
     // Higher order DOFs (explicit solution step)
     _c_ta_div.resize(patch.ndofs_flux_cell_div(), 0);
@@ -423,10 +424,14 @@ public:
   /* Intermediate storage */
 
   /// Jump of the projected flux on facet Eam1
-  /// @return mdspan (ipoints x dim) of the jump
-  mdspan_t<T, 2> jumpG_Eam1()
+  ///
+  /// For reversed facets: Data is stored seperatly for the two adjacet cell
+  /// (first index 0: Tam1, first index 1: Tap1)
+  ///
+  /// @return mdspan (ipoints x 2 x dim) of jump-related data
+  mdspan_t<T, 3> jumpG_Eam1()
   {
-    return mdspan_t<T, 2>(_data_jumpG_Eam1.data(), _shape_jGEam1);
+    return mdspan_t<T, 3>(_data_jumpG_Eam1.data(), _shape_jGEam1);
   }
 
   /// Explicite solution: Divergence cell moments
@@ -771,7 +776,7 @@ protected:
       _coefficients_flux, _coefficients_stress;
 
   // Jumps of the projected flux
-  std::array<std::size_t, 2> _shape_jGEam1;
+  std::array<std::size_t, 3> _shape_jGEam1;
   std::vector<T> _data_jumpG_Eam1;
 
   // Cell-wise solutions (explicit setp)

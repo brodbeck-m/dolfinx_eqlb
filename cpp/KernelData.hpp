@@ -325,6 +325,20 @@ public:
                             stdex::full_extent, 0);
   }
 
+  /// Extract shape functions on facet (hat-function)
+  /// Array with indexe i: phi_j(x_i) is the shape-function j
+  /// at point i.
+  /// @return Array of shape functions (reference cell)
+  smdspan_t<const double, 1> shapefunctions_fct_hat(std::int8_t fct_id,
+                                                    std::size_t j)
+  {
+    // Offset of shpfkt for current facet
+    std::size_t obgn = fct_id * _nipoints_per_fct;
+    std::size_t oend = obgn + _nipoints_per_fct;
+
+    return stdex::submdspan(_hat_fct_fullbasis, 0, std::pair{obgn, oend}, j, 0);
+  }
+
   /* Getter functions (Interpolation) */
   // Extract number of interpolation points per facet
   /// @return Number of interpolation points
