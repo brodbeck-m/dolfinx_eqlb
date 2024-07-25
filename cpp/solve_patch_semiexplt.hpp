@@ -35,33 +35,28 @@ namespace dolfinx_eqlb
 
 namespace stdex = std::experimental;
 
-template <typename T, bool reversed_fct>
-void calculate_jump(mdspan_t<T, 2> GtHat_Ea, std::size_t nq, std::size_t i_q,
-                    std::span<const std::int32_t> dofs_G_Ea,
-                    std::span<const T> G_Tap1Ea,
-                    smdspan_t<const double, 2> shp_Tap1Ea,
-                    smdspan_t<const double, 1> hat_Tap1Ea,
-                    std::span<const T> G_TaEa,
-                    smdspan_t<const double, 2> shp_TaEa,
-                    smdspan_t<const double, 1> hat_TaEa)
+template <typename T>
+void calculate_jump(
+    mdspan_t<T, 2> GtHat_Ea, const std::size_t nq, const std::size_t iq_Ta,
+    const std::int8_t Ea_reversed, std::span<const std::int32_t> dofs_G_Ea,
+    std::span<const T> G_Tap1Ea, smdspan_t<const double, 2> shp_Tap1Ea,
+    smdspan_t<const double, 1> hat_Tap1Ea, std::span<const T> G_TaEa,
+    smdspan_t<const double, 2> shp_TaEa, smdspan_t<const double, 1> hat_TaEa)
 {
   // Number of DOFs per facet
   const int ndofs_projflux_fct = dofs_G_Ea.size() / 2;
 
   // Id of quadrature point on reversed facet
-  const std::size_t ri_q = nq - i_q - 1;
+  const std::size_t iq_Tap1 = (Ea_reversed) ? nq - iq_Ta - 1 : iq_Ta;
 
   // Initialise jump with zero
   for (std::size_t i = 0; i < GtHat_Ea.extent(1); ++i)
   {
     GtHat_Ea(0, i) = 0.0;
-
-    if constexpr (reversed_fct)
-    {
-      GtHat_Ea(1, i) = 0.0;
-    }
+    GtHat_Ea(1, i) = 0.0;
   }
 
+  // Interpolate projected flux
   for (std::size_t i = 0; i < ndofs_projflux_fct; ++i)
   {
     // Local and global IDs of first DOF on facet
@@ -70,40 +65,21 @@ void calculate_jump(mdspan_t<T, 2> GtHat_Ea, std::size_t nq, std::size_t i_q,
     int offs_Ta = 2 * id_Ta;
     int offs_Tap1 = 2 * id_Tap1;
 
-    // Evaluate the jump
-    if constexpr (reversed_fct)
-    {
-      // Cell Ta
-      GtHat_Ea(0, 0) = G_TaEa[offs_Ta] * shp_Tap1Ea(i_q, id_Ta);
-      GtHat_Ea(0, 1) = G_TaEa[offs_Ta + 1] * shp_Tap1Ea(i_q, id_Ta);
+    // Cell Ta
+    GtHat_Ea(0, 0) += G_TaEa[offs_Ta] * shp_TaEa(iq_Ta, id_Ta);
+    GtHat_Ea(0, 1) += G_TaEa[offs_Ta + 1] * shp_TaEa(iq_Ta, id_Ta);
 
-      // Cell Tap1
-      GtHat_Ea(1, 0) = G_TaEa[offs_Tap1] * shp_Tap1Ea(ri_q, id_Tap1);
-      GtHat_Ea(1, 1) = G_TaEa[offs_Tap1 + 1] * shp_Tap1Ea(ri_q, id_Tap1);
-    }
-    else
-    {
-      GtHat_Ea(0, 0) += G_Tap1Ea[offs_Tap1] * shp_Tap1Ea(i_q, id_Tap1)
-                        - G_TaEa[offs_Ta] * shp_TaEa(i_q, id_Ta);
-      GtHat_Ea(0, 1) += G_Tap1Ea[offs_Tap1 + 1] * shp_Tap1Ea(i_q, id_Tap1)
-                        - G_TaEa[offs_Ta + 1] * shp_TaEa(i_q, id_Ta);
-    }
+    // Cell Tap1
+    GtHat_Ea(1, 0) += G_Tap1Ea[offs_Tap1] * shp_Tap1Ea(iq_Tap1, id_Tap1);
+    GtHat_Ea(1, 1) += G_Tap1Ea[offs_Tap1 + 1] * shp_Tap1Ea(iq_Tap1, id_Tap1);
   }
 
-  // Multiplication with hat function
-  if constexpr (reversed_fct)
-  {
-    GtHat_Ea(0, 0) *= hat_TaEa(i_q);
-    GtHat_Ea(0, 1) *= hat_TaEa(i_q);
+  // Multiplication with hat-function
+  GtHat_Ea(0, 0) *= hat_TaEa(iq_Ta);
+  GtHat_Ea(0, 1) *= hat_TaEa(iq_Ta);
 
-    GtHat_Ea(1, 0) *= hat_Tap1Ea(ri_q);
-    GtHat_Ea(1, 1) *= hat_Tap1Ea(ri_q);
-  }
-  else
-  {
-    GtHat_Ea(0, 0) *= hat_TaEa(i_q);
-    GtHat_Ea(0, 1) *= hat_TaEa(i_q);
-  }
+  GtHat_Ea(1, 0) *= hat_Tap1Ea(iq_Tap1);
+  GtHat_Ea(1, 1) *= hat_Tap1Ea(iq_Tap1);
 }
 
 /// Calculate equilibrated fluxes on patch
@@ -194,17 +170,19 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
   std::span<T> coefficients_G_Tap1 = patch_data.coefficients_projflux_Tap1();
 
   // Flux-jumps over facets
-  std::array<T, 2> dGtHat_E0, dGtHat_mapped_E0;
+  std::array<T, 2> dGtHat_Ei, dGtHat_Ei_mapped;
 
   std::array<T, 4> dGtHat_Ea;
-  mdspan_t<T, 2> GtHat_Ea(dGtHat_Ea.data(), 2, 2);
+  std::array<T, 2> jGtHat;
 
+  mdspan_t<T, 2> GtHat_Ea(dGtHat_Ea.data(), 2, 2);
   mdspan_t<T, 3> GtHat_Eam1 = patch_data.jumpG_Eam1();
 
   // Storage for cell-wise solution
   T c_ta_ea = 0, c_ta_eam1 = 0, c_tam1_eam1 = 0, c_t1_e0 = 0;
   std::span<T> c_ta_div = patch_data.c_ta_div(),
-               cj_ta_ea = patch_data.cj_ta_ea();
+               cj_ta_ea = patch_data.cj_ta_ea(),
+               cj_interm = patch_data.cj_intermediate();
 
   /* Initialise Step 2 */
   // Number of DOFs on patch-wise H(div=0) space
@@ -212,7 +190,10 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
   const int ndofs_hdivz_per_cell = 2 * ndofs_flux_fct + ndofs_flux_cell_add;
 
   /* Pre-evaluate repeatedly used cell data */
-  // Jacobi transformation and interpolation matrix
+  // Jacobi transformation, facet orientation and interpolation matrix
+  // TODO - Check if patch_has_reversed_facets is required
+  bool patch_has_reversed_facets = false;
+
   for (std::size_t index = 0; index < ncells; ++index)
   {
     // Index using patch nomenclature
@@ -245,9 +226,6 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
     {
       if (a == 1)
       {
-        // Check if boundary facet is reversed
-        reversed_fct(index, 0) = false;
-
         // Check if facet 1 is reversed
         std::int32_t c_ap1 = cells[a + 1];
         std::int8_t fctloc_tap1_ea = patch.fctid_local(a, a + 1);
@@ -256,7 +234,11 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
         std::uint8_t perm_tap1_ea
             = fct_perms[c_ap1 * nfcts_cell + fctloc_tap1_ea];
 
-        reversed_fct(index, 1) = (perm_ta_ea != perm_tap1_ea) ? true : false;
+        if (perm_ta_ea != perm_tap1_ea)
+        {
+          patch_has_reversed_facets = true;
+          reversed_fct(index, 1) = true;
+        }
       }
       else if (a = ncells)
       {
@@ -271,8 +253,11 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
         reversed_fct(index, 0)
             = (perm_tam1_eam1 != perm_ta_eam1) ? true : false;
 
-        // Check if boundary facet is reversed
-        reversed_fct(index, 1) = false;
+        if (perm_tam1_eam1 != perm_ta_eam1)
+        {
+          patch_has_reversed_facets = true;
+          reversed_fct(index, 0) = true;
+        }
       }
     }
     else
@@ -296,12 +281,14 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
       // Set markers if facets are reversed
       if (perm_tam1_eam1 != perm_ta_eam1)
       {
-        reversed_fct(index, 0) = (perm_ta_eam1 == 1) ? 1 : 2;
+        patch_has_reversed_facets = true;
+        reversed_fct(index, 0) = true;
       }
 
       if (perm_ta_ea != perm_tap1_ea)
       {
-        reversed_fct(index, 1) = (perm_tap1_ea == 1) ? 1 : 2;
+        patch_has_reversed_facets = true;
+        reversed_fct(index, 1) = true;
       }
     }
 
@@ -353,6 +340,10 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
   const int offs_ffEa = offs_dofmap[1];
   const int offs_fcadd = offs_dofmap[2];
   const int offs_fcdiv = offs_dofmap[4];
+
+  // Binomial coefficients for DOF tranformation on reversed facet
+  mdspan_t<const T, 2> pascals_triangle
+      = patch_data.transformation_factors_facet_integrals();
 
   /* Evaluate DOFs of sigma_tilde (for each flux separately) */
   for (std::size_t i_rhs = 0; i_rhs < problem_data.nrhs(); ++i_rhs)
@@ -577,9 +568,9 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
 
                 // Evaluate jump
                 GtHat_Eam1(n, 0, 0)
-                    += coefficients_G_Ta[offs_Ta] * shp_TaEam1(n, id_Ta);
+                    -= coefficients_G_Ta[offs_Ta] * shp_TaEam1(n, id_Ta);
                 GtHat_Eam1(n, 0, 1)
-                    += coefficients_G_Ta[offs_Ta + 1] * shp_TaEam1(n, id_Ta);
+                    -= coefficients_G_Ta[offs_Ta + 1] * shp_TaEam1(n, id_Ta);
               }
 
               GtHat_Eam1(n, 0, 0) *= hat_TaEam1(n);
@@ -593,19 +584,19 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
                 mdspan_t<const double, 2> K = patch_data.inverse_jacobian(id_a);
 
                 // Pull back flux to reference cell
-                mdspan_t<T, 2> GtHat_E0(dGtHat_E0.data(), 1, dim);
-                mdspan_t<T, 2> GtHat_mapped_E0(dGtHat_mapped_E0.data(), 1, dim);
+                mdspan_t<T, 2> GtHat_E0(dGtHat_Ei.data(), 1, dim);
+                mdspan_t<T, 2> GtHat_mapped_E0(dGtHat_Ei_mapped.data(), 1, dim);
 
                 if ((type_patch == PatchType::bound_mixed)
                     && (fct_has_bc == false))
                 {
-                  GtHat_E0(0, 0) = GtHat_Eam1(n, 0, 0);
-                  GtHat_E0(0, 1) = GtHat_Eam1(n, 0, 1);
+                  GtHat_E0(0, 0) = -GtHat_Eam1(n, 0, 0);
+                  GtHat_E0(0, 1) = -GtHat_Eam1(n, 0, 1);
                 }
                 else
                 {
-                  GtHat_E0(0, 0) = -GtHat_Eam1(n, 0, 0);
-                  GtHat_E0(0, 1) = -GtHat_Eam1(n, 0, 1);
+                  GtHat_E0(0, 0) = GtHat_Eam1(n, 0, 0);
+                  GtHat_E0(0, 1) = GtHat_Eam1(n, 0, 1);
                 }
 
                 kernel_data.pull_back_flux(GtHat_mapped_E0, GtHat_E0, J, detJ,
@@ -635,25 +626,15 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
               {
                 // Unset jump on facet E0
                 GtHat_Eam1(n, 0, 0) = 0.0;
-                GtHat_Eam1(n, 0, 0) = 0.0;
+                GtHat_Eam1(n, 0, 1) = 0.0;
               }
             }
 
             // Evaluate jump on facet E1
-            if (reversed_fct(id_a, 1))
-            {
-              calculate_jump<T, true>(
-                  GtHat_Ea, nq_fct, n, patch.dofs_projflux_fct(a),
-                  coefficients_G_Tap1, shp_Tap1Ea, hat_Tap1Ea,
-                  coefficients_G_Ta, shp_TaEa, hat_TaEa);
-            }
-            else
-            {
-              calculate_jump<T, false>(
-                  GtHat_Ea, nq_fct, n, patch.dofs_projflux_fct(a),
-                  coefficients_G_Tap1, shp_Tap1Ea, hat_Tap1Ea,
-                  coefficients_G_Ta, shp_TaEa, hat_TaEa);
-            }
+            calculate_jump<T>(GtHat_Ea, nq_fct, n, reversed_fct(id_a, 1),
+                              patch.dofs_projflux_fct(a), coefficients_G_Tap1,
+                              shp_Tap1Ea, hat_Tap1Ea, coefficients_G_Ta,
+                              shp_TaEa, hat_TaEa);
           }
           else
           {
@@ -673,12 +654,12 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
 
               // Jump
               double sshp_TaEa = pfctr * shp_TaEa(n, id_Ta);
-              GtHat_Ea(0, 0) += coefficients_G_Ta[offs_Ta] * sshp_TaEa;
-              GtHat_Ea(0, 1) += coefficients_G_Ta[offs_Ta + 1] * sshp_TaEa;
+              GtHat_Ea(1, 0) += coefficients_G_Ta[offs_Ta] * sshp_TaEa;
+              GtHat_Ea(1, 1) += coefficients_G_Ta[offs_Ta + 1] * sshp_TaEa;
             }
 
-            GtHat_Ea(0, 0) *= hat_TaEa(n);
-            GtHat_Ea(0, 1) *= hat_TaEa(n);
+            GtHat_Ea(1, 0) *= hat_TaEa(n);
+            GtHat_Ea(1, 1) *= hat_TaEa(n);
 
             // Add boundary contribution to c_t1_e0
             // (required for mixed patch with facte E0 on dirichlet boundary)
@@ -689,8 +670,11 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
               mdspan_t<const double, 2> K = patch_data.inverse_jacobian(id_a);
 
               // Pull back flux to reference cell
-              mdspan_t<T, 2> GtHat_En(dGtHat_Ea.data(), 1, dim);
-              mdspan_t<T, 2> GtHat_mapped_En(dGtHat_mapped_E0.data(), 1, dim);
+              mdspan_t<T, 2> GtHat_En(dGtHat_Ei.data(), 1, dim);
+              mdspan_t<T, 2> GtHat_mapped_En(dGtHat_Ei_mapped.data(), 1, dim);
+
+              GtHat_En(0, 0) = GtHat_Ea(1, 0);
+              GtHat_En(0, 1) = GtHat_Ea(1, 1);
 
               kernel_data.pull_back_flux(GtHat_mapped_En, GtHat_En, J, detJ, K);
 
@@ -703,50 +687,46 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
         }
         else
         {
-          if (reversed_fct(id_a, 1))
-          {
-            calculate_jump<T, true>(GtHat_Ea, nq_fct, n,
-                                    patch.dofs_projflux_fct(a),
-                                    coefficients_G_Tap1, shp_Tap1Ea, hat_Tap1Ea,
-                                    coefficients_G_Ta, shp_TaEa, hat_TaEa);
-          }
-          else
-          {
-            calculate_jump<T, false>(
-                GtHat_Ea, nq_fct, n, patch.dofs_projflux_fct(a),
-                coefficients_G_Tap1, shp_Tap1Ea, hat_Tap1Ea, coefficients_G_Ta,
-                shp_TaEa, hat_TaEa);
-          }
+          calculate_jump<T>(GtHat_Ea, nq_fct, n, reversed_fct(id_a, 1),
+                            patch.dofs_projflux_fct(a), coefficients_G_Tap1,
+                            shp_Tap1Ea, hat_Tap1Ea, coefficients_G_Ta, shp_TaEa,
+                            hat_TaEa);
         }
 
-        // Evaluate facet DOFs
-        if (reversed_fct(id_a, 0))
-        {
-          throw std::runtime_error("Reversed facets not implemented");
-        }
-        else
-        {
-          T aux = M_mapped(id_a, 0, 0, n) * GtHat_Eam1(n, 0, 0)
-                  + M_mapped(id_a, 0, 1, n) * GtHat_Eam1(n, 0, 1);
-          T fct_int = prefactor_dof(id_a, 0) * aux;
+        // Zero order facet moments: Jump constribution
+        jGtHat[0] = GtHat_Eam1(n, 1, 0) - GtHat_Eam1(n, 0, 0);
+        jGtHat[1] = GtHat_Eam1(n, 1, 1) - GtHat_Eam1(n, 0, 1);
 
-          c_ta_eam1 -= fct_int;
-          c_t1_e0 += fct_int;
-        }
+        T fint_jGtHat = M_mapped(id_a, 0, 0, n) * jGtHat[0]
+                        + M_mapped(id_a, 0, 1, n) * jGtHat[1];
+        T sfint_jGtHat = prefactor_dof(id_a, 0) * fint_jGtHat;
 
+        c_ta_eam1 -= sfint_jGtHat;
+        c_t1_e0 += sfint_jGtHat;
+
+        // Higher order facet moments: Jump constribution
         if constexpr (id_flux_order > 1)
         {
           if constexpr (id_flux_order == 2)
           {
             if (reversed_fct(id_a, 1))
             {
-              throw std::runtime_error("Reversed facets not implemented");
+              cj_ta_ea[0] += M_mapped(id_a, 1, 0, n) * GtHat_Ea(1, 0)
+                             + M_mapped(id_a, 1, 1, n) * GtHat_Ea(1, 1)
+                             - M_mapped(id_a, 2, 0, n)
+                                   * (GtHat_Ea(0, 0) + GtHat_Ea(1, 0))
+                             - M_mapped(id_a, 2, 1, n)
+                                   * (GtHat_Ea(0, 1) + GtHat_Ea(1, 1));
             }
             else
             {
-              cj_ta_ea[0] += M_mapped(id_a, 2, 0, n) * GtHat_Ea(0, 0)
-                             + M_mapped(id_a, 2, 1, n) * GtHat_Ea(0, 1);
-              ;
+              // The jump
+              jGtHat[0] = GtHat_Ea(1, 0) - GtHat_Ea(0, 0);
+              jGtHat[1] = GtHat_Ea(1, 1) - GtHat_Ea(0, 1);
+
+              // The second order facet moment
+              cj_ta_ea[0] += M_mapped(id_a, 2, 0, n) * jGtHat[0]
+                             + M_mapped(id_a, 2, 1, n) * jGtHat[1];
             }
           }
           else
@@ -757,32 +737,44 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
             }
             else
             {
+              // The jump
+              jGtHat[0] = GtHat_Ea(1, 0) - GtHat_Ea(0, 0);
+              jGtHat[1] = GtHat_Ea(1, 1) - GtHat_Ea(0, 1);
+
+              // The higher order facet moments
               for (std::size_t j = 2; j < M_mapped.extent(1); ++j)
               {
-                cj_ta_ea[j - 2] += M_mapped(id_a, j, 0, n) * GtHat_Ea(0, 0)
-                                   + M_mapped(id_a, j, 1, n) * GtHat_Ea(0, 1);
+                cj_ta_ea[j - 2] += M_mapped(id_a, j, 0, n) * jGtHat[0]
+                                   + M_mapped(id_a, j, 1, n) * jGtHat[1];
               }
             }
           }
         }
 
-        // Store jump
-        if (reversed_fct(id_a, 1))
-        {
-          // Index of reversed quadrature point
-          std::size_t rn = nq_fct - 1 - n;
+        // Store jump-data
+        std::size_t n_Tap1 = (reversed_fct(id_a, 1)) ? nq_fct - 1 - n : n;
 
-          // Store data
-          GtHat_Eam1(rn, 0, 0) = GtHat_Ea(0, 0);
-          GtHat_Eam1(rn, 0, 1) = GtHat_Ea(0, 1);
-          GtHat_Eam1(rn, 1, 0) = GtHat_Ea(1, 0);
-          GtHat_Eam1(rn, 1, 1) = GtHat_Ea(1, 1);
-        }
-        else
-        {
-          GtHat_Eam1(n, 0, 0) = GtHat_Ea(0, 0);
-          GtHat_Eam1(n, 0, 1) = GtHat_Ea(0, 1);
-        }
+        GtHat_Eam1(n_Tap1, 0, 0) = GtHat_Ea(0, 0);
+        GtHat_Eam1(n_Tap1, 0, 1) = GtHat_Ea(0, 1);
+        GtHat_Eam1(n_Tap1, 1, 0) = GtHat_Ea(1, 0);
+        GtHat_Eam1(n_Tap1, 1, 1) = GtHat_Ea(1, 1);
+
+        // if (reversed_fct(id_a, 1))
+        // {
+        //   // Index of reversed quadrature point
+        //   std::size_t rn = nq_fct - 1 - n;
+
+        //   // Store data
+        //   GtHat_Eam1(rn, 0, 0) = GtHat_Ea(0, 0);
+        //   GtHat_Eam1(rn, 0, 1) = GtHat_Ea(0, 1);
+        //   GtHat_Eam1(rn, 1, 0) = GtHat_Ea(1, 0);
+        //   GtHat_Eam1(rn, 1, 1) = GtHat_Ea(1, 1);
+        // }
+        // else
+        // {
+        //   GtHat_Eam1(n, 0, 0) = GtHat_Ea(0, 0);
+        //   GtHat_Eam1(n, 0, 1) = GtHat_Ea(0, 1);
+        // }
       }
 
       /* DOFs from cell integrals */

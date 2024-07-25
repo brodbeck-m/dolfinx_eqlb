@@ -60,6 +60,23 @@ public:
     _data_Mm.resize(_shape_Mm[0] * _shape_Mm[1] * _shape_Mm[2] * _shape_Mm[3],
                     0);
 
+    // Transformation factors for integrals on reversed facets
+    // (Pascals triangle!)
+    _data_transform_fctint.resize(_ndofs_flux_fct * _ndofs_flux_fct, 0.0);
+    mdspan_t<T, 2> data_transform_fctint(_data_transform_fctint.data(),
+                                         _ndofs_flux_fct, _ndofs_flux_fct);
+
+    for (int line = 0; line < _ndofs_flux_fct; line++)
+    {
+      int val = 1;
+
+      for (int i = 0; i <= line; i++)
+      {
+        data_transform_fctint(line, i) = ((i % 2) == 0) ? val : -val;
+        val = val * (line - i) / (i + 1);
+      }
+    }
+
     // Coefficients
     _coefficients_rhs.resize(ncells_max * patch.ndofs_rhs_cell(), 0);
     _coefficients_G_Tap1.resize(ncells_max * ndofs_projflux, 0);
@@ -77,6 +94,7 @@ public:
     // Higher order DOFs (explicit solution step)
     _c_ta_div.resize(patch.ndofs_flux_cell_div(), 0);
     _cj_ta_ea.resize(_ndofs_flux_fct - 1, 0);
+    _cj_ta_ea_interm.resize(_ndofs_flux_fct - 1, 0);
 
     // --- Initialise equation system
     // FIXME - ndofs_hdivz_per_cell wrong for 2D quads + 3D
@@ -157,7 +175,7 @@ public:
   /// @param npnts  The number of points
   void reinitialisation(std::span<const PatchType> type_patch, int ncells)
   {
-    // Data parh
+    // --- Data patch
     // Set current patch length
     _ncells = ncells;
 
@@ -193,6 +211,10 @@ public:
         _meanvalue_condition_required = false;
       }
     }
+
+    // Identitier for reversed facets
+    std::fill(_data_reversedfct_cell.begin(), _data_reversedfct_cell.end(),
+              false);
 
     // --- Update length of mdspans
     _shape_Mm[0] = ncells;
@@ -337,6 +359,18 @@ public:
     return mdspan_t<uint8_t, 2>(_data_reversedfct_cell.data(), _ncells, _gdim);
   }
 
+  /// Trasformation factors for facte integrals on reversed edges
+  ///
+  /// For the transformation a pascals traingel with ndofs_per_fct
+  /// rows is required.
+  ///
+  /// @return mdspan of Pascals triangle
+  mdspan_t<const T, 2> transformation_factors_facet_integrals()
+  {
+    return mdspan_t<const T, 2>(_data_transform_fctint.data(), _ndofs_flux_fct,
+                                _ndofs_flux_fct);
+  }
+
   /// Mapped interpolation matrix
   ///
   /// Structure mdspan: cells x dofs x dim x points
@@ -446,6 +480,13 @@ public:
   std::span<T> cj_ta_ea()
   {
     return std::span<T>(_cj_ta_ea.data(), _cj_ta_ea.size());
+  }
+
+  /// Explicite solution: Intermediate staorge for higher order facet moments
+  /// @return span of the solution coefficients
+  std::span<T> cj_intermediate()
+  {
+    return std::span<T>(_cj_ta_ea_interm.data(), _cj_ta_ea_interm.size());
   }
 
   /* The equation system */
@@ -769,6 +810,9 @@ protected:
   std::array<std::size_t, 4> _shape_Mm;
   std::vector<double> _data_Mm;
 
+  // Prefactors integral transformation
+  std::vector<T> _data_transform_fctint;
+
   // --- Intermediate storage
   // Coefficients (RHS, projected flux, equilibrated flux)
   std::array<std::size_t, 3> _shape_coeffsflux;
@@ -780,7 +824,7 @@ protected:
   std::vector<T> _data_jumpG_Eam1;
 
   // Cell-wise solutions (explicit setp)
-  std::vector<T> _c_ta_div, _cj_ta_ea;
+  std::vector<T> _c_ta_div, _cj_ta_ea, _cj_ta_ea_interm;
 
   // --- The equation system
   // Marker for addition mean-value constraint
