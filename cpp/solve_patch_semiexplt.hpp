@@ -48,6 +48,7 @@ void calculate_jump(
 
   // Id of quadrature point on reversed facet
   const std::size_t iq_Tap1 = (Ea_reversed) ? nq - iq_Ta - 1 : iq_Ta;
+  // const std::size_t iq_Tap1 = (Ea_reversed) ? iq_Ta : iq_Ta;
 
   // Initialise jump with zero
   for (std::size_t i = 0; i < GtHat_Ea.extent(1); ++i)
@@ -547,6 +548,8 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
       // Interpolate DOFs
       int nq_fct = kernel_data.nipoints_facet();
 
+      T surfint_c_ta_eam1 = 0.0, test = 0.0, test2 = 0.0;
+
       for (std::size_t n = 0; n < nq_fct; ++n)
       {
         // Interpolate jump (facet Ea) at quadrature point
@@ -697,12 +700,11 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
         jGtHat[0] = GtHat_Eam1(n, 1, 0) - GtHat_Eam1(n, 0, 0);
         jGtHat[1] = GtHat_Eam1(n, 1, 1) - GtHat_Eam1(n, 0, 1);
 
-        T fint_jGtHat = M_mapped(id_a, 0, 0, n) * jGtHat[0]
-                        + M_mapped(id_a, 0, 1, n) * jGtHat[1];
-        T sfint_jGtHat = prefactor_dof(id_a, 0) * fint_jGtHat;
+        std::cout << "Jump Eam1: " << jGtHat[0] << ", " << jGtHat[1]
+                  << std::endl;
 
-        c_ta_eam1 -= sfint_jGtHat;
-        c_t1_e0 += sfint_jGtHat;
+        surfint_c_ta_eam1 -= M_mapped(id_a, 0, 0, n) * jGtHat[0]
+                             + M_mapped(id_a, 0, 1, n) * jGtHat[1];
 
         // Higher order facet moments: Jump constribution
         if constexpr (id_flux_order > 1)
@@ -711,12 +713,47 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
           {
             if (reversed_fct(id_a, 1))
             {
-              cj_ta_ea[0] += M_mapped(id_a, 1, 0, n) * GtHat_Ea(1, 0)
-                             + M_mapped(id_a, 1, 1, n) * GtHat_Ea(1, 1)
-                             - M_mapped(id_a, 2, 0, n)
-                                   * (GtHat_Ea(0, 0) + GtHat_Ea(1, 0))
-                             - M_mapped(id_a, 2, 1, n)
-                                   * (GtHat_Ea(0, 1) + GtHat_Ea(1, 1));
+              // cj_ta_ea[0] += M_mapped(id_a, 1, 0, n) * GtHat_Ea(1, 0)
+              //                + M_mapped(id_a, 1, 1, n) * GtHat_Ea(1, 1)
+              //                - M_mapped(id_a, 2, 0, n)
+              //                      * (GtHat_Ea(0, 0) + GtHat_Ea(1, 0))
+              //                - M_mapped(id_a, 2, 1, n)
+              //                      * (GtHat_Ea(0, 1) + GtHat_Ea(1, 1));
+
+              // The jump
+              jGtHat[0] = GtHat_Ea(1, 0) - GtHat_Ea(0, 0);
+              jGtHat[1] = GtHat_Ea(1, 1) - GtHat_Ea(0, 1);
+
+              // // The second order facet moment
+              // cj_ta_ea[0] += M_mapped(id_a, 2, 0, n) * jGtHat[0]
+              //                + M_mapped(id_a, 2, 1, n) * jGtHat[1];
+
+              // test += -M_mapped(id_a, 1, 0, n) * GtHat_Ea(1, 0)
+              //         - M_mapped(id_a, 1, 1, n) * GtHat_Ea(1, 1)
+              //         + M_mapped(id_a, 2, 0, n) * GtHat_Ea(1, 0)
+              //         + M_mapped(id_a, 2, 1, n) * GtHat_Ea(1, 1);
+              // test2 += M_mapped(id_a, 1, 0, n) * jGtHat[0]
+              //          + M_mapped(id_a, 1, 1, n) * jGtHat[1];
+
+              // cj_ta_ea[0] += M_mapped(id_a, 2, 0, n) * jGtHat[0]
+              //                + M_mapped(id_a, 2, 1, n) * jGtHat[1]
+              //                - M_mapped(id_a, 1, 0, n) * jGtHat[0]
+              //                - M_mapped(id_a, 1, 1, n) * jGtHat[1]
+              //                - M_mapped(id_a, 1, 0, n) * GtHat_Ea(0, 0)
+              //                - M_mapped(id_a, 1, 1, n) * GtHat_Ea(0, 1);
+
+              if (a != ncells)
+              {
+                cj_ta_ea[0] += M_mapped(id_a, 2, 0, n) * jGtHat[0]
+                               + M_mapped(id_a, 2, 1, n) * jGtHat[1]
+                               - M_mapped(id_a, 1, 0, n) * jGtHat[0]
+                               - M_mapped(id_a, 1, 1, n) * jGtHat[1];
+              }
+              else
+              {
+                cj_ta_ea[0] += M_mapped(id_a, 2, 0, n) * jGtHat[0]
+                               + M_mapped(id_a, 2, 1, n) * jGtHat[1];
+              }
             }
             else
             {
@@ -733,7 +770,6 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
           {
             if (reversed_fct(id_a, 1))
             {
-              throw std::runtime_error("Reversed facets not implemented");
             }
             else
             {
@@ -752,30 +788,31 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
         }
 
         // Store jump-data
-        std::size_t n_Tap1 = (reversed_fct(id_a, 1)) ? nq_fct - 1 - n : n;
-
-        GtHat_Eam1(n_Tap1, 0, 0) = GtHat_Ea(0, 0);
-        GtHat_Eam1(n_Tap1, 0, 1) = GtHat_Ea(0, 1);
-        GtHat_Eam1(n_Tap1, 1, 0) = GtHat_Ea(1, 0);
-        GtHat_Eam1(n_Tap1, 1, 1) = GtHat_Ea(1, 1);
-
-        // if (reversed_fct(id_a, 1))
-        // {
-        //   // Index of reversed quadrature point
-        //   std::size_t rn = nq_fct - 1 - n;
-
-        //   // Store data
-        //   GtHat_Eam1(rn, 0, 0) = GtHat_Ea(0, 0);
-        //   GtHat_Eam1(rn, 0, 1) = GtHat_Ea(0, 1);
-        //   GtHat_Eam1(rn, 1, 0) = GtHat_Ea(1, 0);
-        //   GtHat_Eam1(rn, 1, 1) = GtHat_Ea(1, 1);
-        // }
-        // else
-        // {
-        //   GtHat_Eam1(n, 0, 0) = GtHat_Ea(0, 0);
-        //   GtHat_Eam1(n, 0, 1) = GtHat_Ea(0, 1);
-        // }
+        GtHat_Eam1(n, 0, 0) = GtHat_Ea(0, 0);
+        GtHat_Eam1(n, 0, 1) = GtHat_Ea(0, 1);
+        GtHat_Eam1(n, 1, 0) = GtHat_Ea(1, 0);
+        GtHat_Eam1(n, 1, 1) = GtHat_Ea(1, 1);
       }
+
+      // Reverse calculated jumps on facet Ea
+      if (reversed_fct(id_a, 1))
+      {
+        for (std::size_t i = 0; i < std::floor(nq_fct / 2); ++i)
+        {
+          // Index of reversed entry
+          std::size_t ri = nq_fct - 1 - i;
+
+          T interm = GtHat_Eam1(i, 0, 0);
+          GtHat_Eam1(i, 0, 0) = GtHat_Eam1(ri, 0, 0);
+          GtHat_Eam1(ri, 0, 0) = interm;
+        }
+      }
+
+      c_ta_eam1 += prefactor_dof(id_a, 0) * surfint_c_ta_eam1;
+      c_t1_e0 -= prefactor_dof(id_a, 0) * surfint_c_ta_eam1;
+
+      // std::cout << "cell: " << c_a << std::endl;
+      // std::cout << "-surfint_c_tap1_ea: " << cj_ta_ea[0] << std::endl;
 
       /* DOFs from cell integrals */
       if constexpr (id_flux_order == 1)
@@ -864,6 +901,18 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
           }
         }
       }
+
+      if constexpr (id_flux_order == 2)
+      {
+        if (reversed_fct(id_a, 1) && (a != ncells))
+        {
+          cj_ta_ea[0] += prefactor_dof(id_a + 1, 0) * c_ta_ea;
+        }
+      }
+
+      // std::cout << "surfint_c_ta_ea, cj_ta_ea, test, test2: "
+      //           << surfint_c_ta_eam1 << ", " << cj_ta_ea[0] << ", " << test
+      //           << ", " << test2 << std::endl;
 
       /* Store DOFs into patch-wise solution vector */
       // Set zero order DOFs
