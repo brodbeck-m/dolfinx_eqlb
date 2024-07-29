@@ -484,7 +484,7 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
         shp_TaEam1 = kernel_data.shapefunctions_fct_rhs(fl_TaEam1);
       }
 
-      /* DOFs from interpolation */
+      /* DOFs from facet integrals */
       // Initialisation
       c_ta_eam1 = -c_tam1_eam1;
       std::fill(cj_ta_ea.begin(), cj_ta_ea.end(), 0.0);
@@ -713,35 +713,11 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
           {
             if (reversed_fct(id_a, 1))
             {
-              // cj_ta_ea[0] += M_mapped(id_a, 1, 0, n) * GtHat_Ea(1, 0)
-              //                + M_mapped(id_a, 1, 1, n) * GtHat_Ea(1, 1)
-              //                - M_mapped(id_a, 2, 0, n)
-              //                      * (GtHat_Ea(0, 0) + GtHat_Ea(1, 0))
-              //                - M_mapped(id_a, 2, 1, n)
-              //                      * (GtHat_Ea(0, 1) + GtHat_Ea(1, 1));
-
               // The jump
               jGtHat[0] = GtHat_Ea(1, 0) - GtHat_Ea(0, 0);
               jGtHat[1] = GtHat_Ea(1, 1) - GtHat_Ea(0, 1);
 
-              // // The second order facet moment
-              // cj_ta_ea[0] += M_mapped(id_a, 2, 0, n) * jGtHat[0]
-              //                + M_mapped(id_a, 2, 1, n) * jGtHat[1];
-
-              // test += -M_mapped(id_a, 1, 0, n) * GtHat_Ea(1, 0)
-              //         - M_mapped(id_a, 1, 1, n) * GtHat_Ea(1, 1)
-              //         + M_mapped(id_a, 2, 0, n) * GtHat_Ea(1, 0)
-              //         + M_mapped(id_a, 2, 1, n) * GtHat_Ea(1, 1);
-              // test2 += M_mapped(id_a, 1, 0, n) * jGtHat[0]
-              //          + M_mapped(id_a, 1, 1, n) * jGtHat[1];
-
-              // cj_ta_ea[0] += M_mapped(id_a, 2, 0, n) * jGtHat[0]
-              //                + M_mapped(id_a, 2, 1, n) * jGtHat[1]
-              //                - M_mapped(id_a, 1, 0, n) * jGtHat[0]
-              //                - M_mapped(id_a, 1, 1, n) * jGtHat[1]
-              //                - M_mapped(id_a, 1, 0, n) * GtHat_Ea(0, 0)
-              //                - M_mapped(id_a, 1, 1, n) * GtHat_Ea(0, 1);
-
+              // The second order facet moment
               if (a != ncells)
               {
                 cj_ta_ea[0] += M_mapped(id_a, 2, 0, n) * jGtHat[0]
@@ -770,6 +746,33 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
           {
             if (reversed_fct(id_a, 1))
             {
+              // The jump
+              jGtHat[0] = GtHat_Ea(1, 0) - GtHat_Ea(0, 0);
+              jGtHat[1] = GtHat_Ea(1, 1) - GtHat_Ea(0, 1);
+
+              // The higher order facet moment
+              if (a != ncells)
+              {
+                cj_ta_ea[0] += M_mapped(id_a, 2, 0, n) * jGtHat[0]
+                               + M_mapped(id_a, 2, 1, n) * jGtHat[1]
+                               - M_mapped(id_a, 1, 0, n) * jGtHat[0]
+                               - M_mapped(id_a, 1, 1, n) * jGtHat[1];
+                cj_ta_ea[1] += M_mapped(id_a, 3, 0, n) * jGtHat[0]
+                               + M_mapped(id_a, 3, 1, n) * jGtHat[1]
+                               - M_mapped(id_a, 1, 0, n) * jGtHat[0]
+                               - M_mapped(id_a, 1, 1, n) * jGtHat[1];
+              }
+              else
+              {
+                // The jump
+                jGtHat[0] = GtHat_Ea(1, 0) - GtHat_Ea(0, 0);
+                jGtHat[1] = GtHat_Ea(1, 1) - GtHat_Ea(0, 1);
+
+                cj_ta_ea[0] += M_mapped(id_a, 2, 0, n) * jGtHat[0]
+                               + M_mapped(id_a, 2, 1, n) * jGtHat[1];
+                cj_ta_ea[1] += M_mapped(id_a, 3, 0, n) * jGtHat[0]
+                               + M_mapped(id_a, 3, 1, n) * jGtHat[1];
+              }
             }
             else
             {
@@ -902,11 +905,20 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
         }
       }
 
-      if constexpr (id_flux_order == 2)
+      /* Correct higher order facet moments */
+      if constexpr (id_flux_order > 1)
       {
         if (reversed_fct(id_a, 1) && (a != ncells))
         {
           cj_ta_ea[0] += prefactor_dof(id_a + 1, 0) * c_ta_ea;
+
+          if constexpr (id_flux_order > 2)
+          {
+            for (std::size_t i = 2; i < ndofs_flux_fct; ++i)
+            {
+              cj_ta_ea[i - 1] += prefactor_dof(id_a + 1, 0) * c_ta_ea;
+            }
+          }
         }
       }
 

@@ -24,18 +24,15 @@ Check if equilibrated flux
 """
 
 
-@pytest.mark.parametrize("mesh_type", ["builtin"])
-@pytest.mark.parametrize("degree", [1, 2, 3])
-@pytest.mark.parametrize("bc_type", ["pure_dirichlet", "neumann_inhom"])
-@pytest.mark.parametrize("equilibrator", [FluxEqlbEV, FluxEqlbSE])
-def test_equilibration_conditions(mesh_type, degree, bc_type, equilibrator):
+# --- The test routine ---
+def equilibrate_flux(mesh_type, degree, bc_type, equilibrator):
     # Create mesh
     if mesh_type == "builtin":
         geometry = create_unitsquare_builtin(
             2, dmesh.CellType.triangle, dmesh.DiagonalType.crossed
         )
     elif mesh_type == "gmsh":
-        raise NotImplementedError("GMSH mesh not implemented yet")
+        geometry = create_unitsquare_gmsh(0.5)
     else:
         raise ValueError("Unknown mesh type")
 
@@ -129,6 +126,23 @@ def test_equilibration_conditions(mesh_type, degree, bc_type, equilibrator):
 
                     if not jump_condition:
                         raise ValueError("Jump condition not fulfilled")
+
+
+# --- Test equilibration strategy by Ern and Vohralik
+# TODO - Fix inhom. Neumann BCs on general meshes
+@pytest.mark.parametrize("mesh_type", ["builtin", "gmsh"])
+@pytest.mark.parametrize("degree", [1, 2, 3])
+@pytest.mark.parametrize("bc_type", ["neumann_hom"])
+def test_ern_and_vorhralik_eqlb(mesh_type, degree, bc_type):
+    equilibrate_flux(mesh_type, degree, bc_type, FluxEqlbEV)
+
+
+# --- Test semi-explicit equilibration strategy
+@pytest.mark.parametrize("mesh_type", ["builtin", "gmsh"])
+@pytest.mark.parametrize("degree", [1, 2, 3])
+@pytest.mark.parametrize("bc_type", ["neumann_inhom"])
+def test_semi_explicit_eqlb(mesh_type, degree, bc_type):
+    equilibrate_flux(mesh_type, degree, bc_type, FluxEqlbSE)
 
 
 if __name__ == "__main__":
