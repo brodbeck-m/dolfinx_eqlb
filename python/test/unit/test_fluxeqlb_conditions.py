@@ -7,10 +7,7 @@ import dolfinx.fem as dfem
 from dolfinx_eqlb.eqlb import FluxEqlbEV, FluxEqlbSE
 import dolfinx_eqlb.eqlb.check_eqlb_conditions as eqlb_checker
 
-from utils import (
-    create_unitsquare_builtin,
-    create_unitsquare_gmsh,
-)
+from utils import create_unitsquare_builtin, create_unitsquare_gmsh
 
 from testcase_general import set_arbitrary_rhs, set_arbitrary_bcs
 from testcase_poisson import solve_primal_problem, equilibrate_fluxes
@@ -133,7 +130,7 @@ def equilibrate_flux(mesh_type, degree, bc_type, equilibrator):
 @pytest.mark.parametrize("mesh_type", ["builtin", "gmsh"])
 @pytest.mark.parametrize("degree", [1, 2, 3])
 @pytest.mark.parametrize("bc_type", ["neumann_hom"])
-def test_ern_and_vorhralik_eqlb(mesh_type, degree, bc_type):
+def test_ern_and_vohralik(mesh_type, degree, bc_type):
     equilibrate_flux(mesh_type, degree, bc_type, FluxEqlbEV)
 
 
@@ -141,7 +138,7 @@ def test_ern_and_vorhralik_eqlb(mesh_type, degree, bc_type):
 @pytest.mark.parametrize("mesh_type", ["builtin", "gmsh"])
 @pytest.mark.parametrize("degree", [1, 2, 3])
 @pytest.mark.parametrize("bc_type", ["neumann_inhom"])
-def test_semi_explicit_eqlb(mesh_type, degree, bc_type):
+def test_semi_explicit(mesh_type, degree, bc_type):
     equilibrate_flux(mesh_type, degree, bc_type, FluxEqlbSE)
 
 

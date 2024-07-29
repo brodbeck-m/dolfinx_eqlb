@@ -893,11 +893,30 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
         // Set id for accessing storage
         std::size_t id_a = a - 1;
 
-        // Set zero-order DOFs on facets
+        // Correct zero-order facet moments
         coefficients_flux(id_a, dofmap_flux(0, a, 0))
             += prefactor_dof(id_a, 0) * c_t1_e0;
         coefficients_flux(id_a, dofmap_flux(0, a, offs_ffEa))
             -= prefactor_dof(id_a, 1) * c_t1_e0;
+
+        // Correct higher-order facet moments
+        if constexpr (id_flux_order > 1)
+        {
+          if (reversed_fct(id_a, 1) && (a != ncells))
+          {
+            coefficients_flux(id_a, dofmap_flux(0, a, offs_ffEa + 1))
+                -= prefactor_dof(id_a + 1, 0) * c_t1_e0;
+
+            if constexpr (id_flux_order > 2)
+            {
+              for (std::size_t i = 2; i < ndofs_flux_fct; ++i)
+              {
+                coefficients_flux(id_a, dofmap_flux(0, a, offs_ffEa + i))
+                    -= prefactor_dof(id_a + 1, 0) * c_t1_e0;
+              }
+            }
+          }
+        }
       }
     }
 
