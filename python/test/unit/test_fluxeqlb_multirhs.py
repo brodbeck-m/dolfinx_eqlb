@@ -8,9 +8,7 @@ from dolfinx_eqlb.eqlb import FluxEqlbEV, FluxEqlbSE
 import dolfinx_eqlb.eqlb.check_eqlb_conditions as eqlb_checker
 
 
-from utils import (
-    create_unitsquare_builtin,
-)
+from utils import create_unitsquare_builtin, create_unitsquare_gmsh
 
 from testcase_general import set_arbitrary_rhs, set_arbitrary_bcs
 from testcase_poisson import solve_primal_problem, equilibrate_fluxes
@@ -20,13 +18,17 @@ Check flux equilibration for multiple RHS
 """
 
 
-@pytest.mark.parametrize("degree", [1, 2, 3, 4])
-@pytest.mark.parametrize("equilibrator", [FluxEqlbEV, FluxEqlbSE])
-def test_equilibration_multi_rhs(degree, equilibrator):
+# --- The test routine ---
+def equilibrate_multi_rhs(mesh_type, degree, bc_type, equilibrator):
     # Create mesh
-    geometry = create_unitsquare_builtin(
-        2, dmesh.CellType.triangle, dmesh.DiagonalType.crossed
-    )
+    if mesh_type == "builtin":
+        geometry = create_unitsquare_builtin(
+            2, dmesh.CellType.triangle, dmesh.DiagonalType.crossed
+        )
+    elif mesh_type == "gmsh":
+        geometry = create_unitsquare_gmsh(0.5)
+    else:
+        raise ValueError("Unknown mesh type")
 
     # Set function space primal problem
     V_prime = dfem.FunctionSpace(geometry.mesh, ("P", degree))
@@ -65,7 +67,7 @@ def test_equilibration_multi_rhs(degree, equilibrator):
             neumann_functions,
             neumann_projection,
         ) = set_arbitrary_bcs(
-            "neumann_inhom", V_prime, degree, degree_bc=(degree - 1), neumann_ids=bids
+            bc_type, V_prime, degree, degree_bc=(degree - 1), neumann_ids=bids
         )
 
         list_bound_id_neumann.append(boundary_id_neumann)
@@ -160,6 +162,21 @@ def test_equilibration_multi_rhs(degree, equilibrator):
 
             if not jump_condition:
                 raise ValueError("Jump conditions not fulfilled")
+
+
+# --- Test equilibration strategy by Ern and Vohralik
+# TODO - Fix inhom. Neumann BCs on general meshes
+@pytest.mark.parametrize("mesh_type", ["builtin", "gmsh"])
+@pytest.mark.parametrize("degree", [1, 2, 3, 4])
+def test_ern_and_vohralik_mrhs(mesh_type, degree):
+    equilibrate_multi_rhs(mesh_type, degree, "neumann_hom", FluxEqlbEV)
+
+
+# --- Test semi-explicit equilibration strategy
+@pytest.mark.parametrize("mesh_type", ["builtin", "gmsh"])
+@pytest.mark.parametrize("degree", [1, 2, 3, 4])
+def test_semi_explicit_mrhs(mesh_type, degree):
+    equilibrate_multi_rhs(mesh_type, degree, "neumann_inhom", FluxEqlbSE)
 
 
 if __name__ == "__main__":

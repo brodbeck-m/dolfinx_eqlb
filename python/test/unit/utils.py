@@ -117,13 +117,48 @@ def create_unitsquare_gmsh(hmin: float) -> Geometry:
     gmsh.option.setNumber("Mesh.CharacteristicLengthMax", hmin)
     gmsh.model.mesh.generate(2)
 
-    domain, _, _ = gmshio.model_to_mesh(gmsh.model, MPI.COMM_WORLD, 0, gdim=2)
-    reversed_edges = check_eqlb_conditions.mesh_has_reversed_edges(domain)
+    domain_init, _, _ = gmshio.model_to_mesh(gmsh.model, MPI.COMM_WORLD, 0, gdim=2)
+    reversed_edges = check_eqlb_conditions.mesh_has_reversed_edges(domain_init)
 
     if not reversed_edges:
         raise ValueError("Mesh does not contain reversed edges")
 
     # --- Test if boundary patches contain at least 2 cells
+    # List of refined cells
+    refined_cells = []
+
+    # Required connectivity's
+    domain_init.topology.create_connectivity(0, 2)
+    domain_init.topology.create_connectivity(1, 2)
+    pnt_to_cell = domain_init.topology.connectivity(0, 2)
+
+    # The boundary facets
+    bfcts = dmesh.exterior_facet_indices(domain_init.topology)
+
+    # Get boundary nodes
+    V = dfem.FunctionSpace(domain_init, ("Lagrange", 1))
+    bpnts = dfem.locate_dofs_topological(V, 1, bfcts)
+
+    # Check if point is linked with only on cell
+    for pnt in bpnts:
+        cells = pnt_to_cell.links(pnt)
+
+        if len(cells) == 1:
+            refined_cells.append(cells[0])
+
+    # Refine mesh
+    list_ref_cells = list(set(refined_cells))
+
+    if len(list_ref_cells) > 0:
+        domain = dmesh.refine(
+            domain_init,
+            np.setdiff1d(
+                dmesh.compute_incident_entities(domain_init, list_ref_cells, 2, 1),
+                bfcts,
+            ),
+        )
+    else:
+        domain = domain_init
 
     # --- Mark facets
     boundaries = [

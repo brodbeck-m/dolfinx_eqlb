@@ -212,7 +212,9 @@ public:
   /// @param[in] quadrature_rule_cell The quadrature rule on the cell
   /// @param[in] basix_element_fluxpw The basix-element for the H(div) flux
   /// @param[in] basix_element_rhs    The basix-element for RHS and proj. flux
+  ///                                 (continuous Pk element)
   /// @param[in] basix_element_hat    The basix-element for the hat-function
+  ///                                 (continuous P1 element)
   KernelDataEqlb(std::shared_ptr<const mesh::Mesh> mesh,
                  std::shared_ptr<const QuadratureRule> quadrature_rule_cell,
                  const basix::FiniteElement& basix_element_fluxpw,
@@ -325,6 +327,20 @@ public:
                             stdex::full_extent, 0);
   }
 
+  /// Extract shape functions on facet (hat-function)
+  /// Array with indexe i: phi_j(x_i) is the shape-function j
+  /// at point i.
+  /// @return Array of shape functions (reference cell)
+  smdspan_t<const double, 1> shapefunctions_fct_hat(std::int8_t fct_id,
+                                                    std::size_t j)
+  {
+    // Offset of shpfkt for current facet
+    std::size_t obgn = fct_id * _nipoints_per_fct;
+    std::size_t oend = obgn + _nipoints_per_fct;
+
+    return stdex::submdspan(_hat_fct_fullbasis, 0, std::pair{obgn, oend}, j, 0);
+  }
+
   /* Getter functions (Interpolation) */
   // Extract number of interpolation points per facet
   /// @return Number of interpolation points
@@ -408,6 +424,9 @@ protected:
                      const mdspan_t<const double, 2>&, double,
                      const mdspan_t<const double, 2>&)>
       _pull_back_fluxspace;
+
+  // Transformation infos for reversed facets
+  std::vector<T> _data_transform_shpfkt;
 };
 
 template <typename T>
