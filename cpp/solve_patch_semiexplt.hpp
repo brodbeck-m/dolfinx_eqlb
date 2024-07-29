@@ -342,10 +342,6 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
   const int offs_fcadd = offs_dofmap[2];
   const int offs_fcdiv = offs_dofmap[4];
 
-  // Binomial coefficients for DOF tranformation on reversed facet
-  mdspan_t<const T, 2> pascals_triangle
-      = patch_data.transformation_factors_facet_integrals();
-
   /* Evaluate DOFs of sigma_tilde (for each flux separately) */
   for (std::size_t i_rhs = 0; i_rhs < problem_data.nrhs(); ++i_rhs)
   {

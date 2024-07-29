@@ -60,23 +60,6 @@ public:
     _data_Mm.resize(_shape_Mm[0] * _shape_Mm[1] * _shape_Mm[2] * _shape_Mm[3],
                     0);
 
-    // Transformation factors for integrals on reversed facets
-    // (Pascals triangle!)
-    _data_transform_fctint.resize(_ndofs_flux_fct * _ndofs_flux_fct, 0.0);
-    mdspan_t<T, 2> data_transform_fctint(_data_transform_fctint.data(),
-                                         _ndofs_flux_fct, _ndofs_flux_fct);
-
-    for (int line = 0; line < _ndofs_flux_fct; line++)
-    {
-      int val = 1;
-
-      for (int i = 0; i <= line; i++)
-      {
-        data_transform_fctint(line, i) = ((i % 2) == 0) ? val : -val;
-        val = val * (line - i) / (i + 1);
-      }
-    }
-
     // Coefficients
     _coefficients_rhs.resize(ncells_max * patch.ndofs_rhs_cell(), 0);
     _coefficients_G_Tap1.resize(ncells_max * ndofs_projflux, 0);
@@ -357,18 +340,6 @@ public:
   mdspan_t<std::uint8_t, 2> reversed_facets_per_cell()
   {
     return mdspan_t<uint8_t, 2>(_data_reversedfct_cell.data(), _ncells, _gdim);
-  }
-
-  /// Trasformation factors for facte integrals on reversed edges
-  ///
-  /// For the transformation a pascals traingel with ndofs_per_fct
-  /// rows is required.
-  ///
-  /// @return mdspan of Pascals triangle
-  mdspan_t<const T, 2> transformation_factors_facet_integrals()
-  {
-    return mdspan_t<const T, 2>(_data_transform_fctint.data(), _ndofs_flux_fct,
-                                _ndofs_flux_fct);
   }
 
   /// Mapped interpolation matrix
@@ -809,9 +780,6 @@ protected:
   // The mapped interpolation matrix
   std::array<std::size_t, 4> _shape_Mm;
   std::vector<double> _data_Mm;
-
-  // Prefactors integral transformation
-  std::vector<T> _data_transform_fctint;
 
   // --- Intermediate storage
   // Coefficients (RHS, projected flux, equilibrated flux)

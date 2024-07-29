@@ -212,7 +212,9 @@ public:
   /// @param[in] quadrature_rule_cell The quadrature rule on the cell
   /// @param[in] basix_element_fluxpw The basix-element for the H(div) flux
   /// @param[in] basix_element_rhs    The basix-element for RHS and proj. flux
+  ///                                 (continuous Pk element)
   /// @param[in] basix_element_hat    The basix-element for the hat-function
+  ///                                 (continuous P1 element)
   KernelDataEqlb(std::shared_ptr<const mesh::Mesh> mesh,
                  std::shared_ptr<const QuadratureRule> quadrature_rule_cell,
                  const basix::FiniteElement& basix_element_fluxpw,
@@ -422,6 +424,9 @@ protected:
                      const mdspan_t<const double, 2>&, double,
                      const mdspan_t<const double, 2>&)>
       _pull_back_fluxspace;
+
+  // Transformation infos for reversed facets
+  std::vector<T> _data_transform_shpfkt;
 };
 
 template <typename T>
