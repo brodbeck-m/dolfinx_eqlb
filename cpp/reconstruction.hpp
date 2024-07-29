@@ -340,16 +340,12 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
 
     // Loop over all patches
     for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
-    // for (std::size_t i_node = 3; i_node < 4; ++i_node)
     {
       // Create Sub-DOFmap
       patch.create_subdofmap(i_node);
 
       // Reinitialise patch-data
       patch_data.reinitialisation(patch.type(), patch.ncells());
-
-      std::cout << "Patch " << i_node << " starting with cell "
-                << patch.cells()[1] << std::endl;
 
       // Calculate solution patch
       equilibrate_flux_semiexplt<T, id_flux_order>(
