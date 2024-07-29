@@ -293,21 +293,12 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
       }
     }
 
-    std::cout << "Cell " << c << " has facets " << fcts[a - 1] << " ("
-              << unsigned(reversed_fct(index, 0)) << ")" << " and " << fcts[a]
-              << " (" << unsigned(reversed_fct(index, 1)) << ")" << std::endl;
-
     // Sign of the jacobian
     const double sgn_detJ = detJ / std::fabs(detJ);
 
     // Set prefactors
     prefactor_dof(index, 0) = (noutward_ta_eam1) ? sgn_detJ : -sgn_detJ;
     prefactor_dof(index, 1) = (noutward_ta_ea) ? sgn_detJ : -sgn_detJ;
-
-    std::cout << "Cell has normal-orientations " << noutward_ta_eam1 << " and "
-              << noutward_ta_ea << "with sign_detJ " << sgn_detJ
-              << "--> pfkt: " << prefactor_dof(index, 0) << ", "
-              << prefactor_dof(index, 1) << std::endl;
 
     /* Apply push-back on interpolation matrix M */
     for (std::size_t i = 0; i < M_mapped.extent(1); ++i)
@@ -326,6 +317,13 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
         M_mapped(index, i, 1, j)
             = detJ
               * (M(fctid, ii, 0, j) * K(0, 1) + M(fctid, ii, 1, j) * K(1, 1));
+
+        // Correction in case of higher order moments
+        if ((ii > 0) && reversed_fct(index, 1) && (a != ncells))
+        {
+          M_mapped(index, i, 0, j) -= M_mapped(index, 1, 0, j);
+          M_mapped(index, i, 1, j) -= M_mapped(index, 1, 1, j);
+        }
       }
     }
   }
@@ -544,7 +542,7 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
       // Interpolate DOFs
       int nq_fct = kernel_data.nipoints_facet();
 
-      T surfint_c_ta_eam1 = 0.0, test = 0.0, test2 = 0.0;
+      T surfint_c_ta_eam1 = 0.0;
 
       for (std::size_t n = 0; n < nq_fct; ++n)
       {
@@ -696,92 +694,26 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
         jGtHat[0] = GtHat_Eam1(n, 1, 0) - GtHat_Eam1(n, 0, 0);
         jGtHat[1] = GtHat_Eam1(n, 1, 1) - GtHat_Eam1(n, 0, 1);
 
-        std::cout << "Jump Eam1: " << jGtHat[0] << ", " << jGtHat[1]
-                  << std::endl;
-
         surfint_c_ta_eam1 -= M_mapped(id_a, 0, 0, n) * jGtHat[0]
                              + M_mapped(id_a, 0, 1, n) * jGtHat[1];
 
         // Higher order facet moments: Jump constribution
         if constexpr (id_flux_order > 1)
         {
-          if constexpr (id_flux_order == 2)
+          // The jump
+          jGtHat[0] = GtHat_Ea(1, 0) - GtHat_Ea(0, 0);
+          jGtHat[1] = GtHat_Ea(1, 1) - GtHat_Ea(0, 1);
+
+          // The first order facet moment
+          cj_ta_ea[0] += M_mapped(id_a, 2, 0, n) * jGtHat[0]
+                         + M_mapped(id_a, 2, 1, n) * jGtHat[1];
+
+          if constexpr (id_flux_order > 2)
           {
-            if (reversed_fct(id_a, 1))
+            for (std::size_t j = 3; j < M_mapped.extent(1); ++j)
             {
-              // The jump
-              jGtHat[0] = GtHat_Ea(1, 0) - GtHat_Ea(0, 0);
-              jGtHat[1] = GtHat_Ea(1, 1) - GtHat_Ea(0, 1);
-
-              // The second order facet moment
-              if (a != ncells)
-              {
-                cj_ta_ea[0] += M_mapped(id_a, 2, 0, n) * jGtHat[0]
-                               + M_mapped(id_a, 2, 1, n) * jGtHat[1]
-                               - M_mapped(id_a, 1, 0, n) * jGtHat[0]
-                               - M_mapped(id_a, 1, 1, n) * jGtHat[1];
-              }
-              else
-              {
-                cj_ta_ea[0] += M_mapped(id_a, 2, 0, n) * jGtHat[0]
-                               + M_mapped(id_a, 2, 1, n) * jGtHat[1];
-              }
-            }
-            else
-            {
-              // The jump
-              jGtHat[0] = GtHat_Ea(1, 0) - GtHat_Ea(0, 0);
-              jGtHat[1] = GtHat_Ea(1, 1) - GtHat_Ea(0, 1);
-
-              // The second order facet moment
-              cj_ta_ea[0] += M_mapped(id_a, 2, 0, n) * jGtHat[0]
-                             + M_mapped(id_a, 2, 1, n) * jGtHat[1];
-            }
-          }
-          else
-          {
-            if (reversed_fct(id_a, 1))
-            {
-              // The jump
-              jGtHat[0] = GtHat_Ea(1, 0) - GtHat_Ea(0, 0);
-              jGtHat[1] = GtHat_Ea(1, 1) - GtHat_Ea(0, 1);
-
-              // The higher order facet moment
-              if (a != ncells)
-              {
-                cj_ta_ea[0] += M_mapped(id_a, 2, 0, n) * jGtHat[0]
-                               + M_mapped(id_a, 2, 1, n) * jGtHat[1]
-                               - M_mapped(id_a, 1, 0, n) * jGtHat[0]
-                               - M_mapped(id_a, 1, 1, n) * jGtHat[1];
-                cj_ta_ea[1] += M_mapped(id_a, 3, 0, n) * jGtHat[0]
-                               + M_mapped(id_a, 3, 1, n) * jGtHat[1]
-                               - M_mapped(id_a, 1, 0, n) * jGtHat[0]
-                               - M_mapped(id_a, 1, 1, n) * jGtHat[1];
-              }
-              else
-              {
-                // The jump
-                jGtHat[0] = GtHat_Ea(1, 0) - GtHat_Ea(0, 0);
-                jGtHat[1] = GtHat_Ea(1, 1) - GtHat_Ea(0, 1);
-
-                cj_ta_ea[0] += M_mapped(id_a, 2, 0, n) * jGtHat[0]
-                               + M_mapped(id_a, 2, 1, n) * jGtHat[1];
-                cj_ta_ea[1] += M_mapped(id_a, 3, 0, n) * jGtHat[0]
-                               + M_mapped(id_a, 3, 1, n) * jGtHat[1];
-              }
-            }
-            else
-            {
-              // The jump
-              jGtHat[0] = GtHat_Ea(1, 0) - GtHat_Ea(0, 0);
-              jGtHat[1] = GtHat_Ea(1, 1) - GtHat_Ea(0, 1);
-
-              // The higher order facet moments
-              for (std::size_t j = 2; j < M_mapped.extent(1); ++j)
-              {
-                cj_ta_ea[j - 2] += M_mapped(id_a, j, 0, n) * jGtHat[0]
-                                   + M_mapped(id_a, j, 1, n) * jGtHat[1];
-              }
+              cj_ta_ea[j - 2] += M_mapped(id_a, j, 0, n) * jGtHat[0]
+                                 + M_mapped(id_a, j, 1, n) * jGtHat[1];
             }
           }
         }
@@ -809,9 +741,6 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
 
       c_ta_eam1 += prefactor_dof(id_a, 0) * surfint_c_ta_eam1;
       c_t1_e0 -= prefactor_dof(id_a, 0) * surfint_c_ta_eam1;
-
-      // std::cout << "cell: " << c_a << std::endl;
-      // std::cout << "-surfint_c_tap1_ea: " << cj_ta_ea[0] << std::endl;
 
       /* DOFs from cell integrals */
       if constexpr (id_flux_order == 1)
@@ -917,10 +846,6 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
           }
         }
       }
-
-      // std::cout << "surfint_c_ta_ea, cj_ta_ea, test, test2: "
-      //           << surfint_c_ta_eam1 << ", " << cj_ta_ea[0] << ", " << test
-      //           << ", " << test2 << std::endl;
 
       /* Store DOFs into patch-wise solution vector */
       // Set zero order DOFs
