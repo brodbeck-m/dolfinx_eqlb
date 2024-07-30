@@ -7,7 +7,7 @@
 #include "PatchCstm.hpp"
 #include "PatchData.hpp"
 #include "ProblemDataFluxCstm.hpp"
-#include "minimise_flux.hpp"
+#include "assemble_patch_semiexplt.hpp"
 #include "solve_patch_weaksym.hpp"
 #include "utils.hpp"
 
