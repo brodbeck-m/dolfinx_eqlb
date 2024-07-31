@@ -6,7 +6,7 @@
 #include "Patch.hpp"
 #include "PatchCstm.hpp"
 #include "PatchData.hpp"
-#include "minimise_flux.hpp"
+#include "assemble_patch_semiexplt.hpp"
 #include "utils.hpp"
 
 #include <dolfinx/fem/DofMap.h>

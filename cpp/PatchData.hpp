@@ -196,7 +196,7 @@ public:
     }
 
     // Identitier for reversed facets
-    std::fill(_data_reversedfct_cell.begin(), _data_reversedfct_cell.end(),
+    std::fill_n(_data_reversedfct_cell.begin(), _gdim * ncells,
               false);
 
     // --- Update length of mdspans

@@ -269,6 +269,14 @@ public:
                             stdex::full_extent, stdex::full_extent);
   }
 
+  /// Extract transformation data for shape functions (H(div) flux)
+  /// @return Array of transformation data
+  mdspan_t<const double, 2> entity_transformations_flux() const
+  {
+    return mdspan_t<const double, 2>(_data_transform_shpfkt.data(),
+                                     _shape_transform_shpfkt);
+  }
+
   /// Extract shape functions on cell (RHS, projected flux)
   /// Array with indexes i, j and k:
   /// phi_k(x_j) is the shape-function k at point j while i determins
@@ -426,7 +434,8 @@ protected:
       _pull_back_fluxspace;
 
   // Transformation infos for reversed facets
-  std::vector<T> _data_transform_shpfkt;
+  std::array<std::size_t, 2> _shape_transform_shpfkt;
+  std::vector<double> _data_transform_shpfkt;
 };
 
 template <typename T>

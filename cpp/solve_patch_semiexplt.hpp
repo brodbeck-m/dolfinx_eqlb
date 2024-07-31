@@ -48,7 +48,6 @@ void calculate_jump(
 
   // Id of quadrature point on reversed facet
   const std::size_t iq_Tap1 = (Ea_reversed) ? nq - iq_Ta - 1 : iq_Ta;
-  // const std::size_t iq_Tap1 = (Ea_reversed) ? iq_Ta : iq_Ta;
 
   // Initialise jump with zero
   for (std::size_t i = 0; i < GtHat_Ea.extent(1); ++i)
@@ -190,9 +189,6 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
 
   /* Pre-evaluate repeatedly used cell data */
   // Jacobi transformation, facet orientation and interpolation matrix
-  // TODO - Check if patch_has_reversed_facets is required
-  bool patch_has_reversed_facets = false;
-
   for (std::size_t a = 1; a < ncells + 1; ++a)
   {
     // Set id for accessing storage
@@ -235,7 +231,6 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
 
         if (perm_ta_ea != perm_tap1_ea)
         {
-          patch_has_reversed_facets = true;
           reversed_fct(id_a, 1) = true;
         }
       }
@@ -253,7 +248,6 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
 
         if (perm_tam1_eam1 != perm_ta_eam1)
         {
-          patch_has_reversed_facets = true;
           reversed_fct(id_a, 0) = true;
         }
       }
@@ -279,13 +273,11 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
       // Set markers if facets are reversed
       if (perm_tam1_eam1 != perm_ta_eam1)
       {
-        patch_has_reversed_facets = true;
         reversed_fct(id_a, 0) = true;
       }
 
       if (perm_ta_ea != perm_tap1_ea)
       {
-        patch_has_reversed_facets = true;
         reversed_fct(id_a, 1) = true;
       }
     }
@@ -327,6 +319,7 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
 
   // DOFmap for minimisation
   patch.set_assembly_informations(kernel_data.fct_normal_is_outward(),
+                                  reversed_fct,
                                   patch_data.jacobi_determinant());
 
   mdspan_t<const std::int32_t, 3> dofmap_flux
@@ -344,7 +337,7 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
     // Patch type
     PatchType type_patch = patch.type(i_rhs);
 
-    // Check if reversion is requierd
+    // Check if reversion is required
     bool reversion_required = patch.reversion_required(i_rhs);
 
     // Equilibarted flux
@@ -885,7 +878,7 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
       c_tam1_eam1 = c_ta_ea;
     }
 
-    /* Correct zero-order DOFs on reversed patch */
+    // Correct zero-order DOFs on reversed patch
     if (reversion_required)
     {
       for (std::size_t a = 1; a < ncells + 1; ++a)
@@ -954,7 +947,7 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
     {
       // Assemble system
       assemble_fluxminimiser<T, id_flux_order, true>(
-          minkernel, patch_data, dofmap_flux, i_rhs,
+          minkernel, patch_data, dofmap_flux, reversed_fct, i_rhs,
           patch.requires_flux_bcs(i_rhs));
 
       // Factorisation of system matrix
@@ -964,7 +957,7 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
     {
       // Assemble linear form
       assemble_fluxminimiser<T, id_flux_order, false>(
-          minkernel_rhs, patch_data, dofmap_flux, i_rhs,
+          minkernel_rhs, patch_data, dofmap_flux, reversed_fct, i_rhs,
           patch.requires_flux_bcs(i_rhs));
     }
 
@@ -980,6 +973,38 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
     const graph::AdjacencyList<std::int32_t>& flux_dofmap
         = problem_data.fspace_flux_hdiv()->dofmap()->list();
 
+    // DOF transformation data
+    mdspan_t<const double, 2> doftrafo
+        = kernel_data.entity_transformations_flux();
+
+    // for (std::int32_t a = 0; a < ncells + 2; ++a)
+    // {
+    //   std::cout << "Cell a=" << a << ": " << cells[a] << std::endl;
+    //   std::cout << "Prefactors: " << std::endl;
+    //   for (std::size_t i = 0; i < ndofs_hdivz_per_cell; ++i)
+    //   {
+    //     std::cout << dofmap_flux(3, a, i) << " ";
+    //   }
+    //   std::cout << "\n";
+
+    //   std::cout << "Solution: " << std::endl;
+    //   for (std::size_t i = 0; i < ndofs_hdivz_per_cell; ++i)
+    //   {
+    //     std::cout << u_sigma(dofmap_flux(2, a, i)) << " ";
+    //   }
+    //   std::cout << "\n";
+    // }
+
+    // std::cout << "Trafo shape-function: " << std::endl;
+    // for (std::size_t i = 0; i < ndofs_flux_fct; ++i)
+    // {
+    //   for (std::size_t j = 0; j < ndofs_flux_fct; ++j)
+    //   {
+    //     std::cout << doftrafo(i, j) << " ";
+    //   }
+    //   std::cout << "\n";
+    // }
+
     // Move cell contributions
     for (std::int32_t a = 1; a < ncells + 1; ++a)
     {
@@ -989,13 +1014,74 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
       // Global DOFs
       std::span<const std::int32_t> gdofs = flux_dofmap.links(cells[a]);
 
-      // Map solution from H(div=0) to H(div) space
-      // for (std::size_t i = 0; i < ndofs_hdivz_per_cell; ++i)
+      // // DEBUG
+      // for (std::size_t i = 0; i < ndofs_flux; ++i)
       // {
-      //   // Apply correction
-      //   coefficients_flux(id_a, dofmap_flux(0, a, i))
-      //       += dofmap_flux(3, a, i) * u_sigma(dofmap_flux(2, a, i));
+      //   // Set zero-order DOFs on facets
+      //   coefficients_flux(id_a, i) = 0.0;
       // }
+
+      // Map solution from H(div=0) to H(div) space
+      if constexpr (id_flux_order == 1)
+      {
+        // Apply correction
+        coefficients_flux(id_a, dofmap_flux(0, a, 0))
+            += dofmap_flux(3, a, 0) * u_sigma(dofmap_flux(2, a, 0));
+        coefficients_flux(id_a, dofmap_flux(0, a, 1))
+            += dofmap_flux(3, a, 1) * u_sigma(dofmap_flux(2, a, 0));
+      }
+      else
+      {
+        // std::cout << "Cell a=" << a << ": " << cells[a] << std::endl;
+        if (reversed_fct(id_a, 0))
+        {
+          // Backward transformation of (higher order) DOFs on facet Eam1
+          coefficients_flux(id_a, dofmap_flux(0, a, 0))
+              += dofmap_flux(3, a, 0) * u_sigma(dofmap_flux(2, a, 0));
+
+          for (std::size_t i = 1; i < ndofs_flux_fct; ++i)
+          {
+            T local_value = 0.0;
+
+            for (std::size_t j = 0; j < ndofs_flux_fct; ++j)
+            {
+              // std::cout << "a, trafo, pf, dof, i, j: " << a << ", "
+              //           << doftrafo(j, i) << ", "
+              //           << dofmap_flux(3, a - 1, ndofs_flux_fct + j) << ", "
+              //           << u_sigma(dofmap_flux(2, a, j)) << ", " <<
+              //           unsigned(i)
+              //           << ", " << unsigned(ndofs_flux_fct + j) << std::endl;
+
+              T pf_j
+                  = doftrafo(j, i) * dofmap_flux(3, a - 1, ndofs_flux_fct + j);
+              local_value += pf_j * u_sigma(dofmap_flux(2, a, j));
+            }
+
+            // std::cout << "Transformed DOF: " << local_value << std::endl;
+            coefficients_flux(id_a, dofmap_flux(0, a, i)) += local_value;
+          }
+
+          // Add remaining DOFs
+          for (std::size_t i = ndofs_flux_fct; i < ndofs_hdivz_per_cell; ++i)
+          {
+            coefficients_flux(id_a, dofmap_flux(0, a, i))
+                += dofmap_flux(3, a, i) * u_sigma(dofmap_flux(2, a, i));
+            // std::cout << "a, pf, dof: " << a << ", " << dofmap_flux(3, a, i)
+            //           << ", " << u_sigma(dofmap_flux(2, a, i)) << std::endl;
+          }
+        }
+        else
+        {
+          for (std::size_t i = 0; i < ndofs_hdivz_per_cell; ++i)
+          {
+            coefficients_flux(id_a, dofmap_flux(0, a, i))
+                += dofmap_flux(3, a, i) * u_sigma(dofmap_flux(2, a, i));
+            // std::cout << "NoMod --> a, pf, dof: " << a << ", "
+            //           << dofmap_flux(3, a, i) << ", "
+            //           << u_sigma(dofmap_flux(2, a, i)) << std::endl;
+          }
+        }
+      }
 
       // Loop over DOFs an cell
       for (std::size_t i = 0; i < ndofs_flux; ++i)
