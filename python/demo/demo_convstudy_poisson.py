@@ -40,8 +40,8 @@ mesh_type = MeshType.gmsh
 Equilibrator = FluxEqlbSE
 
 # The orders of the FE spaces
-elmt_order_prime = 2
-elmt_order_eqlb = 3
+elmt_order_prime = 1
+elmt_order_eqlb = 1
 
 # The boundary conditions
 bc_type = BCType.neumann_inhom
