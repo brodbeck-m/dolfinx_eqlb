@@ -920,15 +920,15 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
     const graph::AdjacencyList<std::int32_t>& flux_dofmap
         = problem_data.fspace_flux_hdiv()->dofmap()->list();
 
-    for (std::int32_t a = 1; a < ncells + 1; ++a)
-    {
-      std::span<const std::int32_t> gdofs = flux_dofmap.links(cells[a]);
-      for (std::size_t i = 0; i < ndofs_flux; ++i)
-      {
-        // Set zero-order DOFs on facets
-        coefficients_flux(a - 1, i) = x_flux_dhdiv[gdofs[i]];
-      }
-    }
+    // for (std::int32_t a = 1; a < ncells + 1; ++a)
+    // {
+    //   std::span<const std::int32_t> gdofs = flux_dofmap.links(cells[a]);
+    //   for (std::size_t i = 0; i < ndofs_flux; ++i)
+    //   {
+    //     // Set zero-order DOFs on facets
+    //     coefficients_flux(a - 1, i) = x_flux_dhdiv[gdofs[i]];
+    //   }
+    // }
 
     // Set boundary markers
     if (type_patch == PatchType::bound_essnt_dual
@@ -985,15 +985,15 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
     Eigen::Matrix<T, Eigen::Dynamic, 1>& u_sigma = patch_data.vector_u_sigma();
 
     // DEBUG
-    for (std::int32_t a = 1; a < ncells + 1; ++a)
-    {
-      std::span<const std::int32_t> gdofs = flux_dofmap.links(cells[a]);
-      for (std::size_t i = 0; i < ndofs_flux; ++i)
-      {
-        // Set zero-order DOFs on facets
-        x_flux_dhdiv[gdofs[i]] = 0;
-      }
-    }
+    // for (std::int32_t a = 1; a < ncells + 1; ++a)
+    // {
+    //   std::span<const std::int32_t> gdofs = flux_dofmap.links(cells[a]);
+    //   for (std::size_t i = 0; i < ndofs_flux; ++i)
+    //   {
+    //     // Set zero-order DOFs on facets
+    //     x_flux_dhdiv[gdofs[i]] = 0;
+    //   }
+    // }
 
     // Global solution vector and DOFmap
     // std::span<T> x_flux_dhdiv =
@@ -1021,14 +1021,14 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
       //   coefficients_flux(id_a, i) = 0.0;
       // }
 
-      std::cout << "Cell a: " << cells[a] << ", "
-                << "reversion: " << unsigned(reversed_fct(id_a, 0)) << " "
-                << unsigned(reversed_fct(id_a, 1)) << std::endl;
-      for (std::size_t i = 0; i < ndofs_hdivz_per_cell; ++i)
-      {
-        std::cout << u_sigma(dofmap_flux(2, a, i)) << " ";
-      }
-      std::cout << "\n";
+      // std::cout << "Cell a: " << cells[a] << ", "
+      //           << "reversion: " << unsigned(reversed_fct(id_a, 0)) << " "
+      //           << unsigned(reversed_fct(id_a, 1)) << std::endl;
+      // for (std::size_t i = 0; i < ndofs_hdivz_per_cell; ++i)
+      // {
+      //   std::cout << u_sigma(dofmap_flux(2, a, i)) << " ";
+      // }
+      // std::cout << "\n";
 
       // Map solution from H(div=0) to H(div) space
       if constexpr (id_flux_order == 1)
@@ -1105,14 +1105,13 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
       for (std::size_t i = 0; i < ndofs_flux; ++i)
       {
         // Set zero-order DOFs on facets
-        // x_flux_dhdiv[gdofs[i]] += coefficients_flux(id_a, i);
-
-        x_flux_dhdiv[gdofs[i]] = coefficients_flux(id_a, i);
+        x_flux_dhdiv[gdofs[i]] += coefficients_flux(id_a, i);
+        // x_flux_dhdiv[gdofs[i]] = coefficients_flux(id_a, i);
       }
     }
 
     // DEBUG: Check minimisation property
-    std::cout << "Check minimisation property" << std::endl;
+    std::cout << "Check minimisation" << std::endl;
     assemble_fluxminimiser<T, id_flux_order, false>(
         minkernel_rhs, patch_data, dofmap_flux, reversed_fct, i_rhs,
         patch.requires_flux_bcs(i_rhs));
