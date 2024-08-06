@@ -8,7 +8,7 @@
 #include "ProblemDataFluxCstm.hpp"
 #include "ProblemDataFluxEV.hpp"
 #include "StorageStiffness.hpp"
-#include "minimise_flux.hpp"
+#include "assemble_patch_semiexplt.hpp"
 #include "solve_patch_constrmin.hpp"
 #include "solve_patch_semiexplt.hpp"
 #include "utils.hpp"

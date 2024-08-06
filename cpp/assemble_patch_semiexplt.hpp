@@ -79,12 +79,16 @@ generate_flux_minimisation_kernel(KernelDataEqlb<T>& kernel_data,
       = [kernel_data, ndofs_hdivzero_per_cell,
          ndofs_flux_fct](mdspan_t<T, 2> Te, std::span<const T> coefficients,
                          smdspan_t<const std::int32_t, 2> asmbl_info,
+                         const std::uint8_t fct_eam1_reversed,
                          const double detJ, mdspan_t<const double, 2> J) mutable
   {
     const int index_load = ndofs_hdivzero_per_cell;
 
     /* Extract shape functions and quadrature data */
     smdspan_t<double, 3> phi = kernel_data.shapefunctions_flux(J, detJ);
+
+    mdspan_t<const double, 2> shapetrafo
+        = kernel_data.entity_transformations_flux();
 
     std::span<const double> quadrature_weights
         = kernel_data.quadrature_weights(0);
@@ -93,11 +97,15 @@ generate_flux_minimisation_kernel(KernelDataEqlb<T>& kernel_data,
     // Interpolated solution from step 1
     std::array<T, 2> sigtilde_q;
 
-    // Data mainpulation of shapfunction for d0
+    // Data manipulation of shape function for d0
     std::int32_t ld0_Eam1 = asmbl_info(0, 0),
                  ld0_Ea = asmbl_info(0, ndofs_flux_fct);
     std::int32_t p_Eam1 = asmbl_info(3, 0),
                  p_Ea = asmbl_info(3, ndofs_flux_fct);
+
+    // Intermediate storage for higher-order facet moments on reversed facet
+    std::vector<double> data_gphi_Eam1(2 * ndofs_flux_fct, 0);
+    mdspan_t<double, 2> gphi_Eam1(data_gphi_Eam1.data(), ndofs_flux_fct, 2);
 
     /* Assemble tangents */
     for (std::size_t iq = 0; iq < quadrature_weights.size(); ++iq)
@@ -110,6 +118,34 @@ generate_flux_minimisation_kernel(KernelDataEqlb<T>& kernel_data,
       {
         sigtilde_q[0] += coefficients[i] * phi(iq, i, 0);
         sigtilde_q[1] += coefficients[i] * phi(iq, i, 1);
+      }
+
+      // Transform shape functions in case of facet reversion
+      if (fct_eam1_reversed)
+      {
+        // Transform higher order shape functions on facet Ea
+        for (std::size_t i = 0; i < ndofs_flux_fct; ++i)
+        {
+          for (std::size_t j = 0; j < ndofs_flux_fct; ++j)
+          {
+            int ldj_Eam1 = asmbl_info(0, j);
+
+            gphi_Eam1(i, 0) += shapetrafo(i, j) * phi(iq, ldj_Eam1, 0);
+            gphi_Eam1(i, 1) += shapetrafo(i, j) * phi(iq, ldj_Eam1, 1);
+          }
+        }
+
+        // Write data into storage
+        for (std::size_t i = 0; i < ndofs_flux_fct; ++i)
+        {
+          int ldi_Eam1 = asmbl_info(0, i);
+
+          phi(iq, ldi_Eam1, 0) = gphi_Eam1(i, 0);
+          phi(iq, ldi_Eam1, 1) = gphi_Eam1(i, 1);
+        }
+
+        // Set intermediate storage to zero
+        std::fill(data_gphi_Eam1.begin(), data_gphi_Eam1.end(), 0);
       }
 
       // Manipulate shape function for coefficient d_0
@@ -144,8 +180,6 @@ generate_flux_minimisation_kernel(KernelDataEqlb<T>& kernel_data,
             std::size_t jp1 = j + 1;
 
             // Manipulate shape functions
-            double alpha = asmbl_info(3, ip1) * dvol;
-
             double phi_j0 = phi(iq, asmbl_info(0, jp1), 0) * asmbl_info(3, jp1);
             double phi_j1 = phi(iq, asmbl_info(0, jp1), 1) * asmbl_info(3, jp1);
 
@@ -479,6 +513,7 @@ template <typename T, int id_flux_order, bool asmbl_systmtrx>
 void assemble_fluxminimiser(kernel_fn<T, asmbl_systmtrx>& minimisation_kernel,
                             PatchDataCstm<T, id_flux_order>& patch_data,
                             mdspan_t<const std::int32_t, 3> asmbl_info,
+                            mdspan_t<const std::uint8_t, 2> fct_reversion,
                             const int i_rhs, const bool requires_flux_bc)
 {
   assert(id_flux_order < 0);
@@ -532,7 +567,8 @@ void assemble_fluxminimiser(kernel_fn<T, asmbl_systmtrx>& minimisation_kernel,
 
     // Evaluate linear- and bilinear form
     patch_data.reinitialise_Te();
-    minimisation_kernel(Te, coefficients, asmbl_info_cell, detJ, J);
+    minimisation_kernel(Te, coefficients, asmbl_info_cell,
+                        fct_reversion(id_a, 0), detJ, J);
 
     // Assemble linear- and bilinear form
     if constexpr (id_flux_order == 1)

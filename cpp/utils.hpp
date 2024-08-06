@@ -41,7 +41,7 @@ using kernel_fn = std::function<void(
     stdex::mdspan<T, stdex::dextents<std::size_t, 2>>, std::span<const T>,
     stdex::mdspan<const std::int32_t, stdex::dextents<std::size_t, 2>,
                   stdex::layout_stride>,
-    const double,
+    const std::uint8_t, const double,
     stdex::mdspan<const double, stdex::dextents<std::size_t, 2>>)>;
 
 template <typename T>

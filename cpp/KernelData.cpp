@@ -223,8 +223,10 @@ KernelDataEqlb<T>::KernelDataEqlb(
   const int ndofs_flux_fct = basix_element_fluxpw.degree();
 
   _data_transform_shpfkt.resize(ndofs_flux_fct * ndofs_flux_fct, 0.0);
-  mdspan_t<T, 2> data_transform_shpfk(_data_transform_shpfkt.data(),
-                                      ndofs_flux_fct, ndofs_flux_fct);
+  _shape_transform_shpfkt
+      = {(std::size_t)ndofs_flux_fct, (std::size_t)ndofs_flux_fct};
+  mdspan_t<double, 2> data_transform_shpfk(_data_transform_shpfkt.data(),
+                                           ndofs_flux_fct, ndofs_flux_fct);
 
   for (int line = 0; line < ndofs_flux_fct; line++)
   {
@@ -232,7 +234,7 @@ KernelDataEqlb<T>::KernelDataEqlb(
 
     for (int i = 0; i <= line; i++)
     {
-      data_transform_shpfk(line, i) = ((i % 2) == 0) ? -val : val;
+      data_transform_shpfk(i, line) = ((i % 2) == 0) ? -val : val;
       val = val * (line - i) / (i + 1);
     }
   }
