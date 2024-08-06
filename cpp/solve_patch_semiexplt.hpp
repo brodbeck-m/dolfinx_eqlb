@@ -1041,10 +1041,9 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
         }
       }
 
-      // Loop over DOFs an cell
+      // Add patch solution to global storage
       for (std::size_t i = 0; i < ndofs_flux; ++i)
       {
-        // Set zero-order DOFs on facets
         x_flux_dhdiv[gdofs[i]] += coefficients_flux(id_a, i);
       }
     }
