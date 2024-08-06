@@ -24,18 +24,27 @@ import ufl
 from dolfinx_eqlb.eqlb import FluxEqlbEV, FluxEqlbSE
 
 from demo_reconstruction_poisson import (
-    create_unit_square_mesh,
+    MeshType,
+    BCType,
+    create_unit_square_builtin,
+    create_unit_square_gmesh,
     solve_primal_problem,
     equilibrate_flux,
 )
 
 # --- Input parameters ---
+# The mesh type
+mesh_type = MeshType.gmsh
+
 # The considered equilibration strategy
 Equilibrator = FluxEqlbSE
 
 # The orders of the FE spaces
-elmt_order_prime = 1
-elmt_order_eqlb = 1
+elmt_order_prime = 2
+elmt_order_eqlb = 3
+
+# The boundary conditions
+bc_type = BCType.neumann_inhom
 
 # The mesh resolution
 sdisc_nelmt_init = 1
@@ -102,6 +111,14 @@ def estimate_error(rhs_prime, u_prime, sig_eqlb):
 
 
 # --- Convergence study ---
+# Check input
+# TODO - Remove when EV is fixed
+if ((Equilibrator == FluxEqlbEV) and (mesh_type == MeshType.gmsh)) and (
+    bc_type == BCType.neumann_inhom
+):
+    raise ValueError("EV with inhomogeneous flux BCs currently not working")
+
+# Perform study
 error_norms = np.zeros((convstudy_nref, 11))
 
 for i in range(convstudy_nref):
@@ -110,15 +127,28 @@ for i in range(convstudy_nref):
     sdisc_nelmt = sdisc_nelmt_init * 2**i
 
     # Create mesh
-    domain, facet_tags, ds = create_unit_square_mesh(sdisc_nelmt)
+    if mesh_type == MeshType.builtin:
+        domain, facet_tags, ds = create_unit_square_builtin(sdisc_nelmt)
+    elif mesh_type == MeshType.gmsh:
+        domain, facet_tags, ds = create_unit_square_gmesh(1 / sdisc_nelmt)
+    else:
+        raise ValueError("Unknown mesh type")
 
     # --- Solve problem
     # Solve primal problem
-    uh_prime = solve_primal_problem(elmt_order_prime, domain, facet_tags, ds)
+    uh_prime = solve_primal_problem(
+        elmt_order_prime, domain, facet_tags, ds, bc_type=BCType.neumann_hom
+    )
 
     # Solve equilibration
     sigma_proj, sigma_eqlb = equilibrate_flux(
-        Equilibrator, elmt_order_prime, elmt_order_eqlb, domain, facet_tags, uh_prime
+        Equilibrator,
+        elmt_order_eqlb,
+        domain,
+        facet_tags,
+        uh_prime,
+        bc_type=BCType.dirichlet,
+        check_equilibration=False,
     )
 
     # ufl expression of the reconstructed flux
