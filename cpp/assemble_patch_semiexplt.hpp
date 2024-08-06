@@ -663,13 +663,6 @@ void assemble_fluxminimiser(kernel_fn<T, asmbl_systmtrx>& minimisation_kernel,
       }
     }
   }
-
-  std::cout << "L: "  << std::endl;
-  for (std::size_t i = 0; i < 9; ++i)
-  {
-    std::cout << L(i) << " ";
-  }
-  std::cout << "\n";
 }
 
 /// Assemble EQS for constrained stress minimisation

@@ -340,10 +340,7 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
 
     // Loop over all patches
     for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
-    // for (std::size_t i_node = 4; i_node < 5; ++i_node)
     {
-      std::cout << "Patch " << i_node << std::endl;
-
       // Create Sub-DOFmap
       patch.create_subdofmap(i_node);
 
