@@ -265,6 +265,7 @@ generate_stress_minimisation_kernel(Kernel type, KernelDataEqlb<T>& kernel_data,
          ndofs_flux_fct](mdspan_t<T, 2> Ae, mdspan_t<T, 2> Be, std::span<T> Ce,
                          std::span<T> Le, std::span<const T> coefficients,
                          smdspan_t<const std::int32_t, 2> asmbl_info,
+                         const std::uint8_t fct_eam1_reversed,
                          const double detJ, mdspan_t<const double, 2> J,
                          const bool assemble_A) mutable
   {
@@ -767,7 +768,7 @@ void assemble_stressminimiser(kernel_fn_schursolver<T>& minimisation_kernel,
       patch_data.reinitialise_Le();
 
       // Evaluate kernel
-      minimisation_kernel(Ae, Be, Ce, Le, coefficients, asmbl_info_cell, detJ,
+      minimisation_kernel(Ae, Be, Ce, Le, coefficients, asmbl_info_cell, 1, detJ,
                           J, true);
     }
     else
@@ -778,7 +779,7 @@ void assemble_stressminimiser(kernel_fn_schursolver<T>& minimisation_kernel,
       patch_data.reinitialise_Le();
 
       // Evaluate kernel
-      minimisation_kernel(Ae, Be, Ce, Le, coefficients, asmbl_info_cell, detJ,
+      minimisation_kernel(Ae, Be, Ce, Le, coefficients, asmbl_info_cell, 1, detJ,
                           J, false);
     }
 
