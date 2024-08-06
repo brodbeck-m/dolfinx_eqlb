@@ -79,8 +79,8 @@ generate_flux_minimisation_kernel(KernelDataEqlb<T>& kernel_data,
       = [kernel_data, ndofs_hdivzero_per_cell,
          ndofs_flux_fct](mdspan_t<T, 2> Te, std::span<const T> coefficients,
                          smdspan_t<const std::int32_t, 2> asmbl_info,
-                         const std::uint8_t fct_eam1_reversed, const double detJ,
-                         mdspan_t<const double, 2> J) mutable
+                         const std::uint8_t fct_eam1_reversed,
+                         const double detJ, mdspan_t<const double, 2> J) mutable
   {
     const int index_load = ndofs_hdivzero_per_cell;
 
@@ -120,38 +120,39 @@ generate_flux_minimisation_kernel(KernelDataEqlb<T>& kernel_data,
         sigtilde_q[1] += coefficients[i] * phi(iq, i, 1);
       }
 
+      // Transform shape functions in case of facet reversion
+      if (fct_eam1_reversed)
+      {
+        // Transform higher order shape functions on facet Ea
+        for (std::size_t i = 0; i < ndofs_flux_fct; ++i)
+        {
+          for (std::size_t j = 0; j < ndofs_flux_fct; ++j)
+          {
+            int ldj_Eam1 = asmbl_info(0, j);
+
+            gphi_Eam1(i, 0) += shapetrafo(i, j) * phi(iq, ldj_Eam1, 0);
+            gphi_Eam1(i, 1) += shapetrafo(i, j) * phi(iq, ldj_Eam1, 1);
+          }
+        }
+
+        // Write data into storage
+        for (std::size_t i = 0; i < ndofs_flux_fct; ++i)
+        {
+          int ldi_Eam1 = asmbl_info(0, i);
+
+          phi(iq, ldi_Eam1, 0) = gphi_Eam1(i, 0);
+          phi(iq, ldi_Eam1, 1) = gphi_Eam1(i, 1);
+        }
+
+        // Set intermediate storage to zero
+        std::fill(data_gphi_Eam1.begin(), data_gphi_Eam1.end(), 0);
+      }
+
       // Manipulate shape function for coefficient d_0
       phi(iq, ld0_Ea, 0)
           = p_Ea * (p_Eam1 * phi(iq, ld0_Eam1, 0) + p_Ea * phi(iq, ld0_Ea, 0));
       phi(iq, ld0_Ea, 1)
           = p_Ea * (p_Eam1 * phi(iq, ld0_Eam1, 1) + p_Ea * phi(iq, ld0_Ea, 1));
-
-      // Transform higher order shape functions
-      if (fct_eam1_reversed)
-      {
-        // Transform higher order shape functions on facet Ea
-        for (std::size_t i = 1; i < ndofs_flux_fct; ++i)
-        {
-          int it = ndofs_flux_fct - i - 1;
-
-          for (std::size_t j = 0; j < ndofs_flux_fct; ++j)
-          {
-            int ldj_Eam1 = asmbl_info(0, j);
-
-            gphi_Eam1(i, 0) += shapetrafo(it, j) * phi(iq, ldj_Eam1, 0);
-            gphi_Eam1(i, 1) += shapetrafo(it, j) * phi(iq, ldj_Eam1, 1);
-          }
-        }
-
-        // Write data into storage
-        for (std::size_t i = 1; i < ndofs_flux_fct; ++i)
-        {
-          int ldi_Eam1 = asmbl_info(0, ndofs_flux_fct + i);
-
-          phi(iq, ldi_Eam1, 0) = gphi_Eam1(i, 0);
-          phi(iq, ldi_Eam1, 1) = gphi_Eam1(i, 1);
-        }
-      }
 
       // Volume integrator
       double dvol = quadrature_weights[iq] * std::fabs(detJ);
@@ -567,7 +568,7 @@ void assemble_fluxminimiser(kernel_fn<T, asmbl_systmtrx>& minimisation_kernel,
     // Evaluate linear- and bilinear form
     patch_data.reinitialise_Te();
     minimisation_kernel(Te, coefficients, asmbl_info_cell,
-                        fct_reversion(id_a, 1), detJ, J);
+                        fct_reversion(id_a, 0), detJ, J);
 
     // Assemble linear- and bilinear form
     if constexpr (id_flux_order == 1)

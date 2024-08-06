@@ -337,56 +337,57 @@ public:
       // The cell id
       int id_a = a - 1;
 
-      // Local facet IDs
+      // The local facet IDs
       std::tie(fctloc_eam1, fctloc_ea) = fctid_local(a);
 
       // Prefactors
       if (storage_detJ[id_a] < 0)
       {
-        prefactor_eam1 = (facet_orientation[fctloc_eam1]) ? -1 : 1;
-        prefactor_ea = (facet_orientation[fctloc_ea]) ? -1 : 1;
+        if (facet_reversion(id_a, 0))
+        {
+          prefactor_eam1 = dofmap(3, a - 1, _ndof_flux_fct);
+        }
+        else
+        {
+          prefactor_eam1 = (facet_orientation[fctloc_eam1]) ? -1 : 1;
+        }
+
+        prefactor_ea = (facet_orientation[fctloc_ea]) ? 1 : -1;
       }
       else
       {
-        prefactor_eam1 = (facet_orientation[fctloc_eam1]) ? 1 : -1;
-        prefactor_ea = (facet_orientation[fctloc_ea]) ? 1 : -1;
+        if (facet_reversion(id_a, 0))
+        {
+          prefactor_eam1 = dofmap(3, a - 1, _ndof_flux_fct);
+        }
+        else
+        {
+          prefactor_eam1 = (facet_orientation[fctloc_eam1]) ? 1 : -1;
+        }
+
+        prefactor_ea = (facet_orientation[fctloc_ea]) ? -1 : 1;
       }
 
       /* Data to DOFmap */
-      // DOFs associated with d_0
-      dofmap(3, a, 0) = prefactor_eam1;
-      dofmap(3, a, _ndof_flux_fct) = -prefactor_ea;
-
-      // Higer order DOFs
-      if (facet_reversion(id_a, 0))
+      for (std::size_t i = 0; i < _ndof_flux_fct; ++i)
       {
-        prefactor_eam1 = 1.0;
-      }
-
-      if (facet_reversion(id_a, 1))
-      {
-        prefactor_ea = -1.0;
-      }
-
-      if constexpr (id_flux_order > 1)
-      {
-        dofmap(3, a, 1) = prefactor_eam1;
-        dofmap(3, a, _ndof_flux_fct + 1) = -prefactor_ea;
-
-        if constexpr (id_flux_order > 2)
-        {
-          for (std::size_t i = 2; i < _ndof_flux_fct; ++i)
-          {
-            dofmap(3, a, i) = prefactor_eam1;
-            dofmap(3, a, _ndof_flux_fct + i) = -prefactor_ea;
-          }
-        }
+        dofmap(3, a, i) = prefactor_eam1;
+        dofmap(3, a, _ndof_flux_fct + i) = prefactor_ea;
       }
     }
 
     // Complete DOFmap
     if (is_internal())
     {
+      if (facet_reversion(0, 0))
+      {
+        for (std::size_t i = 0; i < _ndof_flux_fct; ++i)
+        {
+          // DOFmap on T1, E0
+          dofmap(3, 1, i) = dofmap(3, _ncells, _ndof_flux_fct + i);
+        }
+      }
+
       // Set DOFmap on cell 0
       for (std::size_t ii = 0; ii < dofmap.extent(2); ++ii)
       {
@@ -397,6 +398,15 @@ public:
         dofmap(3, _ncells + 1, ii) = dofmap(3, 1, ii);
       }
     }
+
+    // for (std::int32_t a = 0; a < _ncells + 2; ++a)
+    // {
+    //   for (std::size_t i = 0; i < dofmap.extent(2); ++i)
+    //   {
+    //     std::cout << dofmap(3, a, i) << " ";
+    //   }
+    //   std::cout << "\n";
+    // }
   }
 
   /* Overload functions from base-class */

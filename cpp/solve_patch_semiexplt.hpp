@@ -977,34 +977,6 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
     mdspan_t<const double, 2> doftrafo
         = kernel_data.entity_transformations_flux();
 
-    // for (std::int32_t a = 0; a < ncells + 2; ++a)
-    // {
-    //   std::cout << "Cell a=" << a << ": " << cells[a] << std::endl;
-    //   std::cout << "Prefactors: " << std::endl;
-    //   for (std::size_t i = 0; i < ndofs_hdivz_per_cell; ++i)
-    //   {
-    //     std::cout << dofmap_flux(3, a, i) << " ";
-    //   }
-    //   std::cout << "\n";
-
-    //   std::cout << "Solution: " << std::endl;
-    //   for (std::size_t i = 0; i < ndofs_hdivz_per_cell; ++i)
-    //   {
-    //     std::cout << u_sigma(dofmap_flux(2, a, i)) << " ";
-    //   }
-    //   std::cout << "\n";
-    // }
-
-    // std::cout << "Trafo shape-function: " << std::endl;
-    // for (std::size_t i = 0; i < ndofs_flux_fct; ++i)
-    // {
-    //   for (std::size_t j = 0; j < ndofs_flux_fct; ++j)
-    //   {
-    //     std::cout << doftrafo(i, j) << " ";
-    //   }
-    //   std::cout << "\n";
-    // }
-
     // Move cell contributions
     for (std::int32_t a = 1; a < ncells + 1; ++a)
     {
@@ -1014,60 +986,49 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
       // Global DOFs
       std::span<const std::int32_t> gdofs = flux_dofmap.links(cells[a]);
 
-      // // DEBUG
-      // for (std::size_t i = 0; i < ndofs_flux; ++i)
-      // {
-      //   // Set zero-order DOFs on facets
-      //   coefficients_flux(id_a, i) = 0.0;
-      // }
-
       // Map solution from H(div=0) to H(div) space
       if constexpr (id_flux_order == 1)
       {
-        // Apply correction
-        coefficients_flux(id_a, dofmap_flux(0, a, 0))
-            += dofmap_flux(3, a, 0) * u_sigma(dofmap_flux(2, a, 0));
+        if (reversed_fct(id_a, 0))
+        {
+          coefficients_flux(id_a, dofmap_flux(0, a, 0))
+              += doftrafo(0, 0) * dofmap_flux(3, a, 0)
+                 * u_sigma(dofmap_flux(2, a, 0));
+        }
+        else
+        {
+          coefficients_flux(id_a, dofmap_flux(0, a, 0))
+              += dofmap_flux(3, a, 0) * u_sigma(dofmap_flux(2, a, 0));
+        }
+
         coefficients_flux(id_a, dofmap_flux(0, a, 1))
-            += dofmap_flux(3, a, 1) * u_sigma(dofmap_flux(2, a, 0));
+            += dofmap_flux(3, a, 1) * u_sigma(dofmap_flux(2, a, 1));
       }
       else
       {
-        // std::cout << "Cell a=" << a << ": " << cells[a] << std::endl;
         if (reversed_fct(id_a, 0))
         {
-          // Backward transformation of (higher order) DOFs on facet Eam1
-          coefficients_flux(id_a, dofmap_flux(0, a, 0))
-              += dofmap_flux(3, a, 0) * u_sigma(dofmap_flux(2, a, 0));
-
-          for (std::size_t i = 1; i < ndofs_flux_fct; ++i)
+          // DOFs on reversed facet
+          for (std::size_t i = 0; i < ndofs_flux_fct; ++i)
           {
+            // Transform DOF into cell-local DOFs
             T local_value = 0.0;
 
             for (std::size_t j = 0; j < ndofs_flux_fct; ++j)
             {
-              // std::cout << "a, trafo, pf, dof, i, j: " << a << ", "
-              //           << doftrafo(j, i) << ", "
-              //           << dofmap_flux(3, a - 1, ndofs_flux_fct + j) << ", "
-              //           << u_sigma(dofmap_flux(2, a, j)) << ", " <<
-              //           unsigned(i)
-              //           << ", " << unsigned(ndofs_flux_fct + j) << std::endl;
-
-              T pf_j
-                  = doftrafo(j, i) * dofmap_flux(3, a - 1, ndofs_flux_fct + j);
+              T pf_j = doftrafo(j, i) * dofmap_flux(3, a, j);
               local_value += pf_j * u_sigma(dofmap_flux(2, a, j));
             }
 
-            // std::cout << "Transformed DOF: " << local_value << std::endl;
+            // Add DOF to coefficients
             coefficients_flux(id_a, dofmap_flux(0, a, i)) += local_value;
           }
 
-          // Add remaining DOFs
+          // Remaining DOFs
           for (std::size_t i = ndofs_flux_fct; i < ndofs_hdivz_per_cell; ++i)
           {
             coefficients_flux(id_a, dofmap_flux(0, a, i))
                 += dofmap_flux(3, a, i) * u_sigma(dofmap_flux(2, a, i));
-            // std::cout << "a, pf, dof: " << a << ", " << dofmap_flux(3, a, i)
-            //           << ", " << u_sigma(dofmap_flux(2, a, i)) << std::endl;
           }
         }
         else
@@ -1076,9 +1037,6 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
           {
             coefficients_flux(id_a, dofmap_flux(0, a, i))
                 += dofmap_flux(3, a, i) * u_sigma(dofmap_flux(2, a, i));
-            // std::cout << "NoMod --> a, pf, dof: " << a << ", "
-            //           << dofmap_flux(3, a, i) << ", "
-            //           << u_sigma(dofmap_flux(2, a, i)) << std::endl;
           }
         }
       }
