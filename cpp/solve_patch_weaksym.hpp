@@ -159,6 +159,10 @@ void impose_weak_symmetry(const mesh::Geometry& geometry,
   // The patch solution
   Eigen::Matrix<T, Eigen::Dynamic, 1>& u_patch = patch_data.vector_u_sigma();
 
+  // DOF transformation data
+  mdspan_t<const double, 2> doftrafo
+      = kernel_data.entity_transformations_flux();
+
   // Move solution from patch-wise into global storage
   for (std::size_t i = 0; i < gdim; ++i)
   {
@@ -168,13 +172,36 @@ void impose_weak_symmetry(const mesh::Geometry& geometry,
     // Initialise offset
     int offset_u = i * ndofs_hdivz;
 
-    // Loop over cells
     for (std::int32_t a = 1; a < ncells + 1; ++a)
     {
-      // Map solution from H(div=0) to H(div) space
-      for (std::size_t j = 0; j < ndofs_hdivz_per_cell; ++j)
+      // Start of general loop over cell DOFs
+      std::size_t start_j = 0;
+
+      // Loop over DOFs on reversed facet
+      if (reversed_fct(a - 1, 0))
       {
-        // Local to global storage
+        // DOFs on reversed facet
+        for (std::size_t j = 0; j < ndofs_flux_fct; ++j)
+        {
+          // Transform global- into cell-local DOFs
+          T local_value = 0.0;
+
+          for (std::size_t k = 0; k < ndofs_flux_fct; ++k)
+          {
+            T pf_k = doftrafo(k, j) * asmbl_info(3, a, k);
+            local_value += pf_k * u_patch(offset_u + asmbl_info(2, a, k));
+          }
+
+          x_stress[asmbl_info(1, a, j)] += local_value;
+        }
+
+        // Modify start index of general loop over DOFs
+        start_j = ndofs_flux_fct;
+      }
+
+      // General loop over cell DOFs
+      for (std::size_t j = start_j; j < ndofs_hdivz_per_cell; ++j)
+      {
         x_stress[asmbl_info(1, a, j)]
             += asmbl_info(3, a, j) * u_patch(offset_u + asmbl_info(2, a, j));
       }

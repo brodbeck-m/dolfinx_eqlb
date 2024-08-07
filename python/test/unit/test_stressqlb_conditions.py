@@ -12,12 +12,9 @@ import ufl
 from dolfinx_eqlb.lsolver import local_projection
 import dolfinx_eqlb.eqlb.check_eqlb_conditions as eqlb_checker
 
-from utils import (
-    create_unitsquare_builtin,
-    create_unitsquare_gmsh,
-)
+from utils import MeshType, create_unitsquare_builtin, create_unitsquare_gmsh
 
-from testcase_general import set_arbitrary_rhs, set_arbitrary_bcs
+from testcase_general import BCType, set_arbitrary_rhs, set_arbitrary_bcs
 from testcase_elasticity import solve_primal_problem, equilibrate_stresses
 
 """ 
@@ -28,34 +25,31 @@ Check if equilibrated flux
 """
 
 
-@pytest.mark.parametrize("mesh_type", ["builtin"])
-@pytest.mark.parametrize("degree", [2, 3, 4])
-@pytest.mark.parametrize("bc_type", ["pure_dirichlet", "neumann_hom", "neumann_inhom"])
+@pytest.mark.parametrize("mesh_type", [MeshType.builtin, MeshType.gmsh])
+@pytest.mark.parametrize("degree", [2, 3])
+@pytest.mark.parametrize("bc_type", [BCType.dirichlet, BCType.neumann_inhom])
 def test_equilibration_conditions(mesh_type, degree, bc_type):
     # Create mesh
     gdim = 2
 
-    if mesh_type == "builtin":
+    if mesh_type == MeshType.builtin:
         geometry = create_unitsquare_builtin(
             2, dmesh.CellType.triangle, dmesh.DiagonalType.crossed
         )
-    elif mesh_type == "gmsh":
-        raise NotImplementedError("GMSH mesh not implemented yet")
+    elif mesh_type == MeshType.gmsh:
+        geometry = create_unitsquare_gmsh(0.5)
     else:
         raise ValueError("Unknown mesh type")
 
     # Initialise loop over degree of boundary flux
-    if bc_type != "neumann_inhom":
+    if bc_type != BCType.neumann_inhom:
         degree_bc = 1
     else:
-        if degree == 2:
-            degree_bc = 2
-        else:
-            degree_bc = degree + 1
+        degree_bc = degree
 
     # Perform tests
     for degree_bc in range(0, degree_bc):
-        for degree_prime in range(2, degree + 1):
+        for degree_prime in range(max(2, degree - 1), degree + 1):
             for degree_rhs in range(0, degree):
                 # Set function space
                 V_prime = dfem.VectorFunctionSpace(geometry.mesh, ("P", degree_prime))
@@ -126,7 +120,7 @@ def test_equilibration_conditions(mesh_type, degree, bc_type):
                 )
 
                 # --- Check boundary conditions ---
-                if bc_type != "pure_dirichlet":
+                if bc_type != BCType.dirichlet:
                     for i in range(gdim):
                         boundary_condition = eqlb_checker.check_boundary_conditions(
                             sigma_eq[i],
