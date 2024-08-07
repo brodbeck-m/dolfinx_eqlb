@@ -14,6 +14,7 @@ from dolfinx_eqlb.lsolver import local_projection
 from dolfinx_eqlb.eqlb import fluxbc, boundarydata
 
 from utils import (
+    MeshType,
     create_unitsquare_builtin,
     create_unitsquare_gmsh,
     points_boundary_unitsquare,
@@ -26,7 +27,7 @@ from utils import (
 """
 
 
-@pytest.mark.parametrize("mesh_type", ["builtin", "gmsh"])
+@pytest.mark.parametrize("mesh_type", [MeshType.builtin, MeshType.gmsh])
 @pytest.mark.parametrize("degree", [1, 2, 3, 4])
 @pytest.mark.parametrize("rt_space", ["basix", "custom", "subspace"])
 @pytest.mark.parametrize("use_projection", [False, True])
@@ -34,11 +35,11 @@ def test_boundary_data_polynomial(mesh_type, degree, rt_space, use_projection):
     # Create mesh
     n_cells = 5
 
-    if mesh_type == "builtin":
+    if mesh_type == MeshType.builtin:
         geometry = create_unitsquare_builtin(
             n_cells, dmesh.CellType.triangle, dmesh.DiagonalType.crossed
         )
-    elif mesh_type == "gmsh":
+    elif mesh_type == MeshType.gmsh:
         geometry = create_unitsquare_gmsh(0.5)
     else:
         raise ValueError("Unknown mesh type")
@@ -166,18 +167,18 @@ def test_boundary_data_polynomial(mesh_type, degree, rt_space, use_projection):
         assert np.allclose(val_bfunc[npoints_eval:, 1], val_ref[npoints_eval:, 1])
 
 
-@pytest.mark.parametrize("mesh_type", ["builtin", "gmsh"])
+@pytest.mark.parametrize("mesh_type", [MeshType.builtin, MeshType.gmsh])
 @pytest.mark.parametrize("degree", [1, 2, 3, 4])
 def test_boundary_data_general(mesh_type, degree):
     # --- Calculate boundary conditions (2D)
     # Create mesh
     n_cells = 5
 
-    if mesh_type == "builtin":
+    if mesh_type == MeshType.builtin:
         geometry = create_unitsquare_builtin(
             n_cells, dmesh.CellType.triangle, dmesh.DiagonalType.crossed
         )
-    elif mesh_type == "gmsh":
+    elif mesh_type == MeshType.gmsh:
         geometry = create_unitsquare_gmsh(1 / n_cells)
     else:
         raise ValueError("Unknown mesh type")

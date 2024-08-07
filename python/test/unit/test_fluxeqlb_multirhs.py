@@ -1,5 +1,6 @@
 import numpy as np
 import pytest
+import typing
 
 import dolfinx.mesh as dmesh
 import dolfinx.fem as dfem
@@ -8,9 +9,9 @@ from dolfinx_eqlb.eqlb import FluxEqlbEV, FluxEqlbSE
 import dolfinx_eqlb.eqlb.check_eqlb_conditions as eqlb_checker
 
 
-from utils import create_unitsquare_builtin, create_unitsquare_gmsh
+from utils import MeshType, create_unitsquare_builtin, create_unitsquare_gmsh
 
-from testcase_general import set_arbitrary_rhs, set_arbitrary_bcs
+from testcase_general import BCType, set_arbitrary_rhs, set_arbitrary_bcs
 from testcase_poisson import solve_primal_problem, equilibrate_fluxes
 
 """ 
@@ -19,13 +20,18 @@ Check flux equilibration for multiple RHS
 
 
 # --- The test routine ---
-def equilibrate_multi_rhs(mesh_type, degree, bc_type, equilibrator):
+def equilibrate_multi_rhs(
+    mesh_type: MeshType,
+    degree: int,
+    bc_type: BCType,
+    equilibrator: typing.Union[FluxEqlbEV, FluxEqlbSE],
+):
     # Create mesh
-    if mesh_type == "builtin":
+    if mesh_type == MeshType.builtin:
         geometry = create_unitsquare_builtin(
             2, dmesh.CellType.triangle, dmesh.DiagonalType.crossed
         )
-    elif mesh_type == "gmsh":
+    elif mesh_type == MeshType.gmsh:
         geometry = create_unitsquare_gmsh(0.5)
     else:
         raise ValueError("Unknown mesh type")
@@ -166,17 +172,17 @@ def equilibrate_multi_rhs(mesh_type, degree, bc_type, equilibrator):
 
 # --- Test equilibration strategy by Ern and Vohralik
 # TODO - Fix inhom. Neumann BCs on general meshes
-@pytest.mark.parametrize("mesh_type", ["builtin", "gmsh"])
+@pytest.mark.parametrize("mesh_type", [MeshType.builtin, MeshType.gmsh])
 @pytest.mark.parametrize("degree", [1, 2, 3, 4])
 def test_ern_and_vohralik_mrhs(mesh_type, degree):
-    equilibrate_multi_rhs(mesh_type, degree, "neumann_hom", FluxEqlbEV)
+    equilibrate_multi_rhs(mesh_type, degree, BCType.neumann_hom, FluxEqlbEV)
 
 
 # --- Test semi-explicit equilibration strategy
-@pytest.mark.parametrize("mesh_type", ["builtin", "gmsh"])
+@pytest.mark.parametrize("mesh_type", [MeshType.builtin, MeshType.gmsh])
 @pytest.mark.parametrize("degree", [1, 2, 3, 4])
 def test_semi_explicit_mrhs(mesh_type, degree):
-    equilibrate_multi_rhs(mesh_type, degree, "neumann_inhom", FluxEqlbSE)
+    equilibrate_multi_rhs(mesh_type, degree, BCType.neumann_inhom, FluxEqlbSE)
 
 
 if __name__ == "__main__":
