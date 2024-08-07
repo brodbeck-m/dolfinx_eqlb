@@ -125,6 +125,10 @@ void impose_weak_symmetry(const mesh::Geometry& geometry,
   mdspan_t<const std::int32_t, 3> asmbl_info
       = patch.assembly_info_minimisation();
 
+  // Marker for reversed facets
+  mdspan_t<std::uint8_t, 2> reversed_fct
+      = patch_data.reversed_facets_per_cell();
+
   // Set boundary markers
   if (patch.is_on_boundary())
   {
@@ -136,12 +140,12 @@ void impose_weak_symmetry(const mesh::Geometry& geometry,
   if (requires_bcs)
   {
     assemble_stressminimiser<T, id_flux_order, true>(kernel, patch_data,
-                                                     asmbl_info);
+                                                     asmbl_info, reversed_fct);
   }
   else
   {
     assemble_stressminimiser<T, id_flux_order, false>(kernel, patch_data,
-                                                      asmbl_info);
+                                                      asmbl_info, reversed_fct);
   }
 
   // Solve equation system
