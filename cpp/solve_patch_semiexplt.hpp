@@ -1006,6 +1006,10 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
       }
       else
       {
+        // Start of general loop over cell DOFs
+        std::size_t start_i = 0;
+
+        // Loop over DOFs on reversed facet
         if (reversed_fct(id_a, 0))
         {
           // DOFs on reversed facet
@@ -1024,27 +1028,21 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
             coefficients_flux(id_a, dofmap_flux(0, a, i)) += local_value;
           }
 
-          // Remaining DOFs
-          for (std::size_t i = ndofs_flux_fct; i < ndofs_hdivz_per_cell; ++i)
-          {
-            coefficients_flux(id_a, dofmap_flux(0, a, i))
-                += dofmap_flux(3, a, i) * u_sigma(dofmap_flux(2, a, i));
-          }
+          // Modify start index of general loop over DOFs
+          start_i = ndofs_flux_fct;
         }
-        else
+
+        // General loop over cell DOFs
+        for (std::size_t i = start_i; i < ndofs_hdivz_per_cell; ++i)
         {
-          for (std::size_t i = 0; i < ndofs_hdivz_per_cell; ++i)
-          {
-            coefficients_flux(id_a, dofmap_flux(0, a, i))
-                += dofmap_flux(3, a, i) * u_sigma(dofmap_flux(2, a, i));
-          }
+          coefficients_flux(id_a, dofmap_flux(0, a, i))
+              += dofmap_flux(3, a, i) * u_sigma(dofmap_flux(2, a, i));
         }
       }
 
-      // Loop over DOFs an cell
+      // Add patch solution to global storage
       for (std::size_t i = 0; i < ndofs_flux; ++i)
       {
-        // Set zero-order DOFs on facets
         x_flux_dhdiv[gdofs[i]] += coefficients_flux(id_a, i);
       }
     }

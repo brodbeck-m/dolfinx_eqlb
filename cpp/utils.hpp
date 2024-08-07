@@ -51,8 +51,8 @@ using kernel_fn_schursolver = std::function<void(
     std::span<T>, std::span<const T>,
     stdex::mdspan<const std::int32_t, stdex::dextents<std::size_t, 2>,
                   stdex::layout_stride>,
-    const double, stdex::mdspan<const double, stdex::dextents<std::size_t, 2>>,
-    const bool)>;
+    const std::uint8_t, const double,
+    stdex::mdspan<const double, stdex::dextents<std::size_t, 2>>, const bool)>;
 
 // ------------------------------------------------------------------------------
 

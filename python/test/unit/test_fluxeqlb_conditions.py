@@ -1,5 +1,6 @@
 # --- Import ---
 import pytest
+import typing
 
 import dolfinx.mesh as dmesh
 import dolfinx.fem as dfem
@@ -7,9 +8,9 @@ import dolfinx.fem as dfem
 from dolfinx_eqlb.eqlb import FluxEqlbEV, FluxEqlbSE
 import dolfinx_eqlb.eqlb.check_eqlb_conditions as eqlb_checker
 
-from utils import create_unitsquare_builtin, create_unitsquare_gmsh
+from utils import MeshType, create_unitsquare_builtin, create_unitsquare_gmsh
 
-from testcase_general import set_arbitrary_rhs, set_arbitrary_bcs
+from testcase_general import BCType, set_arbitrary_rhs, set_arbitrary_bcs
 from testcase_poisson import solve_primal_problem, equilibrate_fluxes
 
 
@@ -22,25 +23,27 @@ Check if equilibrated flux
 
 
 # --- The test routine ---
-def equilibrate_flux(mesh_type, degree, bc_type, equilibrator):
+def equilibrate_flux(
+    mesh_type: MeshType,
+    degree: int,
+    bc_type: BCType,
+    equilibrator: typing.Union[FluxEqlbEV, FluxEqlbSE],
+):
     # Create mesh
-    if mesh_type == "builtin":
+    if mesh_type == MeshType.builtin:
         geometry = create_unitsquare_builtin(
             2, dmesh.CellType.triangle, dmesh.DiagonalType.crossed
         )
-    elif mesh_type == "gmsh":
+    elif mesh_type == MeshType.gmsh:
         geometry = create_unitsquare_gmsh(0.5)
     else:
         raise ValueError("Unknown mesh type")
 
     # Initialise loop over degree of boundary flux
-    if bc_type != "neumann_inhom":
+    if bc_type != BCType.neumann_inhom:
         degree_bc = 1
     else:
-        if degree == 1:
-            degree_bc = degree
-        else:
-            degree_bc = degree + 1
+        degree_bc = degree
 
     # Perform tests
     for degree_bc in range(0, degree_bc):
@@ -95,7 +98,7 @@ def equilibrate_flux(mesh_type, degree, bc_type, equilibrator):
                 )
 
                 # --- Check boundary conditions ---
-                if bc_type != "pure_dirichlet":
+                if bc_type != BCType.dirichlet:
                     boundary_condition = eqlb_checker.check_boundary_conditions(
                         sigma_eq[0],
                         sigma_projected,
@@ -127,17 +130,17 @@ def equilibrate_flux(mesh_type, degree, bc_type, equilibrator):
 
 # --- Test equilibration strategy by Ern and Vohralik
 # TODO - Fix inhom. Neumann BCs on general meshes
-@pytest.mark.parametrize("mesh_type", ["builtin", "gmsh"])
+@pytest.mark.parametrize("mesh_type", [MeshType.builtin, MeshType.gmsh])
 @pytest.mark.parametrize("degree", [1, 2, 3])
-@pytest.mark.parametrize("bc_type", ["neumann_hom"])
+@pytest.mark.parametrize("bc_type", [BCType.neumann_hom])
 def test_ern_and_vohralik(mesh_type, degree, bc_type):
     equilibrate_flux(mesh_type, degree, bc_type, FluxEqlbEV)
 
 
 # --- Test semi-explicit equilibration strategy
-@pytest.mark.parametrize("mesh_type", ["builtin", "gmsh"])
+@pytest.mark.parametrize("mesh_type", [MeshType.builtin, MeshType.gmsh])
 @pytest.mark.parametrize("degree", [1, 2, 3])
-@pytest.mark.parametrize("bc_type", ["neumann_inhom"])
+@pytest.mark.parametrize("bc_type", [BCType.neumann_inhom])
 def test_semi_explicit(mesh_type, degree, bc_type):
     equilibrate_flux(mesh_type, degree, bc_type, FluxEqlbSE)
 

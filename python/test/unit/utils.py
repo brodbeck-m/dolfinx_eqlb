@@ -1,4 +1,5 @@
 # --- Includes ---
+from enum import Enum
 import gmsh
 import numpy as np
 from mpi4py import MPI
@@ -18,6 +19,11 @@ from dolfinx_eqlb.eqlb import check_eqlb_conditions
 """
 Mesh generation
 """
+
+
+class MeshType(Enum):
+    builtin = 0
+    gmsh = 1
 
 
 class Geometry:
@@ -183,10 +189,6 @@ def create_unitsquare_gmsh(hmin: float) -> Geometry:
     ds = ufl.Measure("ds", domain=domain, subdomain_data=facet_function)
 
     return Geometry(domain, facet_function, ds)
-
-
-def create_quatercircle_gmsh():
-    raise NotImplementedError("Not implemented yet")
 
 
 """
