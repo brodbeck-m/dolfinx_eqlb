@@ -895,5 +895,11 @@ void assemble_stressminimiser(kernel_fn_schursolver<T>& minimisation_kernel,
       }
     }
   }
+
+  for (auto v : L)
+  {
+    std::cout << v << " ";
+  }
+  std::cout << "\n";
 }
 } // namespace dolfinx_eqlb

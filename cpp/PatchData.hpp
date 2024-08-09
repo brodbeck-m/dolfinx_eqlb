@@ -196,8 +196,7 @@ public:
     }
 
     // Identitier for reversed facets
-    std::fill_n(_data_reversedfct_cell.begin(), _gdim * ncells,
-              false);
+    std::fill_n(_data_reversedfct_cell.begin(), _gdim * ncells, false);
 
     // --- Update length of mdspans
     _shape_Mm[0] = ncells;
@@ -598,6 +597,16 @@ public:
 
         // Factorise A
         factorise_matrix_A();
+
+        std::cout << "Matrix A k=" << k << ": " << std::endl;
+        for (std::size_t m1 = 0; m1 < _dim_hdivz; ++m1)
+        {
+          for (std::size_t m2 = 0; m2 < _dim_hdivz; ++m2)
+          {
+            std::cout << _A(m1, m2) << " ";
+          }
+          std::cout << "\n";
+        }
       }
 
       // Compute invers(A) * B_k
@@ -642,6 +651,13 @@ public:
       _u_sigma.segment(offset_uk, _dim_hdivz)
           = _solver_A.solve(-_B.block(0, offset_Bk, _dim_hdivz, _dim_constr)
                             * _u_c.head(_dim_constr));
+
+      std::cout << "u_k=" << k << ": " << std::endl;
+      for (std::size_t m = 0; m < _dim_hdivz; ++m)
+      {
+        std::cout << _u_sigma(offset_uk + m) << " ";
+      }
+      std::cout << "\n";
     }
   }
 
@@ -717,6 +733,7 @@ protected:
   /// @param subspace_k Id of the row of the stress tensor
   void apply_bcs_on_A(int subspace_k)
   {
+    _A.setZero();
     const int offset_uk = subspace_k * _dim_hdivz;
 
     for (std::size_t i = 0; i < _dim_hdivz; ++i)

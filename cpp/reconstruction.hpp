@@ -271,6 +271,8 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
               // Patch-central node
               const std::int32_t node_i = grouped_patches[i];
 
+              std::cout << "Patch: " << node_i << std::endl;
+
               // Check if patch has already been considered
               if (!perform_equilibration[node_i])
               {
@@ -308,6 +310,8 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
     {
       if (perform_equilibration[i_node])
       {
+        std::cout << "Patch: " << i_node << std::endl;
+
         // Set marker for patch
         perform_equilibration[i_node] = false;
 
