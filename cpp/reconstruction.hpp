@@ -307,6 +307,7 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
 
     // Loop over all other patches
     for (std::size_t i_node = 0; i_node < n_nodes; ++i_node)
+    // for (std::size_t i_node = 1; i_node < 2; ++i_node)
     {
       if (perform_equilibration[i_node])
       {
@@ -318,7 +319,28 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
         // Create Sub-DOFmap
         patch.create_subdofmap(i_node);
 
+        for (auto type : patch.type())
+        {
+          if (type == PatchType::internal)
+          {
+            std::cout << "Internal patch" << std::endl;
+          }
+          else if (type == PatchType::bound_essnt_primal)
+          {
+            std::cout << "Patch with pure dirichlet" << std::endl;
+          }
+          else if (type == PatchType::bound_essnt_dual)
+          {
+            std::cout << "Patch with pure neumann" << std::endl;
+          }
+          else
+          {
+            std::cout << "Patch with mixed boundary" << std::endl;
+          }
+        }
+
         // Reinitialise patch-data
+        std::cout << "Call reinitialisation" << std::endl;
         patch_data.reinitialisation(patch.type(), patch.ncells());
 
         // Calculate solution patch

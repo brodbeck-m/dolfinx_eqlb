@@ -189,7 +189,8 @@ public:
         }
       }
 
-      if (condition_count == _gdim)
+      // if (condition_count == _gdim)
+      if (condition_count > 0)
       {
         _meanvalue_condition_required = false;
       }
