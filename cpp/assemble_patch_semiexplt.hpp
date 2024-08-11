@@ -735,15 +735,6 @@ void assemble_stressminimiser(kernel_fn_schursolver<T>& minimisation_kernel,
   // Check if Lagrange multiplier is required
   const bool requires_lagrmp = patch_data.meanvalue_zero_condition_required();
 
-  if (requires_lagrmp)
-  {
-    std::cout << "Lagrange multiplier used" << std::endl;
-  }
-  else
-  {
-    std::cout << "Lagrange multiplier not used" << std::endl;
-  }
-
   // Tangent storage
   mdspan_t<T, 2> Ae = patch_data.Ae();
   mdspan_t<T, 2> Be = patch_data.Be();
@@ -904,11 +895,5 @@ void assemble_stressminimiser(kernel_fn_schursolver<T>& minimisation_kernel,
       }
     }
   }
-
-  for (auto v : L)
-  {
-    std::cout << v << " ";
-  }
-  std::cout << "\n";
 }
 } // namespace dolfinx_eqlb

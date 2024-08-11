@@ -134,15 +134,6 @@ void impose_weak_symmetry(const mesh::Geometry& geometry,
   {
     set_boundary_markers(patch_data.boundary_markers(true), patch_types,
                          patch_reversions, ncells, ndofs_hdivz, ndofs_flux_fct);
-
-    std::cout << "Boundary markers: " << std::endl;
-    std::span<const std::int8_t> tdata = patch_data.boundary_markers(true);
-
-    for (auto m : tdata)
-    {
-      std::cout << unsigned(m) << " ";
-    }
-    std::cout << "\n";
   }
 
   // Assemble equation system
@@ -216,36 +207,6 @@ void impose_weak_symmetry(const mesh::Geometry& geometry,
             += asmbl_info(3, a, j) * u_patch(offset_u + asmbl_info(2, a, j));
       }
     }
-  }
-
-  // DEBUG
-  for (std::size_t i_row = 0; i_row < gdim; ++i_row)
-  {
-    int offset_u = i_row * ndofs_hdivz;
-
-    for (std::size_t a = 1; a < ncells + 1; ++a)
-    {
-      // Move coefficients to flattened storage
-      std::span<T> coeffs = patch_data.coefficients_stress(i_row, a);
-
-      for (std::size_t j = 0; j < ndofs_hdivz_per_cell; ++j)
-      {
-        coeffs[asmbl_info(0, a, j)]
-            += asmbl_info(3, a, j) * u_patch(offset_u + asmbl_info(2, a, j));
-      }
-    }
-  }
-
-  std::cout << "L_Debug: " << std::endl;
-  if (requires_bcs)
-  {
-    assemble_stressminimiser<T, id_flux_order, true>(kernel, patch_data,
-                                                     asmbl_info, reversed_fct);
-  }
-  else
-  {
-    assemble_stressminimiser<T, id_flux_order, false>(kernel, patch_data,
-                                                      asmbl_info, reversed_fct);
   }
 }
 } // namespace dolfinx_eqlb
