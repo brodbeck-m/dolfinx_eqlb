@@ -1,6 +1,5 @@
 import numpy as np
 import pytest
-import typing
 
 import dolfinx.mesh as dmesh
 import dolfinx.fem as dfem
@@ -9,9 +8,11 @@ from dolfinx_eqlb.eqlb import FluxEqlbEV, FluxEqlbSE
 import dolfinx_eqlb.eqlb.check_eqlb_conditions as eqlb_checker
 
 
-from utils import MeshType, create_unitsquare_builtin, create_unitsquare_gmsh
+from utils import (
+    create_unitsquare_builtin,
+)
 
-from testcase_general import BCType, set_arbitrary_rhs, set_arbitrary_bcs
+from testcase_general import set_arbitrary_rhs, set_arbitrary_bcs
 from testcase_poisson import solve_primal_problem, equilibrate_fluxes
 
 """ 
@@ -19,22 +20,13 @@ Check flux equilibration for multiple RHS
 """
 
 
-# --- The test routine ---
-def equilibrate_multi_rhs(
-    mesh_type: MeshType,
-    degree: int,
-    bc_type: BCType,
-    equilibrator: typing.Union[FluxEqlbEV, FluxEqlbSE],
-):
+@pytest.mark.parametrize("degree", [1, 2, 3, 4])
+@pytest.mark.parametrize("equilibrator", [FluxEqlbEV, FluxEqlbSE])
+def test_equilibration_multi_rhs(degree, equilibrator):
     # Create mesh
-    if mesh_type == MeshType.builtin:
-        geometry = create_unitsquare_builtin(
-            2, dmesh.CellType.triangle, dmesh.DiagonalType.crossed
-        )
-    elif mesh_type == MeshType.gmsh:
-        geometry = create_unitsquare_gmsh(0.5)
-    else:
-        raise ValueError("Unknown mesh type")
+    geometry = create_unitsquare_builtin(
+        2, dmesh.CellType.triangle, dmesh.DiagonalType.crossed
+    )
 
     # Set function space primal problem
     V_prime = dfem.FunctionSpace(geometry.mesh, ("P", degree))
@@ -73,7 +65,7 @@ def equilibrate_multi_rhs(
             neumann_functions,
             neumann_projection,
         ) = set_arbitrary_bcs(
-            bc_type, V_prime, degree, degree_bc=(degree - 1), neumann_ids=bids
+            "neumann_inhom", V_prime, degree, degree_bc=(degree - 1), neumann_ids=bids
         )
 
         list_bound_id_neumann.append(boundary_id_neumann)
@@ -168,21 +160,6 @@ def equilibrate_multi_rhs(
 
             if not jump_condition:
                 raise ValueError("Jump conditions not fulfilled")
-
-
-# --- Test equilibration strategy by Ern and Vohralik
-# TODO - Fix inhom. Neumann BCs on general meshes
-@pytest.mark.parametrize("mesh_type", [MeshType.builtin, MeshType.gmsh])
-@pytest.mark.parametrize("degree", [1, 2, 3, 4])
-def test_ern_and_vohralik_mrhs(mesh_type, degree):
-    equilibrate_multi_rhs(mesh_type, degree, BCType.neumann_hom, FluxEqlbEV)
-
-
-# --- Test semi-explicit equilibration strategy
-@pytest.mark.parametrize("mesh_type", [MeshType.builtin, MeshType.gmsh])
-@pytest.mark.parametrize("degree", [1, 2, 3, 4])
-def test_semi_explicit_mrhs(mesh_type, degree):
-    equilibrate_multi_rhs(mesh_type, degree, BCType.neumann_inhom, FluxEqlbSE)
 
 
 if __name__ == "__main__":

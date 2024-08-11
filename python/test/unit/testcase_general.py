@@ -1,5 +1,4 @@
 # --- Includes ---
-from enum import Enum
 import numpy as np
 from petsc4py import PETSc
 import typing
@@ -144,14 +143,8 @@ def set_manufactured_rhs(
 
 
 # --- Set boundary conditions
-class BCType(Enum):
-    dirichlet = 0
-    neumann_hom = 1
-    neumann_inhom = 2
-
-
 def set_arbitrary_bcs(
-    bc_type: BCType,
+    bc_type: str,
     V_prime: dfem.FunctionSpace,
     degree_flux: int,
     degree_bc: int = 0,
@@ -163,7 +156,8 @@ def set_arbitrary_bcs(
          1.) Dirichlet BCs for primal problem are homogenous.
 
     Args:
-        bc_type (BCType):        Type of boundary conditions
+        bc_type (str):           Type of boundary conditions
+                                 (pure_dirichlet, neumann_homogenous, neumann_inhomogenous)
         V_prime (FunctionSpace): The function space of the primal problem
         degree_flux (int):       Degree of the flux space
         degree_bc (int):         Polynomial degree of the boundary conditions
@@ -177,7 +171,7 @@ def set_arbitrary_bcs(
         neumann_projection (List[bool]):   List of booleans indicating wether the neumann
                                            BCs require projection
     """
-    if bc_type == BCType.dirichlet:
+    if bc_type == "pure_dirichlet":
         # Set boundary ids
         boundary_id_dirichlet = [1, 2, 3, 4]
         boundary_id_neumann = []
@@ -187,7 +181,7 @@ def set_arbitrary_bcs(
 
         # Empty array of Neumann conditions
         func_neumann = []
-    elif bc_type == BCType.neumann_hom:
+    elif bc_type == "neumann_hom":
         # The mesh
         domain = V_prime.mesh
 
@@ -212,7 +206,7 @@ def set_arbitrary_bcs(
                 hom_nbc = ufl.as_vector([0, 0, 0])
 
         func_neumann = [hom_nbc for i in range(0, len(boundary_id_neumann))]
-    elif bc_type == BCType.neumann_inhom:
+    elif bc_type == "neumann_inhom":
         # The mesh
         domain = V_prime.mesh
 

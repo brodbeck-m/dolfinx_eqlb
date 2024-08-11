@@ -210,34 +210,13 @@ KernelDataEqlb<T>::KernelDataEqlb(
   // Tabulate hat-function
   tabulate_hat_basis(basix_element_hat);
 
-  /* H(div)-flux: Mapping */
-  // Mapping between reference and current cell
+  /* H(div)-flux: Pull back into reference */
   using V_t = mdspan_t<T, 2>;
   using v_t = mdspan_t<const T, 2>;
   using J_t = mdspan_t<const double, 2>;
   using K_t = mdspan_t<const double, 2>;
 
   _pull_back_fluxspace = basix_element_fluxpw.map_fn<V_t, v_t, K_t, J_t>();
-
-  // Transformation of shape function on reversed facets
-  const int ndofs_flux_fct = basix_element_fluxpw.degree();
-
-  _data_transform_shpfkt.resize(ndofs_flux_fct * ndofs_flux_fct, 0.0);
-  _shape_transform_shpfkt
-      = {(std::size_t)ndofs_flux_fct, (std::size_t)ndofs_flux_fct};
-  mdspan_t<double, 2> data_transform_shpfk(_data_transform_shpfkt.data(),
-                                           ndofs_flux_fct, ndofs_flux_fct);
-
-  for (int line = 0; line < ndofs_flux_fct; line++)
-  {
-    int val = 1;
-
-    for (int i = 0; i <= line; i++)
-    {
-      data_transform_shpfk(i, line) = ((i % 2) == 0) ? -val : val;
-      val = val * (line - i) / (i + 1);
-    }
-  }
 }
 
 template <typename T>

@@ -52,11 +52,8 @@ public:
     // Facet prefactors on cells
     _data_fctprefactors_cell.resize(_gdim * ncells_max);
 
-    // Markers for reversed edges
-    _data_reversedfct_cell.resize(_gdim * ncells_max);
-
     // Mapped interpolation matrix
-    _shape_Mm = {ncells_max, _ndofs_flux_fct + 1, _gdim, niponts_per_fct};
+    _shape_Mm = {ncells_max, _ndofs_flux_fct, _gdim, niponts_per_fct};
     _data_Mm.resize(_shape_Mm[0] * _shape_Mm[1] * _shape_Mm[2] * _shape_Mm[3],
                     0);
 
@@ -70,14 +67,12 @@ public:
         _shape_coeffsflux[0] * _shape_coeffsflux[1] * _shape_coeffsflux[2], 0);
 
     // Jumps of the projected flux
-    _shape_jGEam1 = {niponts_per_fct, 2, _gdim};
-    _data_jumpG_Eam1.resize(
-        _shape_jGEam1[0] * _shape_jGEam1[1] * _shape_jGEam1[2], 0);
+    _shape_jGEam1 = {niponts_per_fct, _gdim};
+    _data_jumpG_Eam1.resize(_shape_jGEam1[0] * _shape_jGEam1[1], 0);
 
     // Higher order DOFs (explicit solution step)
     _c_ta_div.resize(patch.ndofs_flux_cell_div(), 0);
     _cj_ta_ea.resize(_ndofs_flux_fct - 1, 0);
-    _cj_ta_ea_interm.resize(_ndofs_flux_fct - 1, 0);
 
     // --- Initialise equation system
     // FIXME - ndofs_hdivz_per_cell wrong for 2D quads + 3D
@@ -158,7 +153,7 @@ public:
   /// @param npnts  The number of points
   void reinitialisation(std::span<const PatchType> type_patch, int ncells)
   {
-    // --- Data patch
+    // Data parh
     // Set current patch length
     _ncells = ncells;
 
@@ -194,9 +189,6 @@ public:
         _meanvalue_condition_required = false;
       }
     }
-
-    // Identitier for reversed facets
-    std::fill_n(_data_reversedfct_cell.begin(), _gdim * ncells, false);
 
     // --- Update length of mdspans
     _shape_Mm[0] = ncells;
@@ -331,14 +323,8 @@ public:
   /// @return mdspan (cells x dim) of the prefactors
   mdspan_t<T, 2> prefactors_facet_per_cell()
   {
+    // Set offset
     return mdspan_t<T, 2>(_data_fctprefactors_cell.data(), _ncells, _gdim);
-  }
-
-  /// Marker for reversed facets on patch cells
-  /// @return mdspan (cells x dim) of the markers
-  mdspan_t<std::uint8_t, 2> reversed_facets_per_cell()
-  {
-    return mdspan_t<uint8_t, 2>(_data_reversedfct_cell.data(), _ncells, _gdim);
   }
 
   /// Mapped interpolation matrix
@@ -428,14 +414,10 @@ public:
   /* Intermediate storage */
 
   /// Jump of the projected flux on facet Eam1
-  ///
-  /// For reversed facets: Data is stored seperatly for the two adjacet cell
-  /// (first index 0: Tam1, first index 1: Tap1)
-  ///
-  /// @return mdspan (ipoints x 2 x dim) of jump-related data
-  mdspan_t<T, 3> jumpG_Eam1()
+  /// @return mdspan (ipoints x dim) of the jump
+  mdspan_t<T, 2> jumpG_Eam1()
   {
-    return mdspan_t<T, 3>(_data_jumpG_Eam1.data(), _shape_jGEam1);
+    return mdspan_t<T, 2>(_data_jumpG_Eam1.data(), _shape_jGEam1);
   }
 
   /// Explicite solution: Divergence cell moments
@@ -450,13 +432,6 @@ public:
   std::span<T> cj_ta_ea()
   {
     return std::span<T>(_cj_ta_ea.data(), _cj_ta_ea.size());
-  }
-
-  /// Explicite solution: Intermediate staorge for higher order facet moments
-  /// @return span of the solution coefficients
-  std::span<T> cj_intermediate()
-  {
-    return std::span<T>(_cj_ta_ea_interm.data(), _cj_ta_ea_interm.size());
   }
 
   /* The equation system */
@@ -716,7 +691,6 @@ protected:
   /// @param subspace_k Id of the row of the stress tensor
   void apply_bcs_on_A(int subspace_k)
   {
-    _A.setZero();
     const int offset_uk = subspace_k * _dim_hdivz;
 
     for (std::size_t i = 0; i < _dim_hdivz; ++i)
@@ -774,9 +748,6 @@ protected:
   // Pre-factors cell facets
   std::vector<T> _data_fctprefactors_cell;
 
-  // Marker for reversed edges
-  std::vector<std::uint8_t> _data_reversedfct_cell;
-
   // The mapped interpolation matrix
   std::array<std::size_t, 4> _shape_Mm;
   std::vector<double> _data_Mm;
@@ -788,11 +759,11 @@ protected:
       _coefficients_flux, _coefficients_stress;
 
   // Jumps of the projected flux
-  std::array<std::size_t, 3> _shape_jGEam1;
+  std::array<std::size_t, 2> _shape_jGEam1;
   std::vector<T> _data_jumpG_Eam1;
 
   // Cell-wise solutions (explicit setp)
-  std::vector<T> _c_ta_div, _cj_ta_ea, _cj_ta_ea_interm;
+  std::vector<T> _c_ta_div, _cj_ta_ea;
 
   // --- The equation system
   // Marker for addition mean-value constraint
