@@ -1,11 +1,9 @@
 # --- Import ---
-from mpi4py import MPI
 import numpy as np
 from petsc4py import PETSc
 import pytest
 import typing
 
-import dolfinx.io
 import dolfinx.mesh as dmesh
 import dolfinx.fem as dfem
 import ufl
