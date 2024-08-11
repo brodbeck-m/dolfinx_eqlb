@@ -8,7 +8,7 @@ import ufl
 from dolfinx_eqlb.eqlb import FluxEqlbEV, FluxEqlbSE
 
 from utils import create_unitsquare_builtin, flux_error, error_hdiv0
-from testcase_general import set_manufactured_rhs, set_manufactured_bcs
+from testcase_general import BCType, set_manufactured_rhs, set_manufactured_bcs
 from testcase_poisson import (
     exact_solution,
     exact_flux,
@@ -18,17 +18,19 @@ from testcase_poisson import (
 
 
 @pytest.mark.parametrize("degree", [1, 2, 3, 4])
-@pytest.mark.parametrize("bc_type", ["pure_dirichlet", "neumann_hom", "neumann_inhom"])
+@pytest.mark.parametrize(
+    "bc_type", [BCType.dirichlet, BCType.neumann_hom, BCType.neumann_inhom]
+)
 @pytest.mark.parametrize("equilibrator", [FluxEqlbEV, FluxEqlbSE])
 def test_convrate(degree, bc_type, equilibrator):
     # Initialise boundary conditions
-    if bc_type == "pure_dirichlet":
+    if bc_type == BCType.dirichlet:
         boundary_id_dirichlet = [1, 2, 3, 4]
         boundary_id_neumann = []
-    elif bc_type == "neumann_hom":
+    elif bc_type == BCType.neumann_hom:
         boundary_id_dirichlet = [1, 3]
         boundary_id_neumann = [2, 4]
-    elif bc_type == "neumann_inhom":
+    elif bc_type == BCType.neumann_inhom:
         boundary_id_dirichlet = [2, 4]
         boundary_id_neumann = [1, 3]
     else:
