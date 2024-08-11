@@ -352,63 +352,34 @@ public:
   /// Storage is designed for the maximum patch size occurring within
   /// the current mesh.
   ///
-  /// @param mesh        The current mesh
-  /// @param bfct_type   List with type of all boundary facets
-  /// @param ncells_crit Critical number of cells on adjacent boundary patches
-  /// @param pnts_on_bndr Markers for all mesh nodes on boundary
+  /// @param mesh         The current mesh
+  /// @param bfct_type    List with type of all boundary facets
+  /// @param pnts_on_bndr Markers for all mesh nodes on stress boundary
+  /// @param ncells_min   Minimum number of cells patches (below: Error)
+  /// @param ncells_crit  Critical number of cells on a boundary patch
+  ///                     (modification required)
   OrientedPatch(std::shared_ptr<const mesh::Mesh> mesh,
-                mdspan_t<const std::int8_t, 2> bfct_type, const int ncells_crit,
-                std::span<const std::int8_t> pnts_on_essntbndr);
-
-  /// Determine type of an arbitrary patch
-  /// @param node_i Id of the patch-central node
-  /// @return The patch type
-  PatchType determine_patch_type(const std::int32_t node_i) const;
-
-  /// Returns an adjacent intern. patch of boundary patch
-  /// @param node_i Processor-local id of patch-central node
-  /// @return The patch-central node of the internal patch
-  std::int32_t get_adjacent_internal_patch(const std::int32_t node_i) const
-  {
-    // Facets on patch
-    std::span<const std::int32_t> fcts_patch = _node_to_fct->links(node_i);
-
-    // Adjacent internal patch
-    std::int32_t inner_node;
-
-    for (std::int32_t fct : fcts_patch)
-    {
-      if (_bfct_type(0, fct) == PatchFacetType::internal)
-      {
-        // Nodes on facet
-        std::span<const std::int32_t> nodes_fct = _fct_to_node->links(fct);
-
-        // Output patch-central node
-        inner_node = (nodes_fct[0] == node_i) ? nodes_fct[1] : nodes_fct[0];
-        break;
-      }
-    }
-
-    return inner_node;
-  }
+                mdspan_t<const std::int8_t, 2> bfct_type,
+                std::span<const std::int8_t> pnts_on_essntbndr,
+                const int ncells_min, const int ncells_crit);
 
   /// Group patches such that minimisation is possible
   ///
   /// Routine works only on boundary patches! It returns a list of adjacent
-  /// patches around node_i. Theby the patch is connected with one internal and
-  /// adjacent boundary patches (type PatchType::bound_essnt_dual) which have
-  /// ncells_crit cells.
+  /// patches around node_i. Thereby the patch is connected with one internal
+  /// and adjacent boundary patches (type PatchType::bound_essnt_dual) which
+  /// have ncells_crit cells.
   ///
   /// @param node_i           Processor-local id of patch-central node
-  /// @param pnt_on_essntbndr Markers for all mesh nodes on essential boundary
+  /// @param pnt_on_bndr      Markers for all mesh nodes on essential boundary
+  ///                         (stresses)
   /// @param initial_length   Initial length of the output vector
-  /// @param ncells_min       Minimum number of cells on adjacent patches
-  /// @param ncells_crit      Critical number of cells on adjacent patches
+  /// @param ncells_crit      Critical number of cells on patches
   /// @return                 The central nodes of critical, adjacent patches
   std::vector<std::int32_t>
   group_boundary_patches(const std::int32_t node_i,
-                         std::span<const std::int8_t> pnt_on_essntbndr,
-                         const int ncells_min, const int ncells_crit) const;
+                         std::span<const std::int8_t> pnt_on_bndr,
+                         const int ncells_crit) const;
 
   /// Construction of a sub-DOFmap on each patch
   ///
@@ -609,10 +580,12 @@ public:
 protected:
   /// Determine maximum patch size
   /// @param nnodes_proc  Number of nodes on current processor
-  /// @param ncells_crit  Critical number of cells on adjacent boundary patches
   /// @param pnts_on_bndr Markers for all mesh nodes on boundary
-  void set_max_patch_size(const int nnodes_proc, const int ncells_crit,
-                          std::span<const std::int8_t> pnts_on_bndr);
+  /// @param ncells_min   Minimum number of cells on a patch
+  /// @param ncells_crit  Critical number of cells on adjacent boundary patches
+  void set_max_patch_size(const int nnodes_proc,
+                          std::span<const std::int8_t> pnts_on_bndr,
+                          const int ncells_min, const int ncells_crit);
 
   /// Initializes patch
   ///
@@ -655,8 +628,10 @@ protected:
                           std::span<const std::int32_t> fct_cell_i,
                           std::int8_t id_fct_loc) const;
 
-  std::array<std::int32_t, 2>
-  adjacent_boundary_patches(const std::int32_t node_i) const;
+  /// Returns an adjacent intern. patch of boundary patch
+  /// @param node_i Processor-local id of patch-central node
+  /// @return The patch-central node of the internal patch
+  std::int32_t adjacent_internal_patch(const std::int32_t node_i) const;
 
   // Maximum size of patch
   int _ncells_max;
