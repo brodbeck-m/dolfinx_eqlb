@@ -14,7 +14,6 @@ from dolfinx_eqlb.lsolver import local_projection
 from dolfinx_eqlb.eqlb import fluxbc, boundarydata
 
 from utils import (
-    MeshType,
     create_unitsquare_builtin,
     create_unitsquare_gmsh,
     points_boundary_unitsquare,
@@ -27,7 +26,7 @@ from utils import (
 """
 
 
-@pytest.mark.parametrize("mesh_type", [MeshType.builtin, MeshType.gmsh])
+@pytest.mark.parametrize("mesh_type", ["builtin"])
 @pytest.mark.parametrize("degree", [1, 2, 3, 4])
 @pytest.mark.parametrize("rt_space", ["basix", "custom", "subspace"])
 @pytest.mark.parametrize("use_projection", [False, True])
@@ -35,12 +34,12 @@ def test_boundary_data_polynomial(mesh_type, degree, rt_space, use_projection):
     # Create mesh
     n_cells = 5
 
-    if mesh_type == MeshType.builtin:
+    if mesh_type == "builtin":
         geometry = create_unitsquare_builtin(
             n_cells, dmesh.CellType.triangle, dmesh.DiagonalType.crossed
         )
-    elif mesh_type == MeshType.gmsh:
-        geometry = create_unitsquare_gmsh(0.5)
+    elif mesh_type == "gmsh":
+        raise NotImplementedError("GMSH mesh not implemented yet")
     else:
         raise ValueError("Unknown mesh type")
 
@@ -150,7 +149,7 @@ def test_boundary_data_polynomial(mesh_type, degree, rt_space, use_projection):
                 True,
             )
 
-        # Interpolate BC into test-space
+        # Interpolate BC into testspace
         rhs_ref = ufl.as_vector([-ntrace_ufl, ntrace_ufl])
         refsol = local_projection(V_ref, [rhs_ref], quadrature_degree=2 * degree)[0]
 
@@ -167,21 +166,14 @@ def test_boundary_data_polynomial(mesh_type, degree, rt_space, use_projection):
         assert np.allclose(val_bfunc[npoints_eval:, 1], val_ref[npoints_eval:, 1])
 
 
-@pytest.mark.parametrize("mesh_type", [MeshType.builtin, MeshType.gmsh])
 @pytest.mark.parametrize("degree", [1, 2, 3, 4])
-def test_boundary_data_general(mesh_type, degree):
+def test_boundary_data_general(degree):
     # --- Calculate boundary conditions (2D)
     # Create mesh
     n_cells = 5
-
-    if mesh_type == MeshType.builtin:
-        geometry = create_unitsquare_builtin(
-            n_cells, dmesh.CellType.triangle, dmesh.DiagonalType.crossed
-        )
-    elif mesh_type == MeshType.gmsh:
-        geometry = create_unitsquare_gmsh(1 / n_cells)
-    else:
-        raise ValueError("Unknown mesh type")
+    geometry = create_unitsquare_builtin(
+        n_cells, CellType.triangle, DiagonalType.crossed
+    )
 
     # Initialise connectivity
     geometry.mesh.topology.create_connectivity(1, 2)

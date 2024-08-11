@@ -44,7 +44,7 @@ class FluxEqlbSE(FluxEquilibrator):
         list_proj_flux: typing.List[dfem.function.Function],
     ):
         # Initialize connectivities
-        super().initialise_mesh_info(msh)
+        super().set_mesh_connectivities(msh)
 
         # --- Create solution function
         # Definition of finite elements

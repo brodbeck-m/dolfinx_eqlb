@@ -8,7 +8,7 @@
 #include "ProblemDataFluxCstm.hpp"
 #include "ProblemDataFluxEV.hpp"
 #include "StorageStiffness.hpp"
-#include "assemble_patch_semiexplt.hpp"
+#include "minimise_flux.hpp"
 #include "solve_patch_constrmin.hpp"
 #include "solve_patch_semiexplt.hpp"
 #include "utils.hpp"
@@ -164,10 +164,6 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
   std::shared_ptr<const mesh::Mesh> mesh = problem_data.mesh();
   const fem::CoordinateElement& cmap = mesh->geometry().cmap();
 
-  // Permutations of facets
-  const std::vector<std::uint8_t>& fct_perms
-      = mesh->topology().get_facet_permutations();
-
   // Spacial dimension
   const int dim = mesh->geometry().dim();
 
@@ -290,7 +286,7 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
 
               // Perform equilibration
               equilibrate_flux_semiexplt<T, id_flux_order>(
-                  mesh->geometry(), fct_perms, patch, patch_data, problem_data,
+                  mesh->geometry(), patch, patch_data, problem_data,
                   kernel_data, kernel_fluxmin, kernel_fluxmin_l);
             }
 
@@ -319,8 +315,8 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
 
         // Calculate solution patch
         equilibrate_flux_semiexplt<T, id_flux_order>(
-            mesh->geometry(), fct_perms, patch, patch_data, problem_data,
-            kernel_data, kernel_fluxmin, kernel_fluxmin_l, kernel_weaksym);
+            mesh->geometry(), patch, patch_data, problem_data, kernel_data,
+            kernel_fluxmin, kernel_fluxmin_l, kernel_weaksym);
       }
     }
   }
@@ -349,8 +345,8 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
 
       // Calculate solution patch
       equilibrate_flux_semiexplt<T, id_flux_order>(
-          mesh->geometry(), fct_perms, patch, patch_data, problem_data,
-          kernel_data, kernel_fluxmin, kernel_fluxmin_l);
+          mesh->geometry(), patch, patch_data, problem_data, kernel_data,
+          kernel_fluxmin, kernel_fluxmin_l);
     }
   }
 }

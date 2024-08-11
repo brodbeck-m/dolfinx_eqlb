@@ -37,11 +37,7 @@ class FluxEquilibrator:
         # BoundaryData
         self.boundary_data = None
 
-    def initialise_mesh_info(self, msh: dmesh.Mesh):
-        # Permutation information
-        msh.topology.create_entity_permutations()
-
-        # Create entity connectivity
+    def set_mesh_connectivities(self, msh: dmesh.Mesh):
         msh.topology.create_connectivity(0, 1)
         msh.topology.create_connectivity(0, 2)
         msh.topology.create_connectivity(1, 0)

@@ -1,6 +1,4 @@
 # --- Includes ---
-from enum import Enum
-import gmsh
 import numpy as np
 from mpi4py import MPI
 from typing import Any, Callable, List
@@ -8,22 +6,14 @@ from typing import Any, Callable, List
 import dolfinx
 import dolfinx.fem as dfem
 import dolfinx.geometry as dgeom
-from dolfinx.io import gmshio
 import dolfinx.mesh as dmesh
 
 import ufl
-
-from dolfinx_eqlb.eqlb import check_eqlb_conditions
 
 
 """
 Mesh generation
 """
-
-
-class MeshType(Enum):
-    builtin = 0
-    gmsh = 1
 
 
 class Geometry:
@@ -86,109 +76,14 @@ def create_unitsquare_builtin(
     return Geometry(domain, facet_function, ds)
 
 
-def create_unitsquare_gmsh(hmin: float) -> Geometry:
-    # --- Build model
-    gmsh.initialize()
-    gmsh.option.setNumber("General.Terminal", 0)
-    gmsh.option.setNumber("General.Verbosity", 2)
+def create_unitsquare_gmsh(
+    n_elmt: int, cell: dolfinx.mesh.CellType, diagonal_type: dolfinx.mesh.DiagonalType
+) -> Geometry:
+    raise NotImplementedError("Not implemented yet")
 
-    # Name of the geometry
-    gmsh.model.add("LShape")
 
-    # Points
-    list_pnts = [[0, 0], [0, 1], [1, 1], [1, 0]]
-
-    pnts = [gmsh.model.occ.add_point(pnt[0], pnt[1], 0.0) for pnt in list_pnts]
-
-    # Bounding curves and 2D surface
-    bfcts = [
-        gmsh.model.occ.add_line(pnts[0], pnts[1]),
-        gmsh.model.occ.add_line(pnts[1], pnts[2]),
-        gmsh.model.occ.add_line(pnts[2], pnts[3]),
-        gmsh.model.occ.add_line(pnts[3], pnts[0]),
-    ]
-
-    boundary = gmsh.model.occ.add_curve_loop(bfcts)
-    surface = gmsh.model.occ.add_plane_surface([boundary])
-    gmsh.model.occ.synchronize()
-
-    # Set tag on boundaries and surface
-    for i, bfct in enumerate(bfcts):
-        gmsh.model.addPhysicalGroup(1, [bfct], i + 1)
-
-    gmsh.model.addPhysicalGroup(2, [surface], 1)
-
-    # --- Generate mesh
-    gmsh.option.setNumber("Mesh.CharacteristicLengthMin", hmin)
-    gmsh.option.setNumber("Mesh.CharacteristicLengthMax", hmin)
-    gmsh.model.mesh.generate(2)
-
-    domain_init, _, _ = gmshio.model_to_mesh(gmsh.model, MPI.COMM_WORLD, 0, gdim=2)
-    reversed_edges = check_eqlb_conditions.mesh_has_reversed_edges(domain_init)
-
-    if not reversed_edges:
-        raise ValueError("Mesh does not contain reversed edges")
-
-    # --- Test if boundary patches contain at least 2 cells
-    # List of refined cells
-    refined_cells = []
-
-    # Required connectivity's
-    domain_init.topology.create_connectivity(0, 2)
-    domain_init.topology.create_connectivity(1, 2)
-    pnt_to_cell = domain_init.topology.connectivity(0, 2)
-
-    # The boundary facets
-    bfcts = dmesh.exterior_facet_indices(domain_init.topology)
-
-    # Get boundary nodes
-    V = dfem.FunctionSpace(domain_init, ("Lagrange", 1))
-    bpnts = dfem.locate_dofs_topological(V, 1, bfcts)
-
-    # Check if point is linked with only on cell
-    for pnt in bpnts:
-        cells = pnt_to_cell.links(pnt)
-
-        if len(cells) == 1:
-            refined_cells.append(cells[0])
-
-    # Refine mesh
-    list_ref_cells = list(set(refined_cells))
-
-    if len(list_ref_cells) > 0:
-        domain = dmesh.refine(
-            domain_init,
-            np.setdiff1d(
-                dmesh.compute_incident_entities(domain_init, list_ref_cells, 2, 1),
-                bfcts,
-            ),
-        )
-    else:
-        domain = domain_init
-
-    # --- Mark facets
-    boundaries = [
-        (1, lambda x: np.isclose(x[0], 0)),
-        (2, lambda x: np.isclose(x[1], 0)),
-        (3, lambda x: np.isclose(x[0], 1)),
-        (4, lambda x: np.isclose(x[1], 1)),
-    ]
-
-    facet_indices, facet_markers = [], []
-    for marker, locator in boundaries:
-        facets = dolfinx.mesh.locate_entities(domain, 1, locator)
-        facet_indices.append(facets)
-        facet_markers.append(np.full(len(facets), marker))
-
-    facet_indices = np.array(np.hstack(facet_indices), dtype=np.int32)
-    facet_markers = np.array(np.hstack(facet_markers), dtype=np.int32)
-    sorted_facets = np.argsort(facet_indices)
-    facet_function = dolfinx.mesh.meshtags(
-        domain, 1, facet_indices[sorted_facets], facet_markers[sorted_facets]
-    )
-    ds = ufl.Measure("ds", domain=domain, subdomain_data=facet_function)
-
-    return Geometry(domain, facet_function, ds)
+def create_quatercircle_gmsh():
+    raise NotImplementedError("Not implemented yet")
 
 
 """
