@@ -252,6 +252,7 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
     std::vector<bool> perform_equilibration(n_nodes, true);
 
     // Loop over extended patches on essential boundary
+    // TODO - Extend patch grouping on mixed patches
     if (degree_flux_hdiv == 2)
     {
       for (std::int32_t i_node = 0; i_node < n_nodes; ++i_node)

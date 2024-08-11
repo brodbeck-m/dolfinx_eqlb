@@ -189,15 +189,15 @@ public:
         }
       }
 
-      if (condition_count == _gdim)
+      // if (condition_count == _gdim)
+      if (condition_count > 0)
       {
         _meanvalue_condition_required = false;
       }
     }
 
     // Identitier for reversed facets
-    std::fill_n(_data_reversedfct_cell.begin(), _gdim * ncells,
-              false);
+    std::fill_n(_data_reversedfct_cell.begin(), _gdim * ncells, false);
 
     // --- Update length of mdspans
     _shape_Mm[0] = ncells;
@@ -717,6 +717,7 @@ protected:
   /// @param subspace_k Id of the row of the stress tensor
   void apply_bcs_on_A(int subspace_k)
   {
+    _A.setZero();
     const int offset_uk = subspace_k * _dim_hdivz;
 
     for (std::size_t i = 0; i < _dim_hdivz; ++i)

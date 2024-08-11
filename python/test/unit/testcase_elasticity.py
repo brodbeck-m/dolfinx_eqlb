@@ -27,6 +27,7 @@ def exact_solution(x):
 
     Args:
         x (ufl.SpatialCoordinate): The position x
+
     Returns:
         The exact function as ufl-expression
     """
@@ -45,6 +46,7 @@ def exact_stress_linelast(x, gdim=2):
     Args:
         x (ufl.SpatialCoordinate): The position x
         gdim (int): The spatial dimension
+
     Returns:
         The exact stress at positions x as ufl expression
     """
@@ -66,7 +68,7 @@ def solve_primal_problem(
     u_dirichlet: List[dfem.Function],
     degree_projection: int = -1,
 ):
-    """Solves a poisson problem based on lagrangian finite elements
+    """Solves linear elasticity based on lagrangian finite elements
 
     Args:
         V_prime (dolfinx.FunctionSpace):      The function space of the primal problem
@@ -77,6 +79,10 @@ def solve_primal_problem(
         ufl_neumann (List[ufl]):              List of neumann boundary conditions
         u_dirichlet (List[dolfinx.Function]): List of dirichlet boundary conditions
         degree_projection (int):              Degree of projected flux
+
+    Returns:
+        u_prime (dolfinx.Function):           The primal solution
+        sig_proj (List[dolfinx.Function]):    List of projected stress rows
     """
     # Check input
     if len(bc_id_dirichlet) == 0:

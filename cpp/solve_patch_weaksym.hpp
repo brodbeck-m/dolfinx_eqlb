@@ -168,6 +168,7 @@ void impose_weak_symmetry(const mesh::Geometry& geometry,
   {
     // Global storage of the solution
     std::span<T> x_stress = problem_data.flux(i).x()->mutable_array();
+    mdspan_t<T, 2> coefficients_flux = patch_data.coefficients_flux(i);
 
     // Initialise offset
     int offset_u = i * ndofs_hdivz;

@@ -398,15 +398,6 @@ public:
         dofmap(3, _ncells + 1, ii) = dofmap(3, 1, ii);
       }
     }
-
-    // for (std::int32_t a = 0; a < _ncells + 2; ++a)
-    // {
-    //   for (std::size_t i = 0; i < dofmap.extent(2); ++i)
-    //   {
-    //     std::cout << dofmap(3, a, i) << " ";
-    //   }
-    //   std::cout << "\n";
-    // }
   }
 
   /* Overload functions from base-class */

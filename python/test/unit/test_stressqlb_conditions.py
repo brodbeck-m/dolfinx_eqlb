@@ -1,15 +1,10 @@
 # --- Import ---
 import pytest
-from mpi4py import MPI
-import numpy as np
-import typing
 
-import dolfinx.io
 import dolfinx.mesh as dmesh
 import dolfinx.fem as dfem
 import ufl
 
-from dolfinx_eqlb.lsolver import local_projection
 import dolfinx_eqlb.eqlb.check_eqlb_conditions as eqlb_checker
 
 from utils import MeshType, create_unitsquare_builtin, create_unitsquare_gmsh
@@ -25,8 +20,9 @@ Check if equilibrated flux
 """
 
 
+# --- Test cases ---
 @pytest.mark.parametrize("mesh_type", [MeshType.builtin, MeshType.gmsh])
-@pytest.mark.parametrize("degree", [2, 3])
+@pytest.mark.parametrize("degree", [2, 3, 4])
 @pytest.mark.parametrize("bc_type", [BCType.dirichlet, BCType.neumann_inhom])
 def test_equilibration_conditions(mesh_type, degree, bc_type):
     # Create mesh
@@ -43,12 +39,12 @@ def test_equilibration_conditions(mesh_type, degree, bc_type):
 
     # Initialise loop over degree of boundary flux
     if bc_type != BCType.neumann_inhom:
-        degree_bc = 1
+        degrees_bc = [0]
     else:
-        degree_bc = degree
+        degrees_bc = list(range(max(0, degree - 3), degree))
 
     # Perform tests
-    for degree_bc in range(0, degree_bc):
+    for degree_bc in degrees_bc:
         for degree_prime in range(max(2, degree - 1), degree + 1):
             for degree_rhs in range(0, degree):
                 # Set function space
