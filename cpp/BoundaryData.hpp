@@ -121,11 +121,6 @@ public:
   }
 
   /// Marker if mesh-node is on essential boundary of the stress field
-  ///
-  /// Essential boundary:
-  ///    - Node resp. patch around node in on boundary of the domain
-  ///    - All stress rows have pure neumann BCs on patch
-  ///
   /// @return List of markers for all nodes
   std::span<const std::int8_t> node_on_essnt_boundary_stress() const
   {
@@ -254,7 +249,7 @@ protected:
   std::vector<std::int32_t> _offset_dofdata;
 
   // --- Data per node
-  // The boundary markers (patch has purely essential BCs)
+  // The boundary markers
   std::vector<std::int8_t> _pnt_on_esnt_boundary;
 
   // --- Data per facet

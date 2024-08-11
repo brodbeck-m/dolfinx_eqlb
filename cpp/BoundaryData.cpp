@@ -337,25 +337,16 @@ BoundaryData<T>::BoundaryData(
           x_bvals[boundary_dofs_fct[i]] = boundary_values_fct[i];
         }
 
-        if ((reconstruct_stress) && (i_rhs < _gdim))
+        if ((reconstruct_stress) && (i_rhs < (_gdim - 1)))
         {
           std::span<const std::int32_t> pnts_fct = fct_to_pnt->links(fct);
 
           for (auto pnt : pnts_fct)
           {
-            _pnt_on_esnt_boundary[pnt] += 1;
+            _pnt_on_esnt_boundary[pnt] = true;
           }
         }
       }
-    }
-  }
-
-  // Finalise markers for pure essential stress BCs
-  if (reconstruct_stress && (_gdim == 2))
-  {
-    for (std::size_t i = 0; i < _pnt_on_esnt_boundary.size(); ++i)
-    {
-      _pnt_on_esnt_boundary[i] = (_pnt_on_esnt_boundary[i] == 4) ? true : false;
     }
   }
 }

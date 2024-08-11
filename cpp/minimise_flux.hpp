@@ -183,7 +183,7 @@ generate_flux_minimisation_kernel(KernelDataEqlb<T>& kernel_data,
   }
 }
 
-/// Generate kernel for the assembly stress minimisation user consideration of a
+/// Generate kernel for the assembly stress minimsation user consideration of a
 /// weak symmetry condition
 /// @tparam T              The scalar type
 /// @param type            The kernel type

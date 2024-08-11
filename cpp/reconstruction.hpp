@@ -229,9 +229,9 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
 
     // Initialise patch
     PatchFluxCstm<T, id_flux_order> patch = PatchFluxCstm<T, id_flux_order>(
-        mesh, problem_data.facet_type(), pnt_on_stress_boundary,
+        mesh, problem_data.facet_type(), 2, pnt_on_stress_boundary,
         problem_data.fspace_flux_hdiv(), problem_data.fspace_flux_dg(),
-        basix_element_rhscg, true, 1, 2);
+        basix_element_rhscg, true);
 
     // Initialise storage for equilibration
     PatchDataCstm<T, id_flux_order> patch_data
@@ -254,46 +254,65 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
       {
         if (pnt_on_stress_boundary[i_node] && perform_equilibration[i_node])
         {
-          // Group the patches
-          std::vector<std::int32_t> grouped_patches
-              = patch.group_boundary_patches(i_node, pnt_on_stress_boundary, 2);
+          // Number of nodes on patch
+          const int ncells_patch = patch.ncells(i_node);
 
           // Check if modification of patch is required
-          if (grouped_patches.size() >= 2)
+          if (ncells_patch == 1)
           {
-            // Equilibration step 1: Explicit step and minimisation
-            for (std::size_t i = grouped_patches.size(); i-- > 0;)
+            std::string error_msg = "Patch around node "
+                                    + std::to_string(i_node)
+                                    + " has only one cell";
+            throw std::runtime_error(error_msg);
+          }
+          else
+          {
+            if (ncells_patch == 2)
             {
-              // Patch-central node
-              const std::int32_t node_i = grouped_patches[i];
+              // Get patch type
+              PatchType patch_type = patch.determine_patch_type(i_node);
 
-              // Check if patch has already been considered
-              if (!perform_equilibration[node_i])
+              if (patch_type == PatchType::bound_essnt_dual)
               {
-                throw std::runtime_error("Incompatible mesh! To many patches "
-                                         "with 2 cells on neumann boundary.");
+                // Group patches such that minimisation is possible
+                std::vector<std::int32_t> grouped_patches
+                    = patch.group_boundary_patches(
+                        i_node, pnt_on_stress_boundary, 1, 2);
+
+                // Equilibration step 1: Explicit step and minimisation
+                for (std::size_t i = grouped_patches.size(); i-- > 0;)
+                {
+                  // Patch-central node
+                  const std::int32_t node_i = grouped_patches[i];
+
+                  // Check if patch has already been considered
+                  if (!perform_equilibration[node_i])
+                  {
+                    throw std::runtime_error(
+                        "Incompatible mesh! To many patches "
+                        "with 2 cells on neumann boundary.");
+                  }
+
+                  // Create Sub-DOFmap
+                  patch.create_subdofmap(node_i);
+
+                  // Re-initialise PatchData
+                  patch_data.reinitialisation(patch.type(), patch.ncells());
+
+                  // Perform equilibration
+                  perform_equilibration[node_i] = false;
+                  equilibrate_flux_semiexplt<T, id_flux_order>(
+                      mesh->geometry(), patch, patch_data, problem_data,
+                      kernel_data, kernel_fluxmin, kernel_fluxmin_l);
+                }
+
+                // Equilibration step 2: Incorporation of weak symmetry
+                // condition
+                impose_weak_symmetry<T, id_flux_order, true>(
+                    mesh->geometry(), patch, patch_data, problem_data,
+                    kernel_data, kernel_weaksym);
               }
-              else
-              {
-                perform_equilibration[node_i] = false;
-              }
-
-              // Create Sub-DOFmap
-              patch.create_subdofmap(node_i);
-
-              // Re-initialise PatchData
-              patch_data.reinitialisation(patch.type(), patch.ncells());
-
-              // Perform equilibration
-              equilibrate_flux_semiexplt<T, id_flux_order>(
-                  mesh->geometry(), patch, patch_data, problem_data,
-                  kernel_data, kernel_fluxmin, kernel_fluxmin_l);
             }
-
-            // Equilibration step 2: Weak symmetry condition
-            impose_weak_symmetry<T, id_flux_order, true>(
-                mesh->geometry(), patch, patch_data, problem_data, kernel_data,
-                kernel_weaksym);
           }
         }
       }
@@ -310,6 +329,14 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
         // Create Sub-DOFmap
         patch.create_subdofmap(i_node);
 
+        // Check if equilibration is possible
+        if (patch.ncells() == 1)
+        {
+          std::string error_msg = "Patch around node " + std::to_string(i_node)
+                                  + " has only one cell";
+          throw std::runtime_error(error_msg);
+        }
+
         // Reinitialise patch-data
         patch_data.reinitialisation(patch.type(), patch.ncells());
 
@@ -324,10 +351,10 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
   {
     // Initialise patch
     PatchFluxCstm<T, id_flux_order> patch = PatchFluxCstm<T, id_flux_order>(
-        mesh, problem_data.facet_type(),
+        mesh, problem_data.facet_type(), 0,
         problem_data.node_on_essnt_boundary_stress(),
         problem_data.fspace_flux_hdiv(), problem_data.fspace_flux_dg(),
-        basix_element_rhscg);
+        basix_element_rhscg, false);
 
     // Initialise storage for equilibration
     PatchDataCstm<T, id_flux_order> patch_data
@@ -339,6 +366,14 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
     {
       // Create Sub-DOFmap
       patch.create_subdofmap(i_node);
+
+      // Check if equilibration is possible
+      if (patch.ncells() == 1)
+      {
+        std::string error_msg = "Patch around node " + std::to_string(i_node)
+                                + " has only one cell";
+        throw std::runtime_error(error_msg);
+      }
 
       // Reinitialise patch-data
       patch_data.reinitialisation(patch.type(), patch.ncells());

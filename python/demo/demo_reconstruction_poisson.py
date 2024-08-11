@@ -18,7 +18,6 @@ holds. Dirichlet BCs are applied on the boundaries 2 and 4.
 import numpy as np
 from mpi4py import MPI
 import time
-import typing
 
 import dolfinx
 import dolfinx.fem as dfem
@@ -27,11 +26,6 @@ import ufl
 
 from dolfinx_eqlb.eqlb import fluxbc, FluxEqlbEV, FluxEqlbSE
 from dolfinx_eqlb.lsolver import local_projection
-from dolfinx_eqlb.eqlb.check_eqlb_conditions import (
-    check_divergence_condition,
-    check_jump_condition,
-    check_jump_condition_per_facet,
-)
 
 
 # --- The exact solution
@@ -131,13 +125,7 @@ def solve_primal_problem(elmt_order_prime, domain, facet_tags, ds):
 
 # --- The flux equilibration
 def equilibrate_flux(
-    Equilibrator,
-    elmt_order_prime,
-    elmt_order_eqlb,
-    domain,
-    facet_tags,
-    uh_prime,
-    check_equilibration: typing.Optional[bool] = True,
+    Equilibrator, elmt_order_prime, elmt_order_eqlb, domain, facet_tags, uh_prime
 ):
     # Set source term
     x = ufl.SpatialCoordinate(domain)
@@ -195,25 +183,6 @@ def equilibrate_flux(
 
     print(f"Equilibration solved in {timing:.4e} s")
 
-    # --- Check equilibration conditions ---
-    if check_equilibration:
-        # Check if reconstruction is in DRT
-        flux_is_dg = equilibrator.V_flux.element.basix_element.discontinuous
-
-        # Divergence condition
-        check_divergence_condition(
-            equilibrator.list_flux[0],
-            sigma_proj[0],
-            rhs_proj[0],
-            mesh=domain,
-            degree=elmt_order_eqlb,
-            flux_is_dg=flux_is_dg,
-        )
-
-        # The jump condition
-        if flux_is_dg:
-            check_jump_condition(equilibrator.list_flux[0], sigma_proj[0])
-
     return sigma_proj[0], equilibrator.list_flux[0]
 
 
@@ -223,7 +192,7 @@ if __name__ == "__main__":
     Equilibrator = FluxEqlbSE
 
     # The orders of the FE spaces
-    elmt_order_prime = 2
+    elmt_order_prime = 1
     elmt_order_eqlb = 2
 
     # The mesh resolution

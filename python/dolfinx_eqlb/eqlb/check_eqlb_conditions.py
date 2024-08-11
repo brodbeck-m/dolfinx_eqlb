@@ -1,5 +1,4 @@
 # --- Imports ---
-from mpi4py import MPI
 import numpy as np
 import typing
 
@@ -12,74 +11,14 @@ import ufl
 from dolfinx_eqlb.lsolver import local_projection
 
 
-# --- Check the mesh ---
-
-
-def mesh_has_reversed_edges(
-    domain: dmesh.Mesh,
-    print_debug_information: typing.Optional[bool] = False,
-) -> bool:
-    """Check mech for facets with reversed definition
-
-    Args:
-        domain: The mesh
-    """
-
-    # --- Extract geometry data
-    # number of cells/ factes in mesh
-    n_fcts = domain.topology.index_map(1).size_local
-    n_cells = domain.topology.index_map(2).size_local
-
-    # facet/cell connectivity
-    fct_to_cell = domain.topology.connectivity(1, 2)
-    cell_to_fct = domain.topology.connectivity(2, 1)
-
-    # initialise facet orientations
-    domain.topology.create_entity_permutations()
-    fct_permutations = domain.topology.get_facet_permutations().reshape((n_cells, 3))
-
-    # --- Check for reversed edges
-    reversed_fcts = np.zeros((0, 3))
-
-    for f in range(0, n_fcts):
-        # get cells adjacent to f
-        cells = fct_to_cell.links(f)
-
-        if len(cells) > 1:
-            # local facet id of cell
-            if_plus = np.where(cell_to_fct.links(cells[0]) == f)[0][0]
-            if_minus = np.where(cell_to_fct.links(cells[1]) == f)[0][0]
-
-            # Get facet permutation
-            perm_plus = fct_permutations[cells[0], if_plus]
-            perm_minus = fct_permutations[cells[1], if_minus]
-
-            if perm_plus != perm_minus:
-                reversed_fcts = np.append(
-                    reversed_fcts, [[f, cells[0], cells[1]]], axis=0
-                )
-
-    if reversed_fcts.shape[0] == 0:
-        return False
-    else:
-        if print_debug_information:
-            print("Facets with reversed edges:")
-            print(reversed_fcts)
-
-        return True
-
-
-# --- Check Boundary Conditions ---
-
-
 def check_boundary_conditions(
     sigma_eq: dfem.Function,
     sigma_proj: dfem.Function,
     boundary_function: dfem.Function,
     facet_function: typing.Any,
     boundary_facets: typing.List[int],
-) -> bool:
-    """Check boundary conditions
+):
+    """Check if boundary conditions
 
     Function checks if projected flux boundary conditions are satisfied after
     the equilibration.
@@ -152,16 +91,11 @@ def check_boundary_conditions(
         boundary_dofs_data = boundary_dofs_eflux
 
     # Check boundary DOFs
-    if np.allclose(
+    if not np.allclose(
         sigma.x.array[boundary_dofs_eflux],
         sigma_bc.x.array[boundary_dofs_data],
     ):
-        return True
-    else:
-        return False
-
-
-# --- Check the equilibration ---
+        raise ValueError("Boundary conditions not satisfied")
 
 
 def check_divergence_condition(
@@ -171,8 +105,7 @@ def check_divergence_condition(
     mesh: typing.Optional[dmesh.Mesh] = None,
     degree: typing.Optional[int] = None,
     flux_is_dg: typing.Optional[bool] = None,
-    print_debug_information: typing.Optional[bool] = False,
-) -> bool:
+):
     """Check the divergence condition
 
     Let sigma_eq be the equilibrated flux, then
@@ -183,17 +116,13 @@ def check_divergence_condition(
     is calculated and compared to the RHS. Therefore point-evaluations on a test-set
     are performed.
 
-    Available debug information:
-        - List of cells, where norm is greater than tolerance
-
     Args:
-        sigma_eq (Function or ufl-Argument):      The equilibrated flux
-        sigma_proj (Function or ufl-Argument):    The projected flux
-        rhs_proj (Function):                      The projected right-hand side
-        mesh (optional, dmesh.Mesh):              The mesh (optional, only for ufl flux required)
-        degree (optional, int):                   The flux degree (optional, only for ufl flux required)
-        flux_is_dg (optional, bool):              Identifier id flux is in DRT space (optional, only for ufl flux required)
-        print_debug_information (optional, bool): Print debug information (optional)
+        sigma_eq (Function or ufl-Argument):   The equilibrated flux
+        sigma_proj (Function or ufl-Argument): The projected flux
+        rhs_proj (Function):                   The projected right-hand side
+        mesh (optional, dmesh.Mesh):           The mesh (optional, only for ufl flux required)
+        degree (optional, int):                The flux degree (optional, only for ufl flux required)
+        flux_is_dg (optional, bool):           Identifier id flux is in DRT space (optional, only for ufl flux required)
     """
     # --- Extract solution data
     if type(sigma_eq) is dfem.Function:
@@ -238,8 +167,6 @@ def check_divergence_condition(
     points_3d = np.zeros((n_points, 3))
 
     # loop over cells
-    error_cells = []
-
     for c in range(0, n_cells):
         # points on current element
         x = np.sort(np.random.rand(2, n_points), axis=0)
@@ -256,88 +183,10 @@ def check_divergence_condition(
         val_rhs = rhs_proj.eval(points_3d, n_points * [c])
 
         if not np.allclose(val_div_sigeq, val_rhs):
-            error_cells.append(c)
-
-    if len(error_cells) == 0:
-        return True
-    else:
-        # Print cells with divergence error
-        if print_debug_information:
-            print("Cells with divergence error:")
-            print(error_cells)
-
-        return False
+            raise ValueError("Divergence condition not satisfied")
 
 
-def check_jump_condition(
-    sigma_eq: dfem.Function,
-    sigma_proj: dfem.Function,
-    print_debug_information: typing.Optional[bool] = False,
-) -> bool:
-    """Check the jump condition
-
-    For the semi-explicit equilibration procedure the flux within the H(div)
-    conforming RT-space is constructed from the projected flux as well as a
-    reconstruction within the element-wise RT space. This routine checks if
-    the normal component of sigma_proj + sigma_eq is continuous across all
-    internal facets by comparing the H(div) norm of an H(div) interpolant
-    of sigma_proj + sigma_eq with the function itself.
-
-    Available debug information:
-        - List of cells, where norm is greater than tolerance
-
-    Args:
-        sigma_eq:                                 The equilibrated flux
-        sigma_proj:                               The projected flux
-        print_debug_information (optional, bool): Print debug information (optional)
-    """
-
-    # --- Extract data
-    # The mesh
-    domain = sigma_eq.function_space.mesh
-
-    # The flux degree
-    degree = sigma_eq.function_space.element.basix_element.degree
-
-    # The test function
-    V_test = dfem.FunctionSpace(domain, ("RT", degree))
-    f_test = dfem.Function(V_test)
-
-    # The marker space
-    V_marker = dfem.FunctionSpace(domain, ("DG", 0))
-    v_m = ufl.TestFunction(V_marker)
-
-    # Project equilibrated flux into DG_k (RT_k in DG_k)
-    V_flux = dfem.VectorFunctionSpace(domain, ("DG", degree))
-    sigma_eq_dg = local_projection(V_flux, [sigma_eq + sigma_proj])[0]
-
-    # Interpolate sigma_R into f_test
-    f_test.interpolate(sigma_eq_dg)
-
-    # Check if sigma_eq is in H(div)
-    err = f_test - sigma_eq_dg
-    form_error = dfem.form(
-        (ufl.inner(err, err) + ufl.inner(ufl.div(err), ufl.div(err))) * v_m * ufl.dx
-    )
-
-    L_error = dfem_petsc.create_vector(form_error)
-    dfem_petsc.assemble_vector(L_error, form_error)
-
-    error = np.sum(L_error.array)
-
-    # Print debug-information
-    if print_debug_information:
-        print("Cells with non-zero ||f - I_RT(f)||_H(div):")
-        print(np.where(np.isclose(L_error.array, 0.0, atol=1.0e-12))[0])
-
-    return np.isclose(error, 0.0, atol=1.0e-12)
-
-
-def check_jump_condition_per_facet(
-    sigma_eq: dfem.Function,
-    sig_proj: dfem.Function,
-    print_debug_information: typing.Optional[bool] = False,
-) -> bool:
+def check_jump_condition(sigma_eq: dfem.Function, sig_proj: dfem.Function):
     """Check the jump condition
 
     For the semi-explicit equilibration procedure the flux within the H(div)
@@ -346,13 +195,9 @@ def check_jump_condition_per_facet(
     the normal component of sigma_proj + sigma_eq is continuous across all
     internal facets.
 
-    Available debug information:
-        [[cell+, cell-, reversed orientation, DOF, relative error]]
-
     Args:
-        sigma_eq:                                 The equilibrated flux
-        sigma_proj:                               The projected flux
-        print_debug_information (optional, bool): Print debug information (optional)
+        sigma_eq:       The equilibrated flux
+        sigma_proj:     The projected flux
     """
     # --- Extract geometry data
     # the mesh
@@ -365,10 +210,6 @@ def check_jump_condition_per_facet(
     # facet/cell connectivity
     fct_to_cell = domain.topology.connectivity(1, 2)
     cell_to_fct = domain.topology.connectivity(2, 1)
-
-    # initialise facet orientations
-    domain.topology.create_entity_permutations()
-    fct_permutations = domain.topology.get_facet_permutations().reshape((n_cells, 3))
 
     # --- Interpolate proj./equilibr. flux into Baisx RT space
     # the flux degree
@@ -422,8 +263,6 @@ def check_jump_condition_per_facet(
         sign_detj[c] = np.sign(detj)
 
     # --- Check jump condition on all facets
-    error_cells = np.zeros((0, 5))
-
     for f in range(0, n_fcts):
         # get cells adjacent to f
         cells = fct_to_cell.links(f)
@@ -454,43 +293,8 @@ def check_jump_condition_per_facet(
                     flux_minus = x_sig_rt[dof_minus] * (-sign_minus)
 
                 # check continuity of facet-normal flux
-                fsum_lr = flux_plus + flux_minus
-                if not np.isclose(fsum_lr, 0):
-                    # Get facet permutation
-                    perm_plus = fct_permutations[cells[0], if_plus]
-                    perm_minus = fct_permutations[cells[1], if_minus]
-
-                    # Relative error
-                    error = max(abs(fsum_lr / flux_plus), abs(fsum_lr / flux_minus))
-
-                    # Set error information
-                    if perm_plus == perm_minus:
-                        error_cells = np.append(
-                            error_cells, [[cells[0], cells[1], 1, i, error]], axis=0
-                        )
-                    else:
-                        error_cells = np.append(
-                            error_cells, [[cells[0], cells[1], 0, i, error]], axis=0
-                        )
-
-    if error_cells.shape[0] == 0:
-        return True
-    else:
-        if print_debug_information:
-            print("Cells with jump error:")
-            for i in range(0, error_cells.shape[0]):
-                tf = "true" if np.isclose(error_cells[i, 2], 1) else "false"
-                print(
-                    "cells: {0:.0f}, {1:.0f} - fct aligned: {2:s} - dof: {3:.0f} - error: {4:.2e}".format(
-                        error_cells[i, 0],
-                        error_cells[i, 1],
-                        tf,
-                        error_cells[i, 3],
-                        error_cells[i, 4],
-                    )
-                )
-
-        return False
+                if not np.isclose(flux_plus + flux_minus, 0):
+                    raise ValueError("Jump condition not satisfied")
 
 
 def check_weak_symmetry_condition(sigma_eq: dfem.Function):
@@ -498,9 +302,9 @@ def check_weak_symmetry_condition(sigma_eq: dfem.Function):
 
     Let sigma_eq be the equilibrated flux, then
 
-                (sig_eq, J(z)) = 0
+                (sig_eq, J(theta)) = 0
 
-    must hold, for all z in P1. This routine checks if this condition holds true.
+    must hold.
 
     Args:
         sigma_eq (Function):   The equilibrated flux
@@ -532,7 +336,5 @@ def check_weak_symmetry_condition(sigma_eq: dfem.Function):
     dfem_petsc.assemble_vector(L, l_weaksym)
 
     # --- Test weak-symmetry condition
-    if np.allclose(L.array, 0):
-        return True
-    else:
-        return False
+    if not np.allclose(L.array, 0):
+        raise ValueError("Weak symmetry condition not satisfied")

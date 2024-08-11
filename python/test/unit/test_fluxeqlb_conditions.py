@@ -102,7 +102,7 @@ def test_equilibration_conditions(mesh_type, degree, bc_type, equilibrator):
 
                 # --- Check boundary conditions ---
                 if bc_type != "pure_dirichlet":
-                    boundary_condition = eqlb_checker.check_boundary_conditions(
+                    eqlb_checker.check_boundary_conditions(
                         sigma_eq[0],
                         sigma_projected,
                         boundary_dofvalues[0],
@@ -110,25 +110,14 @@ def test_equilibration_conditions(mesh_type, degree, bc_type, equilibrator):
                         boundary_id_neumann,
                     )
 
-                    if not boundary_condition:
-                        raise ValueError("Boundary conditions not fulfilled")
-
                 # --- Check divergence condition ---
-                div_condition = eqlb_checker.check_divergence_condition(
+                eqlb_checker.check_divergence_condition(
                     sigma_eq[0], sigma_projected, rhs_projected
                 )
 
-                if not div_condition:
-                    raise ValueError("Divergence condition not fulfilled")
-
                 # --- Check jump condition (only required for semi-explicit equilibrator)
                 if equilibrator == FluxEqlbSE:
-                    jump_condition = eqlb_checker.check_jump_condition(
-                        sigma_eq[0], sigma_projected
-                    )
-
-                    if not jump_condition:
-                        raise ValueError("Jump condition not fulfilled")
+                    eqlb_checker.check_jump_condition(sigma_eq[0], sigma_projected)
 
 
 if __name__ == "__main__":

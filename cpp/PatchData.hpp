@@ -172,13 +172,12 @@ public:
       dimension_minspaces(ncells, ncells + 1, ncells + 2);
 
       // Check if lagrangian multiplier is required
-      _meanvalue_condition_required = true;
+      _meanvalue_condition_required = false;
       int condition_count = 0;
 
       for (std::size_t i = 0; i < _gdim; ++i)
       {
-        if ((type_patch[i] == PatchType::bound_essnt_primal)
-            || (type_patch[i] == PatchType::bound_mixed))
+        if (type_patch[i] == PatchType::bound_essnt_dual)
         {
           condition_count += 1;
         }
@@ -186,7 +185,7 @@ public:
 
       if (condition_count == _gdim)
       {
-        _meanvalue_condition_required = false;
+        _meanvalue_condition_required = true;
       }
     }
 

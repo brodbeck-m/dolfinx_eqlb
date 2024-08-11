@@ -134,7 +134,7 @@ def test_equilibration_multi_rhs(degree, equilibrator):
                 raise ValueError("Equilibrated fluxes do not match!")
         else:
             # --- Check boundary conditions ---
-            boundary_condition = eqlb_checker.check_boundary_conditions(
+            eqlb_checker.check_boundary_conditions(
                 sigma_eq[i],
                 list_proj_flux[i],
                 boundary_dofvalues[i],
@@ -142,24 +142,13 @@ def test_equilibration_multi_rhs(degree, equilibrator):
                 list_bound_id_neumann[i],
             )
 
-            if not boundary_condition:
-                raise ValueError("Boundary conditions not fulfilled")
-
             # --- Check divergence condition ---
-            div_condition = eqlb_checker.check_divergence_condition(
+            eqlb_checker.check_divergence_condition(
                 sigma_eq[i], list_proj_flux[i], list_proj_rhs[i]
             )
 
-            if not div_condition:
-                raise ValueError("Divergence conditions not fulfilled")
-
             # --- Check jump condition (only required for semi-explicit equilibrator)
-            jump_condition = eqlb_checker.check_jump_condition(
-                sigma_eq[i], list_proj_flux[i]
-            )
-
-            if not jump_condition:
-                raise ValueError("Jump conditions not fulfilled")
+            eqlb_checker.check_jump_condition(sigma_eq[i], list_proj_flux[i])
 
 
 if __name__ == "__main__":
