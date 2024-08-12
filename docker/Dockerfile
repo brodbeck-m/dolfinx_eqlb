@@ -21,18 +21,10 @@ RUN sed -i 's%<Eigen/Core>%<eigen3/Eigen/Core>%' ${PYBIND_EIGEN_PATH} && \
 # Some additional python packages
 RUN pip3 install matplotlib numexpr sympy
 
-# --- Add dolfinx_eqlb to container ---
-# Create folder structure
-RUN mkdir -p /root/Programs/dolfinx_eqlb
-RUN mkdir -p /root/Programs/dolfinx_eqlb/cpp
-RUN mkdir -p /root/Programs/dolfinx_eqlb/python
-
-# Add source code
-ADD cpp /root/Programs/dolfinx_eqlb/cpp
-ADD python /root/Programs/dolfinx_eqlb/python
-
-# Installation
-RUN cd /root/Programs/dolfinx_eqlb &&\
+# --- Install dolfinx_eqlb ---
+RUN git clone https://github.com/brodbeck-m/dolfinx_eqlb.git &&\
+    cd /root/dolfinx_eqlb &&\
     cmake -G Ninja -B build-dir -DCMAKE_BUILD_TYPE=Release cpp/ &&\
     ninja -C build-dir install &&\
     pip3 install python/ -v --upgrade
+
