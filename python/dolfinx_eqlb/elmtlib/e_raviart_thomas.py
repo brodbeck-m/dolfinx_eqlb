@@ -1,3 +1,9 @@
+# Copyright (C) 2024 Maximilian Brodbeck
+#
+# This file is part of dolfinx_eqlb
+#
+# SPDX-License-Identifier:    LGPL-3.0-or-later
+
 import numpy as np
 
 import basix
@@ -10,7 +16,7 @@ def create_hierarchic_rt(cell: CellType, degree: int, discontinuous: bool):
     The ansatz-functions of Raviart-Thomas elements with degree > 1 are not uniquely
     defined. Beside the definition implemented in basix, Bertrand et al. [1] propose
     an alternative representation, where the facet moments rely on the divergence of
-    the function itself. This offers advantages in context of minimisation problems 
+    the function itself. This offers advantages in context of minimisation problems
     on divergence free spaces, as some of the element DOFs can directly be eliminated
     from te resulting equation system.
 
@@ -35,7 +41,7 @@ def create_hierarchic_rt(cell: CellType, degree: int, discontinuous: bool):
     # check cell type
     if cell != CellType.triangle:
         raise ValueError("Only triangular cells supported")
-    
+
     # geometrical information
     if cell == CellType.triangle:
         fct = CellType.interval
@@ -47,7 +53,9 @@ def create_hierarchic_rt(cell: CellType, degree: int, discontinuous: bool):
         nnodes_cell = 4
 
     # representation of the basis forming monomials
-    rt = basix.create_element(basix.ElementFamily.RT, cell, degree, LagrangeVariant.equispaced)
+    rt = basix.create_element(
+        basix.ElementFamily.RT, cell, degree, LagrangeVariant.equispaced
+    )
     wcoeffs = rt.wcoeffs
 
     # --- Creating the interpolation operator ---
@@ -59,7 +67,7 @@ def create_hierarchic_rt(cell: CellType, degree: int, discontinuous: bool):
     if degree > 1:
         n_derivatives = 1
         qdegree = 2 * degree
-    else:   
+    else:
         n_derivatives = 0
         qdegree = degree
 
@@ -70,9 +78,9 @@ def create_hierarchic_rt(cell: CellType, degree: int, discontinuous: bool):
     if tdim == 2:
         # --- Facet contribution
         # quadrature points on facets
-        x[1].append(np.array([[1 - p[0], p[0]] for p in pnt])) # q. points on edge 0
-        x[1].append(np.array([[0, p[0]] for p in pnt]))        # q. points on edge 1
-        x[1].append(np.array([[p[0], 0] for p in pnt]))        # q. points on edge 2
+        x[1].append(np.array([[1 - p[0], p[0]] for p in pnt]))  # q. points on edge 0
+        x[1].append(np.array([[0, p[0]] for p in pnt]))  # q. points on edge 1
+        x[1].append(np.array([[p[0], 0] for p in pnt]))  # q. points on edge 2
 
         # set weight factors according to facet integrals
         for normal in [[-1, -1], [-1, 0], [0, 1]]:
@@ -92,13 +100,15 @@ def create_hierarchic_rt(cell: CellType, degree: int, discontinuous: bool):
             x[2].append(pnt)
 
             # initialisation of interpolation matrix
-            mat = np.zeros(((degree**2) - degree, 2, len(wts), 1 + n_derivatives * tdim))
+            mat = np.zeros(
+                ((degree**2) - degree, 2, len(wts), 1 + n_derivatives * tdim)
+            )
             n = 0
 
             # cell integrals of divergence
             for l in range(0, degree):
                 for m in range(0, degree - l):
-                    if (l + m >= 1):
+                    if l + m >= 1:
                         # lambda = int_T div v * x^l * y^m dx
                         mat[n, 0, :, 1] = (pnt[:, 0] ** l) * (pnt[:, 1] ** m) * wts[:]
                         mat[n, 1, :, 2] = (pnt[:, 0] ** l) * (pnt[:, 1] ** m) * wts[:]
@@ -114,12 +124,11 @@ def create_hierarchic_rt(cell: CellType, degree: int, discontinuous: bool):
                         mat[n, 1, :, 0] = (pnt[:, 0] ** l) * (pnt[:, 1] ** m) * wts[:]
 
                         n = n + 1
-            
+
             M[2].append(mat)
         else:
             x[2].append(np.zeros((0, 2)))
             M[2].append(np.zeros((0, 2, 0, 1 + n_derivatives * tdim)))
-
 
         # no nodal contributions to shape functions
         for _ in range(nnodes_cell):
@@ -127,7 +136,7 @@ def create_hierarchic_rt(cell: CellType, degree: int, discontinuous: bool):
             M[0].append(np.zeros((0, 2, 0, 1 + n_derivatives * tdim)))
     else:
         raise NotImplementedError("Raviart-Thomas on tetrahedra not implemented")
-    
+
     # make element discontinous
     if discontinuous:
         # number of DOFs/ qpoint facet
@@ -147,17 +156,25 @@ def create_hierarchic_rt(cell: CellType, degree: int, discontinuous: bool):
         # move data from facets
         for i in range(0, nfct_cell):
             # move quadrature points
-            points_cell[i * nqpoints_fct : (i + 1) * nqpoints_fct, :] = x[tdim - 1][i][:, :]
+            points_cell[i * nqpoints_fct : (i + 1) * nqpoints_fct, :] = x[tdim - 1][i][
+                :, :
+            ]
             x[tdim - 1][i] = np.zeros((0, tdim))
 
             # move weight factors
-            mat[i * ndofs_fct : (i + 1) * ndofs_fct, :, i * nqpoints_fct : (i + 1) * nqpoints_fct, :] = M[tdim - 1][i][:, :, :, :]
+            mat[
+                i * ndofs_fct : (i + 1) * ndofs_fct,
+                :,
+                i * nqpoints_fct : (i + 1) * nqpoints_fct,
+                :,
+            ] = M[tdim - 1][i][:, :, :, :]
             M[tdim - 1][i] = np.zeros((0, tdim, 0, 1 + n_derivatives * tdim))
 
-
         # copy data from cell
-        points_cell[nfct_cell * nqpoints_fct:, :] = x[tdim][0][:, :]
-        mat[nfct_cell * ndofs_fct:, :, nfct_cell * nqpoints_fct: , :] = M[tdim][0][:, :, :, :]
+        points_cell[nfct_cell * nqpoints_fct :, :] = x[tdim][0][:, :]
+        mat[nfct_cell * ndofs_fct :, :, nfct_cell * nqpoints_fct :, :] = M[tdim][0][
+            :, :, :, :
+        ]
 
         # reset interpolation operator
         x[tdim][0] = points_cell
@@ -168,6 +185,16 @@ def create_hierarchic_rt(cell: CellType, degree: int, discontinuous: bool):
     else:
         space = SobolevSpace.HDiv
 
-    return basix.create_custom_element(cell, [tdim], wcoeffs, x, M, n_derivatives, 
-                                       MapType.contravariantPiola, space,
-                                       discontinuous, degree - 1, degree)
+    return basix.create_custom_element(
+        cell,
+        [tdim],
+        wcoeffs,
+        x,
+        M,
+        n_derivatives,
+        MapType.contravariantPiola,
+        space,
+        discontinuous,
+        degree - 1,
+        degree,
+    )

@@ -1,3 +1,9 @@
+# Copyright (C) 2024 Maximilian Brodbeck
+#
+# This file is part of dolfinx_eqlb
+#
+# SPDX-License-Identifier:    LGPL-3.0-or-later
+
 # --- Imports ---
 import numpy as np
 import typing
@@ -5,7 +11,7 @@ import typing
 import dolfinx.fem as dfem
 import dolfinx.mesh as dmesh
 
-from dolfinx_eqlb.cpp import FluxBC, BoundaryData
+from dolfinx_eqlb.cpp import FluxBC
 
 
 # --- Equilibration of fluxes ---

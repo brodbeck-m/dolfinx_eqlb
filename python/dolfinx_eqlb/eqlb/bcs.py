@@ -1,3 +1,9 @@
+# Copyright (C) 2024 Maximilian Brodbeck
+#
+# This file is part of dolfinx_eqlb
+#
+# SPDX-License-Identifier:    LGPL-3.0-or-later
+
 # --- Imports ---
 import numpy as np
 import typing
@@ -148,7 +154,6 @@ def boundarydata(
     dirichlet_factes: typing.List[np.ndarray],
     equilibrate_stress: bool,
     quadrature_degree: typing.Optional[int] = None,
-
 ):
     # Check input
     n_rhs = len(flux_conditions)

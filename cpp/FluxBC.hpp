@@ -1,3 +1,9 @@
+// Copyright (C) 2024 Maximilian Brodbeck
+//
+// This file is part of dolfinx_eqlb
+//
+// SPDX-License-Identifier:    LGPL-3.0-or-later
+
 #pragma once
 
 #include "utils.hpp"
@@ -139,8 +145,7 @@ public:
     {
       // Number of constants
       cstride = std::accumulate(
-          _coefficients.cbegin(), _coefficients.cend(), 0,
-          [](int sum, auto& f)
+          _coefficients.cbegin(), _coefficients.cend(), 0, [](int sum, auto& f)
           { return sum + f->function_space()->element()->space_dimension(); });
 
       // Initialise storage

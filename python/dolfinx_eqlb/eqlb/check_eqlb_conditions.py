@@ -1,9 +1,13 @@
+# Copyright (C) 2024 Maximilian Brodbeck
+#
+# This file is part of dolfinx_eqlb
+#
+# SPDX-License-Identifier:    LGPL-3.0-or-later
+
 # --- Imports ---
-from mpi4py import MPI
 import numpy as np
 import typing
 
-import basix
 import dolfinx.fem as dfem
 import dolfinx.fem.petsc as dfem_petsc
 import dolfinx.mesh as dmesh

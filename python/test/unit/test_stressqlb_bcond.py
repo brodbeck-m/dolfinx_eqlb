@@ -1,3 +1,9 @@
+# Copyright (C) 2024 Maximilian Brodbeck
+#
+# This file is part of dolfinx_eqlb
+#
+# SPDX-License-Identifier:    LGPL-3.0-or-later
+
 # --- Import ---
 import numpy as np
 from petsc4py import PETSc

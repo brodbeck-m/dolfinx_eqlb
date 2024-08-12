@@ -1,3 +1,9 @@
+# Copyright (C) 2024 Maximilian Brodbeck
+#
+# This file is part of dolfinx_eqlb
+#
+# SPDX-License-Identifier:    LGPL-3.0-or-later
+
 # --- Includes ---
 from enum import Enum
 import numpy as np
@@ -9,9 +15,8 @@ import dolfinx.fem as dfem
 import ufl
 
 from dolfinx_eqlb.lsolver import local_projection
-from dolfinx_eqlb.eqlb import fluxbc
 
-from utils import Geometry, interpolate_ufl_to_function
+from utils import interpolate_ufl_to_function
 
 """
 General setup routines for unit tests

@@ -1,3 +1,9 @@
+// Copyright (C) 2024 Maximilian Brodbeck
+//
+// This file is part of dolfinx_eqlb
+//
+// SPDX-License-Identifier:    LGPL-3.0-or-later
+
 #include "caster_petsc.h"
 #include <dolfinx/fem/DirichletBC.h>
 #include <dolfinx/fem/Form.h>

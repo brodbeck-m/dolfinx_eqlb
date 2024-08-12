@@ -1,3 +1,9 @@
+# Copyright (C) 2024 Maximilian Brodbeck
+#
+# This file is part of dolfinx_eqlb
+#
+# SPDX-License-Identifier:    LGPL-3.0-or-later
+
 # --- Includes ---
 import numpy as np
 from typing import Any, List
@@ -8,7 +14,7 @@ import ufl
 from dolfinx_eqlb.lsolver import local_projection
 from dolfinx_eqlb.eqlb import fluxbc, FluxEqlbSE
 
-from utils import Geometry, interpolate_ufl_to_function
+from utils import Geometry
 
 """
 Setup variable test-cases for linear elasticity

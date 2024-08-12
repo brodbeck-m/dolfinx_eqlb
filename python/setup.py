@@ -1,3 +1,9 @@
+# Copyright (C) 2024 Maximilian Brodbeck
+#
+# This file is part of dolfinx_eqlb
+#
+# SPDX-License-Identifier:    LGPL-3.0-or-later
+
 import os
 import platform
 import subprocess
@@ -7,7 +13,7 @@ from setuptools import Extension, setup
 from setuptools.command.build_ext import build_ext
 
 
-VERSION = "0.0.0"
+VERSION = "1.0.0r1"
 
 REQUIREMENTS = ["fenics-dolfinx==0.6.0", "numpy>=1.21.0"]
 
@@ -57,9 +63,9 @@ class CMakeBuild(build_ext):
         import pybind11
 
         env["pybind11_DIR"] = pybind11.get_cmake_dir()
-        env[
-            "CXXFLAGS"
-        ] = f'{env.get("CXXFLAGS", "")} -DVERSION_INFO=\\"{self.distribution.get_version()}\\"'
+        env["CXXFLAGS"] = (
+            f'{env.get("CXXFLAGS", "")} -DVERSION_INFO=\\"{self.distribution.get_version()}\\"'
+        )
 
         if not os.path.exists(self.build_temp):
             os.makedirs(self.build_temp)
