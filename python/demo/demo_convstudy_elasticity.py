@@ -6,15 +6,15 @@
 
 """Convergence study for linear elasticity
 
-Solution of the quasi-static linear elasticity
+Solution of the quasi-static linear elasticity equation
 
-        -div(2 * mhS * eps + lhS * div(u) * I) = f ,
+        -div(2 * eps + pi_1 * div(u) * I) = f ,
 
-with subsequent flux reconstruction. A convergence 
+with subsequent stress reconstruction. A convergence 
 study based on a manufactured solution
 
-        u_ext = [sin(2*pi * x) * cos(2*pi * y),
-                -cos(2*pi * x) * sin(2*pi * y)]
+        u_ext = [sin(pi * x) * sin(pi * y),
+                -sin(2*pi * x) * sin(2*pi * y)]
 
 is performed. Dirichlet boundary conditions are 
 applied on boundary surfaces [1, 2, 3, 4].
@@ -23,51 +23,123 @@ applied on boundary surfaces [1, 2, 3, 4].
 # --- Imports ---
 import numpy as np
 from mpi4py import MPI
+import typing
 
+import dolfinx
 import dolfinx.fem as dfem
 import ufl
 
 from demo_reconstruction_elasticity import (
-    create_unit_square_mesh,
+    MeshType,
+    create_unit_square_builtin,
+    create_unit_square_gmesh,
     solve_primal_problem,
     equilibrate_flux,
+    exact_solution,
 )
 
 # --- Input parameters ---
+# The mesh type
+mesh_type = MeshType.builtin
+
+# Material: pi_1 = lambda/mu
+pi_1 = 1.0
+
 # The orders of the FE spaces
-elmt_order_prime = 2
-elmt_order_eqlb = 2
+order_prime = 3
+order_eqlb = 4
 
 # The mesh resolution
 sdisc_nelmt_init = 1
 convstudy_nref = 7
 
 
-# --- Exact solution ---
-def exact_solution(x):
-    """Exact solution
-    u_ext = [sin(2*pi * x) * cos(2*pi * y), -cos(2*pi * x) * sin(2*pi * y)]
+# --- Error estimation ---
+def estimate_error(
+    pi_1: float,
+    f: ufl.Form,
+    uh: dfem.Function,
+    sigma_proj: ufl.Form,
+    delta_sigma_eqlb: ufl.Form,
+) -> typing.Tuple[float, typing.List[float]]:
+    """Estimates the error of a linear elastic problem
+
+    The estimate is derived based on the strategy in [1].
+
+    [1] Bertrand et al., https://doi.org/10.1002/gamm.202000007, 2020
 
     Args:
-        x (ufl.SpatialCoordinate): The position x
+        pi_1:             The ratio of lambda and mu
+        f:                The body forces
+        uh:               The displacement solution
+        sigma_proj:       The projected stress tensor
+        delta_sigma_eqlb: The equilibrated stress tensor
+
     Returns:
-        The exact function as ufl-expression
+        The total error estimate,
+        The error components
     """
-    return ufl.as_vector(
-        [
-            ufl.sin(2 * ufl.pi * x[0]) * ufl.cos(2 * ufl.pi * x[1]),
-            -ufl.cos(2 * ufl.pi * x[0]) * ufl.cos(2 * ufl.pi * x[1]),
-        ]
+
+    # Extract mesh
+    domain = uh.function_space.mesh
+
+    # Higher order volume integrator
+    dvol = ufl.dx(degree=10)
+
+    # Initialize storage of error
+    V_e = dfem.FunctionSpace(domain, ufl.FiniteElement("DG", domain.ufl_cell(), 0))
+    v = ufl.TestFunction(V_e)
+
+    # Extract cell diameter
+    h_cell = dfem.Function(V_e)
+    num_cells = (
+        domain.topology.index_map(2).size_local
+        + domain.topology.index_map(2).num_ghosts
+    )
+    h = dolfinx.cpp.mesh.h(domain, 2, range(num_cells))
+    h_cell.x.array[:] = h
+
+    # Forms for error estimation
+    a_delta_sigma = 0.5 * (
+        delta_sigma_eqlb
+        - (pi_1 / (2 + 2 * pi_1)) * ufl.tr(delta_sigma_eqlb) * ufl.Identity(2)
     )
 
+    err_osc = (h_cell / ufl.pi) * (f + ufl.div(sigma_proj + delta_sigma_eqlb))
+    err_wsym = delta_sigma_eqlb[0, 1] - delta_sigma_eqlb[1, 0]
 
-# --- Error estimation ---
-def estimate_error(rhs_prime, u_prime, sig_eqlb):
-    raise NotImplementedError("Error estimation not implemented")
+    form_eta_sig = dfem.form(ufl.inner(delta_sigma_eqlb, a_delta_sigma) * v * ufl.dx)
+    form_eta_osc = dfem.form(ufl.inner(err_osc, err_osc) * v * dvol)
+    form_eta_wsym = dfem.form(ufl.inner(err_wsym, err_wsym) * v * ufl.dx)
+
+    # Assemble errors
+    Leta_sig = dfem.petsc.create_vector(form_eta_sig)
+    Leta_osc = dfem.petsc.create_vector(form_eta_osc)
+    Leta_wsym = dfem.petsc.create_vector(form_eta_wsym)
+
+    dfem.petsc.assemble_vector(Leta_sig, form_eta_sig)
+    dfem.petsc.assemble_vector(Leta_osc, form_eta_osc)
+    dfem.petsc.assemble_vector(Leta_wsym, form_eta_wsym)
+
+    # Evaluate error norms
+    error_estm = np.sqrt(
+        np.sum(
+            Leta_sig.array
+            + Leta_osc.array
+            + Leta_wsym.array
+            + 2 * np.multiply(np.sqrt(Leta_osc.array), np.sqrt(Leta_wsym.array))
+        )
+    )
+
+    error_estm_sig = np.sqrt(np.sum(Leta_sig.array))
+    error_estm_wsym = np.sqrt(np.sum(Leta_wsym.array))
+    error_estm_osc = np.sqrt(np.sum(Leta_osc.array))
+
+    return error_estm, [error_estm_sig, error_estm_wsym, error_estm_osc]
 
 
 # --- Convergence study ---
-error_norms = np.zeros((convstudy_nref, 11))
+error_norms = np.zeros((convstudy_nref, 12))
 
 for i in range(convstudy_nref):
     # --- Create mesh
@@ -75,34 +147,34 @@ for i in range(convstudy_nref):
     sdisc_nelmt = sdisc_nelmt_init * 2**i
 
     # Create mesh
-    domain, facet_tags, ds = create_unit_square_mesh(sdisc_nelmt)
+    if mesh_type == MeshType.builtin:
+        domain, facet_tags, ds = create_unit_square_builtin(sdisc_nelmt)
+    elif mesh_type == MeshType.gmsh:
+        domain, facet_tags, ds = create_unit_square_gmesh(1 / sdisc_nelmt)
+    else:
+        raise ValueError("Unknown mesh type")
 
     # --- Solve problem
     # Solve primal problem
-    uh_prime, stress_ref = solve_primal_problem(
-        elmt_order_prime, domain, facet_tags, ds, solver="cg"
+    degree_proj = 1 if (order_eqlb == 2) else None
+    uh, stress_ref = solve_primal_problem(
+        order_prime, domain, facet_tags, ds, pi_1, degree_proj, "cg"
     )
 
     # Solve equilibration
     stress_rw_proj, stress_rw_eqlb = equilibrate_flux(
-        elmt_order_eqlb,
-        domain,
-        facet_tags,
-        uh_prime,
-        stress_ref,
-        weak_symmetry=True,
-        check_equilibration=False,
+        order_eqlb, domain, facet_tags, pi_1, uh, stress_ref, True, False
     )
 
     # ufl expression of the reconstructed flux
-    stress_proj = ufl.as_matrix(
+    stress_proj = -ufl.as_matrix(
         [
             [stress_rw_proj[0][0], stress_rw_proj[0][1]],
             [stress_rw_proj[1][0], stress_rw_proj[1][1]],
         ]
     )
 
-    stress_eqlb = ufl.as_matrix(
+    stress_eqlb = -ufl.as_matrix(
         [
             [stress_rw_eqlb[0][0], stress_rw_eqlb[0][1]],
             [stress_rw_eqlb[1][0], stress_rw_eqlb[1][1]],
@@ -113,28 +185,27 @@ for i in range(convstudy_nref):
 
     # --- Estimate error
     # RHS
-    f = -ufl.div(ufl.grad(exact_solution(ufl.SpatialCoordinate(domain))))
+    f = -ufl.div(stress_ref)
 
-    # errorestm, errorestm_sig, errorestm_osc = estimate_error(f, uh_prime, sigma_eqlb)
-    errorestm = 0
-    errorestm_sig = 0
-    errorestm_osc = 0
+    errorestm, componetnts_estm = estimate_error(1.0, f, uh, stress_proj, stress_eqlb)
 
     # --- Compute real errors
     # Volume integrator
     dvol = ufl.dx(degree=10)
 
-    # H1 error displacement
-    diff = ufl.grad(uh_prime - exact_solution(ufl.SpatialCoordinate(domain)))
+    # Energy norm of the displacement
+    diff_u = uh - exact_solution(ufl.SpatialCoordinate(domain))
+    err_ufl = (
+        ufl.inner(ufl.grad(diff_u), ufl.grad(diff_u))
+        + ufl.inner(ufl.div(diff_u), ufl.div(diff_u))
+    ) * dvol
+
     err_uh1 = np.sqrt(
-        domain.comm.allreduce(
-            dfem.assemble_scalar(dfem.form(ufl.inner(diff, diff) * dvol)),
-            op=MPI.SUM,
-        )
+        domain.comm.allreduce(dfem.assemble_scalar(dfem.form(err_ufl)), op=MPI.SUM)
     )
 
     # H(div) error flux
-    diff = ufl.div(sigma + stress_ref)
+    diff = ufl.div(sigma - stress_ref)
     err_sighdiv = np.sqrt(
         domain.comm.allreduce(
             dfem.assemble_scalar(dfem.form(ufl.inner(diff, diff) * dvol)),
@@ -148,9 +219,10 @@ for i in range(convstudy_nref):
     error_norms[i, 2] = err_uh1
     error_norms[i, 4] = err_sighdiv
     error_norms[i, 6] = errorestm
-    error_norms[i, 7] = errorestm_sig
-    error_norms[i, 8] = errorestm_osc
-    error_norms[i, 10] = errorestm / err_uh1
+    error_norms[i, 7] = componetnts_estm[0]
+    error_norms[i, 8] = componetnts_estm[1]
+    error_norms[i, 9] = componetnts_estm[2]
+    error_norms[i, 11] = errorestm / err_uh1
 
 # Calculate convergence rates
 error_norms[1:, 3] = np.log(error_norms[1:, 2] / error_norms[:-1, 2]) / np.log(
@@ -159,24 +231,24 @@ error_norms[1:, 3] = np.log(error_norms[1:, 2] / error_norms[:-1, 2]) / np.log(
 error_norms[1:, 5] = np.log(error_norms[1:, 4] / error_norms[:-1, 4]) / np.log(
     error_norms[1:, 0] / error_norms[:-1, 0]
 )
-# error_norms[1:, 9] = np.log(error_norms[1:, 6] / error_norms[:-1, 6]) / np.log(
-#     error_norms[1:, 0] / error_norms[:-1, 0]
-# )
+error_norms[1:, 10] = np.log(error_norms[1:, 6] / error_norms[:-1, 6]) / np.log(
+    error_norms[1:, 0] / error_norms[:-1, 0]
+)
 
 # Export results to csv
 outname = (
     "ConvStudyStressEqlb"
     + "_porder-"
-    + str(elmt_order_prime)
+    + str(order_prime)
     + "_eorder-"
-    + str(elmt_order_eqlb)
+    + str(order_eqlb)
     + ".csv"
 )
 
 header_protocol = (
     "h_min, n_elmt, err_u_h1, convrate_u_h1,"
     "err_sigma_hdiv, convrate_sigma_hdiv, "
-    "errestm_u_h1, errestm_u_h1_sig, errestm_u_h1_osc, "
+    "errestm_u_h1, errestm_u_h1_sig, errestm_u_h1_asym, errestm_u_h1_osc, "
     "convrate_estmu_h1, I_eff"
 )
 
