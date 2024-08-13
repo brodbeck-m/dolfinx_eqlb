@@ -16,7 +16,7 @@ dolfinx_eqlb supports flux equilibration on two-dimensional domains with arbitra
 1. Clone this repository using the command:
 
 ```shell
-git clone https://github.tik.uni-stuttgart.de/brodbeck/dolfinx_eqlb
+git clone git@github.com:brodbeck-m/dolfinx_eqlb.git
 ```
 
 2. Download the required Docker image of DOLFINx:
@@ -34,7 +34,7 @@ cd docker
 4. Try out a demo
 ```shell
 ./launch-container.sh
-cd ./Programs/dolfinx_eqlb/python/demo
+cd ./dolfinx_eqlb/python/demo
 python3 demo_reconstruction_poisson.py  
 ```
 
