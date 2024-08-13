@@ -62,7 +62,7 @@ def exact_solution(x):
     )
 
 
-def interpolate_ufl_to_function(f_ufl: typing.Any, f_fe: dfem.Function):
+def interpolate_ufl_to_function(f_ufl: ufl.Form, f_fe: dfem.Function):
     """Interpolates a UFL expression to a function
 
     Args:
@@ -278,7 +278,7 @@ def solve_primal_problem(
     pi_1: float,
     pdegree_rhs: typing.Optional[int] = None,
     solver: str = "lu",
-):
+) -> typing.Tuple[dfem.Function, ufl.Form]:
     """Solves the problem of linear elasticity based on lagrangian finite elements
 
     Args:
@@ -376,7 +376,7 @@ def equilibrate_flux(
     facet_tags: dmesh.MeshTagsMetaClass,
     pi_1: float,
     uh: dfem.Function,
-    sigma_ext: typing.Any,
+    sigma_ext: ufl.Form,
     weak_symmetry: typing.Optional[bool] = True,
     check_equilibration: typing.Optional[bool] = True,
 ) -> typing.Tuple[typing.List[dfem.Function], typing.List[dfem.Function]]:
