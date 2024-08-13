@@ -8,7 +8,7 @@
 
 Solution of the quasi-static linear elasticity equation
 
-        -div(2 * eps + div(u) * I) = f ,
+        -div(2 * eps + pi_1 * div(u) * I) = f ,
 
 with subsequent stress reconstruction. A convergence 
 study based on a manufactured solution
@@ -371,7 +371,7 @@ def solve_primal_problem(
 
 # --- The flux equilibration
 def equilibrate_flux(
-    elmt_order_eqlb: int,
+    order_eqlb: int,
     domain: dmesh.Mesh,
     facet_tags: dmesh.MeshTagsMetaClass,
     pi_1: float,
@@ -401,7 +401,7 @@ def equilibrate_flux(
     """
 
     # Check input
-    if elmt_order_eqlb < 2:
+    if order_eqlb < 2:
         raise ValueError("Stress equilibration only possible for k>1")
 
     # The spatial dimension
@@ -414,8 +414,8 @@ def equilibrate_flux(
     f = -ufl.div(sigma_ext)
 
     # Projected flux
-    # (elmt_order_eqlb - 1 would be sufficient but not implemented for semi-explicit eqlb.)
-    V_flux_proj = dfem.VectorFunctionSpace(domain, ("DG", elmt_order_eqlb - 1))
+    # (order_eqlb - 1 would be sufficient but not implemented for semi-explicit eqlb.)
+    V_flux_proj = dfem.VectorFunctionSpace(domain, ("DG", order_eqlb - 1))
     sigma_proj = local_projection(
         V_flux_proj,
         [
@@ -425,19 +425,19 @@ def equilibrate_flux(
     )
 
     # Project RHS
-    V_rhs_proj = dfem.FunctionSpace(domain, ("DG", elmt_order_eqlb - 1))
+    V_rhs_proj = dfem.FunctionSpace(domain, ("DG", order_eqlb - 1))
     rhs_proj = local_projection(V_rhs_proj, [f[0], f[1]])
 
     # Initialise equilibrator
     equilibrator = FluxEqlbSE(
-        elmt_order_eqlb, domain, rhs_proj, sigma_proj, equilibrate_stress=weak_symmetry
+        order_eqlb, domain, rhs_proj, sigma_proj, equilibrate_stress=weak_symmetry
     )
 
     # Set boundary conditions
     equilibrator.set_boundary_conditions(
         [facet_tags.indices[:], facet_tags.indices[:]],
         [[], []],
-        quadrature_degree=3 * elmt_order_eqlb,
+        quadrature_degree=3 * order_eqlb,
     )
 
     # Solve equilibration
@@ -451,7 +451,7 @@ def equilibrate_flux(
 
     # --- Check equilibration conditions ---
     if check_equilibration:
-        V_rhs_proj = dfem.VectorFunctionSpace(domain, ("DG", elmt_order_eqlb - 1))
+        V_rhs_proj = dfem.VectorFunctionSpace(domain, ("DG", order_eqlb - 1))
         rhs_proj_vecval = local_projection(V_rhs_proj, [f])[0]
 
         stress_eqlb = ufl.as_matrix(
@@ -474,7 +474,7 @@ def equilibrate_flux(
             stress_proj,
             rhs_proj_vecval,
             mesh=domain,
-            degree=elmt_order_eqlb,
+            degree=order_eqlb,
             flux_is_dg=True,
         )
 
