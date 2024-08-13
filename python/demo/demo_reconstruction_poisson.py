@@ -54,7 +54,9 @@ class MeshType(Enum):
     gmsh = 1
 
 
-def create_unit_square_builtin(n_elmt: int):
+def create_unit_square_builtin(
+    n_elmt: int,
+) -> typing.Tuple[dmesh.Mesh, dmesh.meshtags, ufl.Measure]:
     domain = dmesh.create_rectangle(
         MPI.COMM_WORLD,
         [np.array([0, 0]), np.array([1, 1])],
@@ -88,7 +90,9 @@ def create_unit_square_builtin(n_elmt: int):
     return domain, facet_tag, ds
 
 
-def create_unit_square_gmesh(h: float):
+def create_unit_square_gmesh(
+    h: float,
+) -> typing.Tuple[dmesh.Mesh, dmesh.meshtags, ufl.Measure]:
     # --- Build model
     gmsh.initialize()
     gmsh.option.setNumber("General.Terminal", 0)
@@ -202,8 +206,9 @@ def solve_primal_problem(
     domain: dmesh.Mesh,
     facet_tags: typing.Any,
     ds: typing.Any,
-    bc_type: typing.Optional[BCType] = BCType.neumann_hom,
-):
+    bc_type: BCType,
+    pdegree_rhs: typing.Optional[int] = None,
+) -> dfem.Function:
     # Set function space (primal problem)
     V_prime = dfem.FunctionSpace(domain, ("CG", elmt_order_prime))
 
@@ -215,13 +220,19 @@ def solve_primal_problem(
     x = ufl.SpatialCoordinate(domain)
     f = -ufl.div(ufl.grad(exact_solution(ufl)(x)))
 
+    if pdegree_rhs is None:
+        rhs = f
+    else:
+        rhs = local_projection(dfem.FunctionSpace(domain, ("DG", pdegree_rhs)), [f])[0]
+
     # Equation system
     a = ufl.inner(ufl.grad(u), ufl.grad(v)) * ufl.dx
-    l = f * v * ufl.dx
+    l = rhs * v * ufl.dx
 
     # Neumann boundary conditions
+    normal = ufl.FacetNormal(domain)
+
     if bc_type == BCType.neumann_inhom:
-        normal = ufl.FacetNormal(domain)
         l += ufl.inner(ufl.grad(exact_solution(ufl)(x)), normal) * v * ds(1)
         l += ufl.inner(ufl.grad(exact_solution(ufl)(x)), normal) * v * ds(3)
 
@@ -274,9 +285,9 @@ def equilibrate_flux(
     domain: dmesh.Mesh,
     facet_tags: typing.Any,
     uh_prime: dfem.Function,
-    bc_type: typing.Optional[BCType] = BCType.neumann_inhom,
+    bc_type: BCType,
     check_equilibration: typing.Optional[bool] = True,
-):
+) -> typing.Tuple[dfem.Function, dfem.Function]:
     # Set source term
     x = ufl.SpatialCoordinate(domain)
     f = -ufl.div(ufl.grad(exact_solution(ufl)(x)))
@@ -291,22 +302,24 @@ def equilibrate_flux(
     # Initialise equilibrator
     equilibrator = Equilibrator(elmt_order_eqlb, domain, rhs_proj, sigma_proj)
 
-    # Get facets on essential boundary surfaces
+    # Set BCs
+    bc_dual = []
+
     if bc_type == BCType.dirichlet:
-        fcts_essnt = facet_tags.indices[:]
+        # Facets on Dirichlet boundary of primal problem
+        fcts_essnt = facet_tags.indices
+
+        # Set flux BCs
+        qdegree = None
     elif bc_type == BCType.neumann_hom:
+        # Facets on Dirichlet boundary of primal problem
         fcts_essnt = facet_tags.indices[
             np.logical_or(facet_tags.values == 1, facet_tags.values == 3)
         ]
-    elif bc_type == BCType.neumann_inhom:
-        fcts_essnt = facet_tags.indices[
-            np.logical_or(facet_tags.values == 2, facet_tags.values == 4)
-        ]
 
-    # Specify flux boundary conditions
-    bc_dual = []
+        # Set flux BCs
+        qdegree = None
 
-    if bc_type == BCType.neumann_hom:
         bc_dual.append(
             fluxbc(
                 dfem.Constant(domain, PETSc.ScalarType(0.0)),
@@ -314,33 +327,38 @@ def equilibrate_flux(
                     np.logical_or(facet_tags.values == 2, facet_tags.values == 4)
                 ],
                 equilibrator.V_flux,
-                requires_projection=True,
-                quadrature_degree=3 * elmt_order_eqlb,
             )
         )
     elif bc_type == BCType.neumann_inhom:
+        # Facets on Dirichlet boundary of primal problem
+        fcts_essnt = facet_tags.indices[
+            np.logical_or(facet_tags.values == 2, facet_tags.values == 4)
+        ]
+
+        # Set flux BCs
+        qdegree = 3 * elmt_order_eqlb
+
         bc_dual.append(
             fluxbc(
                 ufl.grad(exact_solution(ufl)(x))[0],
                 facet_tags.indices[facet_tags.values == 1],
                 equilibrator.V_flux,
                 requires_projection=True,
-                quadrature_degree=3 * elmt_order_eqlb,
+                quadrature_degree=qdegree,
             )
         )
-
         bc_dual.append(
             fluxbc(
                 -ufl.grad(exact_solution(ufl)(x))[0],
                 facet_tags.indices[facet_tags.values == 3],
                 equilibrator.V_flux,
                 requires_projection=True,
-                quadrature_degree=3 * elmt_order_eqlb,
+                quadrature_degree=qdegree,
             )
         )
 
     equilibrator.set_boundary_conditions(
-        [fcts_essnt], [bc_dual], quadrature_degree=3 * elmt_order_eqlb
+        [fcts_essnt], [bc_dual], quadrature_degree=qdegree
     )
 
     # Solve equilibration
@@ -358,18 +376,23 @@ def equilibrate_flux(
         flux_is_dg = equilibrator.V_flux.element.basix_element.discontinuous
 
         # Divergence condition
-        check_divergence_condition(
+        div_condition_fulfilled = check_divergence_condition(
             equilibrator.list_flux[0],
             sigma_proj[0],
             rhs_proj[0],
-            mesh=domain,
-            degree=elmt_order_eqlb,
-            flux_is_dg=flux_is_dg,
         )
+
+        if not div_condition_fulfilled:
+            raise ValueError("Divergence conditions not fulfilled")
 
         # The jump condition
         if flux_is_dg:
-            check_jump_condition(equilibrator.list_flux[0], sigma_proj[0])
+            jump_condition_fulfilled = check_jump_condition(
+                equilibrator.list_flux[0], sigma_proj[0]
+            )
+
+            if not jump_condition_fulfilled:
+                raise ValueError("Jump conditions not fulfilled")
 
     return sigma_proj[0], equilibrator.list_flux[0]
 
@@ -377,19 +400,29 @@ def equilibrate_flux(
 if __name__ == "__main__":
     # --- Parameters ---
     # The mesh type
-    mesh_type = MeshType.gmsh
+    mesh_type = MeshType.builtin
 
     # The considered equilibration strategy
-    Equilibrator = FluxEqlbSE
+    Equilibrator = FluxEqlbEV
 
     # The orders of the FE spaces
     elmt_order_prime = 1
     elmt_order_eqlb = 1
 
+    # The boundary conditions
+    bc_type = BCType.dirichlet
+
     # The mesh resolution
-    sdisc_nelmt = 20
+    sdisc_nelmt = 10
 
     # --- Execute calculation ---
+    # Check input
+    # TODO - Remove when EV is fixed
+    if ((Equilibrator == FluxEqlbEV) and (mesh_type == MeshType.gmsh)) and (
+        bc_type == BCType.neumann_inhom
+    ):
+        raise ValueError("EV with inhomogeneous flux BCs currently not working")
+
     # Create mesh
     if mesh_type == MeshType.builtin:
         domain, facet_tags, ds = create_unit_square_builtin(sdisc_nelmt)
@@ -399,7 +432,10 @@ if __name__ == "__main__":
         raise ValueError("Unknown mesh type")
 
     # Solve primal problem
-    uh_prime = solve_primal_problem(elmt_order_prime, domain, facet_tags, ds)
+    degree_proj = 0 if (elmt_order_eqlb == 1) else None
+    uh_prime = solve_primal_problem(
+        elmt_order_prime, domain, facet_tags, ds, bc_type, pdegree_rhs=degree_proj
+    )
 
     # Solve equilibration
     sigma_proj, sigma_eqlb = equilibrate_flux(
@@ -408,6 +444,7 @@ if __name__ == "__main__":
         domain,
         facet_tags,
         uh_prime,
+        bc_type,
         check_equilibration=True,
     )
 

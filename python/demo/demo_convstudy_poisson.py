@@ -22,6 +22,7 @@ applied on boundary surfaces [2,4].
 # --- Imports ---
 import numpy as np
 from mpi4py import MPI
+import typing
 
 import dolfinx
 import dolfinx.fem as dfem
@@ -40,21 +41,21 @@ from demo_reconstruction_poisson import (
 
 # --- Input parameters ---
 # The mesh type
-mesh_type = MeshType.gmsh
+mesh_type = MeshType.builtin
 
 # The considered equilibration strategy
-Equilibrator = FluxEqlbSE
+Equilibrator = FluxEqlbEV
 
 # The orders of the FE spaces
-elmt_order_prime = 1
-elmt_order_eqlb = 1
+elmt_order_prime = 3
+elmt_order_eqlb = 3
 
 # The boundary conditions
-bc_type = BCType.neumann_inhom
+bc_type = BCType.dirichlet
 
 # The mesh resolution
 sdisc_nelmt_init = 1
-convstudy_nref = 7
+convstudy_nref = 6
 
 
 # --- Exact solution ---
@@ -63,7 +64,9 @@ def exact_solution(pkt):
 
 
 # --- Error estimation ---
-def estimate_error(rhs_prime, u_prime, sig_eqlb):
+def estimate_error(
+    rhs_prime: typing.Any, u_prime: dfem.Function, sig_eqlb: dfem.Function
+) -> typing.Tuple[float, float, float]:
     # Extract mesh
     domain = u_prime.function_space.mesh
 
@@ -142,10 +145,10 @@ for i in range(convstudy_nref):
 
     # --- Solve problem
     # Solve primal problem
+    degree_proj = 0 if (elmt_order_eqlb == 1) else None
     uh_prime = solve_primal_problem(
-        elmt_order_prime, domain, facet_tags, ds, bc_type=BCType.neumann_hom
+        elmt_order_prime, domain, facet_tags, ds, bc_type, pdegree_rhs=degree_proj
     )
-
     # Solve equilibration
     sigma_proj, sigma_eqlb = equilibrate_flux(
         Equilibrator,
