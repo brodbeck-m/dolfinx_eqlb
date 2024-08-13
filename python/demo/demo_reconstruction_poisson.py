@@ -17,7 +17,10 @@ right-hand-side f
 is enforced, where
 
                     u_ext = sin(2*pi * x) * cos(2*pi * y)
-holds. Dirichlet BCs are applied on the boundaries 2 and 4.
+holds. Possible boundary conditions:
+    dirichlet:     u = u_ext on boundary surfaces [1,2,3,4]
+    neumann_hom:   u = u_ext on boundary surfaces [1,3]
+    neumann_inhom: u = u_ext on boundary surfaces [2,4]
 """
 
 # --- Imports ---

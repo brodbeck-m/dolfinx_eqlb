@@ -15,8 +15,10 @@ a convergence study based on a manufactured solution
 
                 u_ext = sin(2*pi * x) * cos(2*pi * y)
 
-is performed. Inhomogeneous Dirichlet boundary conditions are 
-applied on boundary surfaces [2,4].
+is performed. Possible boundary conditions:
+    dirichlet:     u = u_ext on boundary surfaces [1,2,3,4]
+    neumann_hom:   u = u_ext on boundary surfaces [1,3]
+    neumann_inhom: u = u_ext on boundary surfaces [2,4]
 """
 
 # --- Imports ---
