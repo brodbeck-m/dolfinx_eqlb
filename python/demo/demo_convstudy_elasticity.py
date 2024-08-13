@@ -46,8 +46,8 @@ mesh_type = MeshType.builtin
 pi_1 = 1.0
 
 # The orders of the FE spaces
-order_prime = 3
-order_eqlb = 4
+order_prime = 2
+order_eqlb = 2
 
 # The mesh resolution
 sdisc_nelmt_init = 1
