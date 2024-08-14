@@ -6,18 +6,16 @@
 
 """ Demo for H(div) conforming equilibration of fluxes
 
-Implementation of a H(div) conforming flux-equilibration of a 
+Implementation of a H(div) conforming flux-equilibration for a 
 Poisson problem
                     -div(grad(u)) = f .
 
 To verify the correctness of the proposed implementation, the
-gained solution is compared to the exact solution u_ext. For the
-right-hand-side f 
+gained solution is compared to the exact solution u_ext. Assuming 
                     f(x,y) = -grad(u_ext)
-is enforced, where
-
+the exact solution
                     u_ext = sin(2*pi * x) * cos(2*pi * y)
-holds. Possible boundary conditions:
+is enforced. Possible boundary conditions:
     dirichlet:     u = u_ext on boundary surfaces [1,2,3,4]
     neumann_hom:   u = u_ext on boundary surfaces [1,3]
     neumann_inhom: u = u_ext on boundary surfaces [2,4]
@@ -48,6 +46,15 @@ from dolfinx_eqlb.eqlb.check_eqlb_conditions import (
 
 # --- The exact solution
 def exact_solution(pkt):
+    """Exact solution
+    u_ext = sin(pi * x) * cos(pi * y)
+
+    Args:
+        pkt: The package
+
+    Returns:
+        The function handle oft the exact solution
+    """
     return lambda x: pkt.sin(2 * pkt.pi * x[0]) * pkt.cos(2 * pkt.pi * x[1])
 
 
@@ -59,7 +66,30 @@ class MeshType(Enum):
 
 def create_unit_square_builtin(
     n_elmt: int,
-) -> typing.Tuple[dmesh.Mesh, dmesh.meshtags, ufl.Measure]:
+) -> typing.Tuple[dmesh.Mesh, dmesh.MeshTagsMetaClass, ufl.Measure]:
+    """Create a unit square using the build-in mesh generator
+
+                    4
+      -     |---------------|
+      |     |               |
+      |     |               |
+    1 |   1 |               | 3
+      |     |               |
+      |     |               |
+      -     |---------------|
+                    2
+
+            '-------1-------'
+
+    Args:
+        n_elmt: The number of elements in each direction
+
+    Returns:
+        The mesh,
+        The facet tags,
+        The tagged surface measure
+    """
+
     domain = dmesh.create_rectangle(
         MPI.COMM_WORLD,
         [np.array([0, 0]), np.array([1, 1])],
@@ -95,7 +125,30 @@ def create_unit_square_builtin(
 
 def create_unit_square_gmesh(
     h: float,
-) -> typing.Tuple[dmesh.Mesh, dmesh.meshtags, ufl.Measure]:
+) -> typing.Tuple[dmesh.Mesh, dmesh.MeshTagsMetaClass, ufl.Measure]:
+    """Create a unit square using gmsh
+
+                    4
+      -     |---------------|
+      |     |               |
+      |     |               |
+    1 |   1 |               | 3
+      |     |               |
+      |     |               |
+      -     |---------------|
+                    2
+
+            '-------1-------'
+
+    Args:
+        h (float): The characteristic mesh length
+
+    Returns:
+        The mesh,
+        The facet tags,
+        The tagged surface measure
+    """
+
     # --- Build model
     gmsh.initialize()
     gmsh.option.setNumber("General.Terminal", 0)
@@ -205,15 +258,29 @@ class BCType(Enum):
 
 
 def solve_primal_problem(
-    elmt_order_prime: int,
+    order_prime: int,
     domain: dmesh.Mesh,
-    facet_tags: typing.Any,
-    ds: typing.Any,
+    facet_tags: dmesh.MeshTagsMetaClass,
+    ds: ufl.Measure,
     bc_type: BCType,
     pdegree_rhs: typing.Optional[int] = None,
 ) -> dfem.Function:
+    """Solves the Poisson problem based on lagrangian finite elements
+
+    Args:
+        order_prime: The order of the FE space
+        domain:      The mesh
+        facet_tags:  The facet tags
+        ds:          The measure for the boundary integrals
+        pdegree_rhs: The degree of the DG space into which the RHS
+                     is projected into
+
+    Returns:
+        The solution
+    """
+
     # Set function space (primal problem)
-    V_prime = dfem.FunctionSpace(domain, ("CG", elmt_order_prime))
+    V_prime = dfem.FunctionSpace(domain, ("CG", order_prime))
 
     # Set trial and test functions
     u = ufl.TrialFunction(V_prime)
@@ -273,37 +340,56 @@ def solve_primal_problem(
     )
 
     timing -= time.perf_counter()
-    uh_prime = problem.solve()
+    uh = problem.solve()
     timing += time.perf_counter()
 
     print(f"Primal problem solved in {timing:.4e} s")
 
-    return uh_prime
+    return uh
 
 
 # --- The flux equilibration
 def equilibrate_flux(
     Equilibrator: typing.Union[FluxEqlbEV, FluxEqlbSE],
-    elmt_order_eqlb: int,
+    order_eqlb: int,
     domain: dmesh.Mesh,
-    facet_tags: typing.Any,
-    uh_prime: dfem.Function,
+    facet_tags: dmesh.MeshTagsMetaClass,
     bc_type: BCType,
+    uh: dfem.Function,
     check_equilibration: typing.Optional[bool] = True,
 ) -> typing.Tuple[dfem.Function, dfem.Function]:
+    """Equilibrate the flux
+
+    The RHS is assumed to be the divergence of the exact
+    flux (manufactured solution).
+
+    Args:
+        Equilibrator:        The flux equilibrator
+        order_eqlb:          The order of the RT space
+        domain:              The mesh
+        facet_tags:          The facet tags
+        bc_type:             The type of BCs
+        uh:                  The primal solution
+        check_equilibration: Id if equilibration conditions are checked
+
+    Returns:
+        The projected flux,
+        The equilibrated flux
+    """
+
     # Set source term
     x = ufl.SpatialCoordinate(domain)
     f = -ufl.div(ufl.grad(exact_solution(ufl)(x)))
 
     # Project flux and RHS into required DG space
-    V_rhs_proj = dfem.FunctionSpace(domain, ("DG", elmt_order_eqlb - 1))
-    V_flux_proj = dfem.VectorFunctionSpace(domain, ("DG", elmt_order_eqlb - 1))
+    V_rhs_proj = dfem.FunctionSpace(domain, ("DG", order_eqlb - 1))
+    V_flux_proj = dfem.VectorFunctionSpace(domain, ("DG", order_eqlb - 1))
 
-    sigma_proj = local_projection(V_flux_proj, [-ufl.grad(uh_prime)])
+    sigma_proj = local_projection(V_flux_proj, [-ufl.grad(uh)])
     rhs_proj = local_projection(V_rhs_proj, [f])
 
     # Initialise equilibrator
-    equilibrator = Equilibrator(elmt_order_eqlb, domain, rhs_proj, sigma_proj)
+    equilibrator = Equilibrator(order_eqlb, domain, rhs_proj, sigma_proj)
 
     # Set BCs
     bc_dual = []
@@ -339,7 +425,7 @@ def equilibrate_flux(
         ]
 
         # Set flux BCs
-        qdegree = 3 * elmt_order_eqlb
+        qdegree = 3 * order_eqlb
 
         bc_dual.append(
             fluxbc(
@@ -409,8 +495,8 @@ if __name__ == "__main__":
     Equilibrator = FluxEqlbEV
 
     # The orders of the FE spaces
-    elmt_order_prime = 1
-    elmt_order_eqlb = 1
+    order_prime = 1
+    order_eqlb = 1
 
     # The boundary conditions
     bc_type = BCType.dirichlet
@@ -435,26 +521,20 @@ if __name__ == "__main__":
         raise ValueError("Unknown mesh type")
 
     # Solve primal problem
-    degree_proj = 0 if (elmt_order_eqlb == 1) else None
-    uh_prime = solve_primal_problem(
-        elmt_order_prime, domain, facet_tags, ds, bc_type, pdegree_rhs=degree_proj
+    degree_proj = 0 if (order_eqlb == 1) else None
+    uh = solve_primal_problem(
+        order_prime, domain, facet_tags, ds, bc_type, pdegree_rhs=degree_proj
     )
 
     # Solve equilibration
     sigma_proj, sigma_eqlb = equilibrate_flux(
-        Equilibrator,
-        elmt_order_eqlb,
-        domain,
-        facet_tags,
-        uh_prime,
-        bc_type,
-        check_equilibration=True,
+        Equilibrator, order_eqlb, domain, facet_tags, bc_type, uh, True
     )
 
     # --- Export results to ParaView ---
     # Project flux into appropriate DG space
-    V_dg_hdiv = dfem.VectorFunctionSpace(domain, ("DG", elmt_order_eqlb))
-    v_dg_ref = dfem.VectorFunctionSpace(domain, ("DG", elmt_order_prime))
+    V_dg_hdiv = dfem.VectorFunctionSpace(domain, ("DG", order_eqlb))
+    v_dg_ref = dfem.VectorFunctionSpace(domain, ("DG", order_prime))
 
     sigma_ref = local_projection(
         v_dg_ref,
@@ -468,14 +548,14 @@ if __name__ == "__main__":
         sigma_eqlb_dg = local_projection(V_dg_hdiv, [sigma_eqlb + sigma_proj])
 
     # Export primal solution
-    uh_prime.name = "u"
+    uh.name = "uh"
     sigma_proj.name = "sigma_proj"
     sigma_eqlb_dg[0].name = "sigma_eqlb"
     sigma_ref[0].name = "sigma_ref"
 
     outfile = dolfinx.io.XDMFFile(MPI.COMM_WORLD, "demo_equilibration.xdmf", "w")
     outfile.write_mesh(domain)
-    outfile.write_function(uh_prime, 1)
+    outfile.write_function(uh, 1)
     outfile.write_function(sigma_ref[0], 1)
     outfile.write_function(sigma_proj, 1)
     outfile.write_function(sigma_eqlb_dg[0], 1)
