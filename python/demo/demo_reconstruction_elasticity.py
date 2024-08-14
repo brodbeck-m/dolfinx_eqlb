@@ -44,7 +44,7 @@ from dolfinx_eqlb.lsolver import local_projection
 
 
 # --- The exact solution
-def exact_solution(x):
+def exact_solution(x) -> typing.Any:
     """Exact solution
     u_ext = [sin(pi * x) * sin(pi * y), -sin(2*pi * x) * sin(2*pi * y)]
 
@@ -62,11 +62,11 @@ def exact_solution(x):
     )
 
 
-def interpolate_ufl_to_function(f_ufl: ufl.Form, f_fe: dfem.Function):
+def interpolate_ufl_to_function(f_ufl: typing.Any, f_fe: dfem.Function):
     """Interpolates a UFL expression to a function
 
     Args:
-        f_ufl: The function as UFL expression
+        f_ufl: The function in UFL
         f_fe:  The function to interpolate into
     """
 
@@ -278,7 +278,7 @@ def solve_primal_problem(
     pi_1: float,
     pdegree_rhs: typing.Optional[int] = None,
     solver: str = "lu",
-) -> typing.Tuple[dfem.Function, ufl.Form]:
+) -> typing.Tuple[dfem.Function, typing.Any]:
     """Solves the problem of linear elasticity based on lagrangian finite elements
 
     Args:
@@ -295,6 +295,7 @@ def solve_primal_problem(
         The displacement solution,
         The exact stress tensor
     """
+
     # Check input
     if order_prime < 2:
         raise ValueError("Consistency condition for weak symmetry not fulfilled!")
@@ -376,7 +377,7 @@ def equilibrate_flux(
     facet_tags: dmesh.MeshTagsMetaClass,
     pi_1: float,
     uh: dfem.Function,
-    sigma_ext: ufl.Form,
+    sigma_ext: typing.Any,
     weak_symmetry: typing.Optional[bool] = True,
     check_equilibration: typing.Optional[bool] = True,
 ) -> typing.Tuple[typing.List[dfem.Function], typing.List[dfem.Function]]:
