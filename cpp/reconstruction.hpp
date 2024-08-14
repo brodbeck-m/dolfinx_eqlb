@@ -57,9 +57,7 @@ namespace dolfinx_eqlb
 /// Equilibration procedure is based on the solution of patch-wise constrained
 /// minimisation problems as described in [1]
 ///
-/// [1] Ern, A. & Vohralík, M.: Polynomial-Degree-Robust A Posteriori
-///     Estimates in a Unified Setting for Conforming, Nonconforming,
-///     Discontinuous Galerkin, and Mixed Discretizations, 2015
+/// [1] Ern, A. and Vohralík, M.: https://doi.org/10.1137/130950100, 2015
 ///
 /// @tparam T The scalar type
 /// @param a              The bilinear forms to assemble
@@ -153,9 +151,8 @@ void reconstruct_fluxes_patch(const fem::Form<T>& a, const fem::Form<T>& l_pen,
 /// unconstrained minimisation problem on a patch-wise divergence-free H(div)
 /// space [1]. The cells squared Korn constants are estimated based on [2].
 ///
-/// [1] Bertrand, F.; Carstensen, C.; Gräßle, B. & Tran, N. T.:
-///     Stabilization-free HHO a posteriori error control, 2022
-/// [2] Kim, K.-W., https://doi.org/10.1137/110823031, 2011
+/// [1] Bertrand, F. et al.: https://doi.org/10.1007/s00211-023-01366-8, 2023
+/// [2] Kim, K.-W.: https://doi.org/10.1137/110823031, 2011
 ///
 /// @tparam T             The scalar type
 /// @tparam id_flux_order The flux order (1->RT1, 2->RT2, 3->general)

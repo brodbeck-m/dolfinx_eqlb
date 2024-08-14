@@ -94,8 +94,7 @@ void calculate_jump(
 /// condition on patch (see [1, Appendix A, Algorithm 2]). The explicit setp is
 /// followed by a unconstrained minimisation on a patch-wise H(div=0) space.
 ///
-/// [1] Bertrand, F.; Carstensen, C.; Gräßle, B. & Tran, N. T.:
-///     Stabilization-free HHO a posteriori error control, 2022
+/// [1] Bertrand, F. et al.: https://doi.org/10.1007/s00211-023-01366-8, 2023
 ///
 /// @tparam T              The scalar type
 /// @tparam id_flux_order  Parameter for flux order (1->RT1, 2->RT2, 3->general)
@@ -1064,11 +1063,8 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
 /// symmetry condition. Is is enforced based on a constrained minimisation
 /// problem, follwoing [2].
 ///
-/// [1] Bertrand, F., Carstensen, C., Gräßle, B. & Tran, N. T.:
-///     Stabilization-free HHO a posteriori error control, 2022
-/// [2] Bertrand, F., Kober, B., Moldenhauer M. & Starke, G.: Weakly
-///     symmetric stress equilibration and a posteriori error estimation for
-///     linear elasticity, 2021
+/// [1] Bertrand, F. et al.: https://doi.org/10.1007/s00211-023-01366-8, 2023
+/// [2] Bertrand, F. et al.: https://doi.org/10.1002/num.22741, 2021
 ///
 /// @tparam T              The scalar type
 /// @tparam id_flux_order  Parameter for flux order (1->RT1, 2->RT2, 3->general)

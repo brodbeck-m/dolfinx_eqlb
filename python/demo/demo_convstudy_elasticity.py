@@ -51,7 +51,7 @@ def estimate_error(
 
     The estimate is derived based on the strategy in [1].
 
-    [1] Bertrand, F. et al., https://doi.org/10.1002/gamm.202000007, 2020
+    [1] Bertrand, F. et al., https://doi.org/10.1002/num.22741, 2021
 
     Args:
         pi_1:             The ratio of lambda and mu
@@ -91,7 +91,7 @@ def estimate_error(
     )
 
     err_osc = (h_cell / ufl.pi) * (f + ufl.div(sigma_proj + delta_sigma_eqlb))
-    err_wsym = delta_sigma_eqlb[0, 1] - delta_sigma_eqlb[1, 0]
+    err_wsym = 0.5 * (delta_sigma_eqlb[0, 1] - delta_sigma_eqlb[1, 0])
 
     form_eta_sig = dfem.form(ufl.inner(delta_sigma_eqlb, a_delta_sigma) * v * ufl.dx)
     form_eta_osc = dfem.form(ufl.inner(err_osc, err_osc) * v * dvol)
@@ -133,7 +133,7 @@ if __name__ == "__main__":
 
     # The orders of the FE spaces
     order_prime = 2
-    order_eqlb = 2
+    order_eqlb = 3
 
     # The mesh resolution
     sdisc_nelmt_init = 1

@@ -58,14 +58,11 @@ public:
   /// Construction of a sub-DOFmap on each patch
   ///
   /// Determines type of patch and creates sorted DOFmap. Sorting of
-  /// facets/elements/DOFs follows [1,2]. The sub-DOFmap is created for
+  /// facets/elements/DOFs follows [1]. The sub-DOFmap is created for
   /// sub-problem 0. If patch- type differs between different patches, use
   /// recreate_subdofmap for sub-problem i>0.
   ///
-  /// [1] Moldenhauer, M.: Stress reconstructionand a-posteriori error
-  ///     estimationfor elasticity (PhdThesis)
-  /// [2] Bertrand, F.; Carstensen, C.; Gräßle, B. & Tran, N. T.:
-  ///     Stabilization-free HHO a posteriori error control, 2022
+  /// [1] Bertrand, F. et al.: https://doi.org/10.1007/s00211-023-01366-8, 2023
   ///
   /// @param node_i Processor-local id of current node
   void create_subdofmap(int node_i)
@@ -251,13 +248,9 @@ protected:
   /// @return       Length of loop over factes
   std::pair<std::int32_t, std::int32_t> initialize_patch(int node_i);
 
-  /// Determin cell, cell-local facet id and next facet
+  /// Determin cell, cell-local facet id and next facet (sorted after [1])
   ///
-  /// Patch are sorted after [1,2]
-  /// [1] Moldenhauer, M.: Stress reconstructionand a-posteriori error
-  ///     estimationfor elasticity (PhdThesis)
-  /// [2] Bertrand, F.; Carstensen, C.; Gräßle, B. & Tran, N. T.:
-  ///     Stabilization-free HHO a posteriori error control, 2022
+  /// [1] Bertrand, F. et al.: https://doi.org/10.1007/s00211-023-01366-8, 2023
   ///
   /// @param id_l     Id of used LHS
   /// @param c_fct    Counter within loop over all facets of patch
@@ -390,14 +383,11 @@ public:
   /// Construction of a sub-DOFmap on each patch
   ///
   /// Determines type of patch and creates sorted DOFmap. Sorting of
-  /// facets/elements/DOFs follows [1,2]. The sub-DOFmap is created for
+  /// facets/elements/DOFs follows [1]. The sub-DOFmap is created for
   /// sub-problem 0. If patch- type differs between different patches, use
   /// recreate_subdofmap for sub-problem i>0.
   ///
-  /// [1] Moldenhauer, M.: Stress reconstructionand a-posteriori error
-  ///     estimationfor elasticity (PhdThesis)
-  /// [2] Bertrand, F.; Carstensen, C.; Gräßle, B. & Tran, N. T.:
-  ///     Stabilization-free HHO a posteriori error control, 2022
+  /// [1] Bertrand, F. et al.: https://doi.org/10.1007/s00211-023-01366-8, 2023
   ///
   /// @param node_i Processor-local id of current node
   void create_subdofmap(const int node_i)

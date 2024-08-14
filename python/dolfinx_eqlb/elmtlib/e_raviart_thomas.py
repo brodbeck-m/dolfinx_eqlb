@@ -23,7 +23,7 @@ def create_hierarchic_rt(cell: CellType, degree: int, discontinuous: bool):
     This routine generates a basix element, based in [1], which can than be used with-
     in DOLFINx.
 
-    [1] Bertrand et al.: Stabilization-free HHO a posteriori error control, 2022
+    [1] Bertrand, F. et al.: https://doi.org/10.1007/s00211-023-01366-8, 2023
 
     Args:
         cell (CellType):      the basix cell type
