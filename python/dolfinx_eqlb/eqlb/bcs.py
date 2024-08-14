@@ -28,9 +28,7 @@ def fluxbc(
     requires_projection: typing.Optional[bool] = True,
     quadrature_degree: typing.Optional[int] = None,
 ) -> FluxBC:
-    """Create a representation of Dirichlet boundary for reconstructed flux spaces
-
-    Function holds dirichlet facets, alongside with an ufl-function containing the exact boundary
+    """Essential boundary condition for one flux on a set of facets
 
     Args:
         value:               Boundary values (flux x normal) as ufl-function
@@ -38,7 +36,11 @@ def fluxbc(
         V:                   The function space of the reconstructed flux
         requires_projection: Specifies if boundary values have to be projected into appropriate P space
         quadrature_degree:   Degree of quadrature rule for projection
+
+    Returns:
+        The essential flux BCs on a group of facets
     """
+
     # --- Extract required data
     # The mesh
     domain = V.mesh
@@ -151,14 +153,32 @@ def boundarydata(
     boundary_data: typing.List[dfem.Function],
     V: dfem.FunctionSpace,
     custom_rt: bool,
-    dirichlet_factes: typing.List[np.ndarray],
+    dirichlet_facets: typing.List[np.ndarray],
     equilibrate_stress: bool,
     quadrature_degree: typing.Optional[int] = None,
-):
+) -> BoundaryData:
+    """The collected essential boundary conditions for set of reconstructed fluxes
+
+    Collects handles for essential boundary conditions alongside with
+    the actual storage of the boundary values and the markers for the
+    essential boundary facets of the primal problem.
+
+    Args:
+        flux_conditions:   List of essential flux BCs each flux
+        boundary_data:     List functions holding the boundary values
+        V:                 The function space of the reconstructed flux
+        custom_rt:         Identifier if custom RT element is used
+        dirichlet_facets:  Identifier if stresses are equilibrated
+        quadrature_degree: Degree of quadrature rule for projection
+
+    Returns:
+        The collection of essential BC of a reconstructed flux
+    """
+
     # Check input
     n_rhs = len(flux_conditions)
 
-    if (n_rhs != len(boundary_data)) or (n_rhs != len(dirichlet_factes)):
+    if (n_rhs != len(boundary_data)) or (n_rhs != len(dirichlet_facets)):
         raise RuntimeError("Size of input data does not match!")
 
     # Set (default) quadrature degree
@@ -180,6 +200,6 @@ def boundarydata(
         V._cpp_object,
         custom_rt,
         qdegree,
-        dirichlet_factes,
+        dirichlet_facets,
         equilibrate_stress,
     )
