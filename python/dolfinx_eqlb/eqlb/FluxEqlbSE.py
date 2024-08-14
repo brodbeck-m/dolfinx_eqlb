@@ -12,7 +12,11 @@ import basix
 import dolfinx.fem as dfem
 import dolfinx.mesh as dmesh
 
-from dolfinx_eqlb.cpp import FluxBC, reconstruct_fluxes_semiexplt
+from dolfinx_eqlb.cpp import (
+    FluxBC,
+    reconstruct_fluxes_semiexplt,
+    reconstruct_fluxes_semiexplt_with_kornconst,
+)
 from dolfinx_eqlb.elmtlib import create_hierarchic_rt
 from .FluxEquilibrator import FluxEquilibrator
 from .bcs import boundarydata
@@ -26,6 +30,7 @@ class FluxEqlbSE(FluxEquilibrator):
         list_rhs: typing.List[typing.Any],
         list_proj_flux: typing.List[dfem.function.Function],
         equilibrate_stress: typing.Optional[bool] = False,
+        estimate_korn_constant: typing.Optional[bool] = False,
     ):
         # Constructor of base class
         super().__init__(degree_flux, len(list_rhs), equilibrate_stress)
@@ -36,6 +41,10 @@ class FluxEqlbSE(FluxEquilibrator):
 
         self.list_proj_flux_cpp = []
         self.list_rhs_cpp = []
+
+        # Store cells Korn constants
+        self.estimate_korn_constant = estimate_korn_constant
+        self.korn_constants = None
 
         # Problem setup
         if len(list_proj_flux) != self.n_fluxes:
@@ -59,7 +68,7 @@ class FluxEqlbSE(FluxEquilibrator):
         # Function spaces
         self.V_flux = dfem.FunctionSpace(msh, basix.ufl_wrapper.BasixElement(P_flux))
 
-        # Create variational problems and H(div) conforming fluxes
+        # Initialise list of fluxes and RHS
         for ii in range(0, self.n_fluxes):
             # Create flux-functions
             flux = dfem.Function(self.V_flux)
@@ -69,6 +78,10 @@ class FluxEqlbSE(FluxEquilibrator):
             self.list_flux_cpp.append(flux._cpp_object)
             self.list_proj_flux_cpp.append(list_proj_flux[ii]._cpp_object)
             self.list_rhs_cpp.append(list_rhs[ii]._cpp_object)
+
+        # Initialise cells korn constants
+        if self.estimate_korn_constant:
+            self.korn_constants = dfem.Function(dfem.FunctionSpace(msh, ("DG", 0)))
 
     def set_boundary_conditions(
         self,
@@ -99,13 +112,29 @@ class FluxEqlbSE(FluxEquilibrator):
             self.list_bfunctions[i].x.scatter_forward()
 
     def equilibrate_fluxes(self):
-        reconstruct_fluxes_semiexplt(
-            self.list_flux_cpp,
-            self.list_proj_flux_cpp,
-            self.list_rhs_cpp,
-            self.boundary_data,
-            self.equilibrate_stresses,
-        )
+        if self.estimate_korn_constant:
+            # Equilibrate fluxes
+            reconstruct_fluxes_semiexplt_with_kornconst(
+                self.list_flux_cpp,
+                self.list_proj_flux_cpp,
+                self.list_rhs_cpp,
+                self.boundary_data,
+                self.equilibrate_stresses,
+                self.korn_constants._cpp_object,
+            )
+
+            # Post-Process Korn constants
+            # TODO - Add values in Ghost cells to parent cells!
+            self.korn_constants.x.array[:] = np.sqrt(self.korn_constants.x.array[:])
+            self.korn_constants.x.scatter_forward()
+        else:
+            reconstruct_fluxes_semiexplt(
+                self.list_flux_cpp,
+                self.list_proj_flux_cpp,
+                self.list_rhs_cpp,
+                self.boundary_data,
+                self.equilibrate_stresses,
+            )
 
     def get_recontructed_fluxe(self, subproblem: int):
         return self.list_flux[subproblem] + self.list_proj_flux[subproblem]

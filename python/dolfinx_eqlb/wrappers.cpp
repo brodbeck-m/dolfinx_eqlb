@@ -102,15 +102,38 @@ void declare_fluxeqlb(py::module& m)
          const bool reconstruct_stress)
       {
         reconstruct_fluxes_cstm<T>(flux_hdiv, flux_dg, rhs_dg, boundary_data,
-                                   reconstruct_stress);
+                                   reconstruct_stress,
+                                   std::shared_ptr<fem::Function<T>>());
       },
       py::arg("flux_hdiv"), py::arg("flux_dg"), py::arg("rhs_dg"),
       py::arg("boundary_data"), py::arg("reconstruct_stress"),
       "Local equilibration of H(div) conforming fluxes, using an explicit "
-      "determination of the fluxes followed by a  ministration on a reduced "
+      "determination of the fluxes followed by a ministration on a reduced "
       "space. If apply_weal_symmetry is true, the first gdim fluxes are "
       "treated as rows of a (symmetric) stress tensors, with weak imposition "
       "of the symmetry constraint.");
+
+  m.def(
+      "reconstruct_fluxes_semiexplt_with_kornconst",
+      [](std::vector<std::shared_ptr<dolfinx::fem::Function<T>>>& flux_hdiv,
+         std::vector<std::shared_ptr<dolfinx::fem::Function<T>>>& flux_dg,
+         std::vector<std::shared_ptr<dolfinx::fem::Function<T>>>& rhs_dg,
+         std::shared_ptr<BoundaryData<T>> boundary_data,
+         const bool reconstruct_stress,
+         std::shared_ptr<dolfinx::fem::Function<T>> cells_kornconst)
+      {
+        reconstruct_fluxes_cstm<T>(flux_hdiv, flux_dg, rhs_dg, boundary_data,
+                                   reconstruct_stress, cells_kornconst);
+      },
+      py::arg("flux_hdiv"), py::arg("flux_dg"), py::arg("rhs_dg"),
+      py::arg("boundary_data"), py::arg("reconstruct_stress"),
+      py::arg("cells_kornconst"),
+      "Local equilibration of H(div) conforming fluxes, using an explicit"
+      "determination of the fluxes followed by a ministration on a reduced"
+      "space. If apply_weal_symmetry is true, the first gdim fluxes are"
+      "treated as rows of a (symmetric) stress tensors, with weak imposition"
+      "of the symmetry constraint. During the equilibration, a upper bounds of "
+      "each cells Korn constant is calculated.");
 }
 
 template <typename T>
