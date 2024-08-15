@@ -556,20 +556,27 @@ double OrientedPatch::estimate_squared_korn_constant() const
   std::span<const double> x = _mesh->geometry().x();
 
   // The patch central node
-  const int nodei = node_i();
+  const int node_patch = node_i();
 
-  // Initialise data
-  std::array<std::int32_t, 2> bnode_id;
-
-  std::array<const double, 2> x_i = {x[3 * nodei], x[3 * nodei + 1]};
-  std::array<double, 2> v1, v2;
-
-  double abs_v1, abs_v2, v1_t_v2;
-  double theta_min = M_PI;
+  // The minimal angle
+  double theta_min;
 
   if (is_internal())
   {
+    // Coordinates patch-central node
+    std::array<const double, 2> x_i
+        = {x[3 * node_patch], x[3 * node_patch + 1]};
+
+    // List of cell nodes on patch boundary
+    std::array<std::int32_t, 2> bnode_id;
+
+    // Auxilary variables
+    std::array<double, 2> v1, v2;
+    double abs_v1, abs_v2, v1_t_v2;
+
     // Loop over cells
+    theta_min = 0.5 * M_PI;
+
     for (std::int32_t cell : cells())
     {
       // Get nodes on boundary of patch
@@ -577,7 +584,7 @@ double OrientedPatch::estimate_squared_korn_constant() const
 
       for (std::int32_t node : _cell_to_node->links(cell))
       {
-        if (node != nodei)
+        if (node != node_patch)
         {
           bnode_id[count_bnodes] = 3 * node;
           count_bnodes += 1;
@@ -585,8 +592,8 @@ double OrientedPatch::estimate_squared_korn_constant() const
       }
 
       // Vector between boundary nodes
-      v2[0] = x[bnode_id[0]] - x[bnode_id[1]];
-      v2[1] = x[bnode_id[0] + 1] - x[bnode_id[1] + 1];
+      v2[0] = x[bnode_id[1]] - x[bnode_id[0]];
+      v2[1] = x[bnode_id[1] + 1] - x[bnode_id[0] + 1];
       abs_v2 = std::sqrt(v2[0] * v2[0] + v2[1] * v2[1]);
 
       // Evaluate phi^1_i
@@ -608,10 +615,143 @@ double OrientedPatch::estimate_squared_korn_constant() const
   }
   else
   {
-    theta_min = 0;
+    // Coordinates stencil-central node
+    std::array<double, 6> data_cnodes;
+    mdspan_t<double, 2> cnodes(data_cnodes.data(), 3, 2);
+
+    // Minimal angles for different stencils
+    std::array<double, 3> phi_min = {M_PI, M_PI, M_PI};
+
+    // Auxilary variables
+    std::array<double, 2> v1, v2, v3;
+    double abs_v1, abs_v2, abs_v3, v1_t_vn;
+
+    std::int32_t node_im1, node_i, node_ip1, idn_im1, idn_i, idn_ip1;
+
+    // Get possible center nodes
+    if (_ncells % 2 == 0)
+    {
+      const int ncells_by_two = _ncells / 2;
+
+      // Centroids of the 2 middle cells
+      for (int i = 0; i < 2; ++i)
+      {
+        std::span<const std::int32_t> enodes
+            = _cell_to_node->links(_cells[ncells_by_two + i]);
+
+        for (std::int32_t j = 0; j < 3; ++j)
+        {
+          std::int32_t idn = 3 * enodes[j];
+
+          cnodes(i, 0) += x[idn] / 3;
+          cnodes(i, 1) += x[idn + 1] / 3;
+        }
+      }
+
+      // Mid point of patch-central facet
+      std::span<const std::int32_t> enodes
+          = _fct_to_node->links(_fcts[ncells_by_two]);
+
+      for (std::int32_t j = 0; j < 2; ++j)
+      {
+        std::int32_t idn = 3 * enodes[j];
+
+        cnodes(2, 0) += 0.5 * x[idn];
+        cnodes(2, 1) += 0.5 * x[idn + 1];
+      }
+    }
+    else
+    {
+      // Mid points of the 2 middle facets
+      const int nfcts_by_two = _nfcts / 2;
+
+      for (int i = 0; i < 2; ++i)
+      {
+        std::span<const std::int32_t> enodes
+            = _fct_to_node->links(_fcts[nfcts_by_two - i]);
+
+        for (std::int32_t j = 0; j < 2; ++j)
+        {
+          std::int32_t idn = 3 * enodes[j];
+
+          cnodes(i, 0) += 0.5 * x[idn];
+          cnodes(i, 1) += 0.5 * x[idn + 1];
+        }
+      }
+
+      // Centroid of the middle cell
+      std::span<const std::int32_t> enodes
+          = _cell_to_node->links(_cells[nfcts_by_two]);
+
+      for (std::int32_t j = 0; j < 3; ++j)
+      {
+        std::int32_t idn = 3 * enodes[j];
+
+        cnodes(2, 0) += x[idn] / 3;
+        cnodes(2, 1) += x[idn + 1] / 3;
+      }
+    }
+
+    // Start stencil at patch-central node
+    node_i = node_patch;
+    idn_i = 3 * node_i;
+
+    std::span<const std::int32_t> enodes = _fct_to_node->links(_fcts[_ncells]);
+    node_im1 = (enodes[0] == node_i) ? enodes[1] : enodes[0];
+    idn_im1 = 3 * node_im1;
+
+    v2[0] = x[idn_im1] - x[idn_i];
+    v2[1] = x[idn_im1 + 1] - x[idn_i + 1];
+    abs_v2 = std::sqrt(v2[0] * v2[0] + v2[1] * v2[1]);
+
+    // Loop over stencil
+    for (std::size_t i = 0; i < _nfcts; ++i)
+    {
+      // Evaluate v3
+      std::span<const std::int32_t> enodes = _fct_to_node->links(_fcts[i]);
+      node_ip1 = (enodes[0] == node_patch) ? enodes[1] : enodes[0];
+      idn_ip1 = 3 * node_ip1;
+
+      v3[0] = x[idn_ip1] - x[idn_i];
+      v3[1] = x[idn_ip1 + 1] - x[idn_i + 1];
+      abs_v3 = std::sqrt(v3[0] * v3[0] + v3[1] * v3[1]);
+
+      // Evaluate angles for different stencil centers
+      for (std::size_t j = 0; j < 3; ++j)
+      {
+        // Evaluate v1
+        v1[0] = cnodes(j, 0) - x[idn_i];
+        v1[1] = cnodes(j, 1) - x[idn_i + 1];
+        abs_v1 = std::sqrt(v1[0] * v1[0] + v1[1] * v1[1]);
+
+        // Evaluate angles
+        v1_t_vn = v1[0] * v2[0] + v1[1] * v2[1];
+        phi_min[j]
+            = std::min(phi_min[j], std::acos(v1_t_vn / (abs_v1 * abs_v2)));
+
+        v1_t_vn = v1[0] * v3[0] + v1[1] * v3[1];
+        phi_min[j]
+            = std::min(phi_min[j], std::acos(v1_t_vn / (abs_v1 * abs_v3)));
+      }
+
+      // Update for next node
+      node_i = node_ip1;
+      idn_i = idn_ip1;
+      v2[0] = -v3[0];
+      v2[1] = -v3[1];
+      abs_v2 = abs_v3;
+    }
+
+    // Get theta_min
+    theta_min = 0.0;
+
+    for (double phi : phi_min)
+    {
+      theta_min = std::max(theta_min, phi);
+    }
   }
 
-  return 2 * std::pow(std::sin(theta_min / 4), -2);
+  return 6 * std::pow(std::sin(theta_min / 2), -2);
 }
 
 // --- Protected methods
