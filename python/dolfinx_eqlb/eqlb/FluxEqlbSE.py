@@ -28,8 +28,8 @@ class FluxEqlbSE(FluxEquilibrator):
     The algorithm follows a three-step procedure:
         1.) Find any function in H(div) that fulfills the divergence condition [1]
         2.) Minimise the flux on patch-wise H(div=0) spaces [1]
-        3.) If stress: Incorporate weak  symmetry condition by constrained
-            minimisation on patch-wise H(div=0) spaces [2]
+        3.) If stress: Incorporate weak symmetry condition by an additional
+            constrained minimisation on patch-wise H(div=0) spaces [2]
 
     [1] Bertrand, F. et al.: https://doi.org/10.1007/s00211-023-01366-8, 2023
     [2] Bertrand, F. et al.: https://doi.org/10.1002/num.22741, 2021
@@ -188,3 +188,15 @@ class FluxEqlbSE(FluxEquilibrator):
         """
 
         return self.list_flux[subproblem] + self.list_proj_flux[subproblem]
+
+    def get_korn_constants(self):
+        """Get the Korn constants
+
+        Returns:
+            The Korn constants in a DG0 function
+        """
+
+        if self.estimate_korn_constant:
+            return self.korn_constants
+        else:
+            raise RuntimeError("Korn constants are not estimated!")

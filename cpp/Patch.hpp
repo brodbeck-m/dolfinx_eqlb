@@ -14,6 +14,7 @@
 #include <dolfinx/mesh/Topology.h>
 
 #include <algorithm>
+#include <cmath>
 #include <functional>
 #include <iostream>
 #include <memory>
@@ -404,6 +405,15 @@ public:
   /// @param[in] index     Index of sub-problem
   /// @param[out] required true if reversion is required
   bool reversion_required(int index) const;
+
+  /// Estimate patchs Korn constant
+  ///
+  /// For 2D star-shaped domains: Formula [1].
+  ///
+  /// [1] Kim, K.-W.: https://doi.org/10.1137/110823031, 2011
+  ///
+  /// @param[out] Upper bound of the patchs Korn constant
+  double estimate_squared_korn_constant() const;
 
   /* Setter functions */
 

@@ -550,6 +550,70 @@ bool OrientedPatch::reversion_required(int index) const
   return patch_reversed;
 }
 
+double OrientedPatch::estimate_squared_korn_constant() const
+{
+  // The spatial node positions
+  std::span<const double> x = _mesh->geometry().x();
+
+  // The patch central node
+  const int nodei = node_i();
+
+  // Initialise data
+  std::array<std::int32_t, 2> bnode_id;
+
+  std::array<const double, 2> x_i = {x[3 * nodei], x[3 * nodei + 1]};
+  std::array<double, 2> v1, v2;
+
+  double abs_v1, abs_v2, v1_t_v2;
+  double theta_min = M_PI;
+
+  if (is_internal())
+  {
+    // Loop over cells
+    for (std::int32_t cell : cells())
+    {
+      // Get nodes on boundary of patch
+      int count_bnodes = 0;
+
+      for (std::int32_t node : _cell_to_node->links(cell))
+      {
+        if (node != nodei)
+        {
+          bnode_id[count_bnodes] = 3 * node;
+          count_bnodes += 1;
+        }
+      }
+
+      // Vector between boundary nodes
+      v2[0] = x[bnode_id[0]] - x[bnode_id[1]];
+      v2[1] = x[bnode_id[0] + 1] - x[bnode_id[1] + 1];
+      abs_v2 = std::sqrt(v2[0] * v2[0] + v2[1] * v2[1]);
+
+      // Evaluate phi^1_i
+      v1[0] = x_i[0] - x[bnode_id[0]];
+      v1[1] = x_i[1] - x[bnode_id[0] + 1];
+      abs_v1 = std::sqrt(v1[0] * v1[0] + v1[1] * v1[1]);
+
+      v1_t_v2 = v1[0] * v2[0] + v1[1] * v2[1];
+      theta_min = std::min(theta_min, std::acos(v1_t_v2 / (abs_v1 * abs_v2)));
+
+      // Evaluate phi^2_i
+      v1[0] = x_i[0] - x[bnode_id[1]];
+      v1[1] = x_i[1] - x[bnode_id[1] + 1];
+      abs_v1 = std::sqrt(v1[0] * v1[0] + v1[1] * v1[1]);
+
+      v1_t_v2 = v1[0] * v2[0] + v1[1] * v2[1];
+      theta_min = std::min(theta_min, std::acos(-v1_t_v2 / (abs_v1 * abs_v2)));
+    }
+  }
+  else
+  {
+    theta_min = 0;
+  }
+
+  return 2 * std::pow(std::sin(theta_min / 4), -2);
+}
+
 // --- Protected methods
 void OrientedPatch::set_max_patch_size(
     const int nnodes_proc, std::span<const std::int8_t> pnts_on_bndr,
