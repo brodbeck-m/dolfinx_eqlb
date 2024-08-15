@@ -149,10 +149,13 @@ void reconstruct_fluxes_patch(const fem::Form<T>& a, const fem::Form<T>& l_pen,
 ///
 /// Equilibration procedure is based on an explicitly calculated flux and an
 /// unconstrained minimisation problem on a patch-wise divergence-free H(div)
-/// space [1]. The cells squared Korn constants are estimated based on [2].
+/// space [1]. If stresses are considered the symmetry in considered in a wea
+/// sense following [2]. The cells squared Korn constants are estimated based on
+/// [3].
 ///
 /// [1] Bertrand, F. et al.: https://doi.org/10.1007/s00211-023-01366-8, 2023
-/// [2] Kim, K.-W.: https://doi.org/10.1137/110823031, 2011
+/// [2] Bertrand, F. et al.: https://doi.org/10.1002/num.22741, 2021
+/// [3] Kim, K.-W.: https://doi.org/10.1137/110823031, 2011
 ///
 /// @tparam T             The scalar type
 /// @tparam id_flux_order The flux order (1->RT1, 2->RT2, 3->general)
