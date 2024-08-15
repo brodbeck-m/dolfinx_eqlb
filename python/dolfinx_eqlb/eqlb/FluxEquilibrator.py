@@ -18,7 +18,16 @@ from dolfinx_eqlb.cpp import FluxBC
 
 
 class FluxEquilibrator:
+    """The flux equilibrator (base class)"""
+
     def __init__(self, degree_flux: int, n_eqlbs: int, equilibrate_stress: bool):
+        """Initials the flux equilibrator
+
+        Args:
+            degree_flux:        The degree of the H(div) conforming fluxes
+            n_eqlbs:            The number of simultaneously equilibrated fluxes
+            equilibrate_stress: Identifier if the first gdim fluxes are treated as stresses
+        """
         # Order of reconstructed flux
         self.degree_flux = degree_flux
 
@@ -44,6 +53,11 @@ class FluxEquilibrator:
         self.boundary_data = None
 
     def initialise_mesh_info(self, msh: dmesh.Mesh):
+        """Initialise the required mesh informations
+
+        Args:
+            msh: The mesh
+        """
         # Permutation information
         msh.topology.create_entity_permutations()
 

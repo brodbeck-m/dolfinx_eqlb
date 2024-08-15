@@ -23,6 +23,18 @@ from .bcs import boundarydata
 
 
 class FluxEqlbSE(FluxEquilibrator):
+    """Equilibrate fluxes/stresses in a semi-explicit manner
+
+    The algorithm follows a three-step procedure:
+        1.) Find any function in H(div) that fulfills the divergence condition [1]
+        2.) Minimise the flux on patch-wise H(div=0) spaces [1]
+        3.) If stress: Incorporate weak  symmetry condition by constrained
+            minimisation on patch-wise H(div=0) spaces [2]
+
+    [1] Bertrand, F. et al.: https://doi.org/10.1007/s00211-023-01366-8, 2023
+    [2] Bertrand, F. et al.: https://doi.org/10.1002/num.22741, 2021
+    """
+
     def __init__(
         self,
         degree_flux: int,
@@ -32,6 +44,17 @@ class FluxEqlbSE(FluxEquilibrator):
         equilibrate_stress: typing.Optional[bool] = False,
         estimate_korn_constant: typing.Optional[bool] = False,
     ):
+        """Initialise semi-explicit flux equilibrator
+
+        Args:
+            degree_flux:            The degree of the H(div) conforming fluxes
+            msh:                    The mesh
+            list_rhs:               The projected right-hand sides
+            list_proj_flux:         The projected fluxes
+            equilibrate_stress:     Identifier if the first gdim fluxes are treated as stresses
+            estimate_korn_constant: Identifier if the cells Korn constants should be estimated
+        """
+
         # Constructor of base class
         super().__init__(degree_flux, len(list_rhs), equilibrate_stress)
 
@@ -48,16 +71,24 @@ class FluxEqlbSE(FluxEquilibrator):
 
         # Problem setup
         if len(list_proj_flux) != self.n_fluxes:
-            raise RuntimeError("Missmatching inputs!")
+            raise RuntimeError("Mismatching inputs!")
 
         self.setup_patch_problem(msh, list_rhs, list_proj_flux)
 
     def setup_patch_problem(
         self,
         msh: dmesh.Mesh,
-        list_rhs: typing.List[typing.Any],
-        list_proj_flux: typing.List[dfem.function.Function],
+        list_rhs: typing.List[dfem.Function],
+        list_proj_flux: typing.List[dfem.Function],
     ):
+        """Setup the patch problems
+
+        Args:
+            msh:            The mesh
+            list_rhs:       The projected right-hand sides
+            list_proj_flux: The projected fluxes
+        """
+
         # Initialize connectivities
         super().initialise_mesh_info(msh)
 
@@ -89,6 +120,14 @@ class FluxEqlbSE(FluxEquilibrator):
         list_bcs_flux: typing.List[typing.List[FluxBC]],
         quadrature_degree: typing.Optional[int] = None,
     ):
+        """Set boundary conditions
+
+        Args:
+            list_bfct_prime:   The facets with essential BCs of the primal problem
+            list_bcs_flux:     The list of boundary conditions
+            quadrature_degree: The quadrature degree (for projecting the BCs)
+        """
+
         # Check input data
         if self.n_fluxes != len(list_bfct_prime) | self.n_fluxes != len(list_bcs_flux):
             raise RuntimeError("Mismatching inputs!")
@@ -112,6 +151,8 @@ class FluxEqlbSE(FluxEquilibrator):
             self.list_bfunctions[i].x.scatter_forward()
 
     def equilibrate_fluxes(self):
+        """Equilibrate the fluxes"""
+
         if self.estimate_korn_constant:
             # Equilibrate fluxes
             reconstruct_fluxes_semiexplt_with_kornconst(
@@ -137,4 +178,13 @@ class FluxEqlbSE(FluxEquilibrator):
             )
 
     def get_recontructed_fluxe(self, subproblem: int):
+        """Get the reconstructed fluxes
+
+        Args:
+            subproblem: Id of the flux
+
+        Returns:
+            The reconstructed flux (sum of projected flux and equilibrated corrector)
+        """
+
         return self.list_flux[subproblem] + self.list_proj_flux[subproblem]
