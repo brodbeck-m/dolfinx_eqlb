@@ -751,7 +751,7 @@ double OrientedPatch::estimate_squared_korn_constant() const
     }
   }
 
-  return 6 * std::pow(std::sin(theta_min / 2), -2);
+  return 2 * std::pow(std::sin(theta_min / 2), -2);
 }
 
 // --- Protected methods

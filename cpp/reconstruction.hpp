@@ -149,13 +149,14 @@ void reconstruct_fluxes_patch(const fem::Form<T>& a, const fem::Form<T>& l_pen,
 ///
 /// Equilibration procedure is based on an explicitly calculated flux and an
 /// unconstrained minimisation problem on a patch-wise divergence-free H(div)
-/// space [1]. If stresses are considered the symmetry in considered in a wea
+/// space [1]. If stresses are considered the symmetry in considered in a weak
 /// sense following [2]. The cells squared Korn constants are estimated based on
-/// [3].
+/// [3]. The grouping follows the idea in [4].
 ///
 /// [1] Bertrand, F. et al.: https://doi.org/10.1007/s00211-023-01366-8, 2023
 /// [2] Bertrand, F. et al.: https://doi.org/10.1002/num.22741, 2021
 /// [3] Kim, K.-W.: https://doi.org/10.1137/110823031, 2011
+/// [4] Moldenhauer, M.: http://d-nb.info/1221061712/34, 2020
 ///
 /// @tparam T             The scalar type
 /// @tparam id_flux_order The flux order (1->RT1, 2->RT2, 3->general)
@@ -171,6 +172,12 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data,
 
   // Determination of Korns constant
   const bool estimate_kornconst = (cells_kornconst != nullptr) ? true : false;
+
+  std::span<T> x_kornconst;
+  if (estimate_kornconst)
+  {
+    x_kornconst = cells_kornconst->x()->mutable_array();
+  }
 
   /* Geometry */
   // Extract mesh
@@ -299,6 +306,19 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data,
               // Create Sub-DOFmap
               patch.create_subdofmap(node_i);
 
+              // Estimate the Korn constant
+              if (estimate_kornconst)
+              {
+                // Estimate squared Korn constant
+                double cks = patch.estimate_squared_korn_constant() * (dim + 1);
+
+                // Store Korn's constant
+                for (std::int32_t cell : patch.cells())
+                {
+                  x_kornconst[cell] += cks;
+                }
+              }
+
               // Re-initialise PatchData
               patch_data.reinitialisation(patch.type(), patch.ncells());
 
@@ -327,6 +347,19 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data,
 
         // Create Sub-DOFmap
         patch.create_subdofmap(i_node);
+
+        // Estimate the Korn constant
+        if (estimate_kornconst)
+        {
+          // Estimate squared Korn constant
+          double cks = patch.estimate_squared_korn_constant() * (dim + 1);
+
+          // Store Korn's constant
+          for (std::int32_t cell : patch.cells())
+          {
+            x_kornconst[cell] += cks;
+          }
+        }
 
         // Reinitialise patch-data
         patch_data.reinitialisation(patch.type(), patch.ncells());
@@ -357,6 +390,19 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data,
     {
       // Create Sub-DOFmap
       patch.create_subdofmap(i_node);
+
+      // Estimate the Korn constant
+      if (estimate_kornconst)
+      {
+        // Estimate squared Korn constant
+        double cks = patch.estimate_squared_korn_constant() * (dim + 1);
+
+        // Store Korn's constant
+        for (std::int32_t cell : patch.cells())
+        {
+          x_kornconst[cell] += cks;
+        }
+      }
 
       // Reinitialise patch-data
       patch_data.reinitialisation(patch.type(), patch.ncells());
