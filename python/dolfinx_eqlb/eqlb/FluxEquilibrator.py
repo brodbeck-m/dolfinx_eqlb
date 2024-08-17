@@ -4,6 +4,8 @@
 #
 # SPDX-License-Identifier:    LGPL-3.0-or-later
 
+"""Bas class for flux equilibrators"""
+
 # --- Imports ---
 import numpy as np
 import typing

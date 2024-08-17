@@ -4,6 +4,8 @@
 #
 # SPDX-License-Identifier:    LGPL-3.0-or-later
 
+"""Solve cell-wise equation system without global assembly"""
+
 # --- Imports ---
 import typing
 

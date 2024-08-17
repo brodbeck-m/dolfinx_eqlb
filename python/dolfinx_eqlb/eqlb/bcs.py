@@ -4,6 +4,8 @@
 #
 # SPDX-License-Identifier:    LGPL-3.0-or-later
 
+"""Boundary conditions for flux equilibration"""
+
 # --- Imports ---
 import numpy as np
 import typing

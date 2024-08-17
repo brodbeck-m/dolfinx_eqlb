@@ -4,6 +4,8 @@
 #
 # SPDX-License-Identifier:    LGPL-3.0-or-later
 
+"""Flux equilibration based a semi-explicit strategy"""
+
 # --- Imports ---
 import numpy as np
 import typing

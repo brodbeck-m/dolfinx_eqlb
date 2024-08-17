@@ -4,6 +4,8 @@
 #
 # SPDX-License-Identifier:    LGPL-3.0-or-later
 
+"""Hierarchic Raviart-Thomas spaces"""
+
 # --- Imports ---
 import numpy as np
 
