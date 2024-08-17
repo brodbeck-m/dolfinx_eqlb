@@ -46,6 +46,8 @@ def estimate_error(
     uh: dfem.Function,
     sigma_proj: typing.Any,
     delta_sigma_eqlb: typing.Any,
+    korns_constants: dfem.Function,
+    guarantied_upper_bound: typing.Optional[bool] = True,
 ) -> typing.Tuple[float, typing.List[float]]:
     """Estimates the error of a linear elastic problem
 
@@ -90,8 +92,13 @@ def estimate_error(
         - (pi_1 / (2 + 2 * pi_1)) * ufl.tr(delta_sigma_eqlb) * ufl.Identity(2)
     )
 
-    err_osc = (h_cell / ufl.pi) * (f + ufl.div(sigma_proj + delta_sigma_eqlb))
-    err_wsym = 0.5 * (delta_sigma_eqlb[0, 1] - delta_sigma_eqlb[1, 0])
+    err_osc = (
+        korns_constants
+        * (h_cell / ufl.pi)
+        * (f + ufl.div(sigma_proj + delta_sigma_eqlb))
+    )
+
+    err_wsym = 0.5 * korns_constants * (delta_sigma_eqlb[0, 1] - delta_sigma_eqlb[1, 0])
 
     form_eta_sig = dfem.form(ufl.inner(delta_sigma_eqlb, a_delta_sigma) * v * ufl.dx)
     form_eta_osc = dfem.form(ufl.inner(err_osc, err_osc) * v * dvol)
@@ -107,14 +114,17 @@ def estimate_error(
     dfem.petsc.assemble_vector(Leta_wsym, form_eta_wsym)
 
     # Evaluate error norms
-    error_estm = np.sqrt(
-        np.sum(
-            Leta_sig.array
-            + Leta_osc.array
-            + Leta_wsym.array
-            + 2 * np.multiply(np.sqrt(Leta_osc.array), np.sqrt(Leta_wsym.array))
+    if guarantied_upper_bound:
+        error_estm = np.sqrt(
+            np.sum(
+                Leta_sig.array
+                + Leta_osc.array
+                + Leta_wsym.array
+                + 2 * np.multiply(np.sqrt(Leta_osc.array), np.sqrt(Leta_wsym.array))
+            )
         )
-    )
+    else:
+        error_estm = np.sqrt(np.sum(Leta_sig.array + Leta_osc.array))
 
     error_estm_sig = np.sqrt(np.sum(Leta_sig.array))
     error_estm_wsym = np.sqrt(np.sum(Leta_wsym.array))
@@ -133,7 +143,10 @@ if __name__ == "__main__":
 
     # The orders of the FE spaces
     order_prime = 2
-    order_eqlb = 3
+    order_eqlb = 2
+
+    # Use guarantied upper bound
+    guarantied_upper_bound = True
 
     # The mesh resolution
     sdisc_nelmt_init = 1
@@ -163,7 +176,7 @@ if __name__ == "__main__":
         )
 
         # Solve equilibration
-        stress_rw_proj, stress_rw_eqlb = equilibrate_flux(
+        stress_rw_proj, stress_rw_eqlb, korns_constants = equilibrate_flux(
             order_eqlb, domain, facet_tags, pi_1, uh, stress_ref, True, False
         )
 
@@ -189,7 +202,13 @@ if __name__ == "__main__":
         f = -ufl.div(stress_ref)
 
         errorestm, componetnts_estm = estimate_error(
-            1.0, f, uh, stress_proj, stress_eqlb
+            1.0,
+            f,
+            uh,
+            stress_proj,
+            stress_eqlb,
+            korns_constants,
+            guarantied_upper_bound,
         )
 
         # --- Compute real errors
