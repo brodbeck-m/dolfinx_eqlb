@@ -4,7 +4,8 @@
 #
 # SPDX-License-Identifier:    LGPL-3.0-or-later
 
-# --- Import ---
+"""Test conditions of equilibrated fluxes"""
+
 import pytest
 import typing
 
@@ -20,14 +21,6 @@ from testcase_general import BCType, set_arbitrary_rhs, set_arbitrary_bcs
 from testcase_poisson import solve_primal_problem, equilibrate_fluxes
 
 
-""" 
-Check if equilibrated flux 
-    a.) fulfills the divergence condition div(sigma_eqlb) = f 
-    b.) is in the H(div) space
-    c.) fulfills the flux boundary conditions strongly
-"""
-
-
 # --- The test routine ---
 def equilibrate_flux(
     mesh_type: MeshType,
@@ -35,6 +28,21 @@ def equilibrate_flux(
     bc_type: BCType,
     equilibrator: typing.Union[FluxEqlbEV, FluxEqlbSE],
 ):
+    """Solve equilibration based on a primal problem and check
+
+        - the BCs
+        - the divergence condition
+        - the jump condition (only required for semi-explicit equilibrator)
+
+    for the Poisson equations.
+
+    Args:
+        mesh_type:    The mesh type
+        degree:       The degree of the equilibrated fluxes
+        bc_typ:       The type of BCs
+        equilibrator: The equilibrator
+    """
+
     # Create mesh
     if mesh_type == MeshType.builtin:
         geometry = create_unitsquare_builtin(
@@ -134,20 +142,36 @@ def equilibrate_flux(
                         raise ValueError("Jump condition not fulfilled")
 
 
-# --- Test equilibration strategy by Ern and Vohralik
-# TODO - Fix inhom. Neumann BCs on general meshes
+# --- The tests ---
 @pytest.mark.parametrize("mesh_type", [MeshType.builtin, MeshType.gmsh])
 @pytest.mark.parametrize("degree", [1, 2, 3])
 @pytest.mark.parametrize("bc_type", [BCType.neumann_hom])
 def test_ern_and_vohralik(mesh_type, degree, bc_type):
+    """Check equilibration based on constrained minimisation (Ern and Vohralik)
+
+    TODO - Fix inhom. Neumann BCs on general meshes
+
+    Args:
+        mesh_type: The mesh type
+        degree:    The degree of the equilibrated fluxes
+        bc_type:   The type of BCs
+    """
+
     equilibrate_flux(mesh_type, degree, bc_type, FluxEqlbEV)
 
 
-# --- Test semi-explicit equilibration strategy
 @pytest.mark.parametrize("mesh_type", [MeshType.builtin, MeshType.gmsh])
 @pytest.mark.parametrize("degree", [1, 2, 3])
 @pytest.mark.parametrize("bc_type", [BCType.neumann_inhom])
 def test_semi_explicit(mesh_type, degree, bc_type):
+    """Check equilibration based on the semi-explicit strategy
+
+    Args:
+        mesh_type: The mesh type
+        degree:    The degree of the equilibrated fluxes
+        bc_type:   The type of BCs
+    """
+
     equilibrate_flux(mesh_type, degree, bc_type, FluxEqlbSE)
 
 

@@ -21,7 +21,6 @@ is enforced. Possible boundary conditions:
     neumann_inhom: u = u_ext on boundary surfaces [2,4]
 """
 
-# --- Imports ---
 from enum import Enum
 import gmsh
 import numpy as np

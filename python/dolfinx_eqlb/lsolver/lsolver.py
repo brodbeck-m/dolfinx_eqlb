@@ -4,7 +4,8 @@
 #
 # SPDX-License-Identifier:    LGPL-3.0-or-later
 
-# --- Imports ---
+"""Solve cell-wise equation system without global assembly"""
+
 import typing
 
 import dolfinx.fem as dfem
@@ -12,10 +13,11 @@ import dolfinx.fem as dfem
 import dolfinx_eqlb.cpp as eqlb_cpp
 
 
-# --- Preparation of input data ---
 def prepare_input(
-    list_l: typing.List[typing.Any], list_func: typing.List[dfem.function.Function]
-):
+    list_l: typing.List[typing.Any], list_func: typing.List[dfem.Function]
+) -> typing.List[typing.Any]:
+    """Prepare input for local solvers"""
+
     # Determine number of inputs and check input data
     n_lhs = len(list_l)
 
@@ -31,14 +33,19 @@ def prepare_input(
     return list_func_cpp
 
 
-# --- Local solvers ---
-
-
 def local_solver_lu(
-    list_func: typing.List[dfem.function.Function],
-    a: dfem.forms.form_types,
-    list_l: typing.List[typing.Any],
+    list_func: typing.List[dfem.Function],
+    a: dfem.FormMetaClass,
+    list_l: typing.List[dfem.FormMetaClass],
 ):
+    """Cell local solver based on the LU decomposition
+
+    Args:
+        list_func: The solution functions
+        a:         The bilinear form
+        list_l:    The list of linear forms
+    """
+
     # Prepare input for local solver
     list_func_cpp = prepare_input(list_l, list_func)
 
@@ -47,10 +54,18 @@ def local_solver_lu(
 
 
 def local_solver_cholesky(
-    list_func: typing.List[dfem.function.Function],
-    a: dfem.forms.form_types,
-    list_l: typing.List[typing.Any],
+    list_func: typing.List[dfem.Function],
+    a: dfem.FormMetaClass,
+    list_l: typing.List[dfem.FormMetaClass],
 ):
+    """Cell local solver based on the Cholesky decomposition
+
+    Args:
+        list_func: The solution functions
+        a:         The bilinear form
+        list_l:    The list of linear forms
+    """
+
     # Prepare input for local solver
     list_func_cpp = prepare_input(list_l, list_func)
 
@@ -59,10 +74,18 @@ def local_solver_cholesky(
 
 
 def local_solver_cg(
-    list_func: typing.List[dfem.function.Function],
-    a: dfem.forms.form_types,
-    list_l: typing.List[typing.Any],
+    list_func: typing.List[dfem.Function],
+    a: dfem.FormMetaClass,
+    list_l: typing.List[dfem.FormMetaClass],
 ):
+    """Cell local solver based on a CG solver
+
+    Args:
+        list_func: The solution functions
+        a:         The bilinear form
+        list_l:    The list of linear forms
+    """
+
     # Prepare input for local solver
     list_func_cpp = prepare_input(list_l, list_func)
 

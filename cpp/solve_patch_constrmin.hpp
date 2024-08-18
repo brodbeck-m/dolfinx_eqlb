@@ -39,9 +39,7 @@ namespace dolfinx_eqlb
 //  patches - are stored within a adjacency-list. The LHS is assembled
 //  patch-wise and not stored!
 ///
-/// [1] Ern, A. & Vohralík, M.: Polynomial-Degree-Robust A Posteriori
-///     Estimates in a Unified Setting for Conforming, Nonconforming,
-///     Discontinuous Galerkin, and Mixed Discretizations, 2015
+/// [1] Ern, A. and Vohralík, M.: https://doi.org/10.1137/130950100, 2015
 ///
 /// @param geometry                   msh->geometry of the problem
 /// @param patch                      The patch

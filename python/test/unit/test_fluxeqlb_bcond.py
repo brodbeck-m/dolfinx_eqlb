@@ -4,6 +4,8 @@
 #
 # SPDX-License-Identifier:    LGPL-3.0-or-later
 
+"""Test boundary conditions for flux-equilibration"""
+
 import numpy as np
 from mpi4py import MPI
 from petsc4py import PETSc
@@ -26,17 +28,23 @@ from utils import (
     initialise_evaluate_function,
 )
 
-""" Test calculation of boundary conditions for
-    a.) The polynomial case p<=deg(RT_k)-1 (with and without projection)
-    b.) The non-polynomial case only with projection
-"""
-
 
 @pytest.mark.parametrize("mesh_type", [MeshType.builtin, MeshType.gmsh])
 @pytest.mark.parametrize("degree", [1, 2, 3, 4])
 @pytest.mark.parametrize("rt_space", ["basix", "custom", "subspace"])
 @pytest.mark.parametrize("use_projection", [False, True])
-def test_boundary_data_polynomial(mesh_type, degree, rt_space, use_projection):
+def test_boundary_data_polynomial(
+    mesh_type: MeshType, degree: int, rt_space: str, use_projection: bool
+):
+    """Test boundary conditions from data with know polynomial degree
+
+    Args:
+        mesh_type:      The mesh type
+        degree:         The degree of the RT space, onto the BCs are applied
+        rt_space:       Type of RT-space
+        use_projection: If True, RT DOFs are gained by projection from boundary data
+    """
+
     # Create mesh
     n_cells = 5
 
@@ -174,7 +182,17 @@ def test_boundary_data_polynomial(mesh_type, degree, rt_space, use_projection):
 
 @pytest.mark.parametrize("mesh_type", [MeshType.builtin, MeshType.gmsh])
 @pytest.mark.parametrize("degree", [1, 2, 3, 4])
-def test_boundary_data_general(mesh_type, degree):
+def test_boundary_data_general(mesh_type: MeshType, degree: int):
+    """Test boundary conditions from non-polynomial data
+
+    The boundary values are projected into the RT space. The values on
+    the boundary are compared to a projection on a 1D reference space.
+
+    Args:
+        mesh_type: The mesh type
+        degree:    The degree of the RT space, onto the BCs are applied
+    """
+
     # --- Calculate boundary conditions (2D)
     # Create mesh
     n_cells = 5

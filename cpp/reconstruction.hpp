@@ -57,9 +57,7 @@ namespace dolfinx_eqlb
 /// Equilibration procedure is based on the solution of patch-wise constrained
 /// minimisation problems as described in [1]
 ///
-/// [1] Ern, A. & Vohralík, M.: Polynomial-Degree-Robust A Posteriori
-///     Estimates in a Unified Setting for Conforming, Nonconforming,
-///     Discontinuous Galerkin, and Mixed Discretizations, 2015
+/// [1] Ern, A. and Vohralík, M.: https://doi.org/10.1137/130950100, 2015
 ///
 /// @tparam T The scalar type
 /// @param a              The bilinear forms to assemble
@@ -151,19 +149,35 @@ void reconstruct_fluxes_patch(const fem::Form<T>& a, const fem::Form<T>& l_pen,
 ///
 /// Equilibration procedure is based on an explicitly calculated flux and an
 /// unconstrained minimisation problem on a patch-wise divergence-free H(div)
-/// space (see [1]).
+/// space [1]. If stresses are considered the symmetry in considered in a weak
+/// sense following [2]. The cells squared Korn constants are estimated based on
+/// [3]. The grouping follows the idea in [4].
 ///
-/// [1] Bertrand, F.; Carstensen, C.; Gräßle, B. & Tran, N. T.:
-///     Stabilization-free HHO a posteriori error control, 2022
+/// [1] Bertrand, F. et al.: https://doi.org/10.1007/s00211-023-01366-8, 2023
+/// [2] Bertrand, F. et al.: https://doi.org/10.1002/num.22741, 2021
+/// [3] Kim, K.-W.: https://doi.org/10.1137/110823031, 2011
+/// [4] Moldenhauer, M.: http://d-nb.info/1221061712/34, 2020
 ///
 /// @tparam T             The scalar type
 /// @tparam id_flux_order The flux order (1->RT1, 2->RT2, 3->general)
-/// @param problem_data   The problem data
-/// @param fct_type       Lookup-table for facet-types
-template <typename T, int id_flux_order, bool symconstr_required>
-void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
+/// @param problem_data       The problem data
+/// @param symconstr_required Flag if weak symmetry condition is required
+/// @param cells_kornconst    Upper bounds for cells Korn constant
+template <typename T, int id_flux_order>
+void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data,
+                              const bool symconstr_required,
+                              std::shared_ptr<fem::Function<T>> cells_kornconst)
 {
   assert(id_flux_order < 0);
+
+  // Determination of Korns constant
+  const bool estimate_kornconst = (cells_kornconst != nullptr) ? true : false;
+
+  std::span<T> x_kornconst;
+  if (estimate_kornconst)
+  {
+    x_kornconst = cells_kornconst->x()->mutable_array();
+  }
 
   /* Geometry */
   // Extract mesh
@@ -231,7 +245,7 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
 
   // Execute equilibration
   // FIXME - Currently only 2D meshes supported
-  if constexpr (symconstr_required)
+  if (symconstr_required)
   {
     // Get list with node markers on stress boundary
     std::span<const std::int8_t> pnt_on_stress_boundary
@@ -292,6 +306,19 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
               // Create Sub-DOFmap
               patch.create_subdofmap(node_i);
 
+              // Estimate the Korn constant
+              if (estimate_kornconst)
+              {
+                // Estimate squared Korn constant
+                double cks = patch.estimate_squared_korn_constant() * (dim + 1);
+
+                // Store Korn's constant
+                for (std::int32_t cell : patch.cells())
+                {
+                  x_kornconst[cell] += cks;
+                }
+              }
+
               // Re-initialise PatchData
               patch_data.reinitialisation(patch.type(), patch.ncells());
 
@@ -320,6 +347,19 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
 
         // Create Sub-DOFmap
         patch.create_subdofmap(i_node);
+
+        // Estimate the Korn constant
+        if (estimate_kornconst)
+        {
+          // Estimate squared Korn constant
+          double cks = patch.estimate_squared_korn_constant() * (dim + 1);
+
+          // Store Korn's constant
+          for (std::int32_t cell : patch.cells())
+          {
+            x_kornconst[cell] += cks;
+          }
+        }
 
         // Reinitialise patch-data
         patch_data.reinitialisation(patch.type(), patch.ncells());
@@ -350,6 +390,19 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data)
     {
       // Create Sub-DOFmap
       patch.create_subdofmap(i_node);
+
+      // Estimate the Korn constant
+      if (estimate_kornconst)
+      {
+        // Estimate squared Korn constant
+        double cks = patch.estimate_squared_korn_constant() * (dim + 1);
+
+        // Store Korn's constant
+        for (std::int32_t cell : patch.cells())
+        {
+          x_kornconst[cell] += cks;
+        }
+      }
 
       // Reinitialise patch-data
       patch_data.reinitialisation(patch.type(), patch.ncells());
@@ -415,7 +468,8 @@ void reconstruct_fluxes_cstm(
     std::vector<std::shared_ptr<fem::Function<T>>>& flux_dg,
     std::vector<std::shared_ptr<fem::Function<T>>>& rhs_dg,
     std::shared_ptr<BoundaryData<T>> boundary_data,
-    const bool reconstruct_stress)
+    const bool reconstruct_stress,
+    std::shared_ptr<dolfinx::fem::Function<T>> cells_kornconst)
 {
   // Input size and polynomial degrees
   const int n_rhs = rhs_dg.size();
@@ -468,35 +522,20 @@ void reconstruct_fluxes_cstm(
       = ProblemDataFluxCstm<T>(flux_hdiv, flux_dg, rhs_dg, boundary_data);
 
   /* Call equilibration */
-  if (reconstruct_stress)
+  if (order_flux == 1)
   {
-    if (order_flux == 1)
-    {
-      reconstruct_fluxes_patch<T, 1, true>(problem_data);
-    }
-    else if (order_flux == 2)
-    {
-      reconstruct_fluxes_patch<T, 2, true>(problem_data);
-    }
-    else
-    {
-      reconstruct_fluxes_patch<T, 3, true>(problem_data);
-    }
+    reconstruct_fluxes_patch<T, 1>(problem_data, reconstruct_stress,
+                                   cells_kornconst);
+  }
+  else if (order_flux == 2)
+  {
+    reconstruct_fluxes_patch<T, 2>(problem_data, reconstruct_stress,
+                                   cells_kornconst);
   }
   else
   {
-    if (order_flux == 1)
-    {
-      reconstruct_fluxes_patch<T, 1, false>(problem_data);
-    }
-    else if (order_flux == 2)
-    {
-      reconstruct_fluxes_patch<T, 2, false>(problem_data);
-    }
-    else
-    {
-      reconstruct_fluxes_patch<T, 3, false>(problem_data);
-    }
+    reconstruct_fluxes_patch<T, 3>(problem_data, reconstruct_stress,
+                                   cells_kornconst);
   }
 }
 

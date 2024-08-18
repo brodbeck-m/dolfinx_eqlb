@@ -14,6 +14,7 @@
 #include <dolfinx/mesh/Topology.h>
 
 #include <algorithm>
+#include <cmath>
 #include <functional>
 #include <iostream>
 #include <memory>
@@ -58,14 +59,11 @@ public:
   /// Construction of a sub-DOFmap on each patch
   ///
   /// Determines type of patch and creates sorted DOFmap. Sorting of
-  /// facets/elements/DOFs follows [1,2]. The sub-DOFmap is created for
+  /// facets/elements/DOFs follows [1]. The sub-DOFmap is created for
   /// sub-problem 0. If patch- type differs between different patches, use
   /// recreate_subdofmap for sub-problem i>0.
   ///
-  /// [1] Moldenhauer, M.: Stress reconstructionand a-posteriori error
-  ///     estimationfor elasticity (PhdThesis)
-  /// [2] Bertrand, F.; Carstensen, C.; Gräßle, B. & Tran, N. T.:
-  ///     Stabilization-free HHO a posteriori error control, 2022
+  /// [1] Bertrand, F. et al.: https://doi.org/10.1007/s00211-023-01366-8, 2023
   ///
   /// @param node_i Processor-local id of current node
   void create_subdofmap(int node_i)
@@ -251,13 +249,9 @@ protected:
   /// @return       Length of loop over factes
   std::pair<std::int32_t, std::int32_t> initialize_patch(int node_i);
 
-  /// Determin cell, cell-local facet id and next facet
+  /// Determin cell, cell-local facet id and next facet (sorted after [1])
   ///
-  /// Patch are sorted after [1,2]
-  /// [1] Moldenhauer, M.: Stress reconstructionand a-posteriori error
-  ///     estimationfor elasticity (PhdThesis)
-  /// [2] Bertrand, F.; Carstensen, C.; Gräßle, B. & Tran, N. T.:
-  ///     Stabilization-free HHO a posteriori error control, 2022
+  /// [1] Bertrand, F. et al.: https://doi.org/10.1007/s00211-023-01366-8, 2023
   ///
   /// @param id_l     Id of used LHS
   /// @param c_fct    Counter within loop over all facets of patch
@@ -390,14 +384,11 @@ public:
   /// Construction of a sub-DOFmap on each patch
   ///
   /// Determines type of patch and creates sorted DOFmap. Sorting of
-  /// facets/elements/DOFs follows [1,2]. The sub-DOFmap is created for
+  /// facets/elements/DOFs follows [1]. The sub-DOFmap is created for
   /// sub-problem 0. If patch- type differs between different patches, use
   /// recreate_subdofmap for sub-problem i>0.
   ///
-  /// [1] Moldenhauer, M.: Stress reconstructionand a-posteriori error
-  ///     estimationfor elasticity (PhdThesis)
-  /// [2] Bertrand, F.; Carstensen, C.; Gräßle, B. & Tran, N. T.:
-  ///     Stabilization-free HHO a posteriori error control, 2022
+  /// [1] Bertrand, F. et al.: https://doi.org/10.1007/s00211-023-01366-8, 2023
   ///
   /// @param node_i Processor-local id of current node
   void create_subdofmap(const int node_i)
@@ -414,6 +405,15 @@ public:
   /// @param[in] index     Index of sub-problem
   /// @param[out] required true if reversion is required
   bool reversion_required(int index) const;
+
+  /// Estimate patchs Korn constant
+  ///
+  /// For 2D star-shaped domains: Formula [1].
+  ///
+  /// [1] Kim, K.-W.: https://doi.org/10.1137/110823031, 2011
+  ///
+  /// @param[out] Upper bound of the patchs Korn constant
+  double estimate_squared_korn_constant() const;
 
   /* Setter functions */
 

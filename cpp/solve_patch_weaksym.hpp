@@ -39,6 +39,23 @@ namespace dolfinx_eqlb
 
 namespace stdex = std::experimental;
 
+/// Impose weak symmetry on a reconstructed stress tensor
+///
+/// Based on o row-wise equilibrated stress tensors, weak symmetry
+/// - tested against a mesh-wide P1 space - is enforced based on a
+/// constrained minimisation problem, following [1].
+///
+/// [1] Bertrand, F. et al.: https://doi.org/10.1002/num.22741, 2021
+///
+/// @tparam T              The scalar type
+/// @tparam id_flux_order  Parameter for flux order (1->RT1, 2->RT2, 3->general)
+/// @tparam modified_patch Identifier fou grouped patches
+/// @param mesh         The mesh
+/// @param patch        The patch
+/// @param patch_data   The patch data
+/// @param problem_data The problem data (Functions of flux, flux_dg, RHS_dg)
+/// @param kernel_data  The kernel data (Quadrature data, tabulated basis)
+/// @param kernel       The kernel function
 template <typename T, int id_flux_order, bool modified_patch>
 void impose_weak_symmetry(const mesh::Geometry& geometry,
                           PatchFluxCstm<T, id_flux_order>& patch,

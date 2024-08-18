@@ -4,7 +4,8 @@
 #
 # SPDX-License-Identifier:    LGPL-3.0-or-later
 
-# --- Imports ---
+"""Bas class for flux equilibrators"""
+
 import numpy as np
 import typing
 
@@ -14,11 +15,17 @@ import dolfinx.mesh as dmesh
 from dolfinx_eqlb.cpp import FluxBC
 
 
-# --- Equilibration of fluxes ---
-
-
 class FluxEquilibrator:
+    """The flux equilibrator (base class)"""
+
     def __init__(self, degree_flux: int, n_eqlbs: int, equilibrate_stress: bool):
+        """Initials the flux equilibrator
+
+        Args:
+            degree_flux:        The degree of the H(div) conforming fluxes
+            n_eqlbs:            The number of simultaneously equilibrated fluxes
+            equilibrate_stress: Identifier if the first gdim fluxes are treated as stresses
+        """
         # Order of reconstructed flux
         self.degree_flux = degree_flux
 
@@ -44,6 +51,11 @@ class FluxEquilibrator:
         self.boundary_data = None
 
     def initialise_mesh_info(self, msh: dmesh.Mesh):
+        """Initialise the required mesh informations
+
+        Args:
+            msh: The mesh
+        """
         # Permutation information
         msh.topology.create_entity_permutations()
 

@@ -4,7 +4,8 @@
 #
 # SPDX-License-Identifier:    LGPL-3.0-or-later
 
-# --- Imports ---
+"""Flux equilibration based on constrained minimisation problems"""
+
 import numpy as np
 import typing
 
@@ -18,13 +19,27 @@ from .bcs import boundarydata
 
 
 class FluxEqlbEV(FluxEquilibrator):
+    """Equilibrate fluxes by a series of constrained minimisation problems[1]
+
+    [1] Ern, A. and Vohralík, M.: https://doi.org/10.1137/130950100, 2015
+    """
+
     def __init__(
         self,
         degree_flux: int,
         msh: dmesh.Mesh,
-        list_rhs: typing.List[typing.Any],
-        list_proj_flux: typing.List[dfem.function.Function],
+        list_rhs: typing.List[dfem.Function],
+        list_proj_flux: typing.List[dfem.Function],
     ):
+        """Initialise constrained minimisation based flux equilibrator
+
+        Args:
+            degree_flux:            The degree of the H(div) conforming fluxes
+            msh:                    The mesh
+            list_rhs:               The projected right-hand sides
+            list_proj_flux:         The projected fluxes
+        """
+
         # Constructor of base class
         super().__init__(degree_flux, len(list_rhs), False)
 
@@ -61,9 +76,17 @@ class FluxEqlbEV(FluxEquilibrator):
     def setup_patch_problem(
         self,
         msh: dmesh.Mesh,
-        list_rhs: typing.List[typing.Any],
-        list_proj_flux: typing.List[dfem.function.Function],
+        list_rhs: typing.List[dfem.Function],
+        list_proj_flux: typing.List[dfem.Function],
     ):
+        """Setup the patch problems
+
+        Args:
+            msh:            The mesh
+            list_rhs:       The projected right-hand sides
+            list_proj_flux: The projected fluxes
+        """
+
         # Initialize connectivities
         super().initialise_mesh_info(msh)
 
@@ -117,6 +140,14 @@ class FluxEqlbEV(FluxEquilibrator):
         list_bcs_flux: typing.List[typing.List[FluxBC]],
         quadrature_degree: typing.Optional[int] = None,
     ):
+        """Set boundary conditions
+
+        Args:
+            list_bfct_prime:   The facets with essential BCs of the primal problem
+            list_bcs_flux:     The list of boundary conditions
+            quadrature_degree: The quadrature degree (for projecting the BCs)
+        """
+
         # Check input data
         if self.n_fluxes != len(list_bfct_prime) | self.n_fluxes != len(list_bcs_flux):
             raise RuntimeError("Mismatching inputs!")
@@ -138,6 +169,8 @@ class FluxEqlbEV(FluxEquilibrator):
             self.list_bfunctions[i].x.scatter_forward()
 
     def equilibrate_fluxes(self):
+        """Equilibrate the fluxes"""
+
         reconstruct_fluxes_minimisation(
             self.form_a,
             self.form_lpen,
@@ -147,4 +180,13 @@ class FluxEqlbEV(FluxEquilibrator):
         )
 
     def get_recontructed_fluxe(self, subproblem: int):
+        """Get the reconstructed fluxes
+
+        Args:
+            subproblem: Id of the flux
+
+        Returns:
+            The reconstructed flux (result of the const. minim. problems)
+        """
+
         return self.list_flux[subproblem]

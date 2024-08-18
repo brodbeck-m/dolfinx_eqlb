@@ -4,7 +4,8 @@
 #
 # SPDX-License-Identifier:    LGPL-3.0-or-later
 
-# --- Imports ---
+"""Check the equilibration conditions"""
+
 import numpy as np
 import typing
 
@@ -17,8 +18,6 @@ from dolfinx_eqlb.lsolver import local_projection
 
 
 # --- Check the mesh ---
-
-
 def mesh_has_reversed_edges(
     domain: dmesh.Mesh,
     print_debug_information: typing.Optional[bool] = False,
@@ -27,6 +26,9 @@ def mesh_has_reversed_edges(
 
     Args:
         domain: The mesh
+
+    Returns:
+        True, if mesh has facets with reversed definition
     """
 
     # --- Extract geometry data
@@ -87,8 +89,6 @@ def mesh_has_reversed_edges(
 
 
 # --- Check Boundary Conditions ---
-
-
 def check_boundary_conditions(
     sigma_eq: dfem.Function,
     sigma_proj: dfem.Function,
@@ -102,11 +102,14 @@ def check_boundary_conditions(
     the equilibration.
 
     Args:
-        sigma_eq:           The equilibrated flux
-        sigma_proj:         The projected flux
-        boundary_function:  The boundary function
-        facet_function:     The facet function
-        boundary_facets:    The boundary facets
+        sigma_eq:          The equilibrated flux
+        sigma_proj:        The projected flux
+        boundary_function: The boundary function
+        facet_function:    The facet function
+        boundary_facets:   The boundary facets
+
+    Returns:
+        True, if boundary conditions are satisfied
     """
 
     # Check if flux-space is discontinuous
@@ -179,8 +182,6 @@ def check_boundary_conditions(
 
 
 # --- Check the equilibration ---
-
-
 def check_divergence_condition(
     sigma_eq: typing.Union[dfem.Function, typing.Any],
     sigma_proj: typing.Union[dfem.Function, typing.Any],
@@ -204,13 +205,19 @@ def check_divergence_condition(
         - List of cells, where norm is greater than tolerance
 
     Args:
-        sigma_eq (Function or ufl-Argument):      The equilibrated flux
-        sigma_proj (Function or ufl-Argument):    The projected flux
-        rhs_proj (Function):                      The projected right-hand side
-        mesh (optional, dmesh.Mesh):              The mesh (optional, only for ufl flux required)
-        degree (optional, int):                   The flux degree (optional, only for ufl flux required)
-        flux_is_dg (optional, bool):              Identifier id flux is in DRT space (optional, only for ufl flux required)
-        print_debug_information (optional, bool): Print debug information (optional)
+        sigma_eq:                The equilibrated flux
+        sigma_proj:              The projected flux
+        rhs_proj:                The projected right-hand side
+        mesh:                    The mesh
+                                 (required when fluxes are ufl arguments)
+        degree:                  The flux degree
+                                 (required when fluxes are ufl arguments)
+        flux_is_dg:              Identifier id flux is in DRT space
+                                 (required when fluxes are ufl arguments)
+        print_debug_information: Print debug information
+
+    Returns:
+        True, if divergence condition is fulfilled
     """
     # --- Extract solution data
     if type(sigma_eq) is dfem.Function:
@@ -295,7 +302,7 @@ def check_jump_condition(
 
     For the semi-explicit equilibration procedure the flux within the H(div)
     conforming RT-space is constructed from the projected flux as well as a
-    reconstruction within the element-wise RT space. This routine checks if
+    corrector within a element-wise RT space. This routine checks if
     the normal component of sigma_proj + sigma_eq is continuous across all
     internal facets by comparing the H(div) norm of an H(div) interpolant
     of sigma_proj + sigma_eq with the function itself.
@@ -304,9 +311,12 @@ def check_jump_condition(
         - List of cells, where norm is greater than tolerance
 
     Args:
-        sigma_eq:                                 The equilibrated flux
-        sigma_proj:                               The projected flux
-        print_debug_information (optional, bool): Print debug information (optional)
+        sigma_eq:                The equilibrated flux
+        sigma_proj:              The projected flux
+        print_debug_information: Print debug information
+
+    Returns:
+        True, if jump condition is fulfilled
     """
 
     # --- Extract data
@@ -362,15 +372,20 @@ def check_jump_condition_per_facet(
     conforming RT-space is constructed from the projected flux as well as a
     reconstruction within the element-wise RT space. This routine checks if
     the normal component of sigma_proj + sigma_eq is continuous across all
-    internal facets.
+    internal facets. This routine checks if the normal component of
+    sigma_proj + sigma_eq is identical on the two cells adjacent to a facet.
+    The compared values are computed by the evaluation method of a function
 
     Available debug information:
         [[cell+, cell-, reversed orientation]]
 
     Args:
-        sigma_eq:                                 The equilibrated flux
-        sigma_proj:                               The projected flux
-        print_debug_information (optional, bool): Print debug information (optional)
+        sigma_eq:                The equilibrated flux
+        sigma_proj:              The projected flux
+        print_debug_information: Print debug information
+
+    Returns:
+        True, if jump condition is fulfilled
     """
     # --- Extract geometry data
     # the mesh
@@ -460,7 +475,7 @@ def check_jump_condition_per_facet(
         return False
 
 
-def check_weak_symmetry_condition(sigma_eq: dfem.Function):
+def check_weak_symmetry_condition(sigma_eq: dfem.Function) -> bool:
     """Check the weak symmetry condition
 
     Let sigma_eq be the equilibrated flux, then
@@ -470,7 +485,10 @@ def check_weak_symmetry_condition(sigma_eq: dfem.Function):
     must hold, for all z in P1. This routine checks if this condition holds true.
 
     Args:
-        sigma_eq (Function):   The equilibrated flux
+        sigma_eq (Function): The equilibrated flux
+
+    Returns:
+        True, if weak symmetry condition is fulfilled
     """
     # --- Extract solution data
     # The mesh

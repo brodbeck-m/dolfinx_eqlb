@@ -4,7 +4,13 @@
 #
 # SPDX-License-Identifier:    LGPL-3.0-or-later
 
-# --- Includes ---
+"""General set-up for equilibration test-cases
+
+Equilibration test-cases requires the definition of right-hand-sides (RHS) and boundary conditions (BC). 
+These are set either based on random values or a manufactured solution.
+
+"""
+
 from enum import Enum
 import numpy as np
 from petsc4py import PETSc
@@ -16,21 +22,38 @@ import ufl
 
 from dolfinx_eqlb.lsolver import local_projection
 
-from utils import interpolate_ufl_to_function
 
-"""
-General setup routines for unit tests
+# --- Interpolate from ufl to function
+def interpolate_ufl_to_function(f_ufl: typing.Any, f_fe: dfem.Function):
+    """Interpolates a UFL expression to a function
 
-Supported variants:
-    - manufactured solution based on u_ext
-    - arbitrary right-hand side
-"""
+    Args:
+        f_ufl: The function in UFL
+        f_fe:  The function to interpolate into
+    """
+
+    # Create expression
+    expr = dfem.Expression(f_ufl, f_fe.function_space.element.interpolation_points())
+
+    # Perform interpolation
+    f_fe.interpolate(expr)
 
 
 # --- Normal trace of a flux function
 def exact_normaltrace(
     flux_ext: typing.Any, bound_id: int, vector_valued: typing.Optional[bool] = False
-):
+) -> typing.Any:
+    """Compute the normal trace of a flux function
+
+    Args:
+        flux_ext:      The flux function
+        bound_id:      The boundary id on a unit square
+        vector_valued: True if the flux function is vector-valued
+
+    Returns:
+        The normal trace (sigma x normal) of the boundary flux
+    """
+
     if bound_id == 1:
         pfactor = -1.0
         id = 0
@@ -54,26 +77,24 @@ def exact_normaltrace(
 def set_arbitrary_rhs(
     domain: dolfinx.mesh.Mesh,
     degree_rhs: int,
-    degree_projection: int = -1,
+    degree_projection: typing.Optional[int] = None,
     vector_valued: typing.Optional[bool] = False,
-):
-    """Set polynomial right-hand side of degree degree_rhs
-
-    RHS has to be used to calculate primal solution and thereafter the projected flux.
+) -> typing.Tuple[dfem.Function, dfem.Function]:
+    """Set polynomial right-hand-side (RHS)
 
     Args:
-        domain (dolfinx.mesh.Mesh): The mesh
-        degree_rhs (int): Degree of the right-hand side
-        degree_projection (int): If >0 the degree of the DG space within which the RHS (of degree_rhs) is represented
-        vector_valued (bool): True if the right-hand side is vector-valued
+        domain:            The mesh
+        degree_rhs:        Degree of the RHS
+        degree_projection: Degree of the function-space within which the RHS is represented
+        vector_valued:     True if the RHS is vector-valued
 
     Returns:
-        rhs_ufl (dolfinx.Function): The RHS used for calculating the primal solution
-        rhs_projected (dolfinx.Function): The projected RHS for the equilibration process
-
+        The RHS used for calculating the primal solution,
+        The projected RHS for the equilibration process
     """
+
     # Check input
-    if degree_projection < 0:
+    if degree_projection is None:
         degree_projection = degree_rhs
 
     # Set function space
@@ -119,20 +140,21 @@ def set_manufactured_rhs(
     domain: dolfinx.mesh.Mesh,
     degree_rhs: int,
     vector_valued: typing.Optional[bool] = False,
-):
+) -> typing.Tuple[typing.Any, dfem.Function]:
     """Set right-hand based on manufactured solution
 
     RHS is the -div(sigma(u_ext)) of the manufactured solution u_ext.
 
     Args:
-        flux_ext (Callable): ufl-expression of the exact flux
-        domain (dolfinx.mesh.Mesh): The mesh
-        degree_rhs (int): Degree of the right-hand side
+        flux_ext:   ufl-expression of the exact flux
+        domain:     The mesh
+        degree_rhs: Degree of the right-hand side
 
     Returns:
-        rhs_ufl (ufl): The RHS used for calculating the primal solution
-        rhs_projected (dolfinx.Function): The projected RHS for the equilibration process
+        The RHS used for calculating the primal solution,
+        The projected RHS for the equilibration process
     """
+
     # Set function space
     if vector_valued:
         V_rhs = dfem.VectorFunctionSpace(domain, ("DG", degree_rhs))
@@ -159,29 +181,34 @@ def set_arbitrary_bcs(
     bc_type: BCType,
     V_prime: dfem.FunctionSpace,
     degree_flux: int,
-    degree_bc: int = 0,
+    degree_bc: typing.Optional[int] = 0,
     neumann_ids: typing.List[int] = None,
-):
-    """Set arbitrary dirichlet and neumann BCs
+) -> typing.Tuple[
+    typing.List[int],
+    typing.List[int],
+    typing.List[dfem.Function],
+    typing.List[dfem.Function],
+    typing.List[bool],
+]:
+    """Set arbitrary Dirichlet and Neumann BCs
 
-    Remarks:
-         1.) Dirichlet BCs for primal problem are homogenous.
+    Remark: Dirichlet BCs for primal problem are homogenous.
 
     Args:
-        bc_type (BCType):        Type of boundary conditions
-        V_prime (FunctionSpace): The function space of the primal problem
-        degree_flux (int):       Degree of the flux space
-        degree_bc (int):         Polynomial degree of the boundary conditions
-        neumann_ids (List[int]): List of boundary ids for neumann BCs
+        bc_type:     Type of boundary conditions
+        V_prime:     The function space of the primal problem
+        degree_flux: Degree of the flux space
+        degree_bc:   Polynomial degree of the Neumann BCs
+        neumann_ids: List of boundary ids for Neumann BCs
 
     Returns:
-        boundary_id_dirichlet (List[int]): List of boundary ids for dirichlet BCs
-        boundary_id_neumann (List[int]):   List of boundary ids for neumann BCs
-        u_D (List[Function]):              List of dirichlet boundary conditions
-        func_neumann (List[ufl]):          List of neumann boundary conditions
-        neumann_projection (List[bool]):   List of booleans indicating wether the neumann
-                                           BCs require projection
+        The boundary ids for Dirichlet BCs,
+        The boundary ids for Neumann BCs,
+        The Dirichlet BCs,
+        The Neumann BCs,
+        Booleans indicating if the Neumann BCs require projection
     """
+
     if bc_type == BCType.dirichlet:
         # Set boundary ids
         boundary_id_dirichlet = [1, 2, 3, 4]
@@ -269,21 +296,22 @@ def set_manufactured_bcs(
     u_ext: typing.Any,
     flux_ext: typing.Any,
     vector_valued: typing.Optional[bool] = False,
-):
-    """Sets dirichlet and neumann BCs based on manufactured solution
+) -> typing.Tuple[
+    typing.List[dfem.Function], typing.List[typing.Any], typing.List[bool]
+]:
+    """Sets Dirichlet and Neumann BCs based on manufactured solution
 
     Args:
-        V_prime (dolfinx.FunctionSpace):   The function space of the primal problem
-        boundary_id_dirichlet (List[int]): List of boundary ids for dirichlet BCs
-        boundary_id_neumann (List[int]):   List of boundary ids for neumann BCs
-        u_ext (ufl):                       The manufactured solution (ufl representation)
-        flux_ext (ufl):                    The normal trace of the manufactured flux (ufl representation)
+        V_prime:               The function space of the primal problem
+        boundary_id_dirichlet: The boundary ids for Dirichlet BCs
+        boundary_id_neumann:   The boundary ids for Neumann BCs
+        u_ext:                 The manufactured solution (ufl representation)
+        flux_ext:              The normal trace of the manufactured flux (ufl representation)
 
     Returns:
-        list_dirichlet (List[dolfinx.Function]): List of dirichlet boundary conditions
-        list_neumann (List[ufl]):                List of neumann boundary conditions
-        list_neumann_projection (List[bool]):    List of booleans indicating wether the neumann
-                                                 BCs require projection
+        The Dirichlet BCs,
+        The Neumann BCs (ufl of normal trace),
+        Booleans indicating if the Neumann BCs require projection
     """
 
     # Set dirichlet BCs

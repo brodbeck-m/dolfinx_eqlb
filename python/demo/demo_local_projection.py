@@ -11,7 +11,6 @@ functions into an element-wise polynomial space.
 
 """
 
-# --- Imports ---
 from mpi4py import MPI
 import numpy as np
 

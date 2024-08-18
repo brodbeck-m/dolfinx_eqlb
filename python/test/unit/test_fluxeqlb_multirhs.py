@@ -4,6 +4,8 @@
 #
 # SPDX-License-Identifier:    LGPL-3.0-or-later
 
+"""Test conditions of simultaneously equilibrated fluxes (different primal problems)"""
+
 import numpy as np
 import pytest
 import typing
@@ -20,10 +22,6 @@ from utils import MeshType, create_unitsquare_builtin, create_unitsquare_gmsh
 from testcase_general import BCType, set_arbitrary_rhs, set_arbitrary_bcs
 from testcase_poisson import solve_primal_problem, equilibrate_fluxes
 
-""" 
-Check flux equilibration for multiple RHS
-"""
-
 
 # --- The test routine ---
 def equilibrate_multi_rhs(
@@ -32,6 +30,21 @@ def equilibrate_multi_rhs(
     bc_type: BCType,
     equilibrator: typing.Union[FluxEqlbEV, FluxEqlbSE],
 ):
+    """Solve a series of equilibrations (different primal problems) simultaneously and checks
+
+        - the BCs
+        - the divergence condition
+        - the jump condition (only required for semi-explicit equilibrator)
+
+    for the Poisson equations.
+
+    Args:
+        mesh_type:    The mesh type
+        degree:       The degree of the equilibrated fluxes
+        bc_typ:       The type of BCs
+        equilibrator: The equilibrator
+    """
+
     # Create mesh
     if mesh_type == MeshType.builtin:
         geometry = create_unitsquare_builtin(
@@ -181,6 +194,15 @@ def equilibrate_multi_rhs(
 @pytest.mark.parametrize("mesh_type", [MeshType.builtin, MeshType.gmsh])
 @pytest.mark.parametrize("degree", [1, 2, 3, 4])
 def test_ern_and_vohralik_mrhs(mesh_type, degree):
+    """Check multiple equilibrations based on constrained minimisation (Ern and Vohralik)
+
+    TODO - Fix inhom. Neumann BCs on general meshes
+
+    Args:
+        mesh_type: The mesh type
+        degree:    The degree of the equilibrated fluxes
+    """
+
     equilibrate_multi_rhs(mesh_type, degree, BCType.neumann_hom, FluxEqlbEV)
 
 
@@ -188,6 +210,14 @@ def test_ern_and_vohralik_mrhs(mesh_type, degree):
 @pytest.mark.parametrize("mesh_type", [MeshType.builtin, MeshType.gmsh])
 @pytest.mark.parametrize("degree", [1, 2, 3, 4])
 def test_semi_explicit_mrhs(mesh_type, degree):
+    """Check multiple equilibrations based on the semi-explicit strategy
+
+    Args:
+        mesh_type: The mesh type
+        degree:    The degree of the equilibrated fluxes
+        bc_type:   The type of BCs
+    """
+
     equilibrate_multi_rhs(mesh_type, degree, BCType.neumann_inhom, FluxEqlbSE)
 
 

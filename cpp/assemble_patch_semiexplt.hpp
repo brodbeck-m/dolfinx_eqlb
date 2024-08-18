@@ -538,8 +538,7 @@ void set_boundary_markers(std::span<std::int8_t> boundary_markers,
 /// minimisation on patch-wise divergence free H(div) space. Explicit ansatz
 /// for such a space see [1, Lemma 12].
 ///
-/// [1] Bertrand, F.; Carstensen, C.; Gräßle, B. & Tran, N. T.:
-///     Stabilization-free HHO a posteriori error control, 2022
+/// [1] Bertrand, F. et al.: https://doi.org/10.1007/s00211-023-01366-8, 2023
 ///
 /// @tparam T                       The scalar type
 /// @tparam id_flux_order           The flux order (1->RT1, 2->RT2, 3->general)
@@ -713,8 +712,7 @@ void assemble_fluxminimiser(kernel_fn<T, asmbl_systmtrx>& minimisation_kernel,
 /// minimisation on patch-wise divergence free H(div) space. Explicit ansatz
 /// for such a space see [1, Lemma 12].
 ///
-/// [1] Bertrand, F.; Carstensen, C.; Gräßle, B. & Tran, N. T.:
-///     Stabilization-free HHO a posteriori error control, 2022
+/// [1] Bertrand, F. et al.: https://doi.org/10.1007/s00211-023-01366-8, 2023
 ///
 /// @tparam T                       The scalar type
 /// @tparam id_flux_order           The flux order (1->RT1, 2->RT2, 3->general)

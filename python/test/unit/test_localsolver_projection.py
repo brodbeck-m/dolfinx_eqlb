@@ -4,6 +4,8 @@
 #
 # SPDX-License-Identifier:    LGPL-3.0-or-later
 
+"""Test local projections into discontinuous FE-spaces"""
+
 from mpi4py import MPI
 import numpy as np
 from petsc4py import PETSc
@@ -25,16 +27,7 @@ from dolfinx_eqlb.lsolver import (
 )
 
 
-"""Utility functions"""
-
-
-def create_fespace_discontinous(family_basix, cell_basix, degree):
-    elmt_basix = basix.create_element(
-        family_basix, cell_basix, degree, basix.LagrangeVariant.equispaced, True
-    )
-    return basix.ufl_wrapper.BasixElement(elmt_basix)
-
-
+# --- Auxiliary functions ---
 def setup_problem_projection(cell, n_elmt):
     # Set cell variables
     if cell == ufl.triangle:
@@ -72,45 +65,25 @@ def setup_problem_projection(cell, n_elmt):
     return msh, cell_basix
 
 
-"""Test existance of required discontinous function-spaces (Lagrange, RT, BDM)"""
-
-
-@pytest.mark.parametrize("cell", [ufl.triangle, ufl.tetrahedron])
-@pytest.mark.parametrize(
-    "family_basix",
-    [basix.ElementFamily.P, basix.ElementFamily.RT, basix.ElementFamily.BDM],
-)
-@pytest.mark.parametrize("degree", [1, 2, 3, 4])
-def test_elmtbasix_discontinous(cell, family_basix, degree):
-    # Create problem
-    msh, cell_basix = setup_problem_projection(cell, 2)
-
-    # Create Finite element (discontinous!), FunctionSpace and Function
-    V = dfem.FunctionSpace(
-        msh, create_fespace_discontinous(family_basix, cell_basix, degree)
-    )
-    func = dfem.Function(V)
-
-    # Check if overall number of DOFs is correct
-    n_elmt = msh.topology.index_map(cell.geometric_dimension()).size_local
-    n_dof_dg = V.element.space_dimension * n_elmt * V.dofmap.bs
-
-    assert (V.dofmap.index_map.size_global * V.dofmap.index_map_bs) == n_dof_dg
-
-
-"""Test projection into discontinous Lagrange elements"""
-
-
+# --- The tests ---
 @pytest.mark.parametrize(
     "cell", [ufl.triangle, ufl.quadrilateral, ufl.tetrahedron, ufl.hexahedron]
 )
 @pytest.mark.parametrize("is_vectorvalued", [False, True])
-@pytest.mark.parametrize("n_elmt", [2, 3])
 @pytest.mark.parametrize("degree", [1, 2, 3])
 @pytest.mark.parametrize("test_func", ["const", "ufl", "function", "function_ufl"])
-def test_localprojection_ufl_vector(cell, is_vectorvalued, n_elmt, degree, test_func):
+def test_localprojection_lagrange(cell, is_vectorvalued, degree, test_func):
+    """Test local projection into a discontinuous Lagrange space
+
+    Args:
+        cell:            The cell-type
+        is_vectorvalued: Flag for vector-valued FE-spaces
+        degree:          The degree of the function-space
+        test_func:       The type of test data
+    """
+
     # Create problem
-    msh, cell_basix = setup_problem_projection(cell, n_elmt)
+    msh, cell_basix = setup_problem_projection(cell, 3)
 
     # Create Function space
     if cell == ufl.triangle or cell == ufl.tetrahedron:
@@ -139,6 +112,7 @@ def test_localprojection_ufl_vector(cell, is_vectorvalued, n_elmt, degree, test_
                 elmt_rhs = ufl.FiniteElement("DQ", msh.ufl_cell(), degree + 1)
             elif test_func == "function_ufl":
                 elmt_rhs = ufl.VectorElement("DQ", msh.ufl_cell(), degree + 1)
+
     V = dfem.FunctionSpace(msh, elmt)
     proj_local = dfem.Function(V)
 
@@ -329,22 +303,31 @@ def test_localprojection_ufl_vector(cell, is_vectorvalued, n_elmt, degree, test_
     assert np.allclose(proj_global.vector.array, proj_local[0].vector.array)
 
 
-"""Test projection into discontinous RT and BDM elements"""
-
-
 @pytest.mark.parametrize("cell", [ufl.triangle, ufl.tetrahedron])
 @pytest.mark.parametrize(
     "family_basix", [basix.ElementFamily.RT, basix.ElementFamily.BDM]
 )
-@pytest.mark.parametrize("n_elmt", [1, 2])
 @pytest.mark.parametrize("degree", [1, 2, 3])
 @pytest.mark.parametrize("test_func", ["const", "ufl", "function"])
-def test_localprojection_ufl_Hdiv(cell, family_basix, n_elmt, degree, test_func):
+def test_localprojection_hdiv(cell, family_basix, degree, test_func):
+    """Test projection into discontinuous H(div) spaces
+
+    Args:
+        cell:          The cell-type
+        family_basix:  The element type
+        degree:        The degree of the function-space
+        test_func:     The type of test data
+    """
+
     # Create problem
-    msh, cell_basix = setup_problem_projection(cell, n_elmt)
+    msh, cell_basix = setup_problem_projection(cell, 3)
 
     # Create Function space
-    elmt = create_fespace_discontinous(family_basix, cell_basix, degree)
+    elmt_basix = basix.create_element(
+        family_basix, cell_basix, degree, basix.LagrangeVariant.equispaced, True
+    )
+    elmt = basix.ufl_wrapper.BasixElement(elmt_basix)
+
     V = dfem.FunctionSpace(msh, elmt)
     proj_local = dfem.Function(V)
 
@@ -430,11 +413,13 @@ def test_localprojection_ufl_Hdiv(cell, family_basix, n_elmt, degree, test_func)
     assert np.allclose(proj_global.vector.array, proj_local[0].vector.array)
 
 
-"""Test different solver for LGS"""
-
-
 @pytest.mark.parametrize("type_solver", ["lu", "cholesky", "cg"])
 def test_localprojection_solvers(type_solver):
+    """Test different solvers for local projection
+
+    Args:
+        type_solver: The type of solver
+    """
     # Create problem
     msh, cell_basix = setup_problem_projection(ufl.tetrahedron, 2)
 

@@ -4,12 +4,13 @@
 #
 # SPDX-License-Identifier:    LGPL-3.0-or-later
 
-# --- Includes ---
+"""Utility routines for unit tests"""
+
 from enum import Enum
 import gmsh
 import numpy as np
 from mpi4py import MPI
-from typing import Any, Callable, List
+import typing
 
 import dolfinx
 import dolfinx.fem as dfem
@@ -22,18 +23,20 @@ import ufl
 from dolfinx_eqlb.eqlb import check_eqlb_conditions
 
 
-"""
-Mesh generation
-"""
-
-
+# --- Mesh generation ---
 class MeshType(Enum):
     builtin = 0
     gmsh = 1
 
 
 class Geometry:
-    def __init__(self, mesh, facet_fkt, ds, dv=None):
+    def __init__(
+        self,
+        mesh: dmesh.Mesh,
+        facet_fkt: dmesh.MeshTagsMetaClass,
+        ds: ufl.Measure,
+        dv: typing.Optional[ufl.Measure] = None,
+    ):
         # Mesh
         self.mesh = mesh
 
@@ -197,14 +200,10 @@ def create_unitsquare_gmsh(hmin: float) -> Geometry:
     return Geometry(domain, facet_function, ds)
 
 
-"""
-Point evaluation of fe-functions
-"""
-
-
+# --- Point-evaluation of FE functions ---
 def points_boundary_unitsquare(
-    geometry: Geometry, boundary_id: List, npoints_per_fct: int
-) -> np.array:
+    geometry: Geometry, boundary_id: typing.List[int], npoints_per_fct: int
+) -> np.ndarray:
     """Creates points on boundary
     Evaluation points are cerated per call-facet on boundary, while the mesh-nodes itself are excluded.
 
@@ -256,20 +255,20 @@ def points_boundary_unitsquare(
     return points
 
 
-def initialise_evaluate_function(domain: dmesh.Mesh, points: np.ndarray):
+def initialise_evaluate_function(
+    domain: dmesh.Mesh, points: np.ndarray
+) -> typing.Tuple[np.ndarray, np.ndarray]:
     """Prepare evaluation of dfem.Function
     Function evaluation requires list of points and the adjacent cells per
     processor.
 
     Args:
-        domain:          The Mesh
-        points:          The points, at which the function
-                         has to be evaluated
-
+        domain: The Mesh
+        points: The points, at which the function has to be evaluated
 
     Returns:
-        points_on_proc: Evaluation points on each processor
-        cells:          Cell within which the point is located
+        Evaluation points on each processor,
+        Cell within which the points are located
     """
     # The search tree
     bb_tree = dgeom.BoundingBoxTree(domain, domain.topology.dim)
@@ -291,110 +290,3 @@ def initialise_evaluate_function(domain: dmesh.Mesh, points: np.ndarray):
     points_on_proc = np.array(points_on_proc, dtype=np.float64)
 
     return points_on_proc, cells
-
-
-"""
-Interpolation of ufl- into fe-function 
-"""
-
-
-def interpolate_ufl_to_function(f_ufl: Any, f_fe: dfem.Function):
-    # Create expression
-    expr = dfem.Expression(f_ufl, f_fe.function_space.element.interpolation_points())
-
-    # Perform interpolation
-    f_fe.interpolate(expr)
-
-
-"""
-Calculate Convergence rates
-"""
-
-
-def error_L2(diff_u_uh, qorder=None):
-    if qorder is None:
-        dvol = ufl.dx
-    else:
-        dvol = ufl.dx(degree=qorder)
-    return dfem.form(ufl.inner(diff_u_uh, diff_u_uh) * dvol)
-
-
-def error_h1(diff_u_uh, qorder=None):
-    if qorder is None:
-        dvol = ufl.dx
-    else:
-        dvol = ufl.dx(degree=qorder)
-    return dfem.form(ufl.inner(ufl.grad(diff_u_uh), ufl.grad(diff_u_uh)) * dvol)
-
-
-def error_hdiv0(diff_u_uh, qorder=None):
-    if qorder is None:
-        dvol = ufl.dx
-    else:
-        dvol = ufl.dx(degree=qorder)
-    return dfem.form(ufl.inner(ufl.div(diff_u_uh), ufl.div(diff_u_uh)) * dvol)
-
-
-def flux_error(
-    uh: Any, u_ex: Any, form_error: Callable, degree_raise=2, uex_is_ufl=False
-):
-    """Calculate convergence rate
-    Assumption: uh is constructed from a FE-space with block-size 1 and
-    the FE-space ca be interpolated by dolfinX!
-
-    Args:
-        uh (Any):              Approximate solution
-                               (DOLFINx-function (if u_ex is callable) or ufl-expression)
-        u_ex (Any):            Exact solution
-                               (callable function for interpolation or ufl expr.)
-        form_error (Callable): Generates form for error calculation
-
-    Returns:
-        error: The global error measured in the given norm
-
-    """
-    # Initialise quadrature degree
-    qdegree = None
-
-    if not uex_is_ufl:
-        # Get mesh
-        mesh = uh.function_space.mesh
-
-        # Create higher order function space
-        degree = uh.function_space.ufl_element().degree() + degree_raise
-        family = uh.function_space.ufl_element().family()
-        mesh = uh.function_space.mesh
-
-        elmt = ufl.FiniteElement(family, mesh.ufl_cell(), degree)
-
-        W = dfem.FunctionSpace(mesh, elmt)
-
-        # Interpolate approximate solution
-        u_W = dfem.Function(W)
-        u_W.interpolate(uh)
-
-        # Interpolate exact solution, special handling if exact solution
-        # is a ufl expression or a python lambda function
-        u_ex_W = dfem.Function(W)
-        u_ex_W.interpolate(u_ex)
-
-        # Compute the error in the higher order function space
-        e_W = dfem.Function(W)
-        e_W.x.array[:] = u_W.x.array - u_ex_W.x.array
-    else:
-        # Get mesh
-        try:
-            mesh = uh.function_space.mesh
-        except:
-            mesh = uh.ufl_operands[0].function_space.mesh
-
-        # Set quadrature degree
-        qdegree = 10
-
-        # Get spacial coordinate and set error functional
-        e_W = u_ex - uh
-
-    # Integrate the error
-    error_local = dfem.assemble_scalar(form_error(e_W, qorder=qdegree))
-    error_global = mesh.comm.allreduce(error_local, op=MPI.SUM)
-    return np.sqrt(error_global)

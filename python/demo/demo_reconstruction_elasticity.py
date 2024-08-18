@@ -20,7 +20,6 @@ is performed. Dirichlet boundary conditions are
 applied on boundary surfaces [1, 2, 3, 4].
 """
 
-# --- Imports ---
 from enum import Enum
 import gmsh
 from mpi4py import MPI
@@ -380,7 +379,9 @@ def equilibrate_flux(
     sigma_ext: typing.Any,
     weak_symmetry: typing.Optional[bool] = True,
     check_equilibration: typing.Optional[bool] = True,
-) -> typing.Tuple[typing.List[dfem.Function], typing.List[dfem.Function]]:
+) -> typing.Tuple[
+    typing.List[dfem.Function], typing.List[dfem.Function], dfem.Function
+]:
     """Equilibrates the negative stress-tensor of linear elasticity
 
     The RHS is assumed to be the divergence of the exact stress
@@ -398,7 +399,8 @@ def equilibrate_flux(
 
     Returns:
         The projected stress tensor (row wise),
-        The equilibrated stress tensor (row wise)
+        The equilibrated stress tensor (row wise),
+        The cells Korns constant
     """
 
     # Check input
@@ -431,7 +433,12 @@ def equilibrate_flux(
 
     # Initialise equilibrator
     equilibrator = FluxEqlbSE(
-        order_eqlb, domain, rhs_proj, sigma_proj, equilibrate_stress=weak_symmetry
+        order_eqlb,
+        domain,
+        rhs_proj,
+        sigma_proj,
+        equilibrate_stress=weak_symmetry,
+        estimate_korn_constant=True,
     )
 
     # Set boundary conditions
@@ -497,23 +504,23 @@ def equilibrate_flux(
         if not wsym_condition:
             raise ValueError("Weak symmetry conditions not fulfilled")
 
-    return sigma_proj, equilibrator.list_flux
+    return sigma_proj, equilibrator.list_flux, equilibrator.get_korn_constants()
 
 
 if __name__ == "__main__":
     # --- Parameters ---
     # The mesh type
-    mesh_type = MeshType.gmsh
+    mesh_type = MeshType.builtin
 
     # Material: pi_1 = lambda/mu
     pi_1 = 1.0
 
     # The orders of the FE spaces
     order_prime = 2
-    order_eqlb = 2
+    order_eqlb = 3
 
     # The mesh resolution
-    sdisc_nelmt = 10
+    sdisc_nelmt = 150
 
     # --- Execute calculation ---
     # Create mesh
@@ -531,7 +538,7 @@ if __name__ == "__main__":
     )
 
     # Solve equilibration
-    sigma_proj, sigma_eqlb = equilibrate_flux(
+    sigma_proj, sigma_eqlb, korns_constants = equilibrate_flux(
         order_eqlb, domain, facet_tags, pi_1, uh, sigma_ref
     )
 
@@ -551,6 +558,7 @@ if __name__ == "__main__":
     sigma_eqlb_dg[0].name = "sigma_eqlb_row1"
     sigma_eqlb_dg[1].name = "sigma_eqlb_row2"
     sigma_ref[0].name = "sigma_ref"
+    korns_constants.name = "korns_constants"
 
     outfile = dolfinx.io.XDMFFile(MPI.COMM_WORLD, "demo_equilibrate_stresses.xdmf", "w")
     outfile.write_mesh(domain)
@@ -558,4 +566,5 @@ if __name__ == "__main__":
     outfile.write_function(sigma_ref[0], 1)
     outfile.write_function(sigma_eqlb_dg[0], 1)
     outfile.write_function(sigma_eqlb_dg[1], 1)
+    outfile.write_function(korns_constants, 1)
     outfile.close()

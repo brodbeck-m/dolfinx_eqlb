@@ -21,7 +21,6 @@ is performed. Possible boundary conditions:
     neumann_inhom: u = u_ext on boundary surfaces [2,4]
 """
 
-# --- Imports ---
 import numpy as np
 from mpi4py import MPI
 import typing

@@ -4,11 +4,12 @@
 #
 # SPDX-License-Identifier:    LGPL-3.0-or-later
 
+"""Test custom implementation of a hierarchic Raviart-Thomas element"""
+
 import numpy as np
 import pytest
 
 import basix
-from basix import CellType
 
 import dolfinx.fem as dfem
 import dolfinx.mesh as dmesh
@@ -18,9 +19,7 @@ from mpi4py import MPI
 from dolfinx_eqlb.elmtlib import create_hierarchic_rt
 
 
-""" Utility routines """
-
-
+# --- Auxiliary functions ---
 def evaluate_fe_functions(shp_fkt, dofs):
     # initialisation
     values = np.zeros((shp_fkt.shape[0], shp_fkt.shape[2]))
@@ -43,7 +42,7 @@ def evaluate_dofs_hierarchic_rt(tdim, degree, rt_basix, dofs_basix):
 
         # --- Facet contribution
         # evaluate 1D quadrature rule
-        pnt, wts = basix.make_quadrature(CellType.interval, 2 * degree)
+        pnt, wts = basix.make_quadrature(basix.CellType.interval, 2 * degree)
 
         for ifct in range(0, 3):
             # map quadrature points of facet of reference cell
@@ -73,7 +72,7 @@ def evaluate_dofs_hierarchic_rt(tdim, degree, rt_basix, dofs_basix):
         # --- Cell contribution
         if degree > 1:
             # evaluate 2D quadrature rule
-            pnt, wts = basix.make_quadrature(CellType.triangle, 2 * degree)
+            pnt, wts = basix.make_quadrature(basix.CellType.triangle, 2 * degree)
 
             # evaluate reference function
             shp_fkt = rt_basix.tabulate(1, pnt)
@@ -114,15 +113,24 @@ def evaluate_dofs_hierarchic_rt(tdim, degree, rt_basix, dofs_basix):
     return dofs_custom
 
 
-""" Test interpolation of (reference) cell """
-
-
-@pytest.mark.parametrize("cell", [CellType.triangle])
+# --- The tests ---
+@pytest.mark.parametrize("cell", [basix.CellType.triangle])
 @pytest.mark.parametrize("degree", [1, 2, 3, 4, 5])
-@pytest.mark.parametrize("discontinous", [False, True])
-def test_element_reference(cell, degree, discontinous):
+@pytest.mark.parametrize("discontinuous", [False, True])
+def test_element_reference(cell: basix.CellType, degree: int, discontinuous: bool):
+    """Test the interpolation on a reference cell
+
+    Interpolate a function into the basix RT space and compare the result
+    with the custom implementation.
+
+    Args:
+        cell:          The cell type
+        degree:        The degree of the RT element
+        discontinuous: Flag for discontinuous elements
+    """
+
     # get topological dimension
-    if cell == CellType.triangle:
+    if cell == basix.CellType.triangle:
         tdim = 2
     else:
         tdim = 3
@@ -130,14 +138,14 @@ def test_element_reference(cell, degree, discontinous):
     # setup test function
     rt_basix = basix.create_element(
         basix.ElementFamily.RT,
-        CellType.triangle,
+        basix.CellType.triangle,
         degree,
         basix.LagrangeVariant.equispaced,
     )
     dofs_basix = 2 * (np.random.rand(rt_basix.dim) + 0.1)
 
     # create custom element
-    rt_custom = create_hierarchic_rt(cell, degree, discontinous)
+    rt_custom = create_hierarchic_rt(cell, degree, discontinuous)
     dofs_custom = evaluate_dofs_hierarchic_rt(tdim, degree, rt_basix, dofs_basix)
 
     # set test points on reference cell
@@ -154,15 +162,23 @@ def test_element_reference(cell, degree, discontinous):
     assert np.allclose(pvalues_basix, pvalues_custom)
 
 
-""" Test interpolation from RT-custom to RT-basix """
-
-
-@pytest.mark.parametrize("cell", [CellType.triangle])
+@pytest.mark.parametrize("cell", [basix.CellType.triangle])
 @pytest.mark.parametrize("degree", [1, 2, 3, 4, 5])
-@pytest.mark.parametrize("discontinous", [True])
-def test_interpolation(cell, degree, discontinous):
+@pytest.mark.parametrize("discontinuous", [True])
+def test_interpolation(cell: basix.CellType, degree: int, discontinuous: bool):
+    """Test the interpolation on a real mesh
+
+    Create an arbitrary function based on the custom RT element, interpolate it into
+    the basix-based RT function and compare the resulting values on each mesh cell.
+
+    Args:
+        cell:          The cell type
+        degree:        The degree of the RT element
+        discontinuous: Flag for discontinuous elements
+    """
+
     # generate mesh
-    if cell == CellType.triangle:
+    if cell == basix.CellType.triangle:
         domain = dmesh.create_rectangle(
             MPI.COMM_WORLD,
             [np.array([0, 0]), np.array([1, 1])],
@@ -175,13 +191,13 @@ def test_interpolation(cell, degree, discontinous):
     dofmap_geom = domain.geometry.dofmap
 
     # create function spaces
-    P_rt_custom = create_hierarchic_rt(cell, degree, discontinous)
+    P_rt_custom = create_hierarchic_rt(cell, degree, discontinuous)
     P_rt_basix = basix.create_element(
         basix.ElementFamily.RT,
         cell,
         degree,
         basix.LagrangeVariant.equispaced,
-        discontinous,
+        discontinuous,
     )
 
     V_rt_custom = dfem.FunctionSpace(
