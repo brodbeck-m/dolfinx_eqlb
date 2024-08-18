@@ -65,7 +65,7 @@ def set_arbitrary_rhs(
     degree_rhs: int,
     degree_projection: typing.Optional[int] = None,
     vector_valued: typing.Optional[bool] = False,
-) -> typing.Tuple[dolfinx.Function, dolfinx.Function]:
+) -> typing.Tuple[dfem.Function, dfem.Function]:
     """Set polynomial right-hand-side (RHS)
 
     Args:
