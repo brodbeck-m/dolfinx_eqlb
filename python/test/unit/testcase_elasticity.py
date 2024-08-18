@@ -4,9 +4,14 @@
 #
 # SPDX-License-Identifier:    LGPL-3.0-or-later
 
-# --- Includes ---
+"""Linear elasticity
+
+Collection of routines for a pre-defined manufactured solution, the solution of the 
+primal problem as well as the equilibration of the stress tensor.
+"""
+
 import numpy as np
-from typing import Any, List
+import typing
 
 import dolfinx.fem as dfem
 import ufl
@@ -16,23 +21,14 @@ from dolfinx_eqlb.eqlb import fluxbc, FluxEqlbSE
 
 from utils import Geometry
 
-"""
-Setup variable test-cases for linear elasticity
-
-Supported variants:
-    - manufactured solution based on 
-      u_ext = [sin(2*pi * x) * cos(2*pi * y), -cos(2*pi * x) * sin(2*pi * y)]
-    - arbitrary right-hand side
-"""
-
 
 # --- Definition of manufactured solution
-def exact_solution(x):
+def exact_solution(x: typing.Any):
     """Exact solution
     u_ext = [sin(2*pi * x) * cos(2*pi * y), -cos(2*pi * x) * sin(2*pi * y)]
 
     Args:
-        x (ufl.SpatialCoordinate): The position x
+        The spatial position x
 
     Returns:
         The exact function as ufl-expression
@@ -45,16 +41,17 @@ def exact_solution(x):
     )
 
 
-def exact_stress_linelast(x, gdim=2):
-    """Exact flux
-    sigma_ext = 2 * epsilon(u_ext) + div(u_ext) * I
+def exact_stress_linelast(x: typing.Any, gdim: typing.Optional[int] = 2):
+    """Exact stress
+
+    sigma_ext = 2 * epsilon(u_ext) + pi_1 * div(u_ext) * I
 
     Args:
-        x (ufl.SpatialCoordinate): The position x
-        gdim (int): The spatial dimension
+        x:    The spatial position x
+        gdim: The spatial dimension
 
     Returns:
-        The exact stress at positions x as ufl expression
+        The exact stress at position x as ufl expression
     """
 
     # The exact displacement
@@ -67,28 +64,28 @@ def exact_stress_linelast(x, gdim=2):
 def solve_primal_problem(
     V_prime: dfem.FunctionSpace,
     geometry: Geometry,
-    bc_id_neumann: List[int],
-    bc_id_dirichlet: List[int],
-    ufl_rhs: Any,
-    ufl_neumann: List[Any],
-    u_dirichlet: List[dfem.Function],
-    degree_projection: int = -1,
-):
+    bc_id_neumann: typing.List[int],
+    bc_id_dirichlet: typing.List[int],
+    ufl_rhs: typing.Any,
+    ufl_neumann: typing.List[typing.Any],
+    u_dirichlet: typing.List[dfem.Function],
+    degree_projection: typing.Optional[int] = None,
+) -> typing.Tuple[dfem.Function, typing.List[dfem.Function]]:
     """Solves linear elasticity based on lagrangian finite elements
 
     Args:
-        V_prime (dolfinx.FunctionSpace):      The function space of the primal problem
-        geometry (Geometry):                  The geometry of the domain
-        bc_id_neumann (List[int]):            List of boundary ids for neumann BCs
-        bc_id_dirichlet (List[int]):          List of boundary ids for dirichlet BCs
-        ufl_rhs (ufl):                        The right-hand side of the primal problem
-        ufl_neumann (List[ufl]):              List of neumann boundary conditions
-        u_dirichlet (List[dolfinx.Function]): List of dirichlet boundary conditions
-        degree_projection (int):              Degree of projected flux
+        V_prime:           The function space of the primal problem
+        geometry:          The geometry
+        bc_id_neumann:     List of boundary ids for Neumann BCs
+        bc_id_dirichlet:   List of boundary ids for Dirichlet BCs
+        ufl_rhs:           The RHS of the primal problem
+        ufl_neumann:       The Neumann BCs
+        u_dirichlet:       The Dirichlet BCs
+        degree_projection: Degree of projected flux
 
     Returns:
-        u_prime (dolfinx.Function):           The primal solution
-        sig_proj (List[dolfinx.Function]):    List of projected stress rows
+        The primal solution,
+        The rows of the projected stress tensor
     """
     # Check input
     if len(bc_id_dirichlet) == 0:
@@ -134,7 +131,7 @@ def solve_primal_problem(
     u_prime = problem_prime.solve()
 
     # Project flux
-    if degree_projection < 0:
+    if degree_projection is None:
         degree_projection = V_prime.element.basix_element.degree - 1
 
     sigma_h = -2 * ufl.sym(ufl.grad(u_prime)) - ufl.div(u_prime) * ufl.Identity(gdim)
@@ -154,31 +151,30 @@ def solve_primal_problem(
 def equilibrate_stresses(
     degree_flux: int,
     geometry: Geometry,
-    sig_proj: List[dfem.Function],
-    rhs_proj: List[dfem.Function],
-    bc_id_neumann: List[List[int]],
-    bc_id_dirichlet: List[List[int]],
-    flux_neumann: List[Any],
-    neumann_projection: List[bool],
-):
-    """Equilibrates the fluxes of the primal problem
+    sig_proj: typing.List[dfem.Function],
+    rhs_proj: typing.List[dfem.Function],
+    bc_id_neumann: typing.List[typing.List[int]],
+    bc_id_dirichlet: typing.List[typing.List[int]],
+    flux_neumann: typing.List[typing.Any],
+    neumann_projection: typing.List[bool],
+) -> typing.Tuple[typing.List[dfem.Function], typing.List[dfem.Function]]:
+    """Equilibrate the stress tensor
 
     Args:
-        degree_flux (int):                             Degree of flux space
-        geometry (Geometry):                           The geometry of the domain
-        sig_proj (List[dfem.Function]):                List of projected fluxes
-        rhs_proj (List[dfem.Function]):                List of projected right-hand sides
-        bc_id_neumann (List[List[int]]):               List of boundary ids for neumann BCs
-        bc_id_dirichlet (List[List[int]]):             List of boundary ids for dirichlet BCs
-        flux_neumann (List[List[ufl]]):                List of neumann boundary conditions
-        neumann_projection (List[List[bool]]):         List of booleans indicating wether the
-                                                       neumann BCs require projection
+        degree_flux:        Degree of flux space
+        geometry:           The geometry
+        sig_proj:           The projected fluxes
+        rhs_proj:           The projected RHS
+        bc_id_neumann:      The boundary ids for Neumann BCs
+        bc_id_dirichlet:    The boundary ids for Dirichlet BCs
+        flux_neumann:       The Neumann BCs
+        neumann_projection: Ids indicating if the Neumann BCs require projection
 
     Returns:
-        List[dfem.Function]: List of equilibrated fluxes
-        List[dfem.Function]: List boundary-functions
-                             (functions, containing the correct boundary values)
+        The equilibrated fluxes,
+        The flux values on the Neumann boundary
     """
+
     # Extract facet markers
     fct_values = geometry.facet_function.values
 

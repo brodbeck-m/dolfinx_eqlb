@@ -4,7 +4,8 @@
 #
 # SPDX-License-Identifier:    LGPL-3.0-or-later
 
-# --- Import ---
+"""Test conditions of equilibrated stresses und generalised boundary conditions"""
+
 import numpy as np
 from petsc4py import PETSc
 import pytest
@@ -22,15 +23,8 @@ from utils import Geometry, create_unitsquare_builtin
 from testcase_general import set_arbitrary_rhs
 from testcase_elasticity import equilibrate_stresses
 
-""" 
-Check if equilibrated flux 
-    a.) fulfills the divergence condition div(sigma_eqlb) = f 
-    b.) is in the H(div) space
-    c.) fulfills the flux boundary conditions strongly
-"""
 
-
-# --- Solver with general BCs ---
+# --- Solver for linear elasticity with general BCs ---
 def solve_primal_problem_general_usquare(
     V_prime: dfem.FunctionSpace,
     geometry: Geometry,
@@ -45,26 +39,23 @@ def solve_primal_problem_general_usquare(
     typing.List[typing.List[int]],
     typing.List[typing.List[dfem.Function]],
 ]:
-    """Solves linear elasticity based on lagrangian finite elements
+    """Solves linear elasticity using lagrangian finite elements
 
     Args:
-        V_prime (dolfinx.FunctionSpace):      The function space of the primal problem
-        geometry (Geometry):                  The geometry of the domain
-        bc_id_neumann (List[List[bool]]):     List of lists (one for each facet) with
-                                              boundary ids (true/false) for each spatial direction
-        rhs (Any):                            The right-hand side of the primal problem
-        degree_flux_bc (int):                 Degree of the stress boundary conditions
-        degree_projection (int):              Degree of the projected stress
+        V_prime:           The function space of the primal problem
+        geometry:          The geometry
+        bc_id_neumann:     List of lists (one for each facet) with boundary ids
+                           (true/false) for each spatial direction
+        rhs:               The right-hand-side of the primal problem
+        degree_flux_bc:    The degree of the stress boundary conditions
+        degree_projection: The gegree of the projected stress
 
     Returns:
-        u_prime (dolfinx.Function):                       The primal solution
-        sig_proj (List[dolfinx.Function]):                List of projected stress rows
-        boundary_id_dirichlet (List[List[int]]):          Lists of boundary ids for dirichlet BCs
-                                                          (one per spatial dimension)
-        boundary_id_neumann (List[List[int]]):            List of boundary ids for Neumann BCs
-                                                          (one per spatial dimension)
-        neumann_functions (List[List[dolfinx.Function]]): List of Neumann boundary conditions
-                                                          (one per spatial dimension)
+        The primal solution,
+        The rows of the projected stress tensor,
+        The boundary ids for dirichlet BCs,
+        The boundary ids for Neumann BCs,
+        The Neumann boundary conditions
     """
 
     # The spatial dimension
@@ -155,10 +146,25 @@ def solve_primal_problem_general_usquare(
     )
 
 
-# --- Test cases ---
+# --- The tests ---
 @pytest.mark.parametrize("id_bc", list(range(1, 13)))
 @pytest.mark.parametrize("degree", [2, 3, 4])
 def test_boundary_conditions(degree, id_bc):
+    """Check stress equilibration based on the semi-explicit strategy
+
+    Solve equilibration based on a primal problem (linear elasticity in displacement
+    formulation) with generalised boundary conditions and check
+
+        - the BCs
+        - the divergence condition
+        - the jump condition
+        - the weak symmetry condition
+
+    Args:
+        degree:       The degree of the equilibrated fluxes
+        bc_typ:       The type of BCs
+    """
+
     # Expected fails for degree 2: BCs 8, 10 and 12
     # TODO - Extend patch grouping to handle these cases
     if id_bc == 1:

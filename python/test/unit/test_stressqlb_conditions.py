@@ -4,7 +4,8 @@
 #
 # SPDX-License-Identifier:    LGPL-3.0-or-later
 
-# --- Import ---
+"""Test conditions of equilibrated stresses"""
+
 import pytest
 
 import dolfinx.mesh as dmesh
@@ -18,19 +19,27 @@ from utils import MeshType, create_unitsquare_builtin, create_unitsquare_gmsh
 from testcase_general import BCType, set_arbitrary_rhs, set_arbitrary_bcs
 from testcase_elasticity import solve_primal_problem, equilibrate_stresses
 
-""" 
-Check if equilibrated flux 
-    a.) fulfills the divergence condition div(sigma_eqlb) = f 
-    b.) is in the H(div) space
-    c.) fulfills the flux boundary conditions strongly
-"""
 
-
-# --- Test cases ---
 @pytest.mark.parametrize("mesh_type", [MeshType.builtin, MeshType.gmsh])
 @pytest.mark.parametrize("degree", [2, 3, 4])
 @pytest.mark.parametrize("bc_type", [BCType.dirichlet, BCType.neumann_inhom])
-def test_equilibration_conditions(mesh_type, degree, bc_type):
+def test_equilibration_conditions(mesh_type: MeshType, degree: int, bc_type: BCType):
+    """Check stress equilibration based on the semi-explicit strategy
+
+    Solve equilibration based on a primal problem (linear elasticity in
+    displacement formulation) and check
+
+        - the BCs
+        - the divergence condition
+        - the jump condition
+        - the weak symmetry condition
+
+    Args:
+        mesh_type: The mesh type
+        degree:    The degree of the equilibrated fluxes
+        bc_typ:    The type of BCs
+    """
+
     # Create mesh
     gdim = 2
 

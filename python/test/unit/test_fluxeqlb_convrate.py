@@ -4,8 +4,11 @@
 #
 # SPDX-License-Identifier:    LGPL-3.0-or-later
 
+"""Test the convergence rate of the equilibrated fluxes (Poisson problem)"""
+
 import numpy as np
 import pytest
+import typing
 
 import dolfinx.mesh as dmesh
 import dolfinx.fem as dfem
@@ -28,7 +31,21 @@ from testcase_poisson import (
     "bc_type", [BCType.dirichlet, BCType.neumann_hom, BCType.neumann_inhom]
 )
 @pytest.mark.parametrize("equilibrator", [FluxEqlbEV, FluxEqlbSE])
-def test_convrate(degree, bc_type, equilibrator):
+def test_convrate(
+    degree: int, bc_type: BCType, equilibrator: typing.Union[FluxEqlbEV, FluxEqlbSE]
+):
+    """Test the convergence rate of the equilibrated fluxes
+
+    Solves a series of Poisson problems on uniformly refined meshes and
+    compares the convergence rate in the H(div) norm to the theoretical
+    prediction.
+
+    Args:
+        degree:       The degree of the equilibrated fluxes
+        bc_type:      The type of boundary conditions
+        equilibrator: The equilibrator
+    """
+
     # Initialise boundary conditions
     if bc_type == BCType.dirichlet:
         boundary_id_dirichlet = [1, 2, 3, 4]

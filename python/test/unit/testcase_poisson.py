@@ -4,7 +4,12 @@
 #
 # SPDX-License-Identifier:    LGPL-3.0-or-later
 
-# --- Includes ---
+"""Poisson problem
+
+Collection of routines for a pre-defined manufactured solution, the solution of the 
+primal problem as well as the equilibration of the flux.
+"""
+
 import numpy as np
 import typing
 
@@ -16,37 +21,33 @@ from dolfinx_eqlb.eqlb import fluxbc
 
 from utils import Geometry
 
-"""
-Setup variable test-cases for the poisson problem
-
-Supported variants:
-    - manufactured solution based on u_ext = sin(2*pi * x) * cos(2*pi * y)
-    - arbitrary right-hand side
-"""
-
 
 # --- The exact solution
-def exact_solution(x):
+def exact_solution(x: typing.Any):
     """Exact solution (Poisson)
     u_ext = sin(2*pi * x) * cos(2*pi * y)
 
     Args:
-        x (ufl.SpatialCoordinate): The position x
+        x: The spatial position x
+
     Returns:
         The exact function as ufl-expression
     """
+
     return ufl.sin(2 * ufl.pi * x[0]) * ufl.cos(2 * ufl.pi * x[1])
 
 
-def exact_flux(x):
-    """Exact flux (Poisson)
+def exact_flux(x: typing.Any):
+    """Exact flux
     flux_ext = -Grad[sin(2*pi * x) * cos(2*pi * y)]
 
     Args:
-        x (ufl.SpatialCoordinate): The position x
+        x: The spatial position x
+
     Returns:
-        The exact flux as ufl expression
+        The exact flux at position x as ufl expression
     """
+
     return -ufl.grad(exact_solution(x))
 
 
@@ -59,20 +60,25 @@ def solve_primal_problem(
     ufl_rhs: typing.Any,
     ufl_neumann: typing.List[typing.Any],
     u_dirichlet: typing.List[dfem.Function],
-    degree_projection: int = -1,
-):
-    """Solves a poisson problem based on lagrangian finite elements
+    degree_projection: typing.Optional[int] = None,
+) -> typing.Tuple[dfem.Function, dfem.Function]:
+    """Solves a Poisson problem based on lagrangian finite elements
 
     Args:
-        V_prime (dolfinx.FunctionSpace):      The function space of the primal problem
-        geometry (Geometry):                  The geometry of the domain
-        bc_id_neumann (List[int]):            List of boundary ids for neumann BCs
-        bc_id_dirichlet (List[int]):          List of boundary ids for dirichlet BCs
-        ufl_rhs (ufl):                        The right-hand side of the primal problem
-        ufl_neumann (List[ufl]):              List of neumann boundary conditions
-        u_dirichlet (List[dolfinx.Function]): List of dirichlet boundary conditions
-        degree_projection (int):              Degree of projected flux
+        V_prime:           The function space of the primal problem
+        geometry:          The geometry
+        bc_id_neumann:     List of boundary ids for Neumann BCs
+        bc_id_dirichlet:   List of boundary ids for Dirichlet BCs
+        ufl_rhs:           The RHS of the primal problem
+        ufl_neumann:       The Neumann BCs
+        u_dirichlet:       The Dirichlet BCs
+        degree_projection: Degree of projected flux
+
+    Returns:
+        The primal solution,
+        The projected flux
     """
+
     # Check input
     if len(bc_id_dirichlet) == 0:
         raise ValueError("Pure neumann problem not supported!")
@@ -113,7 +119,7 @@ def solve_primal_problem(
     u_prime = problem_prime.solve()
 
     # Project flux
-    if degree_projection < 0:
+    if degree_projection is None:
         degree_projection = V_prime.element.basix_element.degree - 1
 
     V_flux = dfem.VectorFunctionSpace(geometry.mesh, ("DG", degree_projection))
@@ -132,26 +138,25 @@ def equilibrate_fluxes(
     bc_id_dirichlet: typing.List[typing.List[int]],
     flux_neumann: typing.List[typing.Any],
     neumann_projection: typing.List[bool],
-):
-    """Equilibrates the fluxes of the primal problem
+) -> typing.Tuple[typing.List[dfem.Function], typing.List[dfem.Function]]:
+    """Equilibrate the fluxes
 
     Args:
-        Equilibrator (equilibration.FluxEquilibrator): The equilibrator object
-        degree_flux (int):                             Degree of flux space
-        geometry (Geometry):                           The geometry of the domain
-        sig_proj (List[dfem.Function]):                List of projected fluxes
-        rhs_proj (List[dfem.Function]):                List of projected right-hand sides
-        bc_id_neumann (List[List[int]]):               List of boundary ids for neumann BCs
-        bc_id_dirichlet (List[List[int]]):             List of boundary ids for dirichlet BCs
-        flux_neumann (List[List[ufl]]):                List of neumann boundary conditions
-        neumann_projection (List[List[bool]]):         List of booleans indicating wether the
-                                                       neumann BCs require projection
+        Equilibrator        The equilibrator object
+        degree_flux:        Degree of flux space
+        geometry:           The geometry
+        sig_proj:           The projected fluxes
+        rhs_proj:           The projected RHS
+        bc_id_neumann:      The boundary ids for Neumann BCs
+        bc_id_dirichlet:    The boundary ids for Dirichlet BCs
+        flux_neumann:       The Neumann BCs
+        neumann_projection: Ids indicating if the Neumann BCs require projection
 
     Returns:
-        List[dfem.Function]: List of equilibrated fluxes
-        List[dfem.Function]: List boundary-functions
-                             (functions, containing the correct boundary values)
+        The equilibrated fluxes,
+        The flux values on the Neumann boundary
     """
+
     # Extract facet markers
     fct_values = geometry.facet_function.values
 
