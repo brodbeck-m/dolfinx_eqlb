@@ -6,7 +6,7 @@ The basic idea of these reconstructions can be traced back to Prager and Synge [
 
 ## Features
 dolfinx_eqlb supports flux equilibration on two-dimensional domains with arbitrary triangular grids. It further includes the following features
-- A local projector into arbitrary function-spaces
+- A local projector into arbitrary function-spaces with cell-wise support
 - A hierarchic Raviart-Thomas element based on Boffi, Brezzi and Fortin [[10]](#10)
 - Boundary conditions for H(div) spaces on general boundaries
 - Flux equilibration based on Ern and Vohralik (FluxEqlbEV) or a semi-explicit strategy (FluxEqlbSE)
@@ -31,12 +31,37 @@ docker pull dolfinx/dolfinx:v0.6.0-r1
 cd docker
 ./build_image.sh 
 ```
-4. Try out a demo
+
+4. Try out the basic demos. If no errors are reported, the equilibration process works as expected.
+
 ```shell
 ./launch-container.sh
-cd ./dolfinx_eqlb/python/demo
-python3 demo_reconstruction_poisson.py  
+
+# Equilibration for a Poisson problem
+cd ./root/dolfinx_eqlb/python/demo/poisson
+python3 demo_reconstruction.py  
+
+# Equilibration for linear elasticity
+cd ./root/dolfinx_eqlb/python/demo/elasticity
+python3 demo_reconstruction.py  
 ```
+
+## Equilibrated fluxes for a-posteriori error estimation
+Based on equilibrated fluxes reliable error estimates for different problem classes can be constructed. Showcases for the Poisson problem (estimated by Ern and Vohralik [[2]](#2)) and linear elasticity (idea from Bertrand et al. [[3]](#3) transferred to a pure displacement based formulation of elasticity) are provided in the demo section:
+
+```shell
+./launch-container.sh
+
+# Equilibration for a Poisson problem
+cd ./root/dolfinx_eqlb/python/demo/poisson
+python3 demo_error_estimation.py  
+
+# Equilibration for linear elasticity
+cd ./root/dolfinx_eqlb/python/demo/elasticity
+python3 demo_error_estimation.py  
+```
+
+Therein a manufactured solution is solved on rectangular domain discretised by a series of uniformly refined meshes. The actual error, contributions of the error estimate and convergence ratios are reported in a csv-file. This approach can now be transferred to other problems.
 
 ## Literature
 <a id="1">[1]</a> Prager, W. and Synge, J. L.: Approximations in elasticity based on the concept of function space (1947).
