@@ -6,6 +6,7 @@
 
 """Test the convergence rate of the equilibrated fluxes (Poisson problem)"""
 
+from mpi4py import MPI
 import numpy as np
 import pytest
 import typing
@@ -16,7 +17,7 @@ import ufl
 
 from dolfinx_eqlb.eqlb import FluxEqlbEV, FluxEqlbSE
 
-from utils import create_unitsquare_builtin, flux_error, error_hdiv0
+from utils import create_unitsquare_builtin
 from testcase_general import BCType, set_manufactured_rhs, set_manufactured_bcs
 from testcase_poisson import (
     exact_solution,
@@ -26,6 +27,75 @@ from testcase_poisson import (
 )
 
 
+# --- Evaluate flux error in the H(div) norm ---
+def flux_error(
+    uh: typing.Any,
+    u_ex: typing.Union[typing.Callable, typing.Any],
+    degree_raise: typing.Optional[int] = 2,
+    uex_is_ufl: typing.Optional[bool] = False,
+):
+    """Calculate convergence rate in H(div)
+    Assumption: uh is constructed from a FE-space with block-size 1 and
+    the FE-space can be interpolated by dolfinX.
+
+    Args:
+        uh:         Approximate solution (DOLFINx-function (if u_ex is callable) or ufl-expression)
+        u_ex:       Exact solution (callable function for interpolation or ufl expr.)
+
+    Returns:
+        The global error measured in the given norm
+    """
+    # Initialise quadrature degree
+    qdegree = None
+
+    if not uex_is_ufl:
+        # Get mesh
+        mesh = uh.function_space.mesh
+
+        # Create higher order function space
+        degree = uh.function_space.ufl_element().degree() + degree_raise
+        family = uh.function_space.ufl_element().family()
+        mesh = uh.function_space.mesh
+
+        elmt = ufl.FiniteElement(family, mesh.ufl_cell(), degree)
+
+        W = dfem.FunctionSpace(mesh, elmt)
+
+        # Interpolate approximate solution
+        u_W = dfem.Function(W)
+        u_W.interpolate(uh)
+
+        # Interpolate exact solution, special handling if exact solution
+        # is a ufl expression or a python lambda function
+        u_ex_W = dfem.Function(W)
+        u_ex_W.interpolate(u_ex)
+
+        # Compute the error in the higher order function space
+        e_W = dfem.Function(W)
+        e_W.x.array[:] = u_W.x.array - u_ex_W.x.array
+    else:
+        # Get mesh
+        try:
+            mesh = uh.function_space.mesh
+        except:
+            mesh = uh.ufl_operands[0].function_space.mesh
+
+        # Set quadrature degree
+        qdegree = 10
+
+        # Get spacial coordinate and set error functional
+        e_W = u_ex - uh
+
+    # Integrate the error
+    dvol = ufl.dx(degree=qdegree)
+    error_local = dfem.assemble_scalar(
+        dfem.form(ufl.inner(ufl.div(e_W), ufl.div(e_W)) * dvol)
+    )
+    error_global = mesh.comm.allreduce(error_local, op=MPI.SUM)
+    return np.sqrt(error_global)
+
+
+# --- The tests ---
 @pytest.mark.parametrize("degree", [1, 2, 3, 4])
 @pytest.mark.parametrize(
     "bc_type", [BCType.dirichlet, BCType.neumann_hom, BCType.neumann_inhom]
@@ -136,15 +206,10 @@ def test_convrate(
         # Calculate erroru
         if equilibrator == FluxEqlbSE:
             data_convstudy[i, 1] = flux_error(
-                sigma_eq[0] + sigma_projected,
-                flux_ext,
-                error_hdiv0,
-                uex_is_ufl=True,
+                sigma_eq[0] + sigma_projected, flux_ext, uex_is_ufl=True
             )
         else:
-            data_convstudy[i, 1] = flux_error(
-                sigma_eq[0], flux_ext, error_hdiv0, uex_is_ufl=True
-            )
+            data_convstudy[i, 1] = flux_error(sigma_eq[0], flux_ext, uex_is_ufl=True)
 
     # Calculate convergence rate
     rates = np.log(data_convstudy[1:, 1] / data_convstudy[:-1, 1]) / np.log(

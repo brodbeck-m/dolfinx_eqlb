@@ -22,7 +22,21 @@ import ufl
 
 from dolfinx_eqlb.lsolver import local_projection
 
-from utils import interpolate_ufl_to_function
+
+# --- Interpolate from ufl to function
+def interpolate_ufl_to_function(f_ufl: typing.Any, f_fe: dfem.Function):
+    """Interpolates a UFL expression to a function
+
+    Args:
+        f_ufl: The function in UFL
+        f_fe:  The function to interpolate into
+    """
+
+    # Create expression
+    expr = dfem.Expression(f_ufl, f_fe.function_space.element.interpolation_points())
+
+    # Perform interpolation
+    f_fe.interpolate(expr)
 
 
 # --- Normal trace of a flux function
