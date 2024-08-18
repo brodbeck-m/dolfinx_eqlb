@@ -4,21 +4,28 @@
 #
 # SPDX-License-Identifier:    LGPL-3.0-or-later
 
-"""Convergence study for a Poisson problem
+"""Demonstrate the a-posteriori error estimation for the Poisson equation
 
-Implementation of a Poisson problem
+Solve a Poisson problem
 
-                -div(grad(u)) = f ,
+     -div(grad(u)) = f ,
 
-with subsequent flux reconstruction. To check the implementation 
-a convergence study based on a manufactured solution
+with subsequent flux reconstruction on a series of uniformly refined meshes.
+Thereby the following boundary conditions are supported:
 
-                u_ext = sin(2*pi * x) * cos(2*pi * y)
+     - dirichlet:     u = u_ext on boundary surfaces [1,2,3,4]
+     - neumann_hom:   u = u_ext on boundary surfaces [1,3]
+     - neumann_inhom: u = u_ext on boundary surfaces [2,4]  
 
-is performed. Possible boundary conditions:
-    dirichlet:     u = u_ext on boundary surfaces [1,2,3,4]
-    neumann_hom:   u = u_ext on boundary surfaces [1,3]
-    neumann_inhom: u = u_ext on boundary surfaces [2,4]
+A convergence study based on the manufactured solution
+
+     u_ext = sin(2*pi * x) * cos(2*pi * y)
+
+and 
+     f = -div(grad(u_ext))
+
+is performed. Alongside with the actual errors, the a-posteriori error 
+estimate is evaluated and reported.
 """
 
 import numpy as np
@@ -31,7 +38,7 @@ import ufl
 
 from dolfinx_eqlb.eqlb import FluxEqlbEV, FluxEqlbSE
 
-from demo_reconstruction_poisson import (
+from demo_reconstruction import (
     MeshType,
     BCType,
     create_unit_square_builtin,

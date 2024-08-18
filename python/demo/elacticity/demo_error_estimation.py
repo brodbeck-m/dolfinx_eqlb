@@ -20,7 +20,7 @@ and
 
      f = div(sigma(u_ext))
                 
-is performed. Alonsgide with the actual errors, the a-posteriori error 
+is performed. Alongside with the actual errors, the a-posteriori error 
 estimate is evaluated and reported.
 """
 
@@ -32,7 +32,7 @@ import dolfinx
 import dolfinx.fem as dfem
 import ufl
 
-from demo_reconstruction_elasticity import (
+from demo_reconstruction import (
     MeshType,
     create_unit_square_builtin,
     create_unit_square_gmesh,
