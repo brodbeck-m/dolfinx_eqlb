@@ -6,7 +6,6 @@
 
 """Flux equilibration based a semi-explicit strategy"""
 
-# --- Imports ---
 import numpy as np
 import typing
 

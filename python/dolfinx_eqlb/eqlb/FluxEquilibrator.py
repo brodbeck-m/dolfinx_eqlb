@@ -6,7 +6,6 @@
 
 """Bas class for flux equilibrators"""
 
-# --- Imports ---
 import numpy as np
 import typing
 
@@ -14,9 +13,6 @@ import dolfinx.fem as dfem
 import dolfinx.mesh as dmesh
 
 from dolfinx_eqlb.cpp import FluxBC
-
-
-# --- Equilibration of fluxes ---
 
 
 class FluxEquilibrator:

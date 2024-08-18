@@ -6,7 +6,6 @@
 
 """Flux equilibration based on constrained minimisation problems"""
 
-# --- Imports ---
 import numpy as np
 import typing
 

@@ -6,7 +6,6 @@
 
 """Check the equilibration conditions"""
 
-# --- Imports ---
 import numpy as np
 import typing
 
@@ -19,8 +18,6 @@ from dolfinx_eqlb.lsolver import local_projection
 
 
 # --- Check the mesh ---
-
-
 def mesh_has_reversed_edges(
     domain: dmesh.Mesh,
     print_debug_information: typing.Optional[bool] = False,
@@ -92,8 +89,6 @@ def mesh_has_reversed_edges(
 
 
 # --- Check Boundary Conditions ---
-
-
 def check_boundary_conditions(
     sigma_eq: dfem.Function,
     sigma_proj: dfem.Function,
@@ -187,8 +182,6 @@ def check_boundary_conditions(
 
 
 # --- Check the equilibration ---
-
-
 def check_divergence_condition(
     sigma_eq: typing.Union[dfem.Function, typing.Any],
     sigma_proj: typing.Union[dfem.Function, typing.Any],

@@ -6,7 +6,6 @@
 
 """Boundary conditions for flux equilibration"""
 
-# --- Imports ---
 import numpy as np
 import typing
 

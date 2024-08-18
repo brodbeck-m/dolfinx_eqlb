@@ -6,7 +6,6 @@
 
 """Hierarchic Raviart-Thomas spaces"""
 
-# --- Imports ---
 import numpy as np
 
 import basix

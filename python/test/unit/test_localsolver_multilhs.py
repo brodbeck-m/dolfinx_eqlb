@@ -6,7 +6,6 @@
 
 """Test local projections into discontinuous FE-spaces with multiple RHS"""
 
-# --- Includes ---
 import numpy as np
 from petsc4py import PETSc
 import pytest

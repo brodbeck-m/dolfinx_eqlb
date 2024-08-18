@@ -20,7 +20,6 @@ is performed. Dirichlet boundary conditions are
 applied on boundary surfaces [1, 2, 3, 4].
 """
 
-# --- Imports ---
 import numpy as np
 from mpi4py import MPI
 import typing

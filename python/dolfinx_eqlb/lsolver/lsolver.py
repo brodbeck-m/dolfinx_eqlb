@@ -6,7 +6,6 @@
 
 """Solve cell-wise equation system without global assembly"""
 
-# --- Imports ---
 import typing
 
 import dolfinx.fem as dfem
@@ -14,7 +13,6 @@ import dolfinx.fem as dfem
 import dolfinx_eqlb.cpp as eqlb_cpp
 
 
-# --- Preparation of input data ---
 def prepare_input(
     list_l: typing.List[typing.Any], list_func: typing.List[dfem.Function]
 ) -> typing.List[typing.Any]:
@@ -33,9 +31,6 @@ def prepare_input(
         list_func_cpp.append(func._cpp_object)
 
     return list_func_cpp
-
-
-# --- Local solvers ---
 
 
 def local_solver_lu(

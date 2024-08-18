@@ -6,7 +6,6 @@
 
 """Test local projections into discontinuous FE-spaces"""
 
-# --- Includes ---
 from mpi4py import MPI
 import numpy as np
 from petsc4py import PETSc

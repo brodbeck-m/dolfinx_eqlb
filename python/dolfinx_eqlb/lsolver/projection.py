@@ -6,7 +6,6 @@
 
 """Projection into FE spaces with cell wise support without global assembly"""
 
-# --- Imports ---
 import typing
 
 import dolfinx.fem as dfem
@@ -20,7 +19,7 @@ def local_projection(
     data: typing.List[typing.Any],
     quadrature_degree: typing.Optional[int] = None,
 ) -> typing.List[dfem.Function]:
-    """Projection into DG spaces
+    """Projection data into DG space
 
     Solves
 
