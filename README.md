@@ -61,7 +61,9 @@ cd ./root/dolfinx_eqlb/python/demo/elasticity
 python3 demo_error_estimation.py  
 ```
 
-Therein a manufactured solution is solved on rectangular domain discretised by a series of uniformly refined meshes. The actual error, contributions of the error estimate and convergence ratios are reported in a csv-file. This approach can now be transferred to other problems.
+Therein, a manufactured solution is solved on a rectangular domain, discretised by a series of uniformly refined meshes. The actual error, contributions of the error estimate and convergence ratios are reported in a csv-file. 
+
+This approach can now be transferred to other problems.
 
 ## Literature
 <a id="1">[1]</a> Prager, W. and Synge, J. L.: Approximations in elasticity based on the concept of function space (1947).
