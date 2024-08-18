@@ -4,20 +4,24 @@
 #
 # SPDX-License-Identifier:    LGPL-3.0-or-later
 
-"""Convergence study for linear elasticity
+"""Demonstrate the a-posteriori error estimation for linear elasticity
 
-Solution of the quasi-static linear elasticity equation
+Solve of the quasi-static linear elasticity equation
 
-        -div(2 * eps + pi_1 * div(u) * I) = f ,
+     div(sigma) = -f  with sigma = 2 * eps + pi_1 * div(u) * I,
 
-with subsequent stress reconstruction. A convergence 
-study based on a manufactured solution
+with subsequent stress reconstruction on a series of uniformly refined meshes. 
+Dirichlet boundary conditions are applied on the entire boundary. A convergence
+study based on the manufactured solution
 
-        u_ext = [sin(pi * x) * sin(pi * y),
-                -sin(2*pi * x) * sin(2*pi * y)]
+     u_ext = [sin(pi * x) * sin(pi * y), -sin(2*pi * x) * sin(2*pi * y)]
 
-is performed. Dirichlet boundary conditions are 
-applied on boundary surfaces [1, 2, 3, 4].
+and 
+
+     f = div(sigma(u_ext))
+                
+is performed. Alonsgide with the actual errors, the a-posteriori error 
+estimate is evaluated and reported.
 """
 
 import numpy as np
