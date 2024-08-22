@@ -178,7 +178,7 @@ class FluxEqlbSE(FluxEquilibrator):
                 self.equilibrate_stresses,
             )
 
-    def get_recontructed_fluxe(self, subproblem: int):
+    def get_recontructed_fluxes(self, subproblem: int) -> typing.Any:
         """Get the reconstructed fluxes
 
         Args:
@@ -190,7 +190,7 @@ class FluxEqlbSE(FluxEquilibrator):
 
         return self.list_flux[subproblem] + self.list_proj_flux[subproblem]
 
-    def get_korn_constants(self):
+    def get_korn_constants(self) -> dfem.Function:
         """Get the Korn constants
 
         Returns:

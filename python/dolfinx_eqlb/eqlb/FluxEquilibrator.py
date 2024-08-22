@@ -94,5 +94,5 @@ class FluxEquilibrator:
     def equilibrate_fluxes(self):
         raise NotImplementedError
 
-    def get_recontructed_fluxe(self, subproblem: int):
+    def get_recontructed_fluxes(self, subproblem: int):
         raise NotImplementedError

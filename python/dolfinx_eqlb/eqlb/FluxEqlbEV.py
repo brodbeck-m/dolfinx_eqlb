@@ -179,7 +179,7 @@ class FluxEqlbEV(FluxEquilibrator):
             self.boundary_data,
         )
 
-    def get_recontructed_fluxe(self, subproblem: int):
+    def get_recontructed_fluxes(self, subproblem: int) -> dfem.Function:
         """Get the reconstructed fluxes
 
         Args:
