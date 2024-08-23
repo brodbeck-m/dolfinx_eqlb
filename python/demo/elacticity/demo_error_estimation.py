@@ -34,10 +34,12 @@ import ufl
 
 from demo_reconstruction import (
     MeshType,
+    DiscType,
+    SolverType,
     create_unit_square_builtin,
-    create_unit_square_gmesh,
-    solve_primal_problem,
-    equilibrate_flux,
+    create_unit_square_gmsh,
+    solve,
+    equilibrate,
     exact_solution,
 )
 
@@ -46,7 +48,7 @@ from demo_reconstruction import (
 def estimate_error(
     pi_1: float,
     f: typing.Union[dfem.Function, typing.Any],
-    uh: dfem.Function,
+    uh: typing.List[dfem.Function],
     sigma_proj: typing.Any,
     delta_sigma_eqlb: typing.Any,
     korns_constants: dfem.Function,
@@ -71,7 +73,7 @@ def estimate_error(
     """
 
     # Extract mesh
-    domain = uh.function_space.mesh
+    domain = uh[0].function_space.mesh
 
     # Higher order volume integrator
     dvol = ufl.dx(degree=10)
@@ -144,11 +146,14 @@ if __name__ == "__main__":
     # Material: pi_1 = lambda/mu
     pi_1 = 1.0
 
-    # The orders of the FE spaces
+    # The spatial discretisation
+    sdisc_type = DiscType.displacement
     order_prime = 2
-    order_eqlb = 2
 
-    # Use guarantied upper bound
+    solver_type = SolverType.CG
+
+    # The error estimate
+    order_eqlb = 2
     guarantied_upper_bound = True
 
     # The mesh resolution
@@ -167,51 +172,27 @@ if __name__ == "__main__":
         if mesh_type == MeshType.builtin:
             domain, facet_tags, ds = create_unit_square_builtin(sdisc_nelmt)
         elif mesh_type == MeshType.gmsh:
-            domain, facet_tags, ds = create_unit_square_gmesh(1 / sdisc_nelmt)
+            domain, facet_tags, ds = create_unit_square_gmsh(1 / sdisc_nelmt)
         else:
             raise ValueError("Unknown mesh type")
 
         # --- Solve problem
         # Solve primal problem
         degree_proj = 1 if (order_eqlb == 2) else None
-        uh, stress_ref = solve_primal_problem(
-            order_prime, domain, facet_tags, ds, pi_1, degree_proj, "cg"
+        u_h, stress_h, stress_ref = solve(
+            order_prime, domain, facet_tags, pi_1, sdisc_type, degree_proj, solver_type
         )
 
-        # Solve equilibration
-        stress_rw_proj, stress_rw_eqlb, korns_constants = equilibrate_flux(
-            order_eqlb, domain, facet_tags, pi_1, uh, stress_ref, True, False
-        )
-
-        # ufl expression of the reconstructed flux
-        stress_proj = -ufl.as_matrix(
-            [
-                [stress_rw_proj[0][0], stress_rw_proj[0][1]],
-                [stress_rw_proj[1][0], stress_rw_proj[1][1]],
-            ]
-        )
-
-        stress_eqlb = -ufl.as_matrix(
-            [
-                [stress_rw_eqlb[0][0], stress_rw_eqlb[0][1]],
-                [stress_rw_eqlb[1][0], stress_rw_eqlb[1][1]],
-            ]
-        )
-
-        sigma = stress_proj + stress_eqlb
-
-        # --- Estimate error
-        # RHS
         f = -ufl.div(stress_ref)
 
+        # Solve equilibration
+        stress_proj, stress_eqlb, ckorn = equilibrate(
+            order_eqlb, domain, facet_tags, stress_h, f, True, False
+        )
+
+        # --- Estimate error
         errorestm, componetnts_estm = estimate_error(
-            1.0,
-            f,
-            uh,
-            stress_proj,
-            stress_eqlb,
-            korns_constants,
-            guarantied_upper_bound,
+            pi_1, f, u_h, stress_proj, stress_eqlb, ckorn, guarantied_upper_bound
         )
 
         # --- Compute real errors
@@ -219,7 +200,7 @@ if __name__ == "__main__":
         dvol = ufl.dx(degree=10)
 
         # Energy norm of the displacement
-        diff_u = uh - exact_solution(ufl.SpatialCoordinate(domain))
+        diff_u = u_h[0] - exact_solution(ufl.SpatialCoordinate(domain))
         err_ufl = (
             ufl.inner(ufl.grad(diff_u), ufl.grad(diff_u))
             + ufl.inner(ufl.div(diff_u), ufl.div(diff_u))
@@ -230,7 +211,7 @@ if __name__ == "__main__":
         )
 
         # H(div) error flux
-        diff = ufl.div(sigma - stress_ref)
+        diff = ufl.div(stress_proj + stress_eqlb - stress_ref)
         err_sighdiv = np.sqrt(
             domain.comm.allreduce(
                 dfem.assemble_scalar(dfem.form(ufl.inner(diff, diff) * dvol)),
