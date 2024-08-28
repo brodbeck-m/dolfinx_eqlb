@@ -236,13 +236,13 @@ if __name__ == "__main__":
     pi_1 = 1.0
 
     # The spatial discretisation
-    sdisc_type = DiscType.displacement_pressure
+    sdisc_type = DiscType.displacement
     order_prime = 2
 
-    solver_type = SolverType.LU
+    solver_type = SolverType.CG
 
     # The error estimate
-    order_eqlb = 4
+    order_eqlb = 2
     guarantied_upper_bound = True
 
     # The mesh resolution
