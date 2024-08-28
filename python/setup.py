@@ -13,7 +13,7 @@ from setuptools import Extension, setup
 from setuptools.command.build_ext import build_ext
 
 
-VERSION = "1.0.0r1"
+VERSION = "1.1.0"
 
 REQUIREMENTS = ["fenics-dolfinx==0.6.0", "numpy>=1.21.0"]
 
