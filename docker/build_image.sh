@@ -11,5 +11,5 @@ else
     # Build docker image
     echo "DEQLB_HOME is set to '$DEQLB_HOME'"
     ${CONTAINER_ENGINE} pull dolfinx/dolfinx:v0.6.0-r1
-    ${CONTAINER_ENGINE} build --no-cache -f "${DEQLB_HOME}/docker/Dockerfile" -t brodbeck-m/dolfinx_eqlb:release .
+    ${CONTAINER_ENGINE} build --no-cache -f "${DEQLB_HOME}/docker/Dockerfile" -t brodbeck-m/dolfinx_eqlb:v1.1.0 .
 fi
