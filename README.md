@@ -47,7 +47,7 @@ python3 demo_reconstruction.py
 ```
 
 ## Equilibrated fluxes for a-posteriori error estimation
-Based on equilibrated fluxes reliable error estimates for different problem classes can be constructed. Showcases for the Poisson problem (estimated by Ern and Vohralik [[2]](#2)) and linear elasticity (idea from Bertrand et al. [[3]](#3) transferred to a displacement-based formulation of linear elasticity) are provided in the demo section:
+Based on equilibrated fluxes reliable error estimates for different problem classes can be constructed. Showcases for the Poisson problem (estimate by Ern and Vohralik [[2]](#2)) and linear elasticity (following Bertrand et al. [[3]](#3)) are provided in the demo section:
 
 ```shell
 ./launch-container.sh
