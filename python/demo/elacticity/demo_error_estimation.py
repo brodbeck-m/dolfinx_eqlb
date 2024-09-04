@@ -325,7 +325,7 @@ if __name__ == "__main__":
         outname = "ManSol-u_P-{}_RT-{}.csv".format(order_prime, order_eqlb)
         header_protocol = (
             "hmin, nelmt, err, rateerr, errsigmahdiv, ratesigmahdiv, "
-            "eetot, eedsigR, eeosc, eeasym, rateetot, rateedsigR, ieff"
+            "eetot, eedsigR, eeasym, eeosc, rateetot, rateedsigR, ieff"
         )
     elif sdisc_type == DiscType.displacement_pressure:
         outname = "ManSol-up_TH-{}_RT-{}.csv".format(order_prime, order_eqlb)
