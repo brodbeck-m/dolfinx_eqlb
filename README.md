@@ -1,6 +1,6 @@
 # dolfinx for flux equilibration (dolfinx_eqlb)
 ## Description
-dolfinx_eqlb is an open source library, extending the FEniCSx by local flux equilibration strategies. The resulting H(div) conforming fluxes can be used for the construction of adaptive finite element solvers for the Poisson problem [[1]](#1), elasticity [[2]](#2)[[3]](#3)[[4]](#4) or poro-elasticity [[5]](#5)[[6]](#6).  
+dolfinx_eqlb is an open source library, extending FEniCSx by local flux equilibration strategies. The resulting H(div) conforming fluxes can be used for the construction of adaptive finite element solvers for the Poisson problem [[1]](#1), elasticity [[2]](#2)[[3]](#3)[[4]](#4) or poro-elasticity [[5]](#5)[[6]](#6).  
 
 The flux equilibration relies on so called patches, groups of all cells, connected with one node of the mesh. On each patch a constrained minimisation problem is solved [[7]](#7). In order to improve computational efficiency, a so called semi-explicit strategy [[8]](#8)[[9]](#9) is also implemented. The solution procedure is thereby split into two steps: An explicit determination of an H(div) function, fulfilling the minimisation constraints, followed by an unconstrained minimisation on a reduced, patch-wise ansatz space. If equilibration is applied to elasticity -- stress tensors have distinct symmetry properties -- an additional constrained minimisation step, after the row wise reconstruction of the tensor [[3]](#3)[[4]](#4) is implemented.
 
@@ -47,7 +47,7 @@ python3 demo_reconstruction.py
 ```
 
 ## Equilibrated fluxes for a-posteriori error estimation
-Based on equilibrated fluxes reliable error estimates for different problem classes can be constructed. Showcases for the Poisson problem (estimated by Ern and Vohralik [[2]](#2)) and linear elasticity (idea from Bertrand et al. [[3]](#3) transferred to a displacement-based formulation of linear elasticity) are provided in the demo section:
+Based on equilibrated fluxes reliable error estimates for different problem classes can be constructed. Showcases for the Poisson problem (estimate by Ern and Vohralik [[2]](#2)) and linear elasticity (following Bertrand et al. [[3]](#3)) are provided in the demo section:
 
 ```shell
 ./launch-container.sh
