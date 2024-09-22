@@ -150,7 +150,7 @@ def estimate(
 
 
 # --- Postprocessing ---
-def post_processing(
+def post_process(
     pi_1: float,
     sdisc_type: DiscType,
     u_h: typing.List[dfem.Function],
@@ -302,7 +302,7 @@ if __name__ == "__main__":
         )
 
         # --- Postprocessing
-        post_processing(
+        post_process(
             pi_1, sdisc_type, u_h, stress_proj, stress_eqlb, eta, eta_i, i, results
         )
 

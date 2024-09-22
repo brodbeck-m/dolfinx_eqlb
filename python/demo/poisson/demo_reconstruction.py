@@ -256,7 +256,7 @@ class BCType(Enum):
     neumann_inhom = 2
 
 
-def solve_primal_problem(
+def solve(
     order_prime: int,
     domain: dmesh.Mesh,
     facet_tags: dmesh.MeshTagsMetaClass,
@@ -348,7 +348,7 @@ def solve_primal_problem(
 
 
 # --- The flux equilibration
-def equilibrate_flux(
+def equilibrate(
     Equilibrator: typing.Union[FluxEqlbEV, FluxEqlbSE],
     order_eqlb: int,
     domain: dmesh.Mesh,
@@ -505,12 +505,10 @@ if __name__ == "__main__":
 
     # Solve primal problem
     degree_proj = 0 if (order_eqlb == 1) else None
-    uh = solve_primal_problem(
-        order_prime, domain, facet_tags, ds, bc_type, pdegree_rhs=degree_proj
-    )
+    uh = solve(order_prime, domain, facet_tags, ds, bc_type, pdegree_rhs=degree_proj)
 
     # Solve equilibration
-    sigma_proj, sigma_eqlb = equilibrate_flux(
+    sigma_proj, sigma_eqlb = equilibrate(
         Equilibrator, order_eqlb, domain, facet_tags, bc_type, uh, True
     )
 

@@ -43,28 +43,14 @@ from demo_reconstruction import (
     BCType,
     create_unit_square_builtin,
     create_unit_square_gmesh,
-    solve_primal_problem,
-    equilibrate_flux,
+    solve,
+    equilibrate,
+    exact_solution,
 )
 
 
-# --- Exact solution ---
-def exact_solution(pkt):
-    """Exact solution
-    u_ext = sin(pi * x) * cos(pi * y)
-
-    Args:
-        pkt: The package
-
-    Returns:
-        The function handle oft the exact solution
-    """
-
-    return lambda x: pkt.sin(2 * pkt.pi * x[0]) * pkt.cos(2 * pkt.pi * x[1])
-
-
 # --- Error estimation ---
-def estimate_error(
+def estimate(
     f: typing.Any,
     uh: dfem.Function,
     sigma_eqlb: dfem.Function,
@@ -186,11 +172,11 @@ if __name__ == "__main__":
         # --- Solve problem
         # Solve primal problem
         degree_proj = 0 if (order_eqlb == 1) else None
-        uh_prime = solve_primal_problem(
+        uh_prime = solve(
             order_prime, domain, facet_tags, ds, bc_type, pdegree_rhs=degree_proj
         )
         # Solve equilibration
-        sigma_proj, sigma_eqlb = equilibrate_flux(
+        sigma_proj, sigma_eqlb = equilibrate(
             Equilibrator, order_eqlb, domain, facet_tags, bc_type, uh_prime, False
         )
 
@@ -204,9 +190,7 @@ if __name__ == "__main__":
         # RHS
         f = -ufl.div(ufl.grad(exact_solution(ufl)(ufl.SpatialCoordinate(domain))))
 
-        errorestm, errorestm_sig, errorestm_osc = estimate_error(
-            f, uh_prime, sigma_eqlb
-        )
+        errorestm, errorestm_sig, errorestm_osc = estimate(f, uh_prime, sigma_eqlb)
 
         # --- Compute real errors
         # Volume integrator
