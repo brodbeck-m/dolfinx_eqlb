@@ -6,15 +6,12 @@
 
 """Test custom implementation of a hierarchic Raviart-Thomas element"""
 
+from mpi4py import MPI
 import numpy as np
 import pytest
 
 import basix
-
-import dolfinx.fem as dfem
-import dolfinx.mesh as dmesh
-
-from mpi4py import MPI
+from dolfinx import fem, mesh
 
 from dolfinx_eqlb.elmtlib import create_hierarchic_rt
 
@@ -179,11 +176,11 @@ def test_interpolation(cell: basix.CellType, degree: int, discontinuous: bool):
 
     # generate mesh
     if cell == basix.CellType.triangle:
-        domain = dmesh.create_rectangle(
+        domain = mesh.create_rectangle(
             MPI.COMM_WORLD,
             [np.array([0, 0]), np.array([1, 1])],
             [5, 5],
-            cell_type=dmesh.CellType.triangle,
+            cell_type=mesh.CellType.triangle,
         )
     else:
         raise NotImplementedError("Test only implemented for triangles")
@@ -200,14 +197,12 @@ def test_interpolation(cell: basix.CellType, degree: int, discontinuous: bool):
         discontinuous,
     )
 
-    V_rt_custom = dfem.FunctionSpace(
-        domain, basix.ufl_wrapper.BasixElement(P_rt_custom)
-    )
-    V_rt_basix = dfem.FunctionSpace(domain, basix.ufl_wrapper.BasixElement(P_rt_basix))
+    V_rt_custom = fem.FunctionSpace(domain, basix.ufl_wrapper.BasixElement(P_rt_custom))
+    V_rt_basix = fem.FunctionSpace(domain, basix.ufl_wrapper.BasixElement(P_rt_basix))
 
     # create random function
-    f_rt_custom = dfem.Function(V_rt_custom)
-    f_rt_basix = dfem.Function(V_rt_basix)
+    f_rt_custom = fem.Function(V_rt_custom)
+    f_rt_basix = fem.Function(V_rt_basix)
 
     f_rt_custom.x.array[:] = 0.7 * (
         np.random.rand(V_rt_basix.dofmap.index_map.size_local) + 0.25

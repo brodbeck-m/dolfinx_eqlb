@@ -16,15 +16,14 @@ import numpy as np
 from petsc4py import PETSc
 import typing
 
-import dolfinx
-import dolfinx.fem as dfem
+from dolfinx import fem, mesh
 import ufl
 
 from dolfinx_eqlb.lsolver import local_projection
 
 
 # --- Interpolate from ufl to function
-def interpolate_ufl_to_function(f_ufl: typing.Any, f_fe: dfem.Function):
+def interpolate_ufl_to_function(f_ufl: typing.Any, f_fe: fem.Function):
     """Interpolates a UFL expression to a function
 
     Args:
@@ -33,7 +32,7 @@ def interpolate_ufl_to_function(f_ufl: typing.Any, f_fe: dfem.Function):
     """
 
     # Create expression
-    expr = dfem.Expression(f_ufl, f_fe.function_space.element.interpolation_points())
+    expr = fem.Expression(f_ufl, f_fe.function_space.element.interpolation_points())
 
     # Perform interpolation
     f_fe.interpolate(expr)
@@ -75,11 +74,11 @@ def exact_normaltrace(
 
 # --- Set right-hand side
 def set_arbitrary_rhs(
-    domain: dolfinx.mesh.Mesh,
+    domain: mesh.Mesh,
     degree_rhs: int,
     degree_projection: typing.Optional[int] = None,
     vector_valued: typing.Optional[bool] = False,
-) -> typing.Tuple[dfem.Function, dfem.Function]:
+) -> typing.Tuple[fem.Function, fem.Function]:
     """Set polynomial right-hand-side (RHS)
 
     Args:
@@ -102,20 +101,20 @@ def set_arbitrary_rhs(
         raise ValueError("Degree of projection to small!")
     else:
         if vector_valued:
-            V_rhs = dfem.VectorFunctionSpace(domain, ("DG", degree_projection))
+            V_rhs = fem.VectorFunctionSpace(domain, ("DG", degree_projection))
         else:
-            V_rhs = dfem.FunctionSpace(domain, ("DG", degree_projection))
+            V_rhs = fem.FunctionSpace(domain, ("DG", degree_projection))
 
-    function_rhs = dfem.Function(V_rhs)
+    function_rhs = fem.Function(V_rhs)
 
     # Set random data
     if degree_projection > degree_rhs:
         if vector_valued:
-            V_data = dfem.VectorFunctionSpace(domain, ("DG", degree_rhs))
+            V_data = fem.VectorFunctionSpace(domain, ("DG", degree_rhs))
         else:
-            V_data = dfem.FunctionSpace(domain, ("DG", degree_rhs))
+            V_data = fem.FunctionSpace(domain, ("DG", degree_rhs))
 
-        function_data = dfem.Function(V_data)
+        function_data = fem.Function(V_data)
         function_data.x.array[:] = 2 * (
             np.random.rand(
                 V_data.dofmap.index_map_bs * V_data.dofmap.index_map.size_local
@@ -137,10 +136,10 @@ def set_arbitrary_rhs(
 
 def set_manufactured_rhs(
     flux_ext: typing.Any,
-    domain: dolfinx.mesh.Mesh,
+    domain: mesh.Mesh,
     degree_rhs: int,
     vector_valued: typing.Optional[bool] = False,
-) -> typing.Tuple[typing.Any, dfem.Function]:
+) -> typing.Tuple[typing.Any, fem.Function]:
     """Set right-hand based on manufactured solution
 
     RHS is the -div(sigma(u_ext)) of the manufactured solution u_ext.
@@ -157,9 +156,9 @@ def set_manufactured_rhs(
 
     # Set function space
     if vector_valued:
-        V_rhs = dfem.VectorFunctionSpace(domain, ("DG", degree_rhs))
+        V_rhs = fem.VectorFunctionSpace(domain, ("DG", degree_rhs))
     else:
-        V_rhs = dfem.FunctionSpace(domain, ("DG", degree_rhs))
+        V_rhs = fem.FunctionSpace(domain, ("DG", degree_rhs))
 
     # UFL function of u_ext
     rhs_ufl = ufl.div(flux_ext)
@@ -179,15 +178,15 @@ class BCType(Enum):
 
 def set_arbitrary_bcs(
     bc_type: BCType,
-    V_prime: dfem.FunctionSpace,
+    V_prime: fem.FunctionSpace,
     degree_flux: int,
     degree_bc: typing.Optional[int] = 0,
     neumann_ids: typing.List[int] = None,
 ) -> typing.Tuple[
     typing.List[int],
     typing.List[int],
-    typing.List[dfem.Function],
-    typing.List[dfem.Function],
+    typing.List[fem.Function],
+    typing.List[fem.Function],
     typing.List[bool],
 ]:
     """Set arbitrary Dirichlet and Neumann BCs
@@ -215,7 +214,7 @@ def set_arbitrary_bcs(
         boundary_id_neumann = []
 
         # Set homogenous dirichlet boundary conditions
-        u_D = [dfem.Function(V_prime) for i in range(0, len(boundary_id_dirichlet))]
+        u_D = [fem.Function(V_prime) for i in range(0, len(boundary_id_dirichlet))]
 
         # Empty array of Neumann conditions
         func_neumann = []
@@ -232,11 +231,11 @@ def set_arbitrary_bcs(
             boundary_id_neumann = neumann_ids
 
         # Set homogenous dirichlet boundary conditions
-        u_D = [dfem.Function(V_prime) for i in range(0, len(boundary_id_dirichlet))]
+        u_D = [fem.Function(V_prime) for i in range(0, len(boundary_id_dirichlet))]
 
         # Set homogenous neumann boundary conditions
         if V_prime.num_sub_spaces == 0:
-            hom_nbc = dfem.Constant(domain, PETSc.ScalarType(0.0))
+            hom_nbc = fem.Constant(domain, PETSc.ScalarType(0.0))
         else:
             if V_prime.num_sub_spaces == 2:
                 hom_nbc = ufl.as_vector([0, 0])
@@ -257,15 +256,15 @@ def set_arbitrary_bcs(
             boundary_id_neumann = neumann_ids
 
         # Set homogenous dirichlet boundary conditions
-        u_D = [dfem.Function(V_prime) for i in range(0, len(boundary_id_dirichlet))]
+        u_D = [fem.Function(V_prime) for i in range(0, len(boundary_id_dirichlet))]
 
         # Set inhomogenous neumann boundary conditions
         if V_prime.num_sub_spaces == 0:
-            V_bc = dfem.FunctionSpace(domain, ("DG", degree_bc))
+            V_bc = fem.FunctionSpace(domain, ("DG", degree_bc))
         else:
-            V_bc = dfem.VectorFunctionSpace(domain, ("DG", degree_bc))
+            V_bc = fem.VectorFunctionSpace(domain, ("DG", degree_bc))
 
-        f_bc = dfem.Function(V_bc)
+        f_bc = fem.Function(V_bc)
         f_bc.x.array[:] = 2 * (
             np.random.rand(V_bc.dofmap.index_map.size_local * V_bc.dofmap.bs) + 0.1
         )
@@ -290,14 +289,14 @@ def set_arbitrary_bcs(
 
 
 def set_manufactured_bcs(
-    V_prime: dfem.FunctionSpace,
+    V_prime: fem.FunctionSpace,
     boundary_id_dirichlet: typing.List[int],
     boundary_id_neumann: typing.List[int],
     u_ext: typing.Any,
     flux_ext: typing.Any,
     vector_valued: typing.Optional[bool] = False,
 ) -> typing.Tuple[
-    typing.List[dfem.Function], typing.List[typing.Any], typing.List[bool]
+    typing.List[fem.Function], typing.List[typing.Any], typing.List[bool]
 ]:
     """Sets Dirichlet and Neumann BCs based on manufactured solution
 
@@ -317,7 +316,7 @@ def set_manufactured_bcs(
     # Set dirichlet BCs
     list_dirichlet = []
     for id in boundary_id_dirichlet:
-        uD = dfem.Function(V_prime)
+        uD = fem.Function(V_prime)
         interpolate_ufl_to_function(u_ext, uD)
 
         list_dirichlet.append(uD)

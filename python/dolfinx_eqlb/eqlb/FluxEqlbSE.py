@@ -7,11 +7,11 @@
 """Flux equilibration based a semi-explicit strategy"""
 
 import numpy as np
+from numpy.typing import NDArray
 import typing
 
 import basix
-import dolfinx.fem as dfem
-import dolfinx.mesh as dmesh
+from dolfinx import fem, mesh
 
 from dolfinx_eqlb.cpp import (
     FluxBC,
@@ -39,9 +39,9 @@ class FluxEqlbSE(FluxEquilibrator):
     def __init__(
         self,
         degree_flux: int,
-        msh: dmesh.Mesh,
+        msh: mesh.Mesh,
         list_rhs: typing.List[typing.Any],
-        list_proj_flux: typing.List[dfem.function.Function],
+        list_proj_flux: typing.List[fem.Function],
         equilibrate_stress: typing.Optional[bool] = False,
         estimate_korn_constant: typing.Optional[bool] = False,
     ):
@@ -78,9 +78,9 @@ class FluxEqlbSE(FluxEquilibrator):
 
     def setup_patch_problem(
         self,
-        msh: dmesh.Mesh,
-        list_rhs: typing.List[dfem.Function],
-        list_proj_flux: typing.List[dfem.Function],
+        msh: mesh.Mesh,
+        list_rhs: typing.List[fem.Function],
+        list_proj_flux: typing.List[fem.Function],
     ):
         """Setup the patch problems
 
@@ -98,12 +98,12 @@ class FluxEqlbSE(FluxEquilibrator):
         P_flux = create_hierarchic_rt(basix.CellType.triangle, self.degree_flux, True)
 
         # Function spaces
-        self.V_flux = dfem.FunctionSpace(msh, basix.ufl_wrapper.BasixElement(P_flux))
+        self.V_flux = fem.FunctionSpace(msh, basix.ufl_wrapper.BasixElement(P_flux))
 
         # Initialise list of fluxes and RHS
         for ii in range(0, self.n_fluxes):
             # Create flux-functions
-            flux = dfem.Function(self.V_flux)
+            flux = fem.Function(self.V_flux)
             self.list_flux.append(flux)
 
             # Add cpp objects to separated list
@@ -113,11 +113,11 @@ class FluxEqlbSE(FluxEquilibrator):
 
         # Initialise cells korn constants
         if self.estimate_korn_constant:
-            self.korn_constants = dfem.Function(dfem.FunctionSpace(msh, ("DG", 0)))
+            self.korn_constants = fem.Function(fem.FunctionSpace(msh, ("DG", 0)))
 
     def set_boundary_conditions(
         self,
-        list_bfct_prime: typing.List[np.ndarray],
+        list_bfct_prime: typing.List[NDArray],
         list_bcs_flux: typing.List[typing.List[FluxBC]],
     ):
         """Set boundary conditions
@@ -132,9 +132,7 @@ class FluxEqlbSE(FluxEquilibrator):
             raise RuntimeError("Mismatching inputs!")
 
         # Initialise boundary data
-        self.list_bfunctions = [
-            dfem.Function(self.V_flux) for i in range(self.n_fluxes)
-        ]
+        self.list_bfunctions = [fem.Function(self.V_flux) for i in range(self.n_fluxes)]
 
         self.boundary_data = boundarydata(
             list_bcs_flux,
@@ -175,7 +173,7 @@ class FluxEqlbSE(FluxEquilibrator):
                 self.equilibrate_stresses,
             )
 
-    def get_recontructed_fluxes(self, subproblem: int) -> typing.Any:
+    def get_reconstructed_fluxes(self, subproblem: int) -> typing.Any:
         """Get the reconstructed fluxes
 
         Args:
@@ -187,7 +185,7 @@ class FluxEqlbSE(FluxEquilibrator):
 
         return self.list_flux[subproblem] + self.list_proj_flux[subproblem]
 
-    def get_korn_constants(self) -> dfem.Function:
+    def get_korn_constants(self) -> fem.Function:
         """Get the Korn constants
 
         Returns:

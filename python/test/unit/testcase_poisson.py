@@ -13,7 +13,7 @@ primal problem as well as the equilibration of the flux.
 import numpy as np
 import typing
 
-import dolfinx.fem as dfem
+from dolfinx import fem
 import ufl
 
 from dolfinx_eqlb.lsolver import local_projection
@@ -53,15 +53,15 @@ def exact_flux(x: typing.Any):
 
 # --- Solution routines
 def solve_primal_problem(
-    V_prime: dfem.FunctionSpace,
+    V_prime: fem.FunctionSpace,
     geometry: Geometry,
     bc_id_neumann: typing.List[int],
     bc_id_dirichlet: typing.List[int],
     ufl_rhs: typing.Any,
     ufl_neumann: typing.List[typing.Any],
-    u_dirichlet: typing.List[dfem.Function],
+    u_dirichlet: typing.List[fem.Function],
     degree_projection: typing.Optional[int] = None,
-) -> typing.Tuple[dfem.Function, dfem.Function]:
+) -> typing.Tuple[fem.Function, fem.Function]:
     """Solves a Poisson problem based on lagrangian finite elements
 
     Args:
@@ -98,8 +98,8 @@ def solve_primal_problem(
 
     for i, id in enumerate(bc_id_dirichlet):
         fcts = geometry.facet_function.indices[geometry.facet_function.values == id]
-        dofs = dfem.locate_dofs_topological(V_prime, 1, fcts)
-        bcs_esnt.append(dfem.dirichletbc(u_dirichlet[i], dofs))
+        dofs = fem.locate_dofs_topological(V_prime, 1, fcts)
+        bcs_esnt.append(fem.dirichletbc(u_dirichlet[i], dofs))
 
     # Set neumann boundary conditions
     for i, id in enumerate(bc_id_neumann):
@@ -113,7 +113,7 @@ def solve_primal_problem(
         "ksp_rtol": 1e-10,
         "ksp_atol": 1e-10,
     }
-    problem_prime = dfem.petsc.LinearProblem(
+    problem_prime = fem.petsc.LinearProblem(
         a_prime, l_prime, bcs_esnt, petsc_options=solveoptions
     )
     u_prime = problem_prime.solve()
@@ -122,7 +122,7 @@ def solve_primal_problem(
     if degree_projection is None:
         degree_projection = V_prime.element.basix_element.degree - 1
 
-    V_flux = dfem.VectorFunctionSpace(geometry.mesh, ("DG", degree_projection))
+    V_flux = fem.VectorFunctionSpace(geometry.mesh, ("DG", degree_projection))
     sig_proj = local_projection(V_flux, [-ufl.grad(u_prime)])[0]
 
     return u_prime, sig_proj
@@ -132,13 +132,13 @@ def equilibrate_fluxes(
     Equilibrator: typing.Union[FluxEqlbEV, FluxEqlbSE],
     degree_flux: int,
     geometry: Geometry,
-    sig_proj: typing.List[dfem.Function],
-    rhs_proj: typing.List[dfem.Function],
+    sig_proj: typing.List[fem.Function],
+    rhs_proj: typing.List[fem.Function],
     bc_id_neumann: typing.List[typing.List[int]],
     bc_id_dirichlet: typing.List[typing.List[int]],
     flux_neumann: typing.List[typing.Any],
     neumann_projection: typing.List[bool],
-) -> typing.Tuple[typing.List[dfem.Function], typing.List[dfem.Function]]:
+) -> typing.Tuple[typing.List[fem.Function], typing.List[fem.Function]]:
     """Equilibrate the fluxes
 
     Args:

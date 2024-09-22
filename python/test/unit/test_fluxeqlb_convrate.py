@@ -11,8 +11,7 @@ import numpy as np
 import pytest
 import typing
 
-import dolfinx.mesh as dmesh
-import dolfinx.fem as dfem
+from dolfinx import fem, mesh
 import ufl
 
 from dolfinx_eqlb.eqlb import FluxEqlbEV, FluxEqlbSE
@@ -59,19 +58,19 @@ def flux_error(
 
         elmt = ufl.FiniteElement(family, mesh.ufl_cell(), degree)
 
-        W = dfem.FunctionSpace(mesh, elmt)
+        W = fem.FunctionSpace(mesh, elmt)
 
         # Interpolate approximate solution
-        u_W = dfem.Function(W)
+        u_W = fem.Function(W)
         u_W.interpolate(uh)
 
         # Interpolate exact solution, special handling if exact solution
         # is a ufl expression or a python lambda function
-        u_ex_W = dfem.Function(W)
+        u_ex_W = fem.Function(W)
         u_ex_W.interpolate(u_ex)
 
         # Compute the error in the higher order function space
-        e_W = dfem.Function(W)
+        e_W = fem.Function(W)
         e_W.x.array[:] = u_W.x.array - u_ex_W.x.array
     else:
         # Get mesh
@@ -88,8 +87,8 @@ def flux_error(
 
     # Integrate the error
     dvol = ufl.dx(degree=qdegree)
-    error_local = dfem.assemble_scalar(
-        dfem.form(ufl.inner(ufl.div(e_W), ufl.div(e_W)) * dvol)
+    error_local = fem.assemble_scalar(
+        fem.form(ufl.inner(ufl.div(e_W), ufl.div(e_W)) * dvol)
     )
     error_global = mesh.comm.allreduce(error_local, op=MPI.SUM)
     return np.sqrt(error_global)
@@ -143,7 +142,7 @@ def test_convrate(
 
         # Create mesh
         geometry = create_unitsquare_builtin(
-            n_elmt, dmesh.CellType.triangle, dmesh.DiagonalType.crossed
+            n_elmt, mesh.CellType.triangle, mesh.DiagonalType.crossed
         )
 
         # Exact solution
@@ -153,7 +152,7 @@ def test_convrate(
         flux_ext = exact_flux(x)
 
         # Set function space
-        V_prime = dfem.FunctionSpace(geometry.mesh, ("P", degree))
+        V_prime = fem.FunctionSpace(geometry.mesh, ("P", degree))
 
         # Determine degree of projected quantities (primal flux, RHS)
         degree_proj = degree - 1

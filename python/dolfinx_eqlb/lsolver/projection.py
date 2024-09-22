@@ -8,17 +8,17 @@
 
 import typing
 
-import dolfinx.fem as dfem
+from dolfinx import fem
 import ufl
 
 from dolfinx_eqlb.cpp import local_solver_cholesky
 
 
 def local_projection(
-    V: dfem.FunctionSpace,
+    V: fem.FunctionSpace,
     data: typing.List[typing.Any],
     quadrature_degree: typing.Optional[int] = None,
-) -> typing.List[dfem.Function]:
+) -> typing.List[fem.Function]:
     """Projection data into DG space
 
     Solves
@@ -49,7 +49,7 @@ def local_projection(
     v = ufl.TestFunction(V)
 
     # Bilinear form
-    a = dfem.form(ufl.inner(u, v) * ufl.dx)
+    a = fem.form(ufl.inner(u, v) * ufl.dx)
 
     # Set volume integrator for LHS
     if quadrature_degree is None:
@@ -64,10 +64,10 @@ def local_projection(
     # Linear form/ and solution
     for i in range(0, n_lhs):
         # Linear form
-        list_l.append(dfem.form(ufl.inner(data[i], v) * dvol))
+        list_l.append(fem.form(ufl.inner(data[i], v) * dvol))
 
         # Solution function
-        func = dfem.Function(V)
+        func = fem.Function(V)
         list_sol.append(func)
         list_sol_cpp.append(func._cpp_object)
 

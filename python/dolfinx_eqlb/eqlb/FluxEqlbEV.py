@@ -6,11 +6,10 @@
 
 """Flux equilibration based on constrained minimisation problems"""
 
-import numpy as np
+from numpy.typing import NDArray
 import typing
 
-import dolfinx.fem as dfem
-import dolfinx.mesh as dmesh
+from dolfinx import fem, mesh
 import ufl
 
 from dolfinx_eqlb.cpp import FluxBC, reconstruct_fluxes_minimisation
@@ -27,9 +26,9 @@ class FluxEqlbEV(FluxEquilibrator):
     def __init__(
         self,
         degree_flux: int,
-        msh: dmesh.Mesh,
-        list_rhs: typing.List[dfem.Function],
-        list_proj_flux: typing.List[dfem.Function],
+        msh: mesh.Mesh,
+        list_rhs: typing.List[fem.Function],
+        list_proj_flux: typing.List[fem.Function],
     ):
         """Initialise constrained minimisation based flux equilibrator
 
@@ -75,9 +74,9 @@ class FluxEqlbEV(FluxEquilibrator):
 
     def setup_patch_problem(
         self,
-        msh: dmesh.Mesh,
-        list_rhs: typing.List[dfem.Function],
-        list_proj_flux: typing.List[dfem.Function],
+        msh: mesh.Mesh,
+        list_rhs: typing.List[fem.Function],
+        list_proj_flux: typing.List[fem.Function],
     ):
         """Setup the patch problems
 
@@ -97,13 +96,13 @@ class FluxEqlbEV(FluxEquilibrator):
         P_DG = ufl.FiniteElement("DG", msh.ufl_cell(), self.degree_flux - 1)
 
         # Function spaces
-        self.V = dfem.FunctionSpace(msh, ufl.MixedElement(P_flux, P_DG))
-        self.V_flux = dfem.FunctionSpace(msh, P_flux)
-        self.V_hat = dfem.FunctionSpace(msh, P_hat)
+        self.V = fem.FunctionSpace(msh, ufl.MixedElement(P_flux, P_DG))
+        self.V_flux = fem.FunctionSpace(msh, P_flux)
+        self.V_hat = fem.FunctionSpace(msh, P_hat)
 
         # --- Setup variational problems
         # Set hat-function
-        self.hat_function = dfem.Function(self.V_hat)
+        self.hat_function = fem.Function(self.V_hat)
 
         # Set identifire
         self.hat_function.name = "hat"
@@ -111,18 +110,18 @@ class FluxEqlbEV(FluxEquilibrator):
         # Create trial and test functions
         sig, r = ufl.TrialFunctions(self.V)
         v, q = ufl.TestFunctions(self.V)
-        q_pen = ufl.TestFunction(dfem.FunctionSpace(msh, P_DG))
+        q_pen = ufl.TestFunction(fem.FunctionSpace(msh, P_DG))
 
         # Set bilinear-form
-        self.form_a = dfem.form(
+        self.form_a = fem.form(
             (ufl.inner(sig, v) - r * ufl.div(v) + ufl.div(sig) * q) * ufl.dx
         )
-        self.form_lpen = dfem.form(q_pen * ufl.dx)
+        self.form_lpen = fem.form(q_pen * ufl.dx)
 
         # Create variational problems and H(div) conforming fluxes
         for ii in range(0, self.n_fluxes):
             # Create flux-functions
-            flux = dfem.Function(self.V_flux)
+            flux = fem.Function(self.V_flux)
             self.list_flux.append(flux)
             self.list_flux_cpp.append(flux._cpp_object)
 
@@ -132,11 +131,11 @@ class FluxEqlbEV(FluxEquilibrator):
                 + self.hat_function * list_rhs[ii] * q
                 - ufl.inner(ufl.grad(self.hat_function), -list_proj_flux[ii]) * q
             ) * ufl.dx
-            self.list_form_l.append(dfem.form(l))
+            self.list_form_l.append(fem.form(l))
 
     def set_boundary_conditions(
         self,
-        list_bfct_prime: typing.List[np.ndarray],
+        list_bfct_prime: typing.List[NDArray],
         list_bcs_flux: typing.List[typing.List[FluxBC]],
     ):
         """Set boundary conditions
@@ -151,7 +150,7 @@ class FluxEqlbEV(FluxEquilibrator):
             raise RuntimeError("Mismatching inputs!")
 
         # Initialise boundary data
-        self.list_bfunctions = [dfem.Function(self.V) for i in range(self.n_fluxes)]
+        self.list_bfunctions = [fem.Function(self.V) for i in range(self.n_fluxes)]
 
         self.boundary_data = boundarydata(
             list_bcs_flux,
@@ -176,7 +175,7 @@ class FluxEqlbEV(FluxEquilibrator):
             self.boundary_data,
         )
 
-    def get_recontructed_fluxes(self, subproblem: int) -> dfem.Function:
+    def get_reconstructed_fluxes(self, subproblem: int) -> fem.Function:
         """Get the reconstructed fluxes
 
         Args:

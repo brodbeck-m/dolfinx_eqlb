@@ -10,8 +10,7 @@ import numpy as np
 from petsc4py import PETSc
 import pytest
 
-import dolfinx.fem as dfem
-
+from dolfinx import fem
 import ufl
 
 from dolfinx_eqlb.lsolver import local_solver_cholesky
@@ -53,7 +52,7 @@ def test_localprojection_multiple_rhs(cell, is_vectorvalued, degree):
             elmt = ufl.FiniteElement("DQ", msh.ufl_cell(), degree)
             elmt_rhs3 = ufl.FiniteElement("DQ", msh.ufl_cell(), degree + 1)
             elmt_rhs4 = ufl.VectorElement("DQ", msh.ufl_cell(), degree + 1)
-    V = dfem.FunctionSpace(msh, elmt)
+    V = fem.FunctionSpace(msh, elmt)
 
     # --- Bilinearform
     u = ufl.TrialFunction(V)
@@ -91,10 +90,10 @@ def test_localprojection_multiple_rhs(cell, is_vectorvalued, degree):
         return u
 
     # FE-Functions
-    V_rhs3 = dfem.FunctionSpace(msh, elmt_rhs3)
-    V_rhs4 = dfem.FunctionSpace(msh, elmt_rhs4)
-    func_rhs3 = dfem.Function(V_rhs3)
-    func_rhs4 = dfem.Function(V_rhs4)
+    V_rhs3 = fem.FunctionSpace(msh, elmt_rhs3)
+    V_rhs4 = fem.FunctionSpace(msh, elmt_rhs4)
+    func_rhs3 = fem.Function(V_rhs3)
+    func_rhs4 = fem.Function(V_rhs4)
     f_rhs = []
 
     if is_vectorvalued:
@@ -104,20 +103,20 @@ def test_localprojection_multiple_rhs(cell, is_vectorvalued, degree):
             func_rhs4.interpolate(rhs_2D_scal)
 
             # Definitions
-            f_rhs.append(dfem.Constant(msh, PETSc.ScalarType(np.array([2, 5]))))
+            f_rhs.append(fem.Constant(msh, PETSc.ScalarType(np.array([2, 5]))))
             f_rhs.append(
                 ufl.as_vector(
                     [ufl.sin(x[0]) * ufl.sin(x[1]), ufl.cos(x[0]) * ufl.cos(x[1])]
                 )
             )
-            f_rhs.append(dfem.Constant(msh, PETSc.ScalarType(1.5)) * func_rhs3)
+            f_rhs.append(fem.Constant(msh, PETSc.ScalarType(1.5)) * func_rhs3)
             f_rhs.append(ufl.grad(func_rhs4))
         elif cell.geometric_dimension() == 3:
             # Required interpoations
             func_rhs3.interpolate(rhs_3D)
             func_rhs4.interpolate(rhs_3D_scal)
 
-            f_rhs.append(dfem.Constant(msh, PETSc.ScalarType(np.array([2, 5, 1]))))
+            f_rhs.append(fem.Constant(msh, PETSc.ScalarType(np.array([2, 5, 1]))))
             f_rhs.append(
                 ufl.as_vector(
                     [
@@ -127,7 +126,7 @@ def test_localprojection_multiple_rhs(cell, is_vectorvalued, degree):
                     ]
                 )
             )
-            f_rhs.append(dfem.Constant(msh, PETSc.ScalarType(1.5)) * func_rhs3)
+            f_rhs.append(fem.Constant(msh, PETSc.ScalarType(1.5)) * func_rhs3)
             f_rhs.append(ufl.grad(func_rhs4))
         else:
             assert False
@@ -138,18 +137,18 @@ def test_localprojection_multiple_rhs(cell, is_vectorvalued, degree):
             func_rhs4.interpolate(rhs_2D)
 
             # Definitions
-            f_rhs.append(dfem.Constant(msh, PETSc.ScalarType(2)))
+            f_rhs.append(fem.Constant(msh, PETSc.ScalarType(2)))
             f_rhs.append(ufl.sin(x[0]) * ufl.sin(x[1]))
-            f_rhs.append(dfem.Constant(msh, PETSc.ScalarType(1.5)) * func_rhs3)
+            f_rhs.append(fem.Constant(msh, PETSc.ScalarType(1.5)) * func_rhs3)
             f_rhs.append(ufl.div(func_rhs4))
         elif cell.geometric_dimension() == 3:
             # Required interpoations
             func_rhs3.interpolate(rhs_3D_scal)
             func_rhs4.interpolate(rhs_3D)
 
-            f_rhs.append(dfem.Constant(msh, PETSc.ScalarType(2)))
+            f_rhs.append(fem.Constant(msh, PETSc.ScalarType(2)))
             f_rhs.append(ufl.sin(x[0]) * ufl.sin(x[1]) * ufl.sin(x[2]))
-            f_rhs.append(dfem.Constant(msh, PETSc.ScalarType(1.5)) * func_rhs3)
+            f_rhs.append(fem.Constant(msh, PETSc.ScalarType(1.5)) * func_rhs3)
             f_rhs.append(ufl.div(func_rhs4))
         else:
             assert False
@@ -159,17 +158,17 @@ def test_localprojection_multiple_rhs(cell, is_vectorvalued, degree):
     list_sol_ref = []
     for i in range(0, len(f_rhs)):
         l = ufl.inner(f_rhs[i], v) * dvol
-        list_l.append(dfem.form(l))
-        list_sol.append(dfem.Function(V))
+        list_l.append(fem.form(l))
+        list_sol.append(fem.Function(V))
 
         # Calculate refernce solution
-        problem = dfem.petsc.LinearProblem(
+        problem = fem.petsc.LinearProblem(
             a, l, bcs=[], petsc_options={"ksp_type": "preonly", "pc_type": "lu"}
         )
         list_sol_ref.append(problem.solve())
 
     # Calculate local projection
-    local_solver_cholesky(list_sol, dfem.form(a), list_l)
+    local_solver_cholesky(list_sol, fem.form(a), list_l)
 
     # Compare solutions
     for i in range(0, len(f_rhs)):

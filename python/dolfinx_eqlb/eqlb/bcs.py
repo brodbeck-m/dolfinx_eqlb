@@ -7,14 +7,14 @@
 """Boundary conditions for flux equilibration"""
 
 import numpy as np
+from numpy.typing import NDArray
 import typing
 
 import cffi
 
 import basix
 import dolfinx
-import dolfinx.fem as dfem
-import dolfinx.mesh as dmesh
+from dolfinx import fem, mesh
 import ufl
 
 from dolfinx_eqlb.cpp import FluxBC, BoundaryData
@@ -24,8 +24,8 @@ ffi = cffi.FFI()
 
 def fluxbc(
     value: typing.Any,
-    facets: np.ndarray,
-    V: dfem.FunctionSpace,
+    facets: NDArray,
+    V: fem.FunctionSpace,
     requires_projection: typing.Optional[bool] = False,
     quadrature_degree: typing.Optional[int] = None,
 ) -> FluxBC:
@@ -48,10 +48,10 @@ def fluxbc(
     domain = V.mesh
 
     # Number of facets per cell
-    if domain.topology.cell_type == dmesh.CellType.triangle:
+    if domain.topology.cell_type == mesh.CellType.triangle:
         fct_type = basix.CellType.interval
         nfcts_per_cell = 3
-    elif domain.topology.cell_type == dmesh.CellType.tetrahedron:
+    elif domain.topology.cell_type == mesh.CellType.tetrahedron:
         fct_type = basix.CellType.triangle
         nfcts_per_cell = 4
         raise NotImplementedError("3D meshes currently not supported")
@@ -79,7 +79,7 @@ def fluxbc(
             (nfcts_per_cell * neval_per_fct, domain.topology.dim), dtype=np.float64
         )
 
-        if domain.topology.cell_type == dmesh.CellType.triangle:
+        if domain.topology.cell_type == mesh.CellType.triangle:
             # Initialisations
             id_fct1 = neval_per_fct
             id_fct2 = 2 * neval_per_fct
@@ -164,10 +164,10 @@ def fluxbc(
 
 def boundarydata(
     flux_conditions: typing.List[typing.List[FluxBC]],
-    boundary_data: typing.List[dfem.Function],
-    V: dfem.FunctionSpace,
+    boundary_data: typing.List[fem.Function],
+    V: fem.FunctionSpace,
     custom_rt: bool,
-    dirichlet_facets: typing.List[np.ndarray],
+    dirichlet_facets: typing.List[NDArray],
     equilibrate_stress: bool,
 ) -> BoundaryData:
     """The collected essential boundary conditions for set of reconstructed fluxes
@@ -177,11 +177,11 @@ def boundarydata(
     essential boundary facets of the primal problem.
 
     Args:
-        flux_conditions:   List of essential flux BCs each flux
-        boundary_data:     List functions holding the boundary values
-        V:                 The function space of the reconstructed flux
-        custom_rt:         Identifier if custom RT element is used
-        dirichlet_facets:  Identifier if stresses are equilibrated
+        flux_conditions:  List of essential flux BCs each flux
+        boundary_data:    List functions holding the boundary values
+        V:                The function space of the reconstructed flux
+        custom_rt:        Identifier if custom RT element is used
+        dirichlet_facets: Identifier if stresses are equilibrated
 
     Returns:
         The collection of essential BC of a reconstructed flux

@@ -9,8 +9,7 @@
 import pytest
 import typing
 
-import dolfinx.mesh as dmesh
-import dolfinx.fem as dfem
+from dolfinx import fem, mesh
 
 from dolfinx_eqlb.eqlb import FluxEqlbEV, FluxEqlbSE
 import dolfinx_eqlb.eqlb.check_eqlb_conditions as eqlb_checker
@@ -46,7 +45,7 @@ def equilibrate_flux(
     # Create mesh
     if mesh_type == MeshType.builtin:
         geometry = create_unitsquare_builtin(
-            2, dmesh.CellType.triangle, dmesh.DiagonalType.crossed
+            2, mesh.CellType.triangle, mesh.DiagonalType.crossed
         )
     elif mesh_type == MeshType.gmsh:
         geometry = create_unitsquare_gmsh(0.5)
@@ -64,7 +63,7 @@ def equilibrate_flux(
         for degree_prime in range(max(1, degree - 1), degree + 1):
             for degree_rhs in range(0, degree):
                 # Set function space
-                V_prime = dfem.FunctionSpace(geometry.mesh, ("P", degree_prime))
+                V_prime = fem.FunctionSpace(geometry.mesh, ("P", degree_prime))
 
                 # Determine degree of projected quantities (primal flux, RHS)
                 degree_proj = max(degree_prime - 1, degree_rhs)

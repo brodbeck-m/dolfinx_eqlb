@@ -9,9 +9,7 @@
 import numpy as np
 import typing
 
-import dolfinx.fem as dfem
-import dolfinx.fem.petsc as dfem_petsc
-import dolfinx.mesh as dmesh
+from dolfinx import fem, mesh
 import ufl
 
 from dolfinx_eqlb.lsolver import local_projection
@@ -19,7 +17,7 @@ from dolfinx_eqlb.lsolver import local_projection
 
 # --- Check the mesh ---
 def mesh_has_reversed_edges(
-    domain: dmesh.Mesh,
+    domain: mesh.Mesh,
     print_debug_information: typing.Optional[bool] = False,
 ) -> bool:
     """Check mech for facets with reversed definition
@@ -90,9 +88,9 @@ def mesh_has_reversed_edges(
 
 # --- Check Boundary Conditions ---
 def check_boundary_conditions(
-    sigma_eq: dfem.Function,
-    sigma_proj: dfem.Function,
-    boundary_function: dfem.Function,
+    sigma_eq: fem.Function,
+    sigma_proj: fem.Function,
+    boundary_function: fem.Function,
     facet_function: typing.Any,
     boundary_facets: typing.List[int],
 ) -> bool:
@@ -128,10 +126,10 @@ def check_boundary_conditions(
         degree = sigma_eq.function_space.element.basix_element.degree
 
         P_rt = ufl.FiniteElement("RT", domain.ufl_cell(), degree)
-        V_rt = dfem.FunctionSpace(domain, P_rt)
+        V_rt = fem.FunctionSpace(domain, P_rt)
 
         # Interpolate eqlb. flux into basix RT-space
-        sigma = dfem.Function(V_rt)
+        sigma = fem.Function(V_rt)
         x_sigma = np.zeros(sigma.x.array.shape, dtype=np.float64)
 
         sigma.interpolate(sigma_eq)
@@ -144,7 +142,7 @@ def check_boundary_conditions(
         sigma.x.array[:] = x_sigma[:]
 
         # Interpolate boundary conditions into basix RT-space
-        sigma_bc = dfem.Function(V_rt)
+        sigma_bc = fem.Function(V_rt)
         sigma_bc.interpolate(boundary_function)
     else:
         sigma = sigma_eq
@@ -158,14 +156,14 @@ def check_boundary_conditions(
         # Get DOFs (equilibrated flux)
         boundary_dofs_eflux = np.append(
             boundary_dofs_eflux,
-            dfem.locate_dofs_topological(sigma.function_space, 1, fcts),
+            fem.locate_dofs_topological(sigma.function_space, 1, fcts),
         )
 
         # Get DOFs (boundary function)
         if not flux_is_dg:
             boundary_dofs_data = np.append(
                 boundary_dofs_data,
-                dfem.locate_dofs_topological(sigma_bc.function_space.sub(0), 1, fcts),
+                fem.locate_dofs_topological(sigma_bc.function_space.sub(0), 1, fcts),
             )
 
     if flux_is_dg:
@@ -183,10 +181,10 @@ def check_boundary_conditions(
 
 # --- Check the equilibration ---
 def check_divergence_condition(
-    sigma_eq: typing.Union[dfem.Function, typing.Any],
-    sigma_proj: typing.Union[dfem.Function, typing.Any],
-    rhs_proj: dfem.Function,
-    mesh: typing.Optional[dmesh.Mesh] = None,
+    sigma_eq: typing.Union[fem.Function, typing.Any],
+    sigma_proj: typing.Union[fem.Function, typing.Any],
+    rhs_proj: fem.Function,
+    mesh: typing.Optional[mesh.Mesh] = None,
     degree: typing.Optional[int] = None,
     flux_is_dg: typing.Optional[bool] = None,
     print_debug_information: typing.Optional[bool] = False,
@@ -220,7 +218,7 @@ def check_divergence_condition(
         True, if divergence condition is fulfilled
     """
     # --- Extract solution data
-    if type(sigma_eq) is dfem.Function:
+    if type(sigma_eq) is fem.Function:
         # the mesh
         mesh = sigma_eq.function_space.mesh
 
@@ -248,9 +246,9 @@ def check_divergence_condition(
 
     # --- Calculate divergence of the equilibrated flux
     if rhs_proj.function_space.dofmap.index_map_bs == 1:
-        V_div = dfem.FunctionSpace(mesh, ("DG", degree - 1))
+        V_div = fem.FunctionSpace(mesh, ("DG", degree - 1))
     else:
-        V_div = dfem.VectorFunctionSpace(mesh, ("DG", degree - 1))
+        V_div = fem.VectorFunctionSpace(mesh, ("DG", degree - 1))
 
     if flux_is_dg:
         div_sigeq = local_projection(V_div, [ufl.div(sigma_eq + sigma_proj)])[0]
@@ -294,8 +292,8 @@ def check_divergence_condition(
 
 
 def check_jump_condition(
-    sigma_eq: dfem.Function,
-    sigma_proj: dfem.Function,
+    sigma_eq: fem.Function,
+    sigma_proj: fem.Function,
     print_debug_information: typing.Optional[bool] = False,
 ) -> bool:
     """Check the jump condition
@@ -327,15 +325,15 @@ def check_jump_condition(
     degree = sigma_eq.function_space.element.basix_element.degree
 
     # The test function
-    V_test = dfem.FunctionSpace(domain, ("RT", degree))
-    f_test = dfem.Function(V_test)
+    V_test = fem.FunctionSpace(domain, ("RT", degree))
+    f_test = fem.Function(V_test)
 
     # The marker space
-    V_marker = dfem.FunctionSpace(domain, ("DG", 0))
+    V_marker = fem.FunctionSpace(domain, ("DG", 0))
     v_m = ufl.TestFunction(V_marker)
 
     # Project equilibrated flux into DG_k (RT_k in DG_k)
-    V_flux = dfem.VectorFunctionSpace(domain, ("DG", degree))
+    V_flux = fem.VectorFunctionSpace(domain, ("DG", degree))
     sigma_eq_dg = local_projection(V_flux, [sigma_eq + sigma_proj])[0]
 
     # Interpolate sigma_R into f_test
@@ -343,12 +341,12 @@ def check_jump_condition(
 
     # Check if sigma_eq is in H(div)
     err = f_test - sigma_eq_dg
-    form_error = dfem.form(
+    form_error = fem.form(
         (ufl.inner(err, err) + ufl.inner(ufl.div(err), ufl.div(err))) * v_m * ufl.dx
     )
 
-    L_error = dfem_petsc.create_vector(form_error)
-    dfem_petsc.assemble_vector(L_error, form_error)
+    L_error = fem.petsc.create_vector(form_error)
+    fem.petsc.assemble_vector(L_error, form_error)
 
     error = np.sum(L_error.array)
 
@@ -362,8 +360,8 @@ def check_jump_condition(
 
 
 def check_jump_condition_per_facet(
-    sigma_eq: dfem.Function,
-    sigma_proj: dfem.Function,
+    sigma_eq: fem.Function,
+    sigma_proj: fem.Function,
     print_debug_information: typing.Optional[bool] = False,
 ) -> bool:
     """Check the jump condition
@@ -475,7 +473,7 @@ def check_jump_condition_per_facet(
         return False
 
 
-def check_weak_symmetry_condition(sigma_eq: dfem.Function) -> bool:
+def check_weak_symmetry_condition(sigma_eq: fem.Function) -> bool:
     """Check the weak symmetry condition
 
     Let sigma_eq be the equilibrated flux, then
@@ -496,7 +494,7 @@ def check_weak_symmetry_condition(sigma_eq: dfem.Function) -> bool:
 
     # --- Assemble weak symmetry condition
     #  The (continuous) test space
-    V_test = dfem.FunctionSpace(mesh, ("P", 1))
+    V_test = fem.FunctionSpace(mesh, ("P", 1))
 
     # The test functional
     if mesh.topology.dim == 2:
@@ -504,17 +502,17 @@ def check_weak_symmetry_condition(sigma_eq: dfem.Function) -> bool:
         v = ufl.TestFunction(V_test)
 
         # The linear form
-        l_weaksym = dfem.form(ufl.inner(sigma_eq[0][1] - sigma_eq[1][0], v) * ufl.dx)
+        l_weaksym = fem.form(ufl.inner(sigma_eq[0][1] - sigma_eq[1][0], v) * ufl.dx)
     else:
         raise ValueError("Test on weak symmetry condition not implemented for 3D")
 
     # Assemble linear form
-    L = dfem_petsc.create_vector(l_weaksym)
+    L = fem.petsc.create_vector(l_weaksym)
 
     with L.localForm() as loc:
         loc.set(0)
 
-    dfem_petsc.assemble_vector(L, l_weaksym)
+    fem.petsc.assemble_vector(L, l_weaksym)
 
     # --- Test weak-symmetry condition
     if np.allclose(L.array, 0):

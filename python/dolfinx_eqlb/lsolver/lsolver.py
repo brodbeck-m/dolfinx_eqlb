@@ -8,13 +8,13 @@
 
 import typing
 
-import dolfinx.fem as dfem
+from dolfinx import fem
 
 import dolfinx_eqlb.cpp as eqlb_cpp
 
 
 def prepare_input(
-    list_l: typing.List[typing.Any], list_func: typing.List[dfem.Function]
+    list_l: typing.List[typing.Any], list_func: typing.List[fem.Function]
 ) -> typing.List[typing.Any]:
     """Prepare input for local solvers"""
 
@@ -34,9 +34,9 @@ def prepare_input(
 
 
 def local_solver_lu(
-    list_func: typing.List[dfem.Function],
-    a: dfem.FormMetaClass,
-    list_l: typing.List[dfem.FormMetaClass],
+    list_func: typing.List[fem.Function],
+    a: fem.FormMetaClass,
+    list_l: typing.List[fem.FormMetaClass],
 ):
     """Cell local solver based on the LU decomposition
 
@@ -54,9 +54,9 @@ def local_solver_lu(
 
 
 def local_solver_cholesky(
-    list_func: typing.List[dfem.Function],
-    a: dfem.FormMetaClass,
-    list_l: typing.List[dfem.FormMetaClass],
+    list_func: typing.List[fem.Function],
+    a: fem.FormMetaClass,
+    list_l: typing.List[fem.FormMetaClass],
 ):
     """Cell local solver based on the Cholesky decomposition
 
@@ -74,9 +74,9 @@ def local_solver_cholesky(
 
 
 def local_solver_cg(
-    list_func: typing.List[dfem.Function],
-    a: dfem.FormMetaClass,
-    list_l: typing.List[dfem.FormMetaClass],
+    list_func: typing.List[fem.Function],
+    a: fem.FormMetaClass,
+    list_l: typing.List[fem.FormMetaClass],
 ):
     """Cell local solver based on a CG solver
 

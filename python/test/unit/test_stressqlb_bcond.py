@@ -11,8 +11,7 @@ from petsc4py import PETSc
 import pytest
 import typing
 
-import dolfinx.mesh as dmesh
-import dolfinx.fem as dfem
+from dolfinx import fem, mesh
 import ufl
 
 from dolfinx_eqlb.lsolver import local_projection
@@ -26,18 +25,18 @@ from testcase_elasticity import equilibrate_stresses
 
 # --- Solver for linear elasticity with general BCs ---
 def solve_primal_problem_general_usquare(
-    V_prime: dfem.FunctionSpace,
+    V_prime: fem.FunctionSpace,
     geometry: Geometry,
     neunann_bcs: typing.List[typing.List[bool]],
-    rhs: dfem.Function,
+    rhs: fem.Function,
     degree_flux_bc: int,
     degree_projection: int,
 ) -> typing.Tuple[
-    dfem.Function,
-    typing.List[dfem.Function],
+    fem.Function,
+    typing.List[fem.Function],
     typing.List[typing.List[int]],
     typing.List[typing.List[int]],
-    typing.List[typing.List[dfem.Function]],
+    typing.List[typing.List[fem.Function]],
 ]:
     """Solves linear elasticity using lagrangian finite elements
 
@@ -67,7 +66,7 @@ def solve_primal_problem_general_usquare(
     boundary_id_neumann = [[] for _ in range(gdim)]
 
     # The neumann functions
-    V_nbc = dfem.FunctionSpace(geometry.mesh, ("DG", degree_flux_bc))
+    V_nbc = fem.FunctionSpace(geometry.mesh, ("DG", degree_flux_bc))
     neumann_functions = [[] for _ in range(gdim)]
 
     for i, bc in enumerate(neunann_bcs):
@@ -76,7 +75,7 @@ def solve_primal_problem_general_usquare(
         for j, has_neumann in enumerate(bc):
             if has_neumann:
                 boundary_id_neumann[j].append(fctid)
-                neumann_functions[j].append(dfem.Function(V_nbc))
+                neumann_functions[j].append(fem.Function(V_nbc))
                 neumann_functions[j][-1].x.array[:] = 2 * (
                     np.random.rand(V_nbc.dofmap.index_map.size_local * V_nbc.dofmap.bs)
                     + 0.1
@@ -108,10 +107,8 @@ def solve_primal_problem_general_usquare(
         fcts = geometry.facet_function.indices[
             np.isin(geometry.facet_function.values, boundary_id_dirichlet[i])
         ]
-        dofs = dfem.locate_dofs_topological(V_prime.sub(i), 1, fcts)
-        list_essntbcs.append(
-            dfem.dirichletbc(PETSc.ScalarType(0), dofs, V_prime.sub(i))
-        )
+        dofs = fem.locate_dofs_topological(V_prime.sub(i), 1, fcts)
+        list_essntbcs.append(fem.dirichletbc(PETSc.ScalarType(0), dofs, V_prime.sub(i)))
 
     # --- Solve the primal problem
     solveoptions = {
@@ -120,7 +117,7 @@ def solve_primal_problem_general_usquare(
         "ksp_rtol": 1e-12,
         "ksp_atol": 1e-12,
     }
-    problem_prime = dfem.petsc.LinearProblem(
+    problem_prime = fem.petsc.LinearProblem(
         a_prime, l_prime, list_essntbcs, petsc_options=solveoptions
     )
     u_prime = problem_prime.solve()
@@ -128,7 +125,7 @@ def solve_primal_problem_general_usquare(
     # Project stress tensor
     sigma_h = -2 * ufl.sym(ufl.grad(u_prime)) - ufl.div(u_prime) * ufl.Identity(gdim)
 
-    V_flux = dfem.VectorFunctionSpace(geometry.mesh, ("DG", degree_projection))
+    V_flux = fem.VectorFunctionSpace(geometry.mesh, ("DG", degree_projection))
     sig_proj = local_projection(
         V_flux,
         [
@@ -198,11 +195,11 @@ def test_boundary_conditions(degree, id_bc):
     # Create mesh
     gdim = 2
     geometry = create_unitsquare_builtin(
-        2, dmesh.CellType.triangle, dmesh.DiagonalType.crossed
+        2, mesh.CellType.triangle, mesh.DiagonalType.crossed
     )
 
     # Set function space
-    V_prime = dfem.VectorFunctionSpace(geometry.mesh, ("P", degree))
+    V_prime = fem.VectorFunctionSpace(geometry.mesh, ("P", degree))
 
     # Determine degree of projected quantities (primal flux, RHS)
     degree_proj = degree - 1

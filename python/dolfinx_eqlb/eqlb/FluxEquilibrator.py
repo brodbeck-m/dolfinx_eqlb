@@ -6,11 +6,10 @@
 
 """Bas class for flux equilibrators"""
 
-import numpy as np
+from numpy.typing import NDArray
 import typing
 
-import dolfinx.fem as dfem
-import dolfinx.mesh as dmesh
+from dolfinx import fem, mesh
 
 from dolfinx_eqlb.cpp import FluxBC
 
@@ -50,7 +49,7 @@ class FluxEquilibrator:
         # BoundaryData
         self.boundary_data = None
 
-    def initialise_mesh_info(self, msh: dmesh.Mesh):
+    def initialise_mesh_info(self, msh: mesh.Mesh):
         """Initialise the required mesh informations
 
         Args:
@@ -69,23 +68,23 @@ class FluxEquilibrator:
 
     def setup_patch_problem(
         self,
-        msh: dmesh.Mesh,
+        msh: mesh.Mesh,
         list_rhs: typing.List[typing.Any],
-        list_proj_flux: typing.List[dfem.function.Function],
+        list_proj_flux: typing.List[fem.function.Function],
     ):
         raise NotImplementedError
 
     def update_patch_problem(
         self,
-        msh: dmesh.Mesh,
+        msh: mesh.Mesh,
         list_rhs: typing.List[typing.Any],
-        list_proj_flux: typing.List[dfem.function.Function],
+        list_proj_flux: typing.List[fem.function.Function],
     ):
         raise NotImplementedError
 
     def set_boundary_conditions(
         self,
-        list_bfct_prime: typing.List[np.ndarray],
+        list_bfct_prime: typing.List[NDArray],
         list_bcs_flux: typing.List[typing.List[FluxBC]],
     ):
         raise NotImplementedError
@@ -93,5 +92,5 @@ class FluxEquilibrator:
     def equilibrate_fluxes(self):
         raise NotImplementedError
 
-    def get_recontructed_fluxes(self, subproblem: int):
+    def get_reconstructed_fluxes(self, subproblem: int):
         raise NotImplementedError

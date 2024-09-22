@@ -10,15 +10,12 @@ import numpy as np
 import pytest
 import typing
 
-import dolfinx.mesh as dmesh
-import dolfinx.fem as dfem
+from dolfinx import fem, mesh
 
 from dolfinx_eqlb.eqlb import FluxEqlbEV, FluxEqlbSE
 import dolfinx_eqlb.eqlb.check_eqlb_conditions as eqlb_checker
 
-
 from utils import MeshType, create_unitsquare_builtin, create_unitsquare_gmsh
-
 from testcase_general import BCType, set_arbitrary_rhs, set_arbitrary_bcs
 from testcase_poisson import solve_primal_problem, equilibrate_fluxes
 
@@ -48,7 +45,7 @@ def equilibrate_multi_rhs(
     # Create mesh
     if mesh_type == MeshType.builtin:
         geometry = create_unitsquare_builtin(
-            2, dmesh.CellType.triangle, dmesh.DiagonalType.crossed
+            2, mesh.CellType.triangle, mesh.DiagonalType.crossed
         )
     elif mesh_type == MeshType.gmsh:
         geometry = create_unitsquare_gmsh(0.5)
@@ -56,7 +53,7 @@ def equilibrate_multi_rhs(
         raise ValueError("Unknown mesh type")
 
     # Set function space primal problem
-    V_prime = dfem.FunctionSpace(geometry.mesh, ("P", degree))
+    V_prime = fem.FunctionSpace(geometry.mesh, ("P", degree))
 
     # --- Setup/solve two primal problems
     # Initialise storage

@@ -13,10 +13,7 @@ import pytest
 
 import basix
 import basix.ufl_wrapper
-
-import dolfinx.mesh as dmesh
-import dolfinx.fem as dfem
-
+from dolfinx import fem, mesh
 import ufl
 
 from dolfinx_eqlb.lsolver import (
@@ -31,16 +28,16 @@ from dolfinx_eqlb.lsolver import (
 def setup_problem_projection(cell, n_elmt):
     # Set cell variables
     if cell == ufl.triangle:
-        cell_mesh = dmesh.CellType.triangle
+        cell_mesh = mesh.CellType.triangle
         cell_basix = basix.CellType.triangle
     elif cell == ufl.tetrahedron:
-        cell_mesh = dmesh.CellType.tetrahedron
+        cell_mesh = mesh.CellType.tetrahedron
         cell_basix = basix.CellType.tetrahedron
     elif cell == ufl.quadrilateral:
-        cell_mesh = dmesh.CellType.quadrilateral
+        cell_mesh = mesh.CellType.quadrilateral
         cell_basix = basix.CellType.quadrilateral
     elif cell == ufl.hexahedron:
-        cell_mesh = dmesh.CellType.hexahedron
+        cell_mesh = mesh.CellType.hexahedron
         cell_basix = basix.CellType.hexahedron
     else:
         assert False
@@ -49,17 +46,17 @@ def setup_problem_projection(cell, n_elmt):
     if cell.geometric_dimension() == 1:
         assert False
     elif cell.geometric_dimension() == 2:
-        msh = dmesh.create_unit_square(
-            MPI.COMM_WORLD, n_elmt, n_elmt, cell_mesh, dmesh.GhostMode.shared_facet
+        msh = mesh.create_unit_square(
+            MPI.COMM_WORLD, n_elmt, n_elmt, cell_mesh, mesh.GhostMode.shared_facet
         )
     else:
-        msh = dmesh.create_unit_cube(
+        msh = mesh.create_unit_cube(
             MPI.COMM_WORLD,
             n_elmt,
             n_elmt,
             n_elmt,
             cell_mesh,
-            dmesh.GhostMode.shared_facet,
+            mesh.GhostMode.shared_facet,
         )
 
     return msh, cell_basix
@@ -113,8 +110,8 @@ def test_localprojection_lagrange(cell, is_vectorvalued, degree, test_func):
             elif test_func == "function_ufl":
                 elmt_rhs = ufl.VectorElement("DQ", msh.ufl_cell(), degree + 1)
 
-    V = dfem.FunctionSpace(msh, elmt)
-    proj_local = dfem.Function(V)
+    V = fem.FunctionSpace(msh, elmt)
+    proj_local = fem.Function(V)
 
     # Linear- and bilineaform
     u = ufl.TrialFunction(V)
@@ -127,9 +124,9 @@ def test_localprojection_lagrange(cell, is_vectorvalued, degree, test_func):
             dvol = ufl.dx
             quad_deg = None
             if cell.geometric_dimension() == 2:
-                f_rhs = dfem.Constant(msh, PETSc.ScalarType(np.array([2, 5])))
+                f_rhs = fem.Constant(msh, PETSc.ScalarType(np.array([2, 5])))
             elif cell.geometric_dimension() == 3:
-                f_rhs = dfem.Constant(msh, PETSc.ScalarType(np.array([2, 5, 1])))
+                f_rhs = fem.Constant(msh, PETSc.ScalarType(np.array([2, 5, 1])))
             else:
                 assert False
         elif test_func == "ufl":
@@ -172,8 +169,8 @@ def test_localprojection_lagrange(cell, is_vectorvalued, degree, test_func):
                 return u
 
             # Create function-representation of rhs
-            V_rhs = dfem.FunctionSpace(msh, elmt_rhs)
-            f_rhs = dfem.Function(V_rhs)
+            V_rhs = fem.FunctionSpace(msh, elmt_rhs)
+            f_rhs = fem.Function(V_rhs)
 
             if cell.geometric_dimension() == 2:
                 f_rhs.interpolate(rhs_2D)
@@ -199,8 +196,8 @@ def test_localprojection_lagrange(cell, is_vectorvalued, degree, test_func):
                 return u
 
             # Create function-representation of rhs
-            V_rhs = dfem.FunctionSpace(msh, elmt_rhs)
-            func_rhs = dfem.Function(V_rhs)
+            V_rhs = fem.FunctionSpace(msh, elmt_rhs)
+            func_rhs = fem.Function(V_rhs)
 
             if cell.geometric_dimension() == 2:
                 func_rhs.interpolate(rhs_2D)
@@ -210,12 +207,12 @@ def test_localprojection_lagrange(cell, is_vectorvalued, degree, test_func):
                 assert False
 
             # Create source term by taking divergence of vector
-            f_rhs = dfem.Constant(msh, PETSc.ScalarType(1.5)) * ufl.grad(func_rhs)
+            f_rhs = fem.Constant(msh, PETSc.ScalarType(1.5)) * ufl.grad(func_rhs)
     else:
         if test_func == "const":
             dvol = ufl.dx
             quad_deg = None
-            f_rhs = dfem.Constant(msh, PETSc.ScalarType(2))
+            f_rhs = fem.Constant(msh, PETSc.ScalarType(2))
         elif test_func == "ufl":
             dvol = ufl.Measure(
                 "dx", domain=msh, metadata={"quadrature_degree": 3 * degree}
@@ -245,8 +242,8 @@ def test_localprojection_lagrange(cell, is_vectorvalued, degree, test_func):
                 return u
 
             # Create function-representation of rhs
-            V_rhs = dfem.FunctionSpace(msh, elmt_rhs)
-            f_rhs = dfem.Function(V_rhs)
+            V_rhs = fem.FunctionSpace(msh, elmt_rhs)
+            f_rhs = fem.Function(V_rhs)
 
             if cell.geometric_dimension() == 2:
                 f_rhs.interpolate(rhs_2D)
@@ -275,8 +272,8 @@ def test_localprojection_lagrange(cell, is_vectorvalued, degree, test_func):
                 return u
 
             # Create function-representation of rhs
-            V_rhs = dfem.FunctionSpace(msh, elmt_rhs)
-            func_rhs = dfem.Function(V_rhs)
+            V_rhs = fem.FunctionSpace(msh, elmt_rhs)
+            func_rhs = fem.Function(V_rhs)
 
             if cell.geometric_dimension() == 2:
                 func_rhs.interpolate(rhs_2D)
@@ -286,12 +283,12 @@ def test_localprojection_lagrange(cell, is_vectorvalued, degree, test_func):
                 assert False
 
             # Create source term by taking divergence of vector
-            f_rhs = dfem.Constant(msh, PETSc.ScalarType(1.5)) * ufl.div(func_rhs)
+            f_rhs = fem.Constant(msh, PETSc.ScalarType(1.5)) * ufl.div(func_rhs)
 
     l = ufl.inner(f_rhs, v) * dvol
 
     # Calculate global projection
-    problem = dfem.petsc.LinearProblem(
+    problem = fem.petsc.LinearProblem(
         a, l, bcs=[], petsc_options={"ksp_type": "preonly", "pc_type": "lu"}
     )
     proj_global = problem.solve()
@@ -328,8 +325,8 @@ def test_localprojection_hdiv(cell, family_basix, degree, test_func):
     )
     elmt = basix.ufl_wrapper.BasixElement(elmt_basix)
 
-    V = dfem.FunctionSpace(msh, elmt)
-    proj_local = dfem.Function(V)
+    V = fem.FunctionSpace(msh, elmt)
+    proj_local = fem.Function(V)
 
     # Linear- and bilineaform
     u = ufl.TrialFunction(V)
@@ -343,10 +340,10 @@ def test_localprojection_hdiv(cell, family_basix, degree, test_func):
         if cell.geometric_dimension() == 1:
             assert False
         elif cell.geometric_dimension() == 2:
-            func = dfem.Constant(msh, PETSc.ScalarType(np.array([2, 5])))
+            func = fem.Constant(msh, PETSc.ScalarType(np.array([2, 5])))
 
         else:
-            func = dfem.Constant(msh, PETSc.ScalarType(np.array([2, 5, 9])))
+            func = fem.Constant(msh, PETSc.ScalarType(np.array([2, 5, 9])))
     elif test_func == "ufl":
         dvol = ufl.Measure("dx", domain=msh, metadata={"quadrature_degree": 3 * degree})
         quad_deg = 3 * degree
@@ -374,8 +371,8 @@ def test_localprojection_hdiv(cell, family_basix, degree, test_func):
 
         # Create rhs-function
         elmt_rhs = ufl.VectorElement("P", msh.ufl_cell(), degree)
-        V_rhs = dfem.FunctionSpace(msh, elmt_rhs)
-        func = dfem.Function(V_rhs)
+        V_rhs = fem.FunctionSpace(msh, elmt_rhs)
+        func = fem.Function(V_rhs)
 
         # Interpolation function
         def rhs_2D(x):
@@ -401,7 +398,7 @@ def test_localprojection_hdiv(cell, family_basix, degree, test_func):
     l = ufl.inner(func, v) * dvol
 
     # Calculate global projection
-    problem = dfem.petsc.LinearProblem(
+    problem = fem.petsc.LinearProblem(
         a, l, bcs=[], petsc_options={"ksp_type": "preonly", "pc_type": "lu"}
     )
     proj_global = problem.solve()
@@ -426,8 +423,8 @@ def test_localprojection_solvers(type_solver):
     # Create Function space
     elmt = ufl.FiniteElement("DG", msh.ufl_cell(), 2)
 
-    V = dfem.FunctionSpace(msh, elmt)
-    proj_local = dfem.Function(V)
+    V = fem.FunctionSpace(msh, elmt)
+    proj_local = fem.Function(V)
 
     # Linear- and bilineaform
     u = ufl.TrialFunction(V)
@@ -443,14 +440,14 @@ def test_localprojection_solvers(type_solver):
     l = ufl.inner(f_rhs, v) * dvol
 
     # Calculate global projection
-    problem = dfem.petsc.LinearProblem(
+    problem = fem.petsc.LinearProblem(
         a, l, bcs=[], petsc_options={"ksp_type": "preonly", "pc_type": "lu"}
     )
     proj_global = problem.solve()
 
     # Calculate local projection
-    form_a = dfem.form(a)
-    form_l = dfem.form(l)
+    form_a = fem.form(a)
+    form_l = fem.form(l)
 
     if type_solver == "lu":
         local_solver_lu([proj_local], form_a, [form_l])

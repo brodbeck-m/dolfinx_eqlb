@@ -8,14 +8,12 @@
 
 import pytest
 
-import dolfinx.mesh as dmesh
-import dolfinx.fem as dfem
+from dolfinx import fem, mesh
 import ufl
 
 import dolfinx_eqlb.eqlb.check_eqlb_conditions as eqlb_checker
 
 from utils import MeshType, create_unitsquare_builtin, create_unitsquare_gmsh
-
 from testcase_general import BCType, set_arbitrary_rhs, set_arbitrary_bcs
 from testcase_elasticity import solve_primal_problem, equilibrate_stresses
 
@@ -45,7 +43,7 @@ def test_equilibration_conditions(mesh_type: MeshType, degree: int, bc_type: BCT
 
     if mesh_type == MeshType.builtin:
         geometry = create_unitsquare_builtin(
-            2, dmesh.CellType.triangle, dmesh.DiagonalType.crossed
+            2, mesh.CellType.triangle, mesh.DiagonalType.crossed
         )
     elif mesh_type == MeshType.gmsh:
         geometry = create_unitsquare_gmsh(0.5)
@@ -63,7 +61,7 @@ def test_equilibration_conditions(mesh_type: MeshType, degree: int, bc_type: BCT
         for degree_prime in range(max(2, degree - 1), degree + 1):
             for degree_rhs in range(0, degree):
                 # Set function space
-                V_prime = dfem.VectorFunctionSpace(geometry.mesh, ("P", degree_prime))
+                V_prime = fem.VectorFunctionSpace(geometry.mesh, ("P", degree_prime))
 
                 # Determine degree of projected quantities (primal flux, RHS)
                 degree_proj = max(degree_prime - 1, degree_rhs)
@@ -102,13 +100,13 @@ def test_equilibration_conditions(mesh_type: MeshType, degree: int, bc_type: BCT
                 rhs_projected_row = []
                 neumann_functions_row = [[] for _ in range(gdim)]
 
-                V_aux = dfem.FunctionSpace(
+                V_aux = fem.FunctionSpace(
                     geometry.mesh,
                     ("DG", rhs_projected.function_space.element.basix_element.degree),
                 )
 
                 for i in range(geometry.mesh.geometry.dim):
-                    rhs_projected_row.append(dfem.Function(V_aux))
+                    rhs_projected_row.append(fem.Function(V_aux))
 
                     # RHS: Get values from vector values space
                     rhs_projected_row[-1].x.array[:] = (
