@@ -396,43 +396,29 @@ def equilibrate_flux(
     if bc_type == BCType.dirichlet:
         # Facets on Dirichlet boundary of primal problem
         fcts_essnt = facet_tags.indices
-
-        # Set flux BCs
-        qdegree = None
     elif bc_type == BCType.neumann_hom:
         # Facets on Dirichlet boundary of primal problem
-        fcts_essnt = facet_tags.indices[
-            np.logical_or(facet_tags.values == 1, facet_tags.values == 3)
-        ]
-
-        # Set flux BCs
-        qdegree = None
+        fcts_essnt = facet_tags.indices[np.isin(facet_tags.values, [1, 3])]
 
         bc_dual.append(
             fluxbc(
                 dfem.Constant(domain, PETSc.ScalarType(0.0)),
-                facet_tags.indices[
-                    np.logical_or(facet_tags.values == 2, facet_tags.values == 4)
-                ],
+                facet_tags.indices[np.isin(facet_tags.values, [2, 4])],
                 equilibrator.V_flux,
             )
         )
     elif bc_type == BCType.neumann_inhom:
         # Facets on Dirichlet boundary of primal problem
-        fcts_essnt = facet_tags.indices[
-            np.logical_or(facet_tags.values == 2, facet_tags.values == 4)
-        ]
+        fcts_essnt = facet_tags.indices[np.isin(facet_tags.values, [2, 4])]
 
         # Set flux BCs
-        qdegree = 3 * order_eqlb
-
         bc_dual.append(
             fluxbc(
                 ufl.grad(exact_solution(ufl)(x))[0],
                 facet_tags.indices[facet_tags.values == 1],
                 equilibrator.V_flux,
                 requires_projection=True,
-                quadrature_degree=qdegree,
+                quadrature_degree=3 * order_eqlb,
             )
         )
         bc_dual.append(
@@ -441,13 +427,11 @@ def equilibrate_flux(
                 facet_tags.indices[facet_tags.values == 3],
                 equilibrator.V_flux,
                 requires_projection=True,
-                quadrature_degree=qdegree,
+                quadrature_degree=3 * order_eqlb,
             )
         )
 
-    equilibrator.set_boundary_conditions(
-        [fcts_essnt], [bc_dual], quadrature_degree=qdegree
-    )
+    equilibrator.set_boundary_conditions([fcts_essnt], [bc_dual])
 
     # Solve equilibration
     timing = 0
@@ -491,14 +475,14 @@ if __name__ == "__main__":
     mesh_type = MeshType.builtin
 
     # The considered equilibration strategy
-    Equilibrator = FluxEqlbEV
+    Equilibrator = FluxEqlbSE
 
     # The orders of the FE spaces
     order_prime = 1
     order_eqlb = 1
 
     # The boundary conditions
-    bc_type = BCType.dirichlet
+    bc_type = BCType.neumann_hom
 
     # The mesh resolution
     sdisc_nelmt = 10

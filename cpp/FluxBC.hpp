@@ -44,7 +44,7 @@ class FluxBC
   using scalar_value_type_t = typename scalar_value_type<T>::value_type;
 
 public:
-  /// Temporary storage of boundary conditions
+  /// Temporary storage of boundary conditions (no quadrature required)
   ///
   /// Passes the boundary conditions for the flux-space from the python
   /// interface to the c++ level. The precompiled normal-trace of the flux is
@@ -56,8 +56,6 @@ public:
   ///                                  prescribed
   /// @param boundary_value            The pre-complied normal-trace of the flux
   /// @param n_bceval_per_fct          Number of evaluations per facet
-  /// @param projection_required       Id if projection of the normal-trace into
-  ///                                  the DG_(k-1) space is required
   /// @param coefficients              The vector of coefficient data
   /// @param positions_of_coefficients The positions each data set within the
   ///                                  extracted vector of coefficients.
@@ -67,14 +65,49 @@ public:
          std::function<void(T*, const T*, const T*, const scalar_value_type_t*,
                             const int*, const std::uint8_t*)>
              boundary_value,
-         int n_bceval_per_fct, bool projection_required,
+         int n_bceval_per_fct,
          std::vector<std::shared_ptr<const fem::Function<T>>> coefficients,
          std::vector<int> positions_of_coefficients,
          std::vector<std::shared_ptr<const fem::Constant<T>>> constants)
       : _function_space(function_space), _fcts(boundary_facets),
         _nfcts(boundary_facets.size()), _boundary_kernel(boundary_value),
-        _cstide_eval(n_bceval_per_fct),
-        _projection_required(projection_required), _coefficients(coefficients),
+        _cstide_eval(n_bceval_per_fct), _projection_required(false),
+        _quadrature_degree(0), _coefficients(coefficients),
+        _coefficient_positions(positions_of_coefficients), _constants(constants)
+  {
+  }
+
+  /// Temporary storage of boundary conditions (quadrature required)
+  ///
+  /// Passes the boundary conditions for the flux-space from the python
+  /// interface to the c++ level. The precompiled normal-trace of the flux is
+  /// stored, together with the boundary facets an some informations, required
+  /// for calculation the boundary DOFs therefrom.
+  ///
+  /// @param function_space            The collapsed flux FunctionSpace
+  /// @param boundary_facets           The mesh-facets on which the flux is
+  ///                                  prescribed
+  /// @param boundary_value            The pre-complied normal-trace of the flux
+  /// @param n_bceval_per_fct          Number of evaluations per facet
+  /// @param quadrature_degree         The quadrature degree for the projection
+  ///                                  of the boundary condition
+  /// @param coefficients              The vector of coefficient data
+  /// @param positions_of_coefficients The positions each data set within the
+  ///                                  extracted vector of coefficients.
+  /// @param constants                 The constants
+  FluxBC(std::shared_ptr<const fem::FunctionSpace> function_space,
+         const std::vector<std::int32_t>& boundary_facets,
+         std::function<void(T*, const T*, const T*, const scalar_value_type_t*,
+                            const int*, const std::uint8_t*)>
+             boundary_value,
+         int n_bceval_per_fct, int quadrature_degree,
+         std::vector<std::shared_ptr<const fem::Function<T>>> coefficients,
+         std::vector<int> positions_of_coefficients,
+         std::vector<std::shared_ptr<const fem::Constant<T>>> constants)
+      : _function_space(function_space), _fcts(boundary_facets),
+        _nfcts(boundary_facets.size()), _boundary_kernel(boundary_value),
+        _cstide_eval(n_bceval_per_fct), _projection_required(true),
+        _quadrature_degree(quadrature_degree), _coefficients(coefficients),
         _coefficient_positions(positions_of_coefficients), _constants(constants)
   {
   }
@@ -88,9 +121,13 @@ public:
   /// @param[out] num_eval The number of point evaluations per facet
   int num_eval_per_facet() const { return _cstide_eval; }
 
-  /// Return if projection is required
+  /// Check if projection is required
   /// @param[out] projection_id The projection id
   bool projection_required() const { return _projection_required; }
+
+  /// Get quadrature degree for projection
+  /// @param[out] projection_id The projection id
+  int quadrature_degree() const { return _quadrature_degree; }
 
   /// Return list of boundary facets
   /// @param[out] fcts The list of boundary facets
@@ -248,8 +285,9 @@ protected:
   // Number of data-points per facet
   const int _cstide_eval;
 
-  // Projection id (true, if projection is required)
+  // Projection
   const bool _projection_required;
+  const int _quadrature_degree;
 };
 
 } // namespace dolfinx_eqlb

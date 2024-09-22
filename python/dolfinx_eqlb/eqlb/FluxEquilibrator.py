@@ -87,7 +87,6 @@ class FluxEquilibrator:
         self,
         list_bfct_prime: typing.List[np.ndarray],
         list_bcs_flux: typing.List[typing.List[FluxBC]],
-        quadrature_degree: typing.Optional[int] = None,
     ):
         raise NotImplementedError
 

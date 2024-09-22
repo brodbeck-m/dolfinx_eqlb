@@ -119,14 +119,12 @@ class FluxEqlbSE(FluxEquilibrator):
         self,
         list_bfct_prime: typing.List[np.ndarray],
         list_bcs_flux: typing.List[typing.List[FluxBC]],
-        quadrature_degree: typing.Optional[int] = None,
     ):
         """Set boundary conditions
 
         Args:
             list_bfct_prime:   The facets with essential BCs of the primal problem
             list_bcs_flux:     The list of boundary conditions
-            quadrature_degree: The quadrature degree (for projecting the BCs)
         """
 
         # Check input data
@@ -145,7 +143,6 @@ class FluxEqlbSE(FluxEquilibrator):
             True,
             list_bfct_prime,
             self.equilibrate_stresses,
-            quadrature_degree,
         )
 
         for i in range(0, self.n_fluxes):

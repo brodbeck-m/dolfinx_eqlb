@@ -147,7 +147,6 @@ void declare_bcs(py::module& m)
               [](std::shared_ptr<const fem::FunctionSpace> function_space,
                  const std::vector<std::int32_t>& boundary_facets,
                  std::uintptr_t kernel_ptr, int n_bceval_per_fct,
-                 bool projection_required,
                  std::vector<std::shared_ptr<const fem::Function<T>>>
                      coefficients,
                  std::vector<int> positions_of_coefficients,
@@ -178,13 +177,58 @@ void declare_bcs(py::module& m)
                 // Return class
                 return FluxBC<T>(function_space, boundary_facets,
                                  tabulate_tensor_ptr, n_bceval_per_fct,
-                                 projection_required, coefficients,
+                                 coefficients, positions_of_coefficients,
+                                 constants);
+              }),
+          py::arg("function_space"), py::arg("facets"),
+          py::arg("pointer_boundary_kernel"), py::arg("nevals_per_fct"),
+          py::arg("coefficients"), py::arg("position_of_coefficients"),
+          py::arg("constants"))
+      .def(
+          py::init(
+              [](std::shared_ptr<const fem::FunctionSpace> function_space,
+                 const std::vector<std::int32_t>& boundary_facets,
+                 std::uintptr_t kernel_ptr, int n_bceval_per_fct,
+                 int quadrature_degree,
+                 std::vector<std::shared_ptr<const fem::Function<T>>>
+                     coefficients,
+                 std::vector<int> positions_of_coefficients,
+                 std::vector<std::shared_ptr<const fem::Constant<T>>> constants)
+              {
+                using scalar_value_type_t =
+                    typename scalar_value_type<T>::value_type;
+
+                using kern = std::function<void(
+                    T*, const T*, const T*, const scalar_value_type_t*,
+                    const int*, const std::uint8_t*)>;
+
+                // Cast kernel_ptr to ufcx_expression
+                ufcx_expression* expression
+                    = reinterpret_cast<ufcx_expression*>(kernel_ptr);
+
+                // Extract executable kernel
+                kern tabulate_tensor_ptr = nullptr;
+                if constexpr (std::is_same_v<T, double>)
+                {
+                  tabulate_tensor_ptr = expression->tabulate_tensor_float64;
+                }
+                else
+                {
+                  throw std::runtime_error("Unsupported data type");
+                }
+
+                // Return class
+                return FluxBC<T>(function_space, boundary_facets,
+                                 tabulate_tensor_ptr, n_bceval_per_fct,
+                                 quadrature_degree, coefficients,
                                  positions_of_coefficients, constants);
               }),
           py::arg("function_space"), py::arg("facets"),
           py::arg("pointer_boundary_kernel"), py::arg("nevals_per_fct"),
-          py::arg("projection_required"), py::arg("coefficients"),
-          py::arg("position_of_coefficients"), py::arg("constants"));
+          py::arg("quadrature_degree"), py::arg("coefficients"),
+          py::arg("position_of_coefficients"), py::arg("constants"))
+      .def_property_readonly("quadrature_degree",
+                             &FluxBC<T>::quadrature_degree);
 
   /* The collection of all BCs of all RHS */
   py::class_<BoundaryData<T>, std::shared_ptr<BoundaryData<T>>>(

@@ -17,7 +17,7 @@ import dolfinx.fem as dfem
 import ufl
 
 from dolfinx_eqlb.lsolver import local_projection
-from dolfinx_eqlb.eqlb import fluxbc
+from dolfinx_eqlb.eqlb import fluxbc, FluxEqlbEV, FluxEqlbSE
 
 from utils import Geometry
 
@@ -129,7 +129,7 @@ def solve_primal_problem(
 
 
 def equilibrate_fluxes(
-    Equilibrator: typing.Any,
+    Equilibrator: typing.Union[FluxEqlbEV, FluxEqlbSE],
     degree_flux: int,
     geometry: Geometry,
     sig_proj: typing.List[dfem.Function],
@@ -142,7 +142,7 @@ def equilibrate_fluxes(
     """Equilibrate the fluxes
 
     Args:
-        Equilibrator        The equilibrator object
+        Equilibrator        The equilibrator class
         degree_flux:        Degree of flux space
         geometry:           The geometry
         sig_proj:           The projected fluxes

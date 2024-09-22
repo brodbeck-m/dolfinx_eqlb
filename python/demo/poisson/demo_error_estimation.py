@@ -146,7 +146,7 @@ if __name__ == "__main__":
     mesh_type = MeshType.builtin
 
     # The considered equilibration strategy
-    Equilibrator = FluxEqlbEV
+    Equilibrator = FluxEqlbSE
 
     # The orders of the FE spaces
     order_prime = 1

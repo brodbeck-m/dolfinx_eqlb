@@ -26,7 +26,7 @@ def fluxbc(
     value: typing.Any,
     facets: np.ndarray,
     V: dfem.FunctionSpace,
-    requires_projection: typing.Optional[bool] = True,
+    requires_projection: typing.Optional[bool] = False,
     quadrature_degree: typing.Optional[int] = None,
 ) -> FluxBC:
     """Essential boundary condition for one flux on a set of facets
@@ -35,7 +35,8 @@ def fluxbc(
         value:               Boundary values (flux x normal) as ufl-function
         facets:              The boundary facets
         V:                   The function space of the reconstructed flux
-        requires_projection: Specifies if boundary values have to be projected into appropriate P space
+        requires_projection: Perform projection for non matching (non-polynomial or
+                             higher-order polynomial) boundary data
         quadrature_degree:   Degree of quadrature rule for projection
 
     Returns:
@@ -65,12 +66,10 @@ def fluxbc(
     if requires_projection:
         # Quadrature degree
         if quadrature_degree is None:
-            qdegree = 2 * (flux_degree - 1)
-        else:
-            qdegree = quadrature_degree
+            quadrature_degree = 2 * (flux_degree - 1)
 
         # Create appropriate quadrature rule
-        qpnts, _ = basix.make_quadrature(fct_type, qdegree)
+        qpnts, _ = basix.make_quadrature(fct_type, quadrature_degree)
 
         # Number of evaluation points per facet
         neval_per_fct = qpnts.shape[0]
@@ -137,16 +136,30 @@ def fluxbc(
         coefficients_cpp.append(coefficients[i]._cpp_object)
         positions.append(c_positions[i])
 
-    return FluxBC(
-        V._cpp_object,
-        facets,
-        ffi.cast("uintptr_t", ffi.addressof(ufcx_form)),
-        int(pnts_eval.shape[0] / nfcts_per_cell),
-        requires_projection,
-        coefficients_cpp,
-        positions,
-        constants_cpp,
-    )
+    # Initialise FluxBC
+    if requires_projection:
+        bc = FluxBC(
+            V._cpp_object,
+            facets,
+            ffi.cast("uintptr_t", ffi.addressof(ufcx_form)),
+            int(pnts_eval.shape[0] / nfcts_per_cell),
+            quadrature_degree,
+            coefficients_cpp,
+            positions,
+            constants_cpp,
+        )
+    else:
+        bc = FluxBC(
+            V._cpp_object,
+            facets,
+            ffi.cast("uintptr_t", ffi.addressof(ufcx_form)),
+            int(pnts_eval.shape[0] / nfcts_per_cell),
+            coefficients_cpp,
+            positions,
+            constants_cpp,
+        )
+
+    return bc
 
 
 def boundarydata(
@@ -156,7 +169,6 @@ def boundarydata(
     custom_rt: bool,
     dirichlet_facets: typing.List[np.ndarray],
     equilibrate_stress: bool,
-    quadrature_degree: typing.Optional[int] = None,
 ) -> BoundaryData:
     """The collected essential boundary conditions for set of reconstructed fluxes
 
@@ -170,7 +182,6 @@ def boundarydata(
         V:                 The function space of the reconstructed flux
         custom_rt:         Identifier if custom RT element is used
         dirichlet_facets:  Identifier if stresses are equilibrated
-        quadrature_degree: Degree of quadrature rule for projection
 
     Returns:
         The collection of essential BC of a reconstructed flux
@@ -184,13 +195,11 @@ def boundarydata(
 
     # Set (default) quadrature degree
     degree_flux = V.element.basix_element.degree
-    if quadrature_degree is None:
-        qdegree = 2 * (degree_flux - 1)
-    else:
-        if quadrature_degree < 2 * (degree_flux - 1):
-            raise RuntimeError("Quadrature has to be at least 2*k!")
-        else:
-            qdegree = quadrature_degree
+    qdegree = 2 * (degree_flux - 1)
+
+    for bcs in flux_conditions:
+        for bc in bcs:
+            qdegree = max(qdegree, bc.quadrature_degree)
 
     # Extract cpp-objects from boundary data
     boundary_data_cpp = [f._cpp_object for f in boundary_data]

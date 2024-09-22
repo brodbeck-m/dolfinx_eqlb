@@ -146,21 +146,11 @@ def test_boundary_data_polynomial(
         # Initialise boundary data
         if rt_space == "subspace":
             boundary_data = boundarydata(
-                [list_bcs],
-                [boundary_function],
-                V.sub(0),
-                custom_rt,
-                [[]],
-                True,
+                [list_bcs], [boundary_function], V.sub(0), custom_rt, [[]], True
             )
         else:
             boundary_data = boundarydata(
-                [list_bcs],
-                [boundary_function],
-                V_flux,
-                custom_rt,
-                [[]],
-                True,
+                [list_bcs], [boundary_function], V_flux, custom_rt, [[]], True
             )
 
         # Interpolate BC into test-space
@@ -245,13 +235,7 @@ def test_boundary_data_general(mesh_type: MeshType, degree: int):
 
     # Initialise boundary data
     boundary_data = boundarydata(
-        [list_bcs],
-        [boundary_function],
-        V_flux,
-        True,
-        [[]],
-        True,
-        quadrature_degree=3 * degree,
+        [list_bcs], [boundary_function], V_flux, True, [[]], True
     )
 
     # Evaluate BCs on control points

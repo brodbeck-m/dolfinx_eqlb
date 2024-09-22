@@ -511,9 +511,7 @@ def equilibrate(
 
     # Set boundary conditions
     equilibrator.set_boundary_conditions(
-        [facet_tags.indices[:], facet_tags.indices[:]],
-        [[], []],
-        quadrature_degree=3 * degree,
+        [facet_tags.indices[:], facet_tags.indices[:]], [[], []]
     )
 
     # Solve equilibration
