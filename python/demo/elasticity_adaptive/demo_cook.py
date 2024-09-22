@@ -842,11 +842,11 @@ if __name__ == "__main__":
     sdisc_type = DiscType.displacement
     order_prime = 2
 
-    # Error estimation
-    order_eqlb = 3
+    # The equilibration
+    order_eqlb = 2
     guarantied_upper_bound = False
 
-    # Adaptive algorithm
+    # The adaptive algorithm
     nref = 10
     doerfler = 0.6
 
