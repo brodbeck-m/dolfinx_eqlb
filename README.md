@@ -1,10 +1,12 @@
 # dolfinx for flux equilibration (dolfinx_eqlb)
+Author: Maximilian Brodbeck
+
 ## Description
 dolfinx_eqlb is an open source library, extending FEniCSx by local flux equilibration strategies. The resulting H(div) conforming fluxes can be used for the construction of adaptive finite element solvers for the Poisson problem [[1]](#1), elasticity [[2]](#2)[[3]](#3)[[4]](#4) or poro-elasticity [[5]](#5)[[6]](#6).  
 
 The flux equilibration relies on so called patches, groups of all cells, connected with one node of the mesh. On each patch a constrained minimisation problem is solved [[7]](#7). In order to improve computational efficiency, a so called semi-explicit strategy [[8]](#8)[[9]](#9) is also implemented. The solution procedure is thereby split into two steps: An explicit determination of an H(div) function, fulfilling the minimisation constraints, followed by an unconstrained minimisation on a reduced, patch-wise ansatz space. If equilibration is applied to elasticity -- stress tensors have distinct symmetry properties -- an additional constrained minimisation step, after the row wise reconstruction of the tensor [[3]](#3)[[4]](#4) is implemented.
 
-## Features
+### Features
 dolfinx_eqlb supports flux equilibration on two-dimensional domains with arbitrary triangular grids. It further includes the following features
 - A local projector into arbitrary function-spaces with cell-wise support
 - A hierarchic Raviart-Thomas element based on Boffi, Brezzi and Fortin [[10]](#10)
@@ -12,7 +14,7 @@ dolfinx_eqlb supports flux equilibration on two-dimensional domains with arbitra
 - Flux equilibration based on Ern and Vohralik (FluxEqlbEV) or a semi-explicit strategy (FluxEqlbSE)
 - Stress equilibration considering distinct symmetry properties in a weak sense
 
-## Getting started
+### Getting started
 1. Clone this repository using the command:
 
 ```shell
@@ -46,24 +48,106 @@ cd ./root/dolfinx_eqlb/python/demo/elasticity
 python3 demo_reconstruction.py  
 ```
 
-## Equilibrated fluxes for a-posteriori error estimation
-Based on equilibrated fluxes reliable error estimates for different problem classes can be constructed. Showcases for the Poisson problem (estimate by Ern and Vohralik [[2]](#2)) and linear elasticity (following Bertrand et al. [[3]](#3)) are provided in the demo section:
+## Documentation
+Flux equilibration can either be used to improve the accuracy of dual quantity - e.g. the flux for a Poisson or heat equation or the stress in elasticity - by a post-processing step or as a basis for a-posteriori error estimation. Incorporating equilibration into a solution procedure required the following four steps:
+1. Solve the primal problem based on Lagrangian finite elements of degree $k$.
+2. Calculate the approximated dual quantity from the primal field.
+3. Project the right-hand-side (RHS) of the primal problem as well as the approximated dual quantity into discontinuous Lagrange spaces of order $m \geq k$. The projection can be solved using a [local solver](#section_local-solver).
+4. Equilibrate the dual quantity in an Raviart-Thomas space of order $m$.
 
+The algorithmic structure of the equilibration itself is described in [AddSource]. A short description of the relevant Python interfaces of the library is given below. Complete examples for the Poisson equation and linear elasticity can be found in the [demo section](https://github.com/brodbeck-m/dolfinx_eqlb/tree/main/python/demo). 
+
+### <a name="section_local-solver"></a> Local solvers
+Projecting an arbitrary function $\mathrm{f}$ into a discontinuous finite element space $\mathrm{V}$ requires the solution of
+$$ \left(\mathrm{u},\;\mathrm{v}\right) = \left(\mathrm{f},\;\mathrm{v}\right) $$
+for all $\mathrm{v}\in\mathrm{V}$. As the function space $\mathrm{V}$ is discontinuous, the solution on each finite element can be computed independently. Assuming 'f_ufl' to be the ufl-representation of a function, the following code snippet shows the local projection:
+```python
+from dolfinx.fem import FunctionSpace
+from dolfinx_eqlb.lsolver import local_projection
+
+# Initialise target function space
+V_proj = FunctionSpace(domain, ("DG", m - 1))
+
+# Project f_ufl into fe-function
+f_proj = local_projection(V_proj, [f_ufl])
+```
+```f_proj``` will be a list of functions, with the same length as the second argument of 'local_projection'. This allows the simultaneous projection of multiple function (as long as they have the same target function space), which is beneficial from a performance perspective, as the system matrix has to be factorised only once. Due to the symmetric and positive definite system matrix, a Cholesky decomposition is used.
+
+### <a name="section_equilibrator"></a>Setting up the equilibrator
+Based on projections of the approximated dual quantity and the RHS the equilibrator itself can be initialised. In order to improve efficiency, multiple RHS can be equilibrated at the same time. Assuming that for each $\bm{\varsigma}^\mathrm{R}_h$ a divergence condition of the form
+$$\nabla\cdot\bm{\varsigma}^\mathrm{R}_h = \Pi_{m-1}\mathrm{f}$$
+holds. $\Pi_{m-1}\left(\bullet\right)$ denotes the projection into a discontinous Lagrange space of order $m-1$. 
+
+Having lists of DOLFINx functions with the projected RHS ```list_rhs```$=\left\{\mathrm{f}_i\right\}$
+and the projected dual quantities ```list_sigmah```$=\left\{\bm{\varsigma}\left(\mathrm{u}_h\right)\big\vert_i\right\}$ the equilibrator is initialised as follows:
+```python
+from dolfinx_eqlb.eqlb import FluxEqlbEV, FluxEqlbSE
+
+# Initialise equilibrated (approach by Ern and Vohralik [7])
+equilibrator = FluxEqlbEV (m, domain , list_rhs , list_sigmah)
+
+# Initialise equilibrated (semi-explicit approach [8,9])
+equilibrator = FluxEqlbSE (m, domain , list_rhs , list_sigmah)
+```
+The semi-explicit equilibrator can be initialised with two optional arguments ```equilibrate_stress``` and ```estimate_korn_constant```. When the first one is set, the first ```gdim``` fluxes are treated as rows of a stress tensor and symmetry is enforced weakly [[3]](#3). The one enables the evaluation of the cells Korn constants (only for 2D) based on [[11]](#11). The Korn constants, stored within a $\mathrm{DP}_0$ function, can be extracted by the appropriate getter method:
+```python
+equilibrator.get_korn_constants()
+```
+
+Before the actual equilibration can be performed, boundary data namely the boundary facets on $\Gamma_\mathrm{D}$ and $\Gamma_\mathrm{N}$ as well as the normal traces of the flux on $\Gamma_\mathrm{N}$ , are required. While the facets lists are of type ```NDArray```, the (different) normal traces are stored in a list.
+
+Assuming a domain with Dirichlet BCs on facets with ```facet_tags```$\in\left\{1,2\right\}$ and Neumann BCs for ```facet_tags```$\in\left\{3,4\right\}$, the following code snippet shows how to specify them:
+```python
+from numpy import isin
+from dolfinx_eqlb.eqlb import fluxbc
+
+# Get list of boundary facets
+dftcs = facet_tags.indices[isin(facet_tags.values, [1, 2])]
+nfcts = facet_tags.indices[isin(facet_tags.values, [3, 4])]
+
+# Set Neumann boundary
+bc = []
+bc.append(fluxbc(f_neumann, nfcts, equilibrator.V_flux))
+```
+The function ```fluxbc``` has thereby the optional arguments ```requires_projection``` and ```quadrature_degree```. They are required when the traction lies not in the polynomial space of order $m-1$. Setting ```requires_projection``` enforces an $\mathrm{L}^2$-projection when the boundary DOFs are evaluated. The optionally specified ```quadrature_degree``` is then for the evaluation of the linear form of the projection. 
+
+With these information provided for each simultaneously equilibrated flux the equilibration can be solved:
+```python
+# Set boundary conditions
+equilibrator.set_boundary_conditions(list_dfcts, list_bcs)
+
+# Solve equilibration
+equilibrator.equilibrate_fluxes()
+```
+
+### Equilibrated fluxes for a-posteriori error estimation
+Based on equilibrated fluxes reliable error estimates for different problem classes can be constructed. Showcases for the Poisson problem (estimate by Ern and Vohralik [[2]](#2)) and linear elasticity (following Bertrand et al. [[3]](#3)) are provided in the demo section. For both problems the equilibration- and error estimation process is demonstrated on a unit-square with manufactured solution on a series of uniformly refined meshes:
 ```shell
-./launch-container.sh
+# Start the docker container
+./docker/launch-container.sh
 
-# Equilibration for a Poisson problem
+# --- Poisson problem ---
+# Flux equilibration
+cd ./root/dolfinx_eqlb/python/demo/poisson
+python3 demo_reconstruction.py  
+
+# Error estimation on a series of uniformly refined meshes
 cd ./root/dolfinx_eqlb/python/demo/poisson
 python3 demo_error_estimation.py  
 
-# Equilibration for linear elasticity
+# --- Linear elasticity ---
+# Stress equilibration (with weak symmetry)
+cd ./root/dolfinx_eqlb/python/demo/elasticity
+python3 demo_reconstruction.py
+
+# Error estimation on a series of uniformly refined meshes
 cd ./root/dolfinx_eqlb/python/demo/elasticity
 python3 demo_error_estimation.py  
 ```
 
-Therein, a manufactured solution is solved on a rectangular domain, discretised by a series of uniformly refined meshes. The actual error, contributions of the error estimate and convergence ratios are reported in a csv-file. 
+Further examples on adaptively refined meshes are provided for [Poisson](https://github.com/brodbeck-m/dolfinx_eqlb/tree/main/python/demo/poisson_adaptive) and [linear elasticity](https://github.com/brodbeck-m/dolfinx_eqlb/tree/main/python/demo/elacticity_adaptive).
 
-This approach can now be transferred to other problems.
+## Related publications
 
 ## Literature
 <a id="1">[1]</a> Braess, D. and Schöberl, J.: Equilibrated Residual Error Estimator for Edge Elements (2008).
@@ -86,6 +170,8 @@ conforming elements (2012).
 <a id="9">[9]</a> Bertrand et al.: Stabilization-free HHO a posteriori error control (2023).
 
 <a id="10">[10]</a> Boffi et al.: Mixed finite element methods and applications (2013).
+
+<a id="11">[11]</a> Kim, K.-Y.: Guaranteed A Posteriori Error Estimator for Mixed Finite Element Methods of Linear Elasticity with Weak Stress Symmetry (2011).
 
 ## License
 
