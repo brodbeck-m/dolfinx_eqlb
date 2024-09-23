@@ -1,10 +1,11 @@
 # dolfinx for flux equilibration (dolfinx_eqlb)
+[![Project Status: Active – The project has reached a stable, usable state and is being actively developed.](https://www.repostatus.org/badges/latest/active.svg)](https://www.repostatus.org/#active) [![Identifier](https://img.shields.io/badge/doi-10.18419%2Fdarus--4459-d45815.svg)](https://doi.org/10.18419/darus-4459)
+
 Author: Maximilian Brodbeck
 
-## Description
-dolfinx_eqlb is an open source library, extending FEniCSx by local flux equilibration strategies. The resulting H(div) conforming fluxes can be used for the construction of adaptive finite element solvers for the Poisson problem [[1]](#1), elasticity [[2]](#2)[[3]](#3)[[4]](#4) or poro-elasticity [[5]](#5)[[6]](#6).  
+This library contains an add-on to FEniCSx enabling local flux equilibration strategies. The resulting H(div) conforming fluxes can be used for the construction of adaptive finite element solvers for the Poisson problem [[1]](#1), elasticity [[2]](#2)[[3]](#3)[[4]](#4) or poro-elasticity [[5]](#5)[[6]](#6).  
 
-The flux equilibration relies on so called patches, groups of all cells, connected with one node of the mesh. On each patch a constrained minimisation problem is solved [[7]](#7). In order to improve computational efficiency, a so called semi-explicit strategy [[8]](#8)[[9]](#9) is also implemented. The solution procedure is thereby split into two steps: An explicit determination of an H(div) function, fulfilling the minimisation constraints, followed by an unconstrained minimisation on a reduced, patch-wise ansatz space. If equilibration is applied to elasticity -- stress tensors have distinct symmetry properties -- an additional constrained minimisation step, after the row wise reconstruction of the tensor [[3]](#3)[[4]](#4) is implemented.
+The equilibration process relies on so called patches, groups of all cells, connected with one node of the mesh. On each patch a constrained minimisation problem is solved [[7]](#7). In order to improve computational efficiency, a so called semi-explicit strategy [[8]](#8)[[9]](#9) is also implemented. The solution procedure is thereby split into two steps: An explicit determination of an H(div) function, fulfilling the minimisation constraints, followed by an unconstrained minimisation on a reduced, patch-wise ansatz space. If equilibration is applied to elasticity -- the stress tensor has a distinct symmetry -- an additional constrained minimisation step after the row wise reconstruction of the tensor [[3]](#3)[[4]](#4) is implemented.
 
 ### Features
 dolfinx_eqlb supports flux equilibration on two-dimensional domains with arbitrary triangular grids. It further includes the following features
@@ -147,7 +148,8 @@ python3 demo_error_estimation.py
 
 Further examples on adaptively refined meshes are provided for [Poisson](https://github.com/brodbeck-m/dolfinx_eqlb/tree/main/python/demo/poisson_adaptive) and [linear elasticity](https://github.com/brodbeck-m/dolfinx_eqlb/tree/main/python/demo/elacticity_adaptive).
 
-## Related publications
+## How to cite
+dolfinx_eqlb is a research software. The latest release can be found on [DaRUS](https://doi.org/10.18419/darus-4479), or - if citations of individual files or code lines are required - on [Software Heritage](???).
 
 ## Literature
 <a id="1">[1]</a> Braess, D. and Schöberl, J.: Equilibrated Residual Error Estimator for Edge Elements (2008).
