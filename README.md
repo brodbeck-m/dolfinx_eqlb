@@ -149,7 +149,7 @@ python3 demo_error_estimation.py
 Further examples on adaptively refined meshes are provided for [Poisson](https://github.com/brodbeck-m/dolfinx_eqlb/tree/main/python/demo/poisson_adaptive) and [linear elasticity](https://github.com/brodbeck-m/dolfinx_eqlb/tree/main/python/demo/elacticity_adaptive).
 
 ## How to cite
-dolfinx_eqlb is a research software. The latest release can be found on [DaRUS](https://doi.org/10.18419/darus-4479), or - if citations of individual files or code lines are required - on [Software Heritage](???).
+dolfinx_eqlb is a research software. The latest release can be cited via [DaRUS](https://doi.org/10.18419/darus-4479), or - if citations of individual files or code lines are required - via [Software Heritage](???).
 
 ## Literature
 <a id="1">[1]</a> Braess, D. and Schöberl, J.: Equilibrated Residual Error Estimator for Edge Elements (2008).
