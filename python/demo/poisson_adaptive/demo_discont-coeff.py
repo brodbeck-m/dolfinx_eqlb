@@ -511,7 +511,6 @@ def equilibrate(
         check_equilibration: Id if equilibration conditions are checked
 
     Returns:
-        The projected flux,
         The equilibrated flux
     """
 
@@ -676,7 +675,7 @@ if __name__ == "__main__":
         uh, k = solve(domain, uext, order_prime)
 
         # Equilibrate the flux
-        delta_sigmaR, _ = equilibrate(
+        delta_sigmaR = equilibrate(
             equilibrator, domain, -k * ufl.grad(uh), order_eqlb, False
         )
 

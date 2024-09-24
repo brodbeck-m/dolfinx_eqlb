@@ -505,6 +505,7 @@ def equilibrate(
 
     Returns:
         The difference between equilibrated and projected stress (as ufl tensor)
+        The cells Korn constant
     """
 
     # Check input

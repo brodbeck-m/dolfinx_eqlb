@@ -352,7 +352,6 @@ def equilibrate(
         check_equilibration: Id if equilibration conditions are checked
 
     Returns:
-        The projected flux,
         The equilibrated flux
     """
 
