@@ -26,10 +26,7 @@ from petsc4py import PETSc
 import time
 import typing
 
-import dolfinx
-from dolfinx.io import gmshio
-import dolfinx.fem as dfem
-import dolfinx.mesh as dmesh
+from dolfinx import fem, io, mesh
 import ufl
 
 from dolfinx_eqlb.eqlb import FluxEqlbEV, FluxEqlbSE
@@ -72,7 +69,7 @@ def exact_solution(x: NDArray) -> NDArray:
 
 
 # --- Mesh generation
-def create_lshape(h: float) -> dmesh.Mesh:
+def create_lshape(h: float) -> mesh.Mesh:
     # Initialise gmsh
     gmsh.initialize()
     gmsh.option.setNumber("General.Terminal", 0)
@@ -118,7 +115,7 @@ def create_lshape(h: float) -> dmesh.Mesh:
     gmsh.option.setNumber("Mesh.CharacteristicLengthMax", h)
     gmsh.model.mesh.generate(2)
 
-    domain_mesh, _, _ = gmshio.model_to_mesh(gmsh.model, MPI.COMM_WORLD, 0, gdim=2)
+    domain_mesh, _, _ = io.gmshio.model_to_mesh(gmsh.model, MPI.COMM_WORLD, 0, gdim=2)
 
     return domain_mesh
 
@@ -165,14 +162,14 @@ class AdaptiveLShape:
         facet_indices, facet_markers = [], []
 
         for marker, locator in self.boundary_markers:
-            facets = dmesh.locate_entities(self.mesh, 1, locator)
+            facets = mesh.locate_entities(self.mesh, 1, locator)
             facet_indices.append(facets)
             facet_markers.append(np.full(len(facets), marker))
 
         facet_indices = np.array(np.hstack(facet_indices), dtype=np.int32)
         facet_markers = np.array(np.hstack(facet_markers), dtype=np.int32)
         sorted_facets = np.argsort(facet_indices)
-        self.facet_functions = dmesh.meshtags(
+        self.facet_functions = mesh.meshtags(
             self.mesh, 1, facet_indices[sorted_facets], facet_markers[sorted_facets]
         )
         self.ds = ufl.Measure(
@@ -182,7 +179,7 @@ class AdaptiveLShape:
     def refine(
         self,
         doerfler: float,
-        eta_h: typing.Optional[dfem.Function] = None,
+        eta_h: typing.Optional[fem.Function] = None,
         outname: typing.Optional[str] = None,
     ):
         """Refine the mesh based on Doerflers marking strategy
@@ -201,12 +198,12 @@ class AdaptiveLShape:
 
         # Export marker to ParaView
         if outname is not None:
-            V_out = dfem.FunctionSpace(self.mesh, ("DG", 0))
-            eta_h_out = dfem.Function(V_out)
+            V_out = fem.FunctionSpace(self.mesh, ("DG", 0))
+            eta_h_out = fem.Function(V_out)
             eta_h_out.name = "eta_h"
             eta_h_out.x.array[:] = eta_h.array[:]
 
-            outfile = dolfinx.io.XDMFFile(
+            outfile = io.XDMFFile(
                 MPI.COMM_WORLD,
                 outname + "-mesh" + str(self.refinement_level) + "_error.xdmf",
                 "w",
@@ -217,7 +214,7 @@ class AdaptiveLShape:
 
         # Refine the mesh
         if np.isclose(doerfler, 1.0):
-            refined_mesh = dmesh.refine(self.mesh)
+            refined_mesh = mesh.refine(self.mesh)
         else:
             # Check input
             if eta_h is None:
@@ -245,8 +242,8 @@ class AdaptiveLShape:
             )
 
             # Refine mesh
-            edges = dmesh.compute_incident_entities(self.mesh, refine_cells, 2, 1)
-            refined_mesh = dmesh.refine(self.mesh, edges)
+            edges = mesh.compute_incident_entities(self.mesh, refine_cells, 2, 1)
+            refined_mesh = mesh.refine(self.mesh, edges)
 
         # Update the mesh
         self.mesh = refined_mesh
@@ -266,7 +263,7 @@ class AdaptiveLShape:
 
 
 # --- The primal problem
-def solve(domain: AdaptiveLShape, degree: int) -> dfem.Function:
+def solve(domain: AdaptiveLShape, degree: int) -> fem.Function:
     """Solves the Poisson problem based on lagrangian finite elements
 
     Args:
@@ -278,41 +275,36 @@ def solve(domain: AdaptiveLShape, degree: int) -> dfem.Function:
     """
 
     # Set function space (primal problem)
-    V_prime = dfem.FunctionSpace(domain.mesh, ("CG", degree))
-    uh = dfem.Function(V_prime)
+    V_prime = fem.FunctionSpace(domain.mesh, ("CG", degree))
+    uh = fem.Function(V_prime)
 
     # Set trial and test functions
     u = ufl.TrialFunction(V_prime)
     v = ufl.TestFunction(V_prime)
 
     # Equation system
-    a = dfem.form(ufl.inner(ufl.grad(u), ufl.grad(v)) * ufl.dx)
-    l = dfem.form(dfem.Constant(domain.mesh, PETSc.ScalarType(0)) * v * ufl.dx)
+    a = fem.form(ufl.inner(ufl.grad(u), ufl.grad(v)) * ufl.dx)
+    l = fem.form(fem.Constant(domain.mesh, PETSc.ScalarType(0)) * v * ufl.dx)
 
     # Dirichlet boundary conditions
-    uD = dfem.Function(V_prime)
+    uD = fem.Function(V_prime)
     uD.interpolate(exact_solution)
 
-    outfile = dolfinx.io.XDMFFile(MPI.COMM_WORLD, "solution.xdmf", "w")
-    outfile.write_mesh(domain.mesh)
-    outfile.write_function(uD, 0.0)
-    outfile.close()
-
-    dofs = dfem.locate_dofs_topological(V_prime, 1, domain.facet_functions.indices)
-    bc_essnt = [dfem.dirichletbc(uD, dofs)]
+    dofs = fem.locate_dofs_topological(V_prime, 1, domain.facet_functions.indices)
+    bc_essnt = [fem.dirichletbc(uD, dofs)]
 
     # Solve primal problem
     timing = 0
 
     timing -= time.perf_counter()
-    A = dfem.petsc.assemble_matrix(a, bcs=bc_essnt)
+    A = fem.petsc.assemble_matrix(a, bcs=bc_essnt)
     A.assemble()
 
-    L = dfem.petsc.create_vector(l)
-    dfem.petsc.assemble_vector(L, l)
-    dfem.apply_lifting(L, [a], [bc_essnt])
+    L = fem.petsc.create_vector(l)
+    fem.petsc.assemble_vector(L, l)
+    fem.apply_lifting(L, [a], [bc_essnt])
     L.ghostUpdate(addv=PETSc.InsertMode.ADD_VALUES, mode=PETSc.ScatterMode.REVERSE)
-    dfem.set_bc(L, bc_essnt)
+    fem.set_bc(L, bc_essnt)
 
     solver = PETSc.KSP().create(MPI.COMM_WORLD)
     solver.setOperators(A)
@@ -338,7 +330,7 @@ def equilibrate(
     sigma_h: typing.Any,
     degree: int,
     check_equilibration: typing.Optional[bool] = True,
-) -> dfem.Function:
+) -> fem.Function:
     """Equilibrate the flux
 
     The RHS is assumed to be the divergence of the exact
@@ -356,11 +348,11 @@ def equilibrate(
     """
 
     # Project flux and RHS into required DG space
-    V_rhs_proj = dfem.FunctionSpace(domain.mesh, ("DG", degree - 1))
-    V_flux_proj = dfem.VectorFunctionSpace(domain.mesh, ("DG", degree - 1))
+    V_rhs_proj = fem.FunctionSpace(domain.mesh, ("DG", degree - 1))
+    V_flux_proj = fem.VectorFunctionSpace(domain.mesh, ("DG", degree - 1))
 
     sigma_proj = local_projection(V_flux_proj, [sigma_h])
-    rhs_proj = [dfem.Function(V_rhs_proj)]
+    rhs_proj = [fem.Function(V_rhs_proj)]
 
     # Initialise equilibrator
     equilibrator = Equilibrator(degree, domain.mesh, rhs_proj, sigma_proj)
@@ -407,8 +399,8 @@ def equilibrate(
 # --- Estimate the error
 def estimate(
     domain: AdaptiveLShape,
-    delta_sigmaR: typing.Union[dfem.Function, typing.Any],
-) -> typing.Tuple[dfem.Function, float]:
+    delta_sigmaR: typing.Union[fem.Function, typing.Any],
+) -> typing.Tuple[fem.Function, float]:
     """Estimates the error of a Poisson problem
 
     The estimate is calculated based on [1]. For the given problem the
@@ -426,18 +418,18 @@ def estimate(
     """
 
     # Initialize storage of error
-    V_e = dfem.FunctionSpace(
+    V_e = fem.FunctionSpace(
         domain.mesh, ufl.FiniteElement("DG", domain.mesh.ufl_cell(), 0)
     )
     v = ufl.TestFunction(V_e)
 
     # Extract cell diameter
-    form_eta = dfem.form(ufl.inner(delta_sigmaR, delta_sigmaR) * v * ufl.dx)
+    form_eta = fem.form(ufl.inner(delta_sigmaR, delta_sigmaR) * v * ufl.dx)
 
     # Assemble errors
-    L_eta = dfem.petsc.create_vector(form_eta)
+    L_eta = fem.petsc.create_vector(form_eta)
 
-    dfem.petsc.assemble_vector(L_eta, form_eta)
+    fem.petsc.assemble_vector(L_eta, form_eta)
 
     return L_eta, np.sqrt(np.sum(L_eta.array))
 
@@ -445,27 +437,27 @@ def estimate(
 # --- Post processing
 def post_process(
     domain: AdaptiveLShape,
-    uh: dfem.Function,
+    uh: fem.Function,
     eta_h_tot: float,
     results: NDArray,
 ):
     # The function space
     degree_W = uh.function_space.element.basix_element.degree + 3
-    W = dfem.FunctionSpace(domain.mesh, ("CG", degree_W))
+    W = fem.FunctionSpace(domain.mesh, ("CG", degree_W))
 
     # Calculate err = uh - uext in W
-    uext_W = dfem.Function(W)
+    uext_W = fem.Function(W)
     uext_W.interpolate(exact_solution)
 
-    err_W = dfem.Function(W)
+    err_W = fem.Function(W)
     err_W.interpolate(uh)
 
     err_W.x.array[:] -= uext_W.x.array[:]
 
     # Evaluate H1 norm
     err_h1 = np.sqrt(
-        dfem.assemble_scalar(
-            dfem.form(ufl.inner(ufl.grad(err_W), ufl.grad(err_W)) * ufl.dx)
+        fem.assemble_scalar(
+            fem.form(ufl.inner(ufl.grad(err_W), ufl.grad(err_W)) * ufl.dx)
         )
     )
 
