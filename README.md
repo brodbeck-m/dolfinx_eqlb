@@ -71,8 +71,10 @@ The algorithmic structure of the equilibration itself is described in [AddSource
 
 ## <a id="ssection-doc_local-solver"></a> Local solvers
 Projecting an arbitrary function $\mathrm{f}$ into a discontinuous finite element space $\mathrm{V}$ requires the solution of
-$$ \left(\mathrm{u},\;\mathrm{v}\right) = \left(\mathrm{f},\;\mathrm{v}\right) $$
-for all $\mathrm{v}\in\mathrm{V}$. As the function space $\mathrm{V}$ is discontinuous, the solution on each finite element can be computed independently. Assuming 'f_ufl' to be the ufl-representation of a function, the following code snippet shows the local projection:
+```math
+\left(\mathrm{u},\;\mathrm{v}\right) = (\mathrm{f},\mathrm{v})
+```
+for all $\mathrm{v}\in\mathrm{V}$. As the function space $\mathrm{V}$ is discontinuous, the solution on each finite element can be computed independently. Assuming ```f_ufl``` to be the ufl-representation of a function, the following code snippet shows the local projection:
 ```python
 from dolfinx.fem import FunctionSpace
 from dolfinx_eqlb.lsolver import local_projection
@@ -86,12 +88,14 @@ f_proj = local_projection(V_proj, [f_ufl])
 ```f_proj``` will be a list of functions, with the same length as the second argument of 'local_projection'. This allows the simultaneous projection of multiple function (as long as they have the same target function space), which is beneficial from a performance perspective, as the system matrix has to be factorised only once. Due to the symmetric and positive definite system matrix, a Cholesky decomposition is used.
 
 ## <a id="ssection-doc_equilibrator"></a> The equilibrator
-Based on projections of the approximated dual quantity and the RHS the equilibrator itself can be initialised. In order to improve efficiency, multiple RHS can be equilibrated at the same time. Assuming that for each $\bm{\varsigma}^\mathrm{R}_h$ a divergence condition of the form
-$$\nabla\cdot\bm{\varsigma}^\mathrm{R}_h = \Pi_{m-1}\mathrm{f}$$
+Based on projections of the approximated dual quantity and the RHS the equilibrator itself can be initialised. In order to improve efficiency, multiple RHS can be equilibrated at the same time. Assuming that for each $\boldsymbol{\varsigma}^\mathrm{R}_h$ a divergence condition of the form
+```math
+\nabla\cdot\boldsymbol{\varsigma}^\mathrm{R}_h = \Pi_{m-1}\mathrm{f}
+```
 holds. $\Pi_{m-1}\left(\bullet\right)$ denotes the projection into a discontinous Lagrange space of order $m-1$. 
 
-Having lists of DOLFINx functions with the projected RHS ```list_rhs```$=\left\{\mathrm{f}_i\right\}$
-and the projected dual quantities ```list_sigmah```$=\left\{\bm{\varsigma}\left(\mathrm{u}_h\right)\big\vert_i\right\}$ the equilibrator is initialised as follows:
+Having lists of DOLFINx functions with the projected RHS ```list_rhs```$`=\left\{\mathrm{f}_i\right\}`$
+and the projected dual quantities ```list_sigmah```$`=\left\{\boldsymbol{\varsigma}\left(\mathrm{u}_h\right)\big\vert_i\right\}`$ the equilibrator is initialised as follows:
 ```python
 from dolfinx_eqlb.eqlb import FluxEqlbEV, FluxEqlbSE
 
@@ -108,7 +112,7 @@ equilibrator.get_korn_constants()
 
 Before the actual equilibration can be performed, boundary data namely the boundary facets on $\Gamma_\mathrm{D}$ and $\Gamma_\mathrm{N}$ as well as the normal traces of the flux on $\Gamma_\mathrm{N}$ , are required. While the facets lists are of type ```NDArray```, the (different) normal traces are stored in a list.
 
-Assuming a domain with Dirichlet BCs on facets with ```facet_tags```$\in\left\{1,2\right\}$ and Neumann BCs for ```facet_tags```$\in\left\{3,4\right\}$, the following code snippet shows how to specify them:
+Assuming a domain with Dirichlet BCs on facets with ```facet_tags```$`\in\left\{1,2\right\}`$ and Neumann BCs for ```facet_tags```$`\in\left\{3,4\right\}`$, the following code snippet shows how to specify them:
 ```python
 from numpy import isin
 from dolfinx_eqlb.eqlb import fluxbc
