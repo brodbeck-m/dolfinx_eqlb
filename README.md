@@ -137,7 +137,7 @@ equilibrator.equilibrate_fluxes()
 ```
 
 ## <a id="ssection-doc_error-estimation"></a> Equilibrated fluxes for a-posteriori error estimation
-Based on equilibrated fluxes reliable error estimates for different problem classes can be constructed. Showcases for the Poisson problem (estimate by Ern and Vohralik [[8]](#8)) and linear elasticity (following Bertrand et al. [[1]](#1)) are provided in the demo section. For both problems the equilibration- and error estimation process is demonstrated on a unit-square with manufactured solution on a series of uniformly refined meshes:
+Based on equilibrated fluxes reliable error estimates for different problem classes can be constructed. Showcases for the Poisson problem (estimate by Ern and Vohralik [[8]](#8)) and linear elasticity (following Bertrand et al. [[1]](#1)) are provided in the [demo section](https://github.com/brodbeck-m/dolfinx_eqlb/tree/main/python/demo). For both problems the equilibration- and error estimation process is demonstrated on a unit-square with manufactured solution on a series of uniformly refined meshes:
 ```shell
 # Start the docker container
 ./docker/launch-container.sh
