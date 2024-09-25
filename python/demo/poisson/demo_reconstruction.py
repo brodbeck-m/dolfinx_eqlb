@@ -29,10 +29,7 @@ from petsc4py import PETSc
 import time
 import typing
 
-import dolfinx
-from dolfinx.io import gmshio
-import dolfinx.fem as dfem
-import dolfinx.mesh as dmesh
+from dolfinx import fem, io, mesh
 import ufl
 
 from dolfinx_eqlb.eqlb import fluxbc, FluxEqlbEV, FluxEqlbSE
@@ -65,7 +62,7 @@ class MeshType(Enum):
 
 def create_unit_square_builtin(
     n_elmt: int,
-) -> typing.Tuple[dmesh.Mesh, dmesh.MeshTagsMetaClass, ufl.Measure]:
+) -> typing.Tuple[mesh.Mesh, mesh.MeshTagsMetaClass, ufl.Measure]:
     """Create a unit square using the build-in mesh generator
 
                     4
@@ -89,12 +86,12 @@ def create_unit_square_builtin(
         The tagged surface measure
     """
 
-    domain = dmesh.create_rectangle(
+    domain = mesh.create_rectangle(
         MPI.COMM_WORLD,
         [np.array([0, 0]), np.array([1, 1])],
         [n_elmt, n_elmt],
-        cell_type=dmesh.CellType.triangle,
-        diagonal=dmesh.DiagonalType.crossed,
+        cell_type=mesh.CellType.triangle,
+        diagonal=mesh.DiagonalType.crossed,
     )
 
     boundaries = [
@@ -106,14 +103,14 @@ def create_unit_square_builtin(
 
     facet_indices, facet_markers = [], []
     for marker, locator in boundaries:
-        facets = dolfinx.mesh.locate_entities(domain, 1, locator)
+        facets = mesh.locate_entities(domain, 1, locator)
         facet_indices.append(facets)
         facet_markers.append(np.full(len(facets), marker))
 
     facet_indices = np.array(np.hstack(facet_indices), dtype=np.int32)
     facet_markers = np.array(np.hstack(facet_markers), dtype=np.int32)
     sorted_facets = np.argsort(facet_indices)
-    facet_tag = dolfinx.mesh.meshtags(
+    facet_tag = mesh.meshtags(
         domain, 1, facet_indices[sorted_facets], facet_markers[sorted_facets]
     )
 
@@ -124,7 +121,7 @@ def create_unit_square_builtin(
 
 def create_unit_square_gmesh(
     h: float,
-) -> typing.Tuple[dmesh.Mesh, dmesh.MeshTagsMetaClass, ufl.Measure]:
+) -> typing.Tuple[mesh.Mesh, mesh.MeshTagsMetaClass, ufl.Measure]:
     """Create a unit square using gmsh
 
                     4
@@ -184,7 +181,7 @@ def create_unit_square_gmesh(
     gmsh.option.setNumber("Mesh.CharacteristicLengthMax", h)
     gmsh.model.mesh.generate(2)
 
-    domain_init, _, _ = gmshio.model_to_mesh(gmsh.model, MPI.COMM_WORLD, 0, gdim=2)
+    domain_init, _, _ = io.gmshio.model_to_mesh(gmsh.model, MPI.COMM_WORLD, 0, gdim=2)
 
     # --- Test if boundary patches contain at least 2 cells
     # List of refined cells
@@ -196,11 +193,11 @@ def create_unit_square_gmesh(
     pnt_to_cell = domain_init.topology.connectivity(0, 2)
 
     # The boundary facets
-    bfcts = dmesh.exterior_facet_indices(domain_init.topology)
+    bfcts = mesh.exterior_facet_indices(domain_init.topology)
 
     # Get boundary nodes
-    V = dfem.FunctionSpace(domain_init, ("Lagrange", 1))
-    bpnts = dfem.locate_dofs_topological(V, 1, bfcts)
+    V = fem.FunctionSpace(domain_init, ("Lagrange", 1))
+    bpnts = fem.locate_dofs_topological(V, 1, bfcts)
 
     # Check if point is linked with only on cell
     for pnt in bpnts:
@@ -214,10 +211,10 @@ def create_unit_square_gmesh(
 
     if len(list_ref_cells) > 0:
         print("Refine mesh on boundary")
-        domain = dmesh.refine(
+        domain = mesh.refine(
             domain_init,
             np.setdiff1d(
-                dmesh.compute_incident_entities(domain_init, list_ref_cells, 2, 1),
+                mesh.compute_incident_entities(domain_init, list_ref_cells, 2, 1),
                 bfcts,
             ),
         )
@@ -234,14 +231,14 @@ def create_unit_square_gmesh(
 
     facet_indices, facet_markers = [], []
     for marker, locator in boundaries:
-        facets = dolfinx.mesh.locate_entities(domain, 1, locator)
+        facets = mesh.locate_entities(domain, 1, locator)
         facet_indices.append(facets)
         facet_markers.append(np.full(len(facets), marker))
 
     facet_indices = np.array(np.hstack(facet_indices), dtype=np.int32)
     facet_markers = np.array(np.hstack(facet_markers), dtype=np.int32)
     sorted_facets = np.argsort(facet_indices)
-    facet_function = dolfinx.mesh.meshtags(
+    facet_function = mesh.meshtags(
         domain, 1, facet_indices[sorted_facets], facet_markers[sorted_facets]
     )
     ds = ufl.Measure("ds", domain=domain, subdomain_data=facet_function)
@@ -258,12 +255,12 @@ class BCType(Enum):
 
 def solve(
     order_prime: int,
-    domain: dmesh.Mesh,
-    facet_tags: dmesh.MeshTagsMetaClass,
+    domain: mesh.Mesh,
+    facet_tags: mesh.MeshTagsMetaClass,
     ds: ufl.Measure,
     bc_type: BCType,
     pdegree_rhs: typing.Optional[int] = None,
-) -> dfem.Function:
+) -> fem.Function:
     """Solves the Poisson problem based on lagrangian finite elements
 
     Args:
@@ -279,7 +276,7 @@ def solve(
     """
 
     # Set function space (primal problem)
-    V_prime = dfem.FunctionSpace(domain, ("CG", order_prime))
+    V_prime = fem.FunctionSpace(domain, ("CG", order_prime))
 
     # Set trial and test functions
     u = ufl.TrialFunction(V_prime)
@@ -292,7 +289,7 @@ def solve(
     if pdegree_rhs is None:
         rhs = f
     else:
-        rhs = local_projection(dfem.FunctionSpace(domain, ("DG", pdegree_rhs)), [f])[0]
+        rhs = local_projection(fem.FunctionSpace(domain, ("DG", pdegree_rhs)), [f])[0]
 
     # Equation system
     a = ufl.inner(ufl.grad(u), ufl.grad(v)) * ufl.dx
@@ -306,7 +303,7 @@ def solve(
         l += ufl.inner(ufl.grad(exact_solution(ufl)(x)), normal) * v * ds(3)
 
     # Dirichlet boundary conditions
-    uD = dfem.Function(V_prime)
+    uD = fem.Function(V_prime)
     uD.interpolate(exact_solution(np))
 
     if bc_type == BCType.dirichlet:
@@ -320,12 +317,12 @@ def solve(
             np.logical_or(facet_tags.values == 2, facet_tags.values == 4)
         ]
 
-    dofs_essnt = dfem.locate_dofs_topological(V_prime, 1, fcts_essnt)
-    bc_essnt = [dfem.dirichletbc(uD, dofs_essnt)]
+    dofs_essnt = fem.locate_dofs_topological(V_prime, 1, fcts_essnt)
+    bc_essnt = [fem.dirichletbc(uD, dofs_essnt)]
 
     # Solve primal problem
     timing = 0
-    problem = dfem.petsc.LinearProblem(
+    problem = fem.petsc.LinearProblem(
         a,
         l,
         bcs=bc_essnt,
@@ -351,12 +348,12 @@ def solve(
 def equilibrate(
     Equilibrator: typing.Union[FluxEqlbEV, FluxEqlbSE],
     order_eqlb: int,
-    domain: dmesh.Mesh,
-    facet_tags: dmesh.MeshTagsMetaClass,
+    domain: mesh.Mesh,
+    facet_tags: mesh.MeshTagsMetaClass,
     bc_type: BCType,
-    uh: dfem.Function,
+    uh: fem.Function,
     check_equilibration: typing.Optional[bool] = True,
-) -> typing.Tuple[dfem.Function, dfem.Function]:
+) -> typing.Tuple[fem.Function, fem.Function]:
     """Equilibrate the flux
 
     The RHS is assumed to be the divergence of the exact
@@ -381,8 +378,8 @@ def equilibrate(
     f = -ufl.div(ufl.grad(exact_solution(ufl)(x)))
 
     # Project flux and RHS into required DG space
-    V_rhs_proj = dfem.FunctionSpace(domain, ("DG", order_eqlb - 1))
-    V_flux_proj = dfem.VectorFunctionSpace(domain, ("DG", order_eqlb - 1))
+    V_rhs_proj = fem.FunctionSpace(domain, ("DG", order_eqlb - 1))
+    V_flux_proj = fem.VectorFunctionSpace(domain, ("DG", order_eqlb - 1))
 
     sigma_proj = local_projection(V_flux_proj, [-ufl.grad(uh)])
     rhs_proj = local_projection(V_rhs_proj, [f])
@@ -402,7 +399,7 @@ def equilibrate(
 
         bc_dual.append(
             fluxbc(
-                dfem.Constant(domain, PETSc.ScalarType(0.0)),
+                fem.Constant(domain, PETSc.ScalarType(0.0)),
                 facet_tags.indices[np.isin(facet_tags.values, [2, 4])],
                 equilibrator.V_flux,
             )
@@ -514,8 +511,8 @@ if __name__ == "__main__":
 
     # --- Export results to ParaView ---
     # Project flux into appropriate DG space
-    V_dg_hdiv = dfem.VectorFunctionSpace(domain, ("DG", order_eqlb))
-    v_dg_ref = dfem.VectorFunctionSpace(domain, ("DG", order_prime))
+    V_dg_hdiv = fem.VectorFunctionSpace(domain, ("DG", order_eqlb))
+    v_dg_ref = fem.VectorFunctionSpace(domain, ("DG", order_prime))
 
     sigma_ref = local_projection(
         v_dg_ref,
@@ -534,7 +531,7 @@ if __name__ == "__main__":
     sigma_eqlb_dg[0].name = "sigma_eqlb"
     sigma_ref[0].name = "sigma_ref"
 
-    outfile = dolfinx.io.XDMFFile(MPI.COMM_WORLD, "demo_equilibration.xdmf", "w")
+    outfile = io.XDMFFile(MPI.COMM_WORLD, "demo_equilibration.xdmf", "w")
     outfile.write_mesh(domain)
     outfile.write_function(uh, 1)
     outfile.write_function(sigma_ref[0], 1)
