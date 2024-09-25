@@ -30,8 +30,7 @@ from numpy.typing import NDArray
 from mpi4py import MPI
 import typing
 
-import dolfinx
-import dolfinx.fem as dfem
+from dolfinx import cpp, fem, mesh
 import ufl
 
 from demo_reconstruction import (
@@ -48,14 +47,14 @@ from demo_reconstruction import (
 
 # --- Error estimation ---
 def estimate(
-    domain: dolfinx.mesh.Mesh,
+    domain: mesh.Mesh,
     pi_1: float,
-    f: typing.Union[dfem.Function, typing.Any],
+    f: typing.Union[fem.Function, typing.Any],
     sdisc_type: DiscType,
-    u_h: typing.List[dfem.Function],
+    u_h: typing.List[fem.Function],
     sigma_h: typing.Any,
     delta_sigmaR: typing.Any,
-    korns_constants: dfem.Function,
+    korns_constants: fem.Function,
     guarantied_upper_bound: typing.Optional[bool] = True,
 ) -> typing.Tuple[float, typing.List[float]]:
     """Estimates the error of a linear elastic problem
@@ -83,16 +82,16 @@ def estimate(
     dvol = ufl.dx(degree=10)
 
     # Initialize storage of error
-    V_e = dfem.FunctionSpace(domain, ufl.FiniteElement("DG", domain.ufl_cell(), 0))
+    V_e = fem.FunctionSpace(domain, ufl.FiniteElement("DG", domain.ufl_cell(), 0))
     v = ufl.TestFunction(V_e)
 
     # Extract cell diameter
-    h_cell = dfem.Function(V_e)
+    h_cell = fem.Function(V_e)
     num_cells = (
         domain.topology.index_map(2).size_local
         + domain.topology.index_map(2).num_ghosts
     )
-    h = dolfinx.cpp.mesh.h(domain, 2, range(num_cells))
+    h = cpp.mesh.h(domain, 2, range(num_cells))
     h_cell.x.array[:] = h
 
     # The error estimate
@@ -107,7 +106,7 @@ def estimate(
     err_wsym = 0.5 * korns_constants * (delta_sigmaR[0, 1] - delta_sigmaR[1, 0])
 
     forms_eta = []
-    forms_eta.append(dfem.form(ufl.inner(delta_sigmaR, a_delta_sigma) * v * ufl.dx))
+    forms_eta.append(fem.form(ufl.inner(delta_sigmaR, a_delta_sigma) * v * ufl.dx))
 
     if sdisc_type == DiscType.displacement_pressure:
         # Error due to pressure approximation
@@ -116,18 +115,18 @@ def estimate(
         )
         err_div = ufl.div(u_h[0]) - (1 / pi_1) * u_h[1]
 
-        forms_eta.append(dfem.form(ca_squared * err_div * err_div * v * ufl.dx))
+        forms_eta.append(fem.form(ca_squared * err_div * err_div * v * ufl.dx))
 
-    forms_eta.append(dfem.form(ufl.inner(err_wsym, err_wsym) * v * ufl.dx))
-    forms_eta.append(dfem.form(ufl.inner(err_osc, err_osc) * v * dvol))
+    forms_eta.append(fem.form(ufl.inner(err_wsym, err_wsym) * v * ufl.dx))
+    forms_eta.append(fem.form(ufl.inner(err_osc, err_osc) * v * dvol))
 
     # Assemble cell-wise errors
     Li_eta = []
     eta_i = []
 
     for form in forms_eta:
-        Li_eta.append(dfem.petsc.create_vector(form))
-        dfem.petsc.assemble_vector(Li_eta[-1], form)
+        Li_eta.append(fem.petsc.create_vector(form))
+        fem.petsc.assemble_vector(Li_eta[-1], form)
 
         eta_i.append(np.sqrt(np.sum(Li_eta[-1].array)))
 
@@ -153,7 +152,8 @@ def estimate(
 def post_process(
     pi_1: float,
     sdisc_type: DiscType,
-    u_h: typing.List[dfem.Function],
+    nelmt: int,
+    u_h: typing.List[fem.Function],
     sigma_proj: typing.Any,
     delta_sigmaR: typing.Any,
     eta: float,
@@ -166,6 +166,7 @@ def post_process(
     Args:
         pi_1:           The ratio of lambda and mu
         sdisc_type:     The spatial discretisation
+        nelmt:          The number of elements
         u_h:            The approximated solution
         sigma_proj:     The projected stress tensor
         delta_sigmaR:   The equilibrated stress tensor
@@ -202,20 +203,20 @@ def post_process(
         ) * dvol
 
     err = np.sqrt(
-        domain.comm.allreduce(dfem.assemble_scalar(dfem.form(err_ufl)), op=MPI.SUM)
+        domain.comm.allreduce(fem.assemble_scalar(fem.form(err_ufl)), op=MPI.SUM)
     )
 
     # H(div) error stress
     diff = ufl.div(sigma_proj + delta_sigmaR - sigma_ext)
     err_sighdiv = np.sqrt(
         domain.comm.allreduce(
-            dfem.assemble_scalar(dfem.form(ufl.inner(diff, diff) * dvol)),
+            fem.assemble_scalar(fem.form(ufl.inner(diff, diff) * dvol)),
             op=MPI.SUM,
         )
     )
 
     # Store results
-    results[ref_level, 0] = 1 / sdisc_nelmt
+    results[ref_level, 0] = 1 / nelmt
     results[ref_level, 1] = domain.topology.index_map(2).size_local
     results[ref_level, 2] = err
     results[ref_level, 4] = err_sighdiv
@@ -258,13 +259,13 @@ if __name__ == "__main__":
     for i in range(convstudy_nref):
         # --- Create mesh
         # Set mesh resolution
-        sdisc_nelmt = sdisc_nelmt_init * 2**i
+        nelmt = sdisc_nelmt_init * 2**i
 
         # Create mesh
         if mesh_type == MeshType.builtin:
-            domain, facet_tags, ds = create_unit_square_builtin(sdisc_nelmt)
+            domain, facet_tags, ds = create_unit_square_builtin(nelmt)
         elif mesh_type == MeshType.gmsh:
-            domain, facet_tags, ds = create_unit_square_gmsh(1 / sdisc_nelmt)
+            domain, facet_tags, ds = create_unit_square_gmsh(1 / nelmt)
         else:
             raise ValueError("Unknown mesh type")
 
@@ -284,7 +285,7 @@ if __name__ == "__main__":
         )
 
         # Solve equilibration
-        stress_proj, stress_eqlb, ckorn = equilibrate(
+        stress_p, stress_e, ckorn = equilibrate(
             domain, facet_tags, f, stress_h, order_eqlb, True, False
         )
 
@@ -295,15 +296,15 @@ if __name__ == "__main__":
             -ufl.div(stress_ref),
             sdisc_type,
             u_h,
-            stress_proj,
-            stress_eqlb,
+            stress_p,
+            stress_e,
             ckorn,
             guarantied_upper_bound,
         )
 
         # --- Postprocessing
         post_process(
-            pi_1, sdisc_type, u_h, stress_proj, stress_eqlb, eta, eta_i, i, results
+            pi_1, sdisc_type, nelmt, u_h, stress_p, stress_e, eta, eta_i, i, results
         )
 
     # Calculate convergence rates

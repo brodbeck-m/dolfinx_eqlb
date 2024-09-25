@@ -32,8 +32,7 @@ import numpy as np
 from mpi4py import MPI
 import typing
 
-import dolfinx
-import dolfinx.fem as dfem
+from dolfinx import cpp, fem
 import ufl
 
 from dolfinx_eqlb.eqlb import FluxEqlbEV, FluxEqlbSE
@@ -52,8 +51,8 @@ from demo_reconstruction import (
 # --- Error estimation ---
 def estimate(
     f: typing.Any,
-    uh: dfem.Function,
-    sigma_eqlb: dfem.Function,
+    uh: fem.Function,
+    sigma_eqlb: fem.Function,
 ) -> typing.Tuple[float, float, float]:
     """Estimates the error of a Poisson problem
 
@@ -81,16 +80,16 @@ def estimate(
     )
 
     # Initialize storage of error
-    V_e = dfem.FunctionSpace(domain, ufl.FiniteElement("DG", domain.ufl_cell(), 0))
+    V_e = fem.FunctionSpace(domain, ufl.FiniteElement("DG", domain.ufl_cell(), 0))
     v = ufl.TestFunction(V_e)
 
     # Extract cell diameter
-    h_cell = dfem.Function(V_e)
+    h_cell = fem.Function(V_e)
     num_cells = (
         domain.topology.index_map(2).size_local
         + domain.topology.index_map(2).num_ghosts
     )
-    h = dolfinx.cpp.mesh.h(domain, 2, range(num_cells))
+    h = cpp.mesh.h(domain, 2, range(num_cells))
     h_cell.x.array[:] = h
 
     # Forms for error estimation
@@ -102,15 +101,15 @@ def estimate(
         err_sig = ufl.grad(uh) + sigma_eqlb
 
     err_osc = (h_cell / ufl.pi) * (f - ufl.div(sigma))
-    form_eta_sig = dfem.form(ufl.dot(err_sig, err_sig) * v * ufl.dx)
-    form_eta_osc = dfem.form(ufl.dot(err_osc, err_osc) * v * ufl.dx)
+    form_eta_sig = fem.form(ufl.dot(err_sig, err_sig) * v * ufl.dx)
+    form_eta_osc = fem.form(ufl.dot(err_osc, err_osc) * v * ufl.dx)
 
     # Assemble errors
-    Leta_sig = dfem.petsc.create_vector(form_eta_sig)
-    Leta_osc = dfem.petsc.create_vector(form_eta_osc)
+    Leta_sig = fem.petsc.create_vector(form_eta_sig)
+    Leta_osc = fem.petsc.create_vector(form_eta_osc)
 
-    dfem.petsc.assemble_vector(Leta_sig, form_eta_sig)
-    dfem.petsc.assemble_vector(Leta_osc, form_eta_osc)
+    fem.petsc.assemble_vector(Leta_sig, form_eta_sig)
+    fem.petsc.assemble_vector(Leta_osc, form_eta_osc)
 
     # Evaluate error norms
     error_estm = np.sqrt(
@@ -203,7 +202,7 @@ if __name__ == "__main__":
         diff = ufl.grad(uh_prime - u_ext)
         err_uh1 = np.sqrt(
             domain.comm.allreduce(
-                dfem.assemble_scalar(dfem.form(ufl.inner(diff, diff) * dvol)),
+                fem.assemble_scalar(fem.form(ufl.inner(diff, diff) * dvol)),
                 op=MPI.SUM,
             )
         )
@@ -212,7 +211,7 @@ if __name__ == "__main__":
         diff = ufl.div(sigma - sigma_ext)
         err_sighdiv = np.sqrt(
             domain.comm.allreduce(
-                dfem.assemble_scalar(dfem.form(diff * diff * dvol)),
+                fem.assemble_scalar(fem.form(diff * diff * dvol)),
                 op=MPI.SUM,
             )
         )

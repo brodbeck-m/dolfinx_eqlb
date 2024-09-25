@@ -8,26 +8,24 @@
 
 This demo uses a element-local solver to project two non-polynomial 
 functions into an element-wise polynomial space.
-
 """
 
 from mpi4py import MPI
 import numpy as np
 
-import dolfinx.mesh as dmesh
-import dolfinx.fem as dfem
+from dolfinx import fem, mesh
 import ufl
 
 from dolfinx_eqlb.lsolver import local_projection
 
 # --- Setup problem ---
 # Generate mesh
-domain = dmesh.create_unit_square(
-    MPI.COMM_WORLD, 8, 8, dmesh.CellType.triangle, dmesh.GhostMode.shared_facet
+domain = mesh.create_unit_square(
+    MPI.COMM_WORLD, 8, 8, mesh.CellType.triangle, mesh.GhostMode.shared_facet
 )
 
 # Set function space, into which the solution is projected
-V_proj = dfem.FunctionSpace(domain, ("DG", 2))
+V_proj = fem.FunctionSpace(domain, ("DG", 2))
 
 # Define non-linear functions
 x_ufl = ufl.SpatialCoordinate(domain)
@@ -48,10 +46,10 @@ l_1 = ufl.inner(nlfunc_1, v) * dvol
 l_2 = ufl.inner(nlfunc_2, v) * dvol
 
 # Solve projection
-problem_1 = dfem.petsc.LinearProblem(a, l_1, bcs=[], petsc_options={"ksp_type": "cg"})
+problem_1 = fem.petsc.LinearProblem(a, l_1, bcs=[], petsc_options={"ksp_type": "cg"})
 uproj_1_global = problem_1.solve()
 
-problem_2 = dfem.petsc.LinearProblem(a, l_2, bcs=[], petsc_options={"ksp_type": "cg"})
+problem_2 = fem.petsc.LinearProblem(a, l_2, bcs=[], petsc_options={"ksp_type": "cg"})
 uproj_2_global = problem_2.solve()
 
 # --- Local projection ---

@@ -8,16 +8,13 @@
 
 Solution of the quasi-static linear elasticity equation
 
-        -div(2 * eps + pi_1 * div(u) * I) = f ,
+        div(sigma) = -f  with sigma = 2 * eps + pi_1 * div(u) * I,
 
-with subsequent stress reconstruction. A convergence 
-study based on a manufactured solution
+with subsequent stress reconstruction. Dirichlet boundary conditions
+are applied on the entire boundary using the exact solution
 
     u_ext = [ sin(pi * x) * cos(pi * y) + x²/(2*pi_1),
-             -cos(pi * x) * sin(pi * y) + y²/(2*pi_1)]
-
-is performed. Dirichlet boundary conditions are 
-applied on boundary surfaces [1, 2, 3, 4].
+             -cos(pi * x) * sin(pi * y) + y²/(2*pi_1)] .
 """
 
 from enum import Enum
@@ -28,10 +25,7 @@ from petsc4py import PETSc
 import time
 import typing
 
-import dolfinx
-import dolfinx.fem as dfem
-from dolfinx.io import gmshio
-import dolfinx.mesh as dmesh
+from dolfinx import fem, io, mesh
 import ufl
 
 from dolfinx_eqlb.eqlb import FluxEqlbSE
@@ -66,7 +60,7 @@ def exact_solution(x: typing.Any, pi_1: float) -> typing.Any:
     )
 
 
-def interpolate_ufl_to_function(f_ufl: typing.Any, f_fe: dfem.Function):
+def interpolate_ufl_to_function(f_ufl: typing.Any, f_fe: fem.Function):
     """Interpolates a UFL expression to a function
 
     Args:
@@ -75,7 +69,7 @@ def interpolate_ufl_to_function(f_ufl: typing.Any, f_fe: dfem.Function):
     """
 
     # Create expression
-    expr = dfem.Expression(f_ufl, f_fe.function_space.element.interpolation_points())
+    expr = fem.Expression(f_ufl, f_fe.function_space.element.interpolation_points())
 
     # Perform interpolation
     f_fe.interpolate(expr)
@@ -89,7 +83,7 @@ class MeshType(Enum):
 
 def create_unit_square_builtin(
     n_elmt: int,
-) -> typing.Tuple[dmesh.Mesh, dmesh.MeshTagsMetaClass, ufl.Measure]:
+) -> typing.Tuple[mesh.Mesh, mesh.MeshTagsMetaClass, ufl.Measure]:
     """Create a unit square using the build-in mesh generator
 
                     4
@@ -113,12 +107,12 @@ def create_unit_square_builtin(
         The tagged surface measure
     """
 
-    domain = dmesh.create_rectangle(
+    domain = mesh.create_rectangle(
         MPI.COMM_WORLD,
         [np.array([0, 0]), np.array([1, 1])],
         [n_elmt, n_elmt],
-        cell_type=dmesh.CellType.triangle,
-        diagonal=dmesh.DiagonalType.crossed,
+        cell_type=mesh.CellType.triangle,
+        diagonal=mesh.DiagonalType.crossed,
     )
 
     boundaries = [
@@ -130,14 +124,14 @@ def create_unit_square_builtin(
 
     facet_indices, facet_markers = [], []
     for marker, locator in boundaries:
-        facets = dolfinx.mesh.locate_entities(domain, 1, locator)
+        facets = mesh.locate_entities(domain, 1, locator)
         facet_indices.append(facets)
         facet_markers.append(np.full(len(facets), marker))
 
     facet_indices = np.array(np.hstack(facet_indices), dtype=np.int32)
     facet_markers = np.array(np.hstack(facet_markers), dtype=np.int32)
     sorted_facets = np.argsort(facet_indices)
-    facet_tag = dolfinx.mesh.meshtags(
+    facet_tag = mesh.meshtags(
         domain, 1, facet_indices[sorted_facets], facet_markers[sorted_facets]
     )
 
@@ -148,7 +142,7 @@ def create_unit_square_builtin(
 
 def create_unit_square_gmsh(
     h: float,
-) -> typing.Tuple[dmesh.Mesh, dmesh.MeshTagsMetaClass, ufl.Measure]:
+) -> typing.Tuple[mesh.Mesh, mesh.MeshTagsMetaClass, ufl.Measure]:
     """Create a unit square using gmsh
 
                     4
@@ -208,7 +202,7 @@ def create_unit_square_gmsh(
     gmsh.option.setNumber("Mesh.CharacteristicLengthMax", h)
     gmsh.model.mesh.generate(2)
 
-    domain_init, _, _ = gmshio.model_to_mesh(gmsh.model, MPI.COMM_WORLD, 0, gdim=2)
+    domain_init, _, _ = io.gmshio.model_to_mesh(gmsh.model, MPI.COMM_WORLD, 0, gdim=2)
 
     # --- Test if boundary patches contain at least 2 cells
     # List of refined cells
@@ -220,11 +214,11 @@ def create_unit_square_gmsh(
     pnt_to_cell = domain_init.topology.connectivity(0, 2)
 
     # The boundary facets
-    bfcts = dmesh.exterior_facet_indices(domain_init.topology)
+    bfcts = mesh.exterior_facet_indices(domain_init.topology)
 
     # Get boundary nodes
-    V = dfem.FunctionSpace(domain_init, ("Lagrange", 1))
-    bpnts = dfem.locate_dofs_topological(V, 1, bfcts)
+    V = fem.FunctionSpace(domain_init, ("Lagrange", 1))
+    bpnts = fem.locate_dofs_topological(V, 1, bfcts)
 
     # Check if point is linked with only on cell
     for pnt in bpnts:
@@ -238,10 +232,10 @@ def create_unit_square_gmsh(
 
     if len(list_ref_cells) > 0:
         print("Refine mesh on boundary")
-        domain = dmesh.refine(
+        domain = mesh.refine(
             domain_init,
             np.setdiff1d(
-                dmesh.compute_incident_entities(domain_init, list_ref_cells, 2, 1),
+                mesh.compute_incident_entities(domain_init, list_ref_cells, 2, 1),
                 bfcts,
             ),
         )
@@ -258,14 +252,14 @@ def create_unit_square_gmsh(
 
     facet_indices, facet_markers = [], []
     for marker, locator in boundaries:
-        facets = dolfinx.mesh.locate_entities(domain, 1, locator)
+        facets = mesh.locate_entities(domain, 1, locator)
         facet_indices.append(facets)
         facet_markers.append(np.full(len(facets), marker))
 
     facet_indices = np.array(np.hstack(facet_indices), dtype=np.int32)
     facet_markers = np.array(np.hstack(facet_markers), dtype=np.int32)
     sorted_facets = np.argsort(facet_indices)
-    facet_function = dolfinx.mesh.meshtags(
+    facet_function = mesh.meshtags(
         domain, 1, facet_indices[sorted_facets], facet_markers[sorted_facets]
     )
     ds = ufl.Measure("ds", domain=domain, subdomain_data=facet_function)
@@ -285,16 +279,16 @@ class SolverType(Enum):
 
 
 def solve(
-    domain: dmesh.Mesh,
-    facet_tags: dmesh.MeshTagsMetaClass,
+    domain: mesh.Mesh,
+    facet_tags: mesh.MeshTagsMetaClass,
     pi_1: float,
     sdisc_type: DiscType,
     degree: int,
     degree_rhs: typing.Optional[int] = None,
     solver_type: typing.Optional[SolverType] = SolverType.LU,
 ) -> typing.Tuple[
-    typing.Union[dfem.Function, typing.Any],
-    typing.List[dfem.Function],
+    typing.Union[fem.Function, typing.Any],
+    typing.List[fem.Function],
     typing.Any,
     typing.Any,
 ]:
@@ -327,7 +321,7 @@ def solve(
     if degree_rhs is None:
         rhs = f
     else:
-        V_rhs = dfem.VectorFunctionSpace(domain, ("DG", degree_rhs))
+        V_rhs = fem.VectorFunctionSpace(domain, ("DG", degree_rhs))
         rhs = local_projection(V_rhs, [f])[0]
 
     # --- Set weak form and BCs
@@ -337,8 +331,8 @@ def solve(
             raise ValueError("Consistency condition for weak symmetry not fulfilled!")
 
         # The function space
-        V = dfem.VectorFunctionSpace(domain, ("CG", degree))
-        uh = dfem.Function(V)
+        V = fem.VectorFunctionSpace(domain, ("CG", degree))
+        uh = fem.Function(V)
 
         # Trial- and test-functions
         u = ufl.TrialFunction(V)
@@ -347,15 +341,15 @@ def solve(
         # The variational form
         sigma = 2 * ufl.sym(ufl.grad(u)) + pi_1 * ufl.div(u) * ufl.Identity(2)
 
-        a = dfem.form(ufl.inner(sigma, ufl.sym(ufl.grad(v))) * ufl.dx)
-        l = dfem.form(ufl.inner(rhs, v) * ufl.dx)
+        a = fem.form(ufl.inner(sigma, ufl.sym(ufl.grad(v))) * ufl.dx)
+        l = fem.form(ufl.inner(rhs, v) * ufl.dx)
 
         # The Dirichlet BCs
-        uD = dfem.Function(V)
+        uD = fem.Function(V)
         interpolate_ufl_to_function(u_ext, uD)
 
-        dofs = dfem.locate_dofs_topological(V, 1, facet_tags.indices[:])
-        bcs_esnt = [dfem.dirichletbc(uD, dofs)]
+        dofs = fem.locate_dofs_topological(V, 1, facet_tags.indices[:])
+        bcs_esnt = [fem.dirichletbc(uD, dofs)]
     elif sdisc_type == DiscType.displacement_pressure:
         # Check input
         if solver_type != SolverType.LU:
@@ -367,8 +361,8 @@ def solve(
         elmt_u = ufl.VectorElement("P", domain.ufl_cell(), degree + 1)
         elmt_p = ufl.FiniteElement("P", domain.ufl_cell(), degree)
 
-        V = dfem.FunctionSpace(domain, ufl.MixedElement([elmt_u, elmt_p]))
-        uh = dfem.Function(V)
+        V = fem.FunctionSpace(domain, ufl.MixedElement([elmt_u, elmt_p]))
+        uh = fem.Function(V)
 
         # Trial- and test-functions
         u, p = ufl.TrialFunctions(V)
@@ -377,20 +371,20 @@ def solve(
         # The variational form
         sigma = 2 * ufl.sym(ufl.grad(u)) + p * ufl.Identity(2)
 
-        a = dfem.form(
+        a = fem.form(
             ufl.inner(sigma, ufl.sym(ufl.grad(v_u))) * ufl.dx
             + (ufl.div(u) - (1 / pi_1) * p) * v_p * ufl.dx
         )
-        l = dfem.form(ufl.inner(rhs, v_u) * ufl.dx)
+        l = fem.form(ufl.inner(rhs, v_u) * ufl.dx)
 
         # The Dirichlet BCs
         Vu, _ = V.sub(0).collapse()
 
-        uD = dfem.Function(Vu)
+        uD = fem.Function(Vu)
         interpolate_ufl_to_function(u_ext, uD)
 
-        dofs = dfem.locate_dofs_topological((V.sub(0), Vu), 1, facet_tags.indices[:])
-        bcs_esnt = [dfem.dirichletbc(uD, dofs, V.sub(0))]
+        dofs = fem.locate_dofs_topological((V.sub(0), Vu), 1, facet_tags.indices[:])
+        bcs_esnt = [fem.dirichletbc(uD, dofs, V.sub(0))]
     else:
         raise ValueError("Unknown discretisation type")
 
@@ -399,15 +393,15 @@ def solve(
 
     timing -= time.perf_counter()
     # The system matrix
-    A = dfem.petsc.assemble_matrix(a, bcs=bcs_esnt)
+    A = fem.petsc.assemble_matrix(a, bcs=bcs_esnt)
     A.assemble()
 
     # The right-hand-side
-    L = dfem.petsc.create_vector(l)
-    dfem.petsc.assemble_vector(L, l)
-    dfem.apply_lifting(L, [a], [bcs_esnt])
+    L = fem.petsc.create_vector(l)
+    fem.petsc.assemble_vector(L, l)
+    fem.apply_lifting(L, [a], [bcs_esnt])
     L.ghostUpdate(addv=PETSc.InsertMode.ADD_VALUES, mode=PETSc.ScatterMode.REVERSE)
-    dfem.set_bc(L, bcs_esnt)
+    fem.set_bc(L, bcs_esnt)
 
     # The solver
     solver = PETSc.KSP().create(MPI.COMM_WORLD)
@@ -452,14 +446,14 @@ def solve(
 
 # --- The equilibration
 def equilibrate(
-    domain: dmesh.Mesh,
-    facet_tags: dmesh.MeshTagsMetaClass,
+    domain: mesh.Mesh,
+    facet_tags: mesh.MeshTagsMetaClass,
     f: typing.Any,
     sigma_h: typing.Any,
     degree: int,
     weak_symmetry: typing.Optional[bool] = True,
     check_equilibration: typing.Optional[bool] = True,
-) -> typing.Tuple[typing.Any, typing.Any, dfem.Function]:
+) -> typing.Tuple[typing.Any, typing.Any, fem.Function]:
     """Equilibrates the negative stress-tensor of linear elasticity
 
     The RHS is assumed to be the divergence of the exact stress
@@ -486,7 +480,7 @@ def equilibrate(
 
     # Projected flux
     # (degree - 1 would be sufficient but not implemented for semi-explicit eqlb.)
-    V_flux_proj = dfem.VectorFunctionSpace(domain, ("DG", degree - 1))
+    V_flux_proj = fem.VectorFunctionSpace(domain, ("DG", degree - 1))
     sigma_proj = local_projection(
         V_flux_proj,
         [
@@ -496,7 +490,7 @@ def equilibrate(
     )
 
     # Project RHS
-    V_rhs_proj = dfem.FunctionSpace(domain, ("DG", degree - 1))
+    V_rhs_proj = fem.FunctionSpace(domain, ("DG", degree - 1))
     rhs_proj = local_projection(V_rhs_proj, [f[0], f[1]])
 
     # Initialise equilibrator
@@ -540,7 +534,7 @@ def equilibrate(
 
     # --- Check equilibration conditions ---
     if check_equilibration:
-        V_rhs_proj = dfem.VectorFunctionSpace(domain, ("DG", degree - 1))
+        V_rhs_proj = fem.VectorFunctionSpace(domain, ("DG", degree - 1))
         rhs_proj_vecval = local_projection(V_rhs_proj, [-f])[0]
 
         # Check divergence condition
@@ -615,11 +609,11 @@ if __name__ == "__main__":
 
     # --- Export results to ParaView ---
     # The exact flux
-    V_dg_ref = dfem.TensorFunctionSpace(domain, ("DG", order_prime))
+    V_dg_ref = fem.TensorFunctionSpace(domain, ("DG", order_prime))
     sigma_ref = local_projection(V_dg_ref, [sigma_ref], quadrature_degree=10)
 
     # Project equilibrated flux into appropriate DG space
-    V_dg_hdiv = dfem.TensorFunctionSpace(domain, ("DG", order_eqlb))
+    V_dg_hdiv = fem.TensorFunctionSpace(domain, ("DG", order_eqlb))
     sigma_eqlb_dg = local_projection(V_dg_hdiv, [sigma_proj + sigma_eqlb])
 
     # Export primal solution
@@ -628,7 +622,7 @@ if __name__ == "__main__":
     sigma_ref[0].name = "sigma_ref"
     korns_constants.name = "korns_constants"
 
-    outfile = dolfinx.io.XDMFFile(MPI.COMM_WORLD, "demo_equilibrate_stresses.xdmf", "w")
+    outfile = io.XDMFFile(MPI.COMM_WORLD, "demo_equilibrate_stresses.xdmf", "w")
     outfile.write_mesh(domain)
     outfile.write_function(uh[0], 1)
     outfile.write_function(sigma_ref[0], 1)
