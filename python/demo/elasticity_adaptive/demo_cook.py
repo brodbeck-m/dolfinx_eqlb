@@ -6,7 +6,7 @@
 
 """Demonstrate an adaptive solution procedure for the Cooks membrane
 
-Solve of the quasi-static linear elasticity equation
+Solution of the quasi-static linear elasticity equation
 
      div(sigma) = 0  with sigma = 2 * eps + pi_1 * div(u) * I,
 
@@ -509,7 +509,7 @@ def equilibrate(
     """
 
     # Check input
-    if order_eqlb < 2:
+    if degree < 2:
         raise ValueError("Stress equilibration only possible for k>1")
 
     # Project stress and RHS into required DG space
@@ -590,7 +590,7 @@ def equilibrate(
             stress_proj,
             rhs_proj_vecval,
             mesh=domain.mesh,
-            degree=order_eqlb,
+            degree=degree,
             flux_is_dg=True,
         )
 
@@ -845,7 +845,7 @@ if __name__ == "__main__":
 
     # The equilibration
     order_eqlb = 2
-    guarantied_upper_bound = False
+    guarantied_upper_bound = True
 
     # The adaptive algorithm
     nref = 10
