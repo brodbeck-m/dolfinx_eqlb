@@ -11,14 +11,14 @@ Solve a Poisson problem
      div(sigma) = f with sigma = -kappa * grad(u)
 
 on a squared domain with pure Dirichlet BCs on a series of adaptively 
-refined meshes. The coeffitient kappa is continous but different within 
+refined meshes. The coefficient kappa is continuous but different within 
 the four quadrants of the domain. The error estimate is evaluated using 
 the equilibrated flux while the spatial refinement is based on a Dörfler 
 marking strategy. Convergence is reported with respect to the analytical 
 solution [1, 2].
 
 [1] Kellogg, R. B., https://doi.org/10.1080/00036817408839086, 1975
-[2] Reviere, B. and Wheeler M., https://doi.org/10.1016/S0898-1221(03)90086-1, 2003
+[2] Riviere, B. and Wheeler M., https://doi.org/10.1016/S0898-1221(03)90086-1, 2003
 """
 
 from enum import Enum
@@ -149,7 +149,7 @@ class ExactSolutionRiviere:
 
     uext = r(x)^gamma * (a_i * cos(alpha * theta) + b_i * sin(alpha * theta))
 
-    [1] Reviere, B. and Wheeler M., https://doi.org/10.1016/S0898-1221(03)90086-1, 2003
+    [1] Riviere, B. and Wheeler M., https://doi.org/10.1016/S0898-1221(03)90086-1, 2003
     """
 
     def __init__(self, ratio_k: float) -> None:
