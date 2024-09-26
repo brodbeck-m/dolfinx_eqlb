@@ -1,4 +1,4 @@
-# <a name="section_dolfinxeqlb"></a> dolfinx for flux equilibration (dolfinx_eqlb)
+# <a name="dolfinxeqlb"></a> dolfinx for flux equilibration (dolfinx_eqlb)
 [![Project Status: Active – The project has reached a stable, usable state and is being actively developed.](https://www.repostatus.org/badges/latest/active.svg)](https://www.repostatus.org/#active) [![Identifier](https://img.shields.io/badge/doi-10.18419%2Fdarus--4479-d45815.svg)](https://doi.org/10.18419/darus-4479)
 
 Author: Maximilian Brodbeck
@@ -7,18 +7,17 @@ This library contains an add-on to FEniCSx enabling local flux equilibration str
 
 The equilibration process relies on so called patches, groups of all cells, connected with one node of the mesh. On each patch a constrained minimisation problem is solved [[8]](#8). In order to improve computational efficiency, a so called semi-explicit strategy [[3]](#3)[[6]](#6) is also implemented. The solution procedure is thereby split into two steps: An explicit determination of an H(div) function, fulfilling the minimisation constraints, followed by an unconstrained minimisation on a reduced, patch-wise ansatz space. If equilibration is applied to elasticity - the stress tensor has a distinct symmetry - an additional constrained minimisation step after the row wise reconstruction of the tensor [[1]](#1) is implemented.
 
-* [dolfinx for flux equilibration (dolfinx_eqlb)](#section_dolfinxeqlb)
-* [Features](#section_features)
-* [Getting started](#section_getting-started)
-* [Using the Python interface](#section_doc)
-    * [Local solvers](#ssection-doc_local-solver)
-    * [The equilibrator](#ssection-doc_equilibrator)
-    * [Equilibrated fluxes for a-posteriori error estimation](#ssection-doc_error-estimation)
-* [How to cite](#section_how-to-cite)
-* [Literature](#section_literature)
-* [License](#section_license)
+* [Features](#features)
+* [Getting started](#getting-started)
+* [Documentation](#documentation)
+    * [Local solvers](#doc_local-solver)
+    * [The equilibrator](#doc_equilibrator)
+    * [Equilibrated fluxes for a-posteriori error estimation](#doc_error-estimation)
+* [How to cite](#how-to-cite)
+* [Literature](#literature)
+* [License](#license)
 
-# <a id="section_features"></a> Features
+# <a id="features"></a> Features
 dolfinx_eqlb supports flux equilibration on two-dimensional domains with arbitrary triangular grids. It further includes the following features
 - A local projector into arbitrary function-spaces with cell-wise support
 - A hierarchic Raviart-Thomas element based on Boffi, Brezzi and Fortin [[4]](#4)
@@ -26,7 +25,7 @@ dolfinx_eqlb supports flux equilibration on two-dimensional domains with arbitra
 - Flux equilibration based on Ern and Vohralik (FluxEqlbEV) or a semi-explicit strategy (FluxEqlbSE)
 - Stress equilibration considering distinct symmetry properties in a weak sense
 
-# <a id="section_getting-started"></a> Getting started
+# <a id="getting-started"></a> Getting started
 1. Clone this repository using the command:
 
 ```shell
@@ -60,16 +59,16 @@ cd ./root/dolfinx_eqlb/python/demo/elasticity
 python3 demo_reconstruction.py  
 ```
 
-# <a id="section_doc"></a> Using the Python interface
+# <a id="documentation"></a> Documentation
 Flux equilibration can either be used to improve the accuracy of dual quantity - e.g. the flux for a Poisson or heat equation or the stress in elasticity - by a post-processing step or as a basis for a-posteriori error estimation. Incorporating equilibration into a solution procedure required the following four steps:
 1. Solve the primal problem based on Lagrangian finite elements of degree $k$.
 2. Calculate the approximated dual quantity from the primal field.
-3. Project the right-hand-side (RHS) of the primal problem as well as the approximated dual quantity into discontinuous Lagrange spaces of order $m \geq k$. The projection can be solved using a [local solver](#sssection-doc_local-solver).
+3. Project the right-hand-side (RHS) of the primal problem as well as the approximated dual quantity into discontinuous Lagrange spaces of order $m \geq k$. The projection can be done locally.
 4. Equilibrate the dual quantity in an Raviart-Thomas space of order $m$.
 
 The algorithmic structure of the equilibration itself is described in [AddSource]. A short description of the relevant Python interfaces of the library is given below. Complete examples for the Poisson equation and linear elasticity can be found in the [demo section](https://github.com/brodbeck-m/dolfinx_eqlb/tree/main/python/demo). 
 
-## <a id="ssection-doc_local-solver"></a> Local solvers
+## <a id="doc_local-solver"></a> Local projections
 Projecting an arbitrary function $\mathrm{f}$ into a discontinuous finite element space $\mathrm{V}$ requires the solution of
 ```math
 \left(\mathrm{u},\;\mathrm{v}\right) = (\mathrm{f},\mathrm{v})
@@ -87,7 +86,7 @@ f_proj = local_projection(V_proj, [f_ufl])
 ```
 ```f_proj``` will be a list of functions, with the same length as the second argument of 'local_projection'. This allows the simultaneous projection of multiple function (as long as they have the same target function space), which is beneficial from a performance perspective, as the system matrix has to be factorised only once. Due to the symmetric and positive definite system matrix, a Cholesky decomposition is used.
 
-## <a id="ssection-doc_equilibrator"></a> The equilibrator
+## <a id="doc_equilibrator"></a> The equilibrator
 Based on projections of the approximated dual quantity and the RHS the equilibrator itself can be initialised. In order to improve efficiency, multiple RHS can be equilibrated at the same time. Assuming that for each $\boldsymbol{\varsigma}^\mathrm{R}_h$ a divergence condition of the form
 ```math
 \nabla\cdot\boldsymbol{\varsigma}^\mathrm{R}_h = \Pi_{m-1}\mathrm{f}
@@ -136,7 +135,7 @@ equilibrator.set_boundary_conditions(list_dfcts, list_bcs)
 equilibrator.equilibrate_fluxes()
 ```
 
-## <a id="ssection-doc_error-estimation"></a> Equilibrated fluxes for a-posteriori error estimation
+## <a id="doc_error-estimation"></a> Equilibrated fluxes for a-posteriori error estimation
 Based on equilibrated fluxes reliable error estimates for different problem classes can be constructed. Showcases for the Poisson problem (estimate by Ern and Vohralik [[8]](#8)) and linear elasticity (following Bertrand et al. [[1]](#1)) are provided in the [demo section](https://github.com/brodbeck-m/dolfinx_eqlb/tree/main/python/demo). For both problems the equilibration- and error estimation process is demonstrated on a unit-square with manufactured solution on a series of uniformly refined meshes:
 ```shell
 # Start the docker container
@@ -163,12 +162,12 @@ python3 demo_error_estimation.py
 
 Further examples on adaptively refined meshes are provided for [Poisson](https://github.com/brodbeck-m/dolfinx_eqlb/tree/main/python/demo/poisson_adaptive) and [linear elasticity](https://github.com/brodbeck-m/dolfinx_eqlb/tree/main/python/demo/elacticity_adaptive).
 
-# <a id="section_how-to-cite"></a> How to cite
+# <a id="how-to-cite"></a> How to cite
 dolfinx_eqlb is a research software. The latest release can be cited via [DaRUS](https://doi.org/10.18419/darus-4479), or - if citations of individual files or code lines are required - via Software Heritage <a href="https://archive.softwareheritage.org/swh:1:rel:4b63de3964a6f12f15a8f51f04e44478943fb396;origin=https://github.com/brodbeck-m/dolfinx_eqlb;visit=swh:1:snp:d415607d12039d11d99da930fa82f02689f35f11">
     <img src="https://archive.softwareheritage.org/badge/swh:1:rel:4b63de3964a6f12f15a8f51f04e44478943fb396/" alt="Archived | swh:1:rel:4b63de3964a6f12f15a8f51f04e44478943fb396"/>
 </a>.
 
-# <a id="section_literature"></a> Literature
+# <a id="literature"></a> Literature
 <a id="1">[1]</a> Bertrand, F., Kober, B., Moldenhauer, M. and Starke, G.: Weakly symmetric stress equilibration and a posteriori error estimation for linear elasticity. Comput. Math. Appl. (2021) doi: [10.1002/num.22741](https://doi.org/10.1002/num.22741)
 
 <a id="2">[2]</a> Bertrand, F. and Starke, G.: A posteriori error estimates by weakly symmetric stress reconstruction for the Biot problem. Numer. Methods Partial Differ. Equ. (2021) doi: [10.1016/j.camwa.2020.10.011](https://doi.org/10.1016/j.camwa.2020.10.011)
@@ -189,7 +188,7 @@ dolfinx_eqlb is a research software. The latest release can be cited via [DaRUS]
 
 <a id="10">[10]</a> Riedlbeck, R., Di Pietro, D.A., Ern, A., Granet, S. and Kazymyrenko, K.: Stress and flux reconstruction in Biot’s poro-elasticity problem with application to a posteriori error analysis. Comput. Math. Appl. (2017) doi: [10.1016/j.camwa.2017.02.005](https://doi.org/10.1016/j.camwa.2017.02.005)
 
-# <a id="section_license"></a> License
+# <a id="license"></a> License
 
 dolfinx_eqlb is free software: you can redistribute it and/or modify it
 under the terms of the GNU Lesser General Public License as published
