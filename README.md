@@ -82,7 +82,7 @@ pip3 install python/ -v --upgrade
 ```
 
 ## <a id="installation_getting-started"></a> Getting started
-In order to check the correctness of the installation two basic demos - the equilibration of an [Poisson-type flux](https://github.com/brodbeck-m/dolfinx_eqlb/blob/main/python/demo/poisson/demo_reconstruction.py) as well as a [weakly symmetric stress tensor from linear elasticity](https://github.com/brodbeck-m/dolfinx_eqlb/blob/main/python/demo/elasticity/demo_reconstruction.py) - should be tested: 
+In order to check the correctness of the installation two basic demos - the equilibration of an [Poisson-type flux](https://github.com/brodbeck-m/dolfinx_eqlb/blob/main/python/demo/poisson/demo_reconstruction.py) as well as a [weakly symmetric stress tensor from linear elasticity](https://github.com/brodbeck-m/dolfinx_eqlb/blob/main/python/demo/elasticity/demo_reconstruction.py) - should be tested. No errors should be reported!
 ```shell
 # Equilibration for a Poisson problem
 cd ./root/dolfinx_eqlb/python/demo/poisson
