@@ -1,5 +1,5 @@
 # <a name="dolfinxeqlb"></a> dolfinx for flux equilibration (dolfinx_eqlb)
-[![Project Status: Active – The project has reached a stable, usable state and is being actively developed.](https://www.repostatus.org/badges/latest/active.svg)](https://www.repostatus.org/#active) [![Identifier](https://img.shields.io/badge/doi-10.18419%2Fdarus--4479-d45815.svg)](https://doi.org/10.18419/darus-4479)
+[![Project Status: Active – The project has reached a stable, usable state and is being actively developed.](https://www.repostatus.org/badges/latest/active.svg)](https://www.repostatus.org/#active) [![Identifier](https://img.shields.io/badge/doi-10.18419%2Fdarus--4498-d45815.svg)](https://doi.org/10.18419/darus-4498)
 
 Author: Maximilian Brodbeck
 
@@ -8,7 +8,10 @@ This library contains an add-on to FEniCSx enabling local flux equilibration str
 The equilibration process relies on so called patches, groups of all cells, connected with one node of the mesh. On each patch a constrained minimisation problem is solved [[8]](#8). In order to improve computational efficiency, a so called semi-explicit strategy [[3]](#3)[[6]](#6) is also implemented. The solution procedure is thereby split into two steps: An explicit determination of an H(div) function, fulfilling the minimisation constraints, followed by an unconstrained minimisation on a reduced, patch-wise ansatz space. If equilibration is applied to elasticity - the stress tensor has a distinct symmetry - an additional constrained minimisation step after the row wise reconstruction of the tensor [[1]](#1) is implemented.
 
 * [Features](#features)
-* [Getting started](#getting-started)
+* [Installation](#installation)
+    * [Docker](#installation_docker)
+    * [Source](#installation_source)
+    * [Getting started](#installation_getting-started)
 * [Documentation](#documentation)
     * [Local solvers](#doc_local-solver)
     * [The equilibrator](#doc_equilibrator)
@@ -25,14 +28,17 @@ dolfinx_eqlb supports flux equilibration on two-dimensional domains with arbitra
 - Flux equilibration based on Ern and Vohralik (FluxEqlbEV) or a semi-explicit strategy (FluxEqlbSE)
 - Stress equilibration considering distinct symmetry properties in a weak sense
 
-# <a id="getting-started"></a> Getting started
+# <a id="installation"></a> Installation
+
+## <a id="installation_docker"></a> Docker
+A docker image of dolfinx_eqlb can be created based on the docker image of DOLFINx. Therefore the following steps are required:
 1. Clone this repository using the command:
 
 ```shell
 git clone git@github.com:brodbeck-m/dolfinx_eqlb.git
 ```
 
-2. Download the required Docker image of DOLFINx:
+2. Download the basic Docker image of DOLFINx:
 
 ```shell
 docker pull dolfinx/dolfinx:v0.6.0-r1
@@ -45,11 +51,39 @@ cd docker
 ./build_image.sh 
 ```
 
-4. Try out the basic demos. If no errors are reported, the equilibration process works as expected.
-
+4. Start the docker container
 ```shell
-./launch-container.sh
+# Use the provided start-script
+./docker/launch-container.sh
 
+# Use docker directly
+docker run -ti --rm -v "$(pwd)":/root/shared -w /root/shared brodbeck-m/dolfinx_eqlb:release
+```
+
+Alternatively, a ready-to-use image of the latest release can be downloaded from [DaRUS](https://doi.org/10.18419/darus-4498). Based on the .tar.gz the container can be created
+```shell
+docker load --input dockerimage-dolfinx_eqlb-v1.2.0.tar.gz
+```
+
+## <a id="installation_source"></a> Source
+To install the latest version (main branch), you need to install release 0.6.0 of DOLFINx. Easiest way to install DOLFINx is to use docker. The required DOLFINx docker images goes under the name dolfinx/dolfinx:v0.6.0-r1.
+
+To install the dolfinx_eqlb-library run the following code from this directory:
+```shell
+# Correct include of the eigen-library in pybind11
+expot PYBIND_EIGEN_PATH=/usr/local/lib/python3.10/dist-packages/pybind11/include/pybind11/eigen.h
+sed -i 's%<Eigen/Core>%<eigen3/Eigen/Core>%' ${PYBIND_EIGEN_PATH} && \
+sed -i 's%<Eigen/SparseCore>%<eigen3/Eigen/SparseCore>%' ${PYBIND_EIGEN_PATH}
+
+# Install dolfinx_eqlb
+cmake -G Ninja -B build-dir -DCMAKE_BUILD_TYPE=Release cpp/
+ninja -C build-dir install
+pip3 install python/ -v --upgrade
+```
+
+## <a id="installation_getting-started"></a> Getting started
+In order to check the correctness of the installation two basic demos - the equilibration of an [Poisson-type flux](https://github.com/brodbeck-m/dolfinx_eqlb/blob/main/python/demo/poisson/demo_reconstruction.py) as well as a [weakly symmetric stress tensor from linear elasticity](https://github.com/brodbeck-m/dolfinx_eqlb/blob/main/python/demo/elasticity/demo_reconstruction.py) - should be tested: 
+```shell
 # Equilibration for a Poisson problem
 cd ./root/dolfinx_eqlb/python/demo/poisson
 python3 demo_reconstruction.py  
@@ -58,6 +92,8 @@ python3 demo_reconstruction.py
 cd ./root/dolfinx_eqlb/python/demo/elasticity
 python3 demo_reconstruction.py  
 ```
+
+Further information on the python-interface of dolfinx_eqlb are provided in the [documentation](#documentation) or demonstrated in [further examples](https://github.com/brodbeck-m/dolfinx_eqlb/tree/main/python/demo).
 
 # <a id="documentation"></a> Documentation
 Flux equilibration can either be used to improve the accuracy of dual quantity - e.g. the flux for a Poisson or heat equation or the stress in elasticity - by a post-processing step or as a basis for a-posteriori error estimation. Incorporating equilibration into a solution procedure required the following four steps:
@@ -124,7 +160,7 @@ nfcts = facet_tags.indices[isin(facet_tags.values, [3, 4])]
 bc = []
 bc.append(fluxbc(f_neumann, nfcts, equilibrator.V_flux))
 ```
-The function ```fluxbc``` has thereby the optional arguments ```requires_projection``` and ```quadrature_degree```. They are required when the traction lies not in the polynomial space of order $m-1$. Setting ```requires_projection``` enforces an $\mathrm{L}^2$-projection when the boundary DOFs are evaluated. The optionally specified ```quadrature_degree``` is then for the evaluation of the linear form of the projection. 
+The function ```fluxbc``` has thereby the optional arguments ```requires_projection``` and ```quadrature_degree```. They are required when the traction lies not in the polynomial space of order $m-1$. Setting ```requires_projection``` enforces an $\mathrm{L}^2$-projection when the boundary DOFs are evaluated. Specifying ```quadrature_degree```, prescribes the quadrature degree for the evaluation of the linear form of the projection. 
 
 With these information provided for each simultaneously equilibrated flux the equilibration can be solved:
 ```python
@@ -163,7 +199,7 @@ python3 demo_error_estimation.py
 Further examples on adaptively refined meshes are provided for [Poisson](https://github.com/brodbeck-m/dolfinx_eqlb/tree/main/python/demo/poisson_adaptive) and [linear elasticity](https://github.com/brodbeck-m/dolfinx_eqlb/tree/main/python/demo/elacticity_adaptive).
 
 # <a id="how-to-cite"></a> How to cite
-dolfinx_eqlb is a research software. The latest release can be cited via [DaRUS](https://doi.org/10.18419/darus-4479), or - if citations of individual files or code lines are required - via Software Heritage <a href="https://archive.softwareheritage.org/swh:1:rel:4b63de3964a6f12f15a8f51f04e44478943fb396;origin=https://github.com/brodbeck-m/dolfinx_eqlb;visit=swh:1:snp:d415607d12039d11d99da930fa82f02689f35f11">
+dolfinx_eqlb is a research software. The latest release can be cited via [DaRUS](https://doi.org/10.18419/darus-4498), or - if citations of individual files or code lines are required - via Software Heritage <a href="https://archive.softwareheritage.org/swh:1:rel:4b63de3964a6f12f15a8f51f04e44478943fb396;origin=https://github.com/brodbeck-m/dolfinx_eqlb;visit=swh:1:snp:d415607d12039d11d99da930fa82f02689f35f11">
     <img src="https://archive.softwareheritage.org/badge/swh:1:rel:4b63de3964a6f12f15a8f51f04e44478943fb396/" alt="Archived | swh:1:rel:4b63de3964a6f12f15a8f51f04e44478943fb396"/>
 </a>.
 
