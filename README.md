@@ -203,6 +203,20 @@ dolfinx_eqlb is a research software. The latest release can be cited via [DaRUS]
     <img src="https://archive.softwareheritage.org/badge/swh:1:rel:4b63de3964a6f12f15a8f51f04e44478943fb396/" alt="Archived | swh:1:rel:4b63de3964a6f12f15a8f51f04e44478943fb396"/>
 </a>.
 
+If you are using using dolfinx_eqlb please also cite the related publication
+
+**Adaptive finite element methods based on flux equilibration using FEniCSx**. preprint (2024). arXiv: [2410.09764](https://arxiv.org/abs/2410.09764)
+```bib
+@misc{Brodbeck2024,
+    title = {Adaptive finite element methods based on flux and stress equilibration using FEniCSx},
+    author={Maximilian Brodbeck, Fleurianne Bertrand and Tim Ricken},
+    year = {2024},
+    eprint={2410.09764},
+    archivePrefix={arXiv},
+    url={https://arxiv.org/abs/2410.09764}
+}
+```
+
 # <a id="literature"></a> Literature
 <a id="1">[1]</a> Bertrand, F., Kober, B., Moldenhauer, M. and Starke, G.: Weakly symmetric stress equilibration and a posteriori error estimation for linear elasticity. Comput. Math. Appl. (2021) doi: [10.1002/num.22741](https://doi.org/10.1002/num.22741)
 
