@@ -344,7 +344,9 @@ def solve(
         degree:      The degree of the FE space
 
     Returns:
-        The approximate solution
+        The approximate solution,
+        The number of degrees of freedom,
+        The approximated stress (ufl argument)
     """
 
     # Initialise timing
@@ -504,7 +506,7 @@ def equilibrate(
         check_equilibration: Id if equilibration conditions are checked
 
     Returns:
-        The difference between equilibrated and projected stress (as ufl tensor)
+        The difference between equilibrated and projected stress (ufl tensor),
         The cells Korn constant
     """
 
