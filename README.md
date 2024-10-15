@@ -199,8 +199,8 @@ python3 demo_error_estimation.py
 Further examples on adaptively refined meshes are provided for [Poisson](https://github.com/brodbeck-m/dolfinx_eqlb/tree/main/python/demo/poisson_adaptive) and [linear elasticity](https://github.com/brodbeck-m/dolfinx_eqlb/tree/main/python/demo/elacticity_adaptive).
 
 # <a id="how-to-cite"></a> How to cite
-dolfinx_eqlb is a research software. The latest release can be cited via [DaRUS](https://doi.org/10.18419/darus-4498), or - if citations of individual files or code lines are required - via Software Heritage <a href="https://archive.softwareheritage.org/swh:1:rel:4b63de3964a6f12f15a8f51f04e44478943fb396;origin=https://github.com/brodbeck-m/dolfinx_eqlb;visit=swh:1:snp:d415607d12039d11d99da930fa82f02689f35f11">
-    <img src="https://archive.softwareheritage.org/badge/swh:1:rel:4b63de3964a6f12f15a8f51f04e44478943fb396/" alt="Archived | swh:1:rel:4b63de3964a6f12f15a8f51f04e44478943fb396"/>
+dolfinx_eqlb is a research software. The latest release can be cited via [DaRUS](https://doi.org/10.18419/darus-4498), or - if citations of individual files or code lines are required - via Software Heritage <a href="https://archive.softwareheritage.org/swh:1:rel:9d1c8c355d117ba59e4f180556ad5a2216e47bee;origin=https://github.com/brodbeck-m/dolfinx_eqlb;visit=swh:1:snp:66aeafb95d564c36a8a3472372bfe17f5781cea4">
+    <img src="https://archive.softwareheritage.org/badge/swh:1:rel:9d1c8c355d117ba59e4f180556ad5a2216e47bee/" alt="Archived | swh:1:rel:9d1c8c355d117ba59e4f180556ad5a2216e47bee"/>
 </a>.
 
 If you are using using dolfinx_eqlb please also cite the related publication
