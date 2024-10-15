@@ -207,7 +207,7 @@ If you are using using dolfinx_eqlb please also cite the related publication
 
 **Adaptive finite element methods based on flux equilibration using FEniCSx**. preprint (2024). arXiv: [2410.09764](https://arxiv.org/abs/2410.09764)
 ```bib
-@misc{Brodbeck2024,
+@misc{DolfinxEqlb2024,
     title = {Adaptive finite element methods based on flux and stress equilibration using FEniCSx},
     author={Maximilian Brodbeck, Fleurianne Bertrand and Tim Ricken},
     year = {2024},
