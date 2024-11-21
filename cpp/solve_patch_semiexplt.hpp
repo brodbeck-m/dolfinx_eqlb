@@ -26,6 +26,7 @@
 #include <dolfinx/graph/AdjacencyList.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <functional>
 #include <ios>
@@ -42,6 +43,24 @@ namespace dolfinx_eqlb
 
 namespace stdex = std::experimental;
 
+// ----------------------------------------------------------------------------
+// Auxiliaries
+// ----------------------------------------------------------------------------
+
+/// Calculate jump of projected flux on facet
+///
+/// @param[in,out] GtHat_Ea The jump on facet Ea
+/// @param[in] nq           The number of quadrature points
+/// @param[in] iq_Ta        The id of the quadrature point on cell Ta
+/// @param[in] Ea_reversed  True, if facet Ea is reversed
+/// @param[in] dofs_G_Ea    The DOF ids of the projected flux on facet Ea
+/// @param[in] G_Tap1Ea     The projected flux on cell Tap1 and facet Ea
+/// @param[in] shp_Tap1Ea   The shape functions on cell Tap1 and facet Ea
+/// @param[in] hat_Tap1Ea   The hat functions on cell Tap1 and facet Ea
+/// @param[in] G_TaEa       The projected flux on cell Ta and facet Ea
+/// @param[in] shp_TaEa     The shape functions on cell Ta and facet Ea
+/// @param[in] hat_TaEa     The hat functions on cell Ta and facet Ea
+/// @return                 The jump of the projected flux
 template <typename T>
 void calculate_jump(
     mdspan_t<T, 2> GtHat_Ea, const std::size_t nq, const std::size_t iq_Ta,
@@ -88,6 +107,86 @@ void calculate_jump(
   GtHat_Ea(1, 0) *= hat_Tap1Ea(iq_Tap1);
   GtHat_Ea(1, 1) *= hat_Tap1Ea(iq_Tap1);
 }
+
+/// Copy cell data from global storage into flattened array (per cell)
+/// @param data_global The global data storage
+/// @param dofs_cell   The DOFs on current cell
+/// @param data_cell   The flattened storage of current cell
+/// @param bs_data     Block size of data
+template <typename T, int _bs_data = 1>
+void copy_cell_data(std::span<const T> data_global,
+                    std::span<const std::int32_t> dofs_cell,
+                    std::span<T> data_cell, const int bs_data)
+{
+  for (std::size_t j = 0; j < dofs_cell.size(); ++j)
+  {
+    if constexpr (_bs_data == 1)
+    {
+      std::copy_n(std::next(data_global.begin(), dofs_cell[j]), 1,
+                  std::next(data_cell.begin(), j));
+    }
+    else if constexpr (_bs_data == 2)
+    {
+      std::copy_n(std::next(data_global.begin(), 2 * dofs_cell[j]), 2,
+                  std::next(data_cell.begin(), 2 * j));
+    }
+    else if constexpr (_bs_data == 3)
+    {
+      std::copy_n(std::next(data_global.begin(), 3 * dofs_cell[j]), 3,
+                  std::next(data_cell.begin(), 3 * j));
+    }
+    else
+    {
+      std::copy_n(std::next(data_global.begin(), bs_data * dofs_cell[j]),
+                  bs_data, std::next(data_cell.begin(), bs_data * j));
+    }
+  }
+}
+
+/// Copy cell data from global storage into flattened array (per patch)
+/// @param cells        List of cells on patch
+/// @param dofmap_data  DOFmap of data
+/// @param data_global  The global data storage
+/// @param data_cell    The flattened storage of current patch
+/// @param cstride_data Number of data-points per cell
+/// @param bs_data      Block size of data
+template <typename T, int _bs_data = 4>
+void copy_cell_data(std::span<const std::int32_t> cells,
+                    const graph::AdjacencyList<std::int32_t>& dofmap_data,
+                    std::span<const T> data_global, std::vector<T>& data_cell,
+                    const int cstride_data, const int bs_data)
+{
+  for (std::size_t index = 0; index < cells.size(); ++index)
+  {
+    // Extract cell
+    std::int32_t c = cells[index];
+
+    // DOFs on current cell
+    std::span<const std::int32_t> data_dofs = dofmap_data.links(c);
+
+    // Copy DOFs into flattend storage
+    std::span<T> data_dofs_e(data_cell.data() + index * cstride_data,
+                             cstride_data);
+    if constexpr (_bs_data == 1)
+    {
+      copy_cell_data<T, 1>(data_global, data_dofs, data_dofs_e, bs_data);
+    }
+    else if constexpr (_bs_data == 2)
+    {
+      copy_cell_data<T, 2>(data_global, data_dofs, data_dofs_e, bs_data);
+    }
+    else if constexpr (_bs_data == 3)
+    {
+      copy_cell_data<T, 3>(data_global, data_dofs, data_dofs_e, bs_data);
+    }
+    else
+    {
+      copy_cell_data<T>(data_global, data_dofs, data_dofs_e, bs_data);
+    }
+  }
+}
+
+// ----------------------------------------------------------------------------
 
 /// Calculate equilibrated fluxes on patch
 ///
