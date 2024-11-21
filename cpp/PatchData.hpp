@@ -6,9 +6,8 @@
 
 #pragma once
 
+#include "base/Patch.hpp"
 #include "eigen3/Eigen/Dense"
-
-#include "Patch.hpp"
 #include "utils.hpp"
 
 #include <algorithm>
@@ -162,14 +161,14 @@ public:
   /// @param ncells The number of cells
   /// @param nfcts  The number of facets
   /// @param npnts  The number of points
-  void reinitialisation(std::span<const PatchType> type_patch, int ncells)
+  void reinitialisation(std::span<const base::PatchType> type_patch, int ncells)
   {
     // --- Data patch
     // Set current patch length
     _ncells = ncells;
 
     // Set dimension of minimisation spaces
-    if (type_patch[0] == PatchType::internal)
+    if (type_patch[0] == base::PatchType::internal)
     {
       // Calculate dimension of minimisation spaces
       dimension_minspaces(ncells, ncells, ncells + 1);
@@ -188,8 +187,8 @@ public:
 
       for (std::size_t i = 0; i < _gdim; ++i)
       {
-        if ((type_patch[i] == PatchType::bound_essnt_primal)
-            || (type_patch[i] == PatchType::bound_mixed))
+        if ((type_patch[i] == base::PatchType::bound_essnt_primal)
+            || (type_patch[i] == base::PatchType::bound_mixed))
         {
           condition_count += 1;
         }

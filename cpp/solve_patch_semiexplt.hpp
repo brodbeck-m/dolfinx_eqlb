@@ -9,11 +9,11 @@
 #include "eigen3/Eigen/Dense"
 
 #include "KernelData.hpp"
-#include "Patch.hpp"
 #include "PatchCstm.hpp"
 #include "PatchData.hpp"
 #include "ProblemDataFluxCstm.hpp"
 #include "assemble_patch_semiexplt.hpp"
+#include "base/Patch.hpp"
 #include "solve_patch_weaksym.hpp"
 #include "utils.hpp"
 
@@ -222,7 +222,8 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
         = kernel_data.fct_normal_is_outward(fctloc_ta_eam1, fctloc_ta_ea);
 
     // Check for reversed facets
-    if (patch.type(0) != PatchType::internal && ((a == 1) || (a == ncells)))
+    if (patch.type(0) != base::PatchType::internal
+        && ((a == 1) || (a == ncells)))
     {
       if (a == 1)
       {
@@ -340,7 +341,7 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
   {
     /* Extract data */
     // Patch type
-    PatchType type_patch = patch.type(i_rhs);
+    base::PatchType type_patch = patch.type(i_rhs);
 
     // Check if reversion is required
     bool reversion_required = patch.reversion_required(i_rhs);
@@ -399,11 +400,11 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
 
       if (fct_on_boundary == true)
       {
-        if (type_patch == PatchType::bound_essnt_dual)
+        if (type_patch == base::PatchType::bound_essnt_dual)
         {
           fct_has_bc = true;
         }
-        else if (type_patch == PatchType::bound_mixed)
+        else if (type_patch == base::PatchType::bound_mixed)
         {
           if (a == 1)
           {
@@ -464,7 +465,8 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
       // Tabulated shape functions on facet E0
       smdspan_t<const double, 2> shp_TaEam1;
 
-      if ((a == 1) && (fct_has_bc || type_patch == PatchType::bound_mixed))
+      if ((a == 1)
+          && (fct_has_bc || type_patch == base::PatchType::bound_mixed))
       {
         // DOFs (cell-local) projected flux on facet E0
         pflux_ldofs_E0 = patch.dofs_projflux_fct(0);
@@ -549,7 +551,7 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
           if (a == 1)
           {
             // Handle BCs on facet 0
-            if (fct_has_bc || type_patch == PatchType::bound_mixed)
+            if (fct_has_bc || type_patch == base::PatchType::bound_mixed)
             {
               // Evaluate jump
               for (std::size_t i = 0; i < ndofs_projflux_fct; ++i)
@@ -579,7 +581,7 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
                 mdspan_t<T, 2> GtHat_E0(dGtHat_Ei.data(), 1, dim);
                 mdspan_t<T, 2> GtHat_mapped_E0(dGtHat_Ei_mapped.data(), 1, dim);
 
-                if ((type_patch == PatchType::bound_mixed)
+                if ((type_patch == base::PatchType::bound_mixed)
                     && (fct_has_bc == false))
                 {
                   GtHat_E0(0, 0) = -GtHat_Eam1(n, 0, 0);
@@ -920,8 +922,8 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
 
     /* Step 2: Minimse sigma_delta */
     // Set boundary markers
-    if (type_patch == PatchType::bound_essnt_dual
-        || type_patch == PatchType::bound_mixed)
+    if (type_patch == base::PatchType::bound_essnt_dual
+        || type_patch == base::PatchType::bound_mixed)
     {
       set_boundary_markers(patch_data.boundary_markers(false), {type_patch},
                            {reversion_required}, ncells, ndofs_hdivz,
@@ -940,7 +942,7 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
       if (patch.is_on_boundary())
       {
         if (patch.type(i_rhs) != patch.type(i_rhs - 1)
-            || patch.type(i_rhs) == PatchType::bound_mixed)
+            || patch.type(i_rhs) == base::PatchType::bound_mixed)
         {
           assemble_entire_system = true;
         }

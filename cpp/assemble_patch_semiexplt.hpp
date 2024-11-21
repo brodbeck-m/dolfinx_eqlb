@@ -9,9 +9,9 @@
 #include "eigen3/Eigen/Dense"
 
 #include "KernelData.hpp"
-#include "Patch.hpp"
 #include "PatchCstm.hpp"
 #include "PatchData.hpp"
+#include "base/Patch.hpp"
 #include "utils.hpp"
 
 #include <dolfinx/fem/DofMap.h>
@@ -479,7 +479,7 @@ generate_stress_minimisation_kernel(Kernel type, KernelDataEqlb<T>& kernel_data,
 /// @param ndofs_flux_fct      nDOFs flux-space space per facet
 
 void set_boundary_markers(std::span<std::int8_t> boundary_markers,
-                          std::vector<PatchType> types_patch,
+                          std::vector<base::PatchType> types_patch,
                           std::vector<bool> reversions_required,
                           const int ncells, const int ndofs_flux_hivz,
                           const int ndofs_flux_fct)
@@ -493,7 +493,7 @@ void set_boundary_markers(std::span<std::int8_t> boundary_markers,
   // Set boundary markers
   for (std::size_t i = 0; i < types_patch.size(); ++i)
   {
-    if (types_patch[i] != PatchType::bound_essnt_primal)
+    if (types_patch[i] != base::PatchType::bound_essnt_primal)
     {
       // Basic offset
       int offset_i = i * ndofs_flux_hivz;
@@ -503,7 +503,7 @@ void set_boundary_markers(std::span<std::int8_t> boundary_markers,
 
       for (std::size_t j = 1; j < ndofs_flux_fct; ++j)
       {
-        if (types_patch[i] == PatchType::bound_essnt_dual)
+        if (types_patch[i] == base::PatchType::bound_essnt_dual)
         {
           // Mark DOFs on facet E0
           int offset_E0 = offset_i + j;

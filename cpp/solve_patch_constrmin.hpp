@@ -6,13 +6,13 @@
 
 #pragma once
 
-#include "Patch.hpp"
 #include "PatchFluxEV.hpp"
 #include "ProblemDataFluxEV.hpp"
 #include "StorageStiffness.hpp"
 #include "assemble_patch_constrmin.hpp"
+#include "base/Patch.hpp"
 #include "eigen3/Eigen/Dense"
-#include "eigen3/Eigen/Sparse"
+// #include "eigen3/Eigen/Sparse"
 
 #include <algorithm>
 #include <cmath>
@@ -169,10 +169,10 @@ void equilibrate_flux_constrmin(
     {
       if (patch.is_on_boundary())
       {
-        PatchType patch_i = patch.type(i_lhs);
+        base::PatchType patch_i = patch.type(i_lhs);
 
         if (patch_i != patch.type(i_lhs - 1)
-            || patch_i == PatchType::bound_mixed)
+            || patch_i == base::PatchType::bound_mixed)
         {
           assemble_entire_system = true;
         }

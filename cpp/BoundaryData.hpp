@@ -8,9 +8,9 @@
 
 #include "FluxBC.hpp"
 #include "KernelData.hpp"
-#include "Patch.hpp"
 #include "QuadratureRule.hpp"
 #include "assemble_projection_boundary.hpp"
+#include "base/Patch.hpp"
 #include "eigen3/Eigen/Dense"
 #include "eigen3/Eigen/Sparse"
 #include "utils.hpp"

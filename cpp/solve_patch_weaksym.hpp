@@ -6,10 +6,10 @@
 
 #pragma once
 
+#include "base/Patch.hpp"
 #include "eigen3/Eigen/Dense"
 
 #include "KernelData.hpp"
-#include "Patch.hpp"
 #include "PatchCstm.hpp"
 #include "PatchData.hpp"
 #include "assemble_patch_semiexplt.hpp"
@@ -79,7 +79,7 @@ void impose_weak_symmetry(const mesh::Geometry& geometry,
   /* Initialisations */
   // Patch type and reversion information
   bool requires_bcs = false;
-  std::vector<PatchType> patch_types(gdim, PatchType::internal);
+  std::vector<base::PatchType> patch_types(gdim, base::PatchType::internal);
   std::vector<bool> patch_reversions(gdim, false);
 
   if (patch.is_on_boundary())
@@ -89,8 +89,8 @@ void impose_weak_symmetry(const mesh::Geometry& geometry,
       patch_types[i] = patch.type(i);
       patch_reversions[i] = patch.reversion_required(i);
 
-      if (patch_types[i] == PatchType::bound_essnt_dual
-          || patch_types[i] == PatchType::bound_mixed)
+      if (patch_types[i] == base::PatchType::bound_essnt_dual
+          || patch_types[i] == base::PatchType::bound_mixed)
       {
         requires_bcs = true;
       }

@@ -6,19 +6,379 @@
 
 #pragma once
 
-#include "Patch.hpp"
+#include "base/Patch.hpp"
+#include "utils.hpp"
 
 #include <basix/finite-element.h>
+#include <dolfinx/common/IndexMap.h>
 #include <dolfinx/fem/FiniteElement.h>
 #include <dolfinx/fem/FunctionSpace.h>
+#include <dolfinx/graph/AdjacencyList.h>
+#include <dolfinx/mesh/Mesh.h>
+#include <dolfinx/mesh/Topology.h>
 
 #include <algorithm>
 #include <cassert>
+#include <cmath>
+#include <functional>
+#include <iostream>
+#include <memory>
+#include <span>
+#include <tuple>
+#include <vector>
 
 using namespace dolfinx;
 
 namespace dolfinx_eqlb
 {
+
+class OrientedPatch
+{
+public:
+  /// Create storage of patch data
+  ///
+  /// Storage is designed for the maximum patch size occurring within
+  /// the current mesh.
+  ///
+  /// @param mesh         The current mesh
+  /// @param bfct_type    List with type of all boundary facets
+  /// @param pnts_on_bndr Markers for all mesh nodes on stress boundary
+  /// @param ncells_min   Minimum number of cells patches (below: Error)
+  /// @param ncells_crit  Critical number of cells on a boundary patch
+  ///                     (modification required)
+  OrientedPatch(std::shared_ptr<const mesh::Mesh> mesh,
+                mdspan_t<const std::int8_t, 2> bfct_type,
+                std::span<const std::int8_t> pnts_on_essntbndr,
+                const int ncells_min, const int ncells_crit);
+
+  /// Group patches such that minimisation is possible
+  ///
+  /// Routine works only on boundary patches! It returns a list of adjacent
+  /// patches around node_i. Thereby the patch is connected with one internal
+  /// and adjacent boundary patches (type PatchType::bound_essnt_dual) which
+  /// have ncells_crit cells.
+  ///
+  /// @param node_i           Processor-local id of patch-central node
+  /// @param pnt_on_bndr      Markers for all mesh nodes on essential boundary
+  ///                         (stresses)
+  /// @param initial_length   Initial length of the output vector
+  /// @param ncells_crit      Critical number of cells on patches
+  /// @return                 The central nodes of critical, adjacent patches
+  std::vector<std::int32_t>
+  group_boundary_patches(const std::int32_t node_i,
+                         std::span<const std::int8_t> pnt_on_bndr,
+                         const int ncells_crit) const;
+
+  /// Construction of a sub-DOFmap on each patch
+  ///
+  /// Determines type of patch and creates sorted DOFmap. Sorting of
+  /// facets/elements/DOFs follows [1]. The sub-DOFmap is created for
+  /// sub-problem 0. If patch- type differs between different patches, use
+  /// recreate_subdofmap for sub-problem i>0.
+  ///
+  /// [1] Bertrand, F. et al.: https://doi.org/10.1007/s00211-023-01366-8, 2023
+  ///
+  /// @param node_i Processor-local id of current node
+  void create_subdofmap(const int node_i)
+  {
+    throw std::runtime_error("Patch-DOFmap not implemented!");
+  }
+
+  /// Check if reversion of patch is required
+  ///
+  /// Sorting convention of patch: fct_0 is located on the neumann boundary.
+  /// Changing of the RHS can violate this convention. This routine checks
+  /// wether this is the case.
+  ///
+  /// @param[in] index     Index of sub-problem
+  /// @param[out] required true if reversion is required
+  bool reversion_required(int index) const;
+
+  /// Estimate patchs Korn constant
+  ///
+  /// For 2D star-shaped domains: Formula [1].
+  ///
+  /// [1] Kim, K.-W.: https://doi.org/10.1137/110823031, 2011
+  ///
+  /// @param[out] Upper bound of the patchs Korn constant
+  double estimate_squared_korn_constant() const;
+
+  /* Setter functions */
+
+  /* Getter functions */
+  /// Number of considered RHS
+  int nrhs() const { return _nrhs; }
+
+  /// Return central node of patch
+  /// @return Central node
+  int node_i() const { return _nodei; }
+
+  /// Return patch type
+  /// @param index Index of equilibrated flux
+  /// @return Type of the patch
+  base::PatchType type(int index) const { return _type[index]; }
+
+  /// Return patch types
+  /// @return List of patch-types
+  std::span<const base::PatchType> type() const
+  {
+    return std::span<const base::PatchType>(_type.data(), _nrhs);
+  }
+
+  /// Return type-relation
+  /// @return Type relation of different LHS
+  std::int8_t equal_patch_types() const { return _equal_patches; }
+
+  /// Check if patch is internal
+  /// @return True if patch is internal
+  bool is_internal() const { return _type[0] == base::PatchType::internal; }
+
+  /// Check if patch is on boundary
+  /// @return True if patch is internal
+  bool is_on_boundary() const { return _type[0] != base::PatchType::internal; }
+
+  /// Check if patch requires flux BCs
+  /// @return True if patch requires flux BCs
+  bool requires_flux_bcs() const
+  {
+    bool requires_bc = false;
+
+    for (auto t : _type)
+    {
+      if (t == base::PatchType::bound_essnt_dual
+          || t == base::PatchType::bound_mixed)
+      {
+        requires_bc = true;
+        break;
+      }
+    }
+
+    return requires_bc;
+  }
+
+  /// Check if patch requires flux BCs
+  /// @return True if patch requires flux BCs
+  bool requires_flux_bcs(int index) const
+  {
+    if (_type[index] == base::PatchType::bound_essnt_dual
+        || _type[index] == base::PatchType::bound_mixed)
+    {
+      return true;
+    }
+    else
+    {
+      return false;
+    }
+  }
+
+  /// Checks if flux BCs have to be applied on fact
+  /// @param index The id of the RHS
+  /// @param fct   The (patch-local) facet id
+  /// @return True if BCs on the flux field are required
+  bool requires_flux_bcs(int index, int fct_id) const
+  {
+    if (_bfct_type(index, _fcts[fct_id]) == base::PatchFacetType::essnt_dual)
+    {
+      return true;
+    }
+    else
+    {
+      return false;
+    }
+  }
+
+  /// Return spacial dimension
+  /// @return The spacial dimension
+  int dim() const { return _dim; }
+
+  /// Return number of facets per cell
+  /// @return Number of facets per cell
+  int fcts_per_cell() const { return _fct_per_cell; }
+
+  // Return the maximal number of grouped patches
+  int groupsize_max() const { return _groupsize_max; }
+
+  // Return the maximal number of cells per patch
+  int ncells_max() const { return _ncells_max; }
+
+  /// Return number of cells on patch
+  /// @return Number of cells on patch
+  int ncells() const { return _ncells; }
+
+  /// Return number of cells on arbitrary patch
+  /// @return Number of cells on patch
+  int ncells(std::int32_t node_i) const
+  {
+    return _node_to_cell->links(node_i).size();
+  }
+
+  /// Return number of facets on patch
+  /// @return Number of facets on patch
+  int nfcts() const { return _nfcts; }
+
+  /// Return processor-local cell ids on current patch
+  /// @return cells
+  std::span<const std::int32_t> cells() const
+  {
+    if (is_internal())
+    {
+      return std::span<const std::int32_t>(_cells.data(), _ncells + 2);
+    }
+    else
+    {
+      return std::span<const std::int32_t>(_cells.data(), _ncells + 1);
+    }
+  }
+
+  /// Return processor-local cell id
+  /// @param cell_i Patch-local cell id
+  /// @return cell
+  std::int32_t cell(int cell_i) const { return _cells[cell_i]; }
+
+  /// Return processor-local facet ids on current patch
+  /// @return fcts
+  std::span<const std::int32_t> fcts() const
+  {
+    if (is_internal())
+    {
+      return std::span<const std::int32_t>(_fcts.data(), _nfcts + 1);
+    }
+    else
+    {
+      return std::span<const std::int32_t>(_fcts.data(), _nfcts);
+    }
+  }
+
+  /// Return processor-local facet id
+  /// @param fct_i Patch-local facet id
+  /// @return facet
+  std::int32_t fct(int fct_i) const { return _fcts[fct_i]; }
+
+  /// Return cell-local node ids of patch-central node
+  /// @return inode_local
+  std::span<const std::int8_t> inodes_local() const
+  {
+    return std::span<const std::int8_t>(_inodes_local.data(), _ncells + 2);
+  }
+
+  /// Return cell-local node id of patch-central node
+  /// @param cell_i Patch-local cell id
+  /// @return inode_local
+  std::int8_t inode_local(int cell_i) const { return _inodes_local[cell_i]; }
+
+  /// Test
+  std::span<const std::int8_t> fctid_local()
+  {
+    return std::span<const std::int8_t>(_fcts_local.data(), 2 * _nfcts + 2);
+  }
+
+protected:
+  /// Determine maximum patch size
+  /// @param nnodes_proc  Number of nodes on current processor
+  /// @param pnts_on_bndr Markers for all mesh nodes on boundary
+  /// @param ncells_min   Minimum number of cells on a patch
+  /// @param ncells_crit  Critical number of cells on adjacent boundary patches
+  void set_max_patch_size(const int nnodes_proc,
+                          std::span<const std::int8_t> pnts_on_bndr,
+                          const int ncells_min, const int ncells_crit);
+
+  /// Initializes patch
+  ///
+  /// Sets patch type and creates sorted list of patch-facets.
+  ///
+  /// @param node_i Processor local id of patch-central node
+  void initialize_patch(const int node_i);
+
+  /// Determine local facet-id on cell
+  /// @param fct_i Processor-local facet id
+  /// @param cell_i Processor-local cell id
+  /// @return Cell local facet id
+  std::int8_t get_fctid_local(std::int32_t fct_i, std::int32_t cell_i) const;
+
+  /// Determine local facet-id on cell
+  /// @param fct_i      Processor-local facet id
+  /// @param fct_cell_i Facets on cell_i
+  /// @return Cell local facet id
+  std::int8_t get_fctid_local(std::int32_t fct_i,
+                              std::span<const std::int32_t> fct_cell_i) const;
+
+  /// Determine local id of node on cell
+  /// @param cell_i Processor-local cell id
+  /// @param node_i Processor-local node id
+  /// @return Cell local node id
+  std::int8_t node_local(std::int32_t cell_i, std::int32_t node_i) const;
+
+  /// Determine the next facet on a patch formed by triangular elements
+  ///
+  /// Triangle has three facets. Determine the two facets not already used.
+  /// Check if smaller or larger facet is outside the range spanned by the
+  /// facets of the patch. If not, conduct full search in the list of patch
+  /// facets.
+  ///
+  /// @param cell_i     Processor local id of current cell
+  /// @param fct_cell_i List of factes (processor local) of current cell
+  /// @param id_fct_loc Loacl facet id on current cell
+  /// @return           Next facet
+  std::int32_t next_facet(std::int32_t cell_i,
+                          std::span<const std::int32_t> fct_cell_i,
+                          std::int8_t id_fct_loc) const;
+
+  /// Returns an adjacent intern. patch of boundary patch
+  /// @param node_i Processor-local id of patch-central node
+  /// @return The patch-central node of the internal patch
+  std::int32_t adjacent_internal_patch(const std::int32_t node_i) const;
+
+  // Maximum size of patch
+  int _ncells_max;
+
+  // Maximum number of grouped patches
+  int _groupsize_max;
+
+  /* Geometry */
+  // The mesh
+  std::shared_ptr<const mesh::Mesh> _mesh;
+
+  // The space dimension
+  const int _dim, _dim_fct;
+
+  // Counter element type
+  int _fct_per_cell;
+
+  // The connectivity's
+  std::shared_ptr<const graph::AdjacencyList<std::int32_t>> _node_to_cell,
+      _node_to_fct, _fct_to_node, _fct_to_cell, _cell_to_fct, _cell_to_node;
+
+  // Types boundary facets
+  mdspan_t<const std::int8_t, 2> _bfct_type;
+
+  /* Patch */
+  // Central node of patch
+  int _nodei;
+
+  // Number of considered RHS
+  int _nrhs;
+
+  // Type of patch
+  std::vector<base::PatchType> _type;
+
+  // Id if all patches are equal;
+  std::int8_t _equal_patches;
+
+  // Number of elements on patch
+  int _ncells, _nfcts;
+
+  // Facets/Cells on patch
+  std::vector<std::int32_t> _cells, _fcts, _fcts_sorted;
+  std::vector<std::int8_t> _inodes_local;
+
+  // [lfct_(E0,T-1), lfct_(E0,T1), ..., lfct_(Ea,Ta), lfct_(Ea,Tap1)]
+  std::vector<std::int8_t> _fcts_local;
+
+  /* DOFmap */
+  std::vector<std::int32_t> _ddofmap, _offset_dofmap;
+  std::array<std::size_t, 3> _dofmap_shape;
+};
+
 template <typename T, int id_flux_order>
 class PatchCstm : public OrientedPatch
 {
@@ -31,7 +391,7 @@ public:
   /// @param mesh                    The current mesh
   /// @param bfct_type               List with type of all boundary facets
   /// @param pnt_on_essntbndr        List with points on essential stress
-  /// boundary
+  ///                                boundary
   ///                                (only for stress eqlb. required --> empty
   ///                                else)
   /// @param function_space_fluxhdiv Function space of H(div) flux
@@ -485,7 +845,7 @@ public:
   {
     int offst;
 
-    if (_type[0] == PatchType::internal)
+    if (_type[0] == base::PatchType::internal)
     {
       if (fct_i == 0 || fct_i == _ncells)
       {

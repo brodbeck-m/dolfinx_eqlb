@@ -6,9 +6,9 @@
 
 #pragma once
 
-#include "Patch.hpp"
 #include "PatchFluxEV.hpp"
 #include "StorageStiffness.hpp"
+#include "base/Patch.hpp"
 #include "eigen3/Eigen/Dense"
 #include "utils.hpp"
 
@@ -49,14 +49,17 @@ namespace dolfinx_eqlb
 /// @param ndof_elmt_nz The number of non-zero DOFs on element
 /// @param ndof_elmt    The number of DOFs on element
 template <typename T>
-void apply_lifting(
-    std::span<T> Ae, std::vector<T>& Le, std::span<const std::int8_t> bmarkers,
-    std::span<const T> bvalues, std::span<const int32_t> dofs_elmt,
-    std::span<const int32_t> dofs_patch, std::span<const int32_t> dofs_global,
-    const PatchType type_patch, const int ndof_elmt_nz, const int ndof_elmt)
+void apply_lifting(std::span<T> Ae, std::vector<T>& Le,
+                   std::span<const std::int8_t> bmarkers,
+                   std::span<const T> bvalues,
+                   std::span<const int32_t> dofs_elmt,
+                   std::span<const int32_t> dofs_patch,
+                   std::span<const int32_t> dofs_global,
+                   const base::PatchType type_patch, const int ndof_elmt_nz,
+                   const int ndof_elmt)
 {
-  if (type_patch == PatchType::bound_essnt_dual
-      || type_patch == PatchType::bound_mixed)
+  if (type_patch == base::PatchType::bound_essnt_dual
+      || type_patch == base::PatchType::bound_mixed)
   {
     for (std::size_t k = 0; k < ndof_elmt_nz; ++k)
     {
@@ -195,7 +198,7 @@ void assemble_tangents(
 
     /* Assemble into patch system */
     // Get patch type
-    const PatchType type_patch = patch.type(index_lhs);
+    const base::PatchType type_patch = patch.type(index_lhs);
 
     // Element-local and patch-local DOFmap
     std::span<const int32_t> dofs_elmt = patch.dofs_elmt(index);
@@ -276,8 +279,8 @@ void assemble_tangents(
     // Add penalty terms
     if constexpr (asmbl_systmtrx)
     {
-      if (type_patch == PatchType::internal
-          || type_patch == PatchType::bound_essnt_dual)
+      if (type_patch == base::PatchType::internal
+          || type_patch == base::PatchType::bound_essnt_dual)
       {
         // Required counters
         const int ndofs_cons = patch.ndofs_cons();
