@@ -20,10 +20,10 @@ class StorageStiffness
 public:
   /// Initialization
   ///
-  /// Storage of element constributions to stiffness and
-  /// penalisation.
+  /// Storage of element contributions to stiffness and
+  /// constraint.
   ///
-  /// @param ncells      Numbe of cells on current processor
+  /// @param ncells      Number of cells on current processor
   /// @param ndofs_elmt  Number of DOFs on element
   /// @param ndofs_pen   Number of DOFs of constraining field
   StorageStiffness(int ncells, int ndofs_elmt, int ndofs_cons)

@@ -6,14 +6,14 @@
 
 #pragma once
 
-#include "base/Patch.hpp"
-#include "eigen3/Eigen/Dense"
-
 #include "KernelData.hpp"
 #include "PatchCstm.hpp"
 #include "PatchData.hpp"
 #include "assemble_patch_semiexplt.hpp"
+#include "eigen3/Eigen/Dense"
 #include "utils.hpp"
+
+#include <dolfinx_eqlb/base/Patch.hpp>
 
 #include <dolfinx/fem/DofMap.h>
 #include <dolfinx/fem/Form.h>

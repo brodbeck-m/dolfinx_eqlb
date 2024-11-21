@@ -10,9 +10,9 @@
 #include "ProblemDataFluxEV.hpp"
 #include "StorageStiffness.hpp"
 #include "assemble_patch_constrmin.hpp"
-#include "base/Patch.hpp"
 #include "eigen3/Eigen/Dense"
-// #include "eigen3/Eigen/Sparse"
+
+#include <dolfinx_eqlb/base/Patch.hpp>
 
 #include <algorithm>
 #include <cmath>

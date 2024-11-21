@@ -6,8 +6,9 @@
 
 #pragma once
 
-#include "base/Patch.hpp"
 #include "utils.hpp"
+
+#include <dolfinx_eqlb/base/Patch.hpp>
 
 #include <basix/finite-element.h>
 #include <dolfinx/common/IndexMap.h>

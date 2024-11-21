@@ -13,9 +13,10 @@
 #include "PatchData.hpp"
 #include "ProblemDataFluxCstm.hpp"
 #include "assemble_patch_semiexplt.hpp"
-#include "base/Patch.hpp"
 #include "solve_patch_weaksym.hpp"
 #include "utils.hpp"
+
+#include <dolfinx_eqlb/base/Patch.hpp>
 
 #include <dolfinx/fem/DofMap.h>
 #include <dolfinx/fem/Form.h>

@@ -6,9 +6,10 @@
 
 #pragma once
 
-#include "base/Patch.hpp"
 #include "eigen3/Eigen/Dense"
 #include "utils.hpp"
+
+#include <dolfinx_eqlb/base/Patch.hpp>
 
 #include <algorithm>
 #include <span>

@@ -10,10 +10,11 @@
 #include "KernelData.hpp"
 #include "QuadratureRule.hpp"
 #include "assemble_projection_boundary.hpp"
-#include "base/Patch.hpp"
 #include "eigen3/Eigen/Dense"
 #include "eigen3/Eigen/Sparse"
 #include "utils.hpp"
+
+#include <dolfinx_eqlb/base/Patch.hpp>
 
 #include <basix/e-lagrange.h>
 #include <basix/element-families.h>

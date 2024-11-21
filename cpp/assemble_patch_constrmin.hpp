@@ -8,9 +8,10 @@
 
 #include "PatchFluxEV.hpp"
 #include "StorageStiffness.hpp"
-#include "base/Patch.hpp"
 #include "eigen3/Eigen/Dense"
 #include "utils.hpp"
+
+#include <dolfinx_eqlb/base/Patch.hpp>
 
 #include <dolfinx/fem/DofMap.h>
 #include <dolfinx/fem/Form.h>
