@@ -33,6 +33,7 @@ using namespace dolfinx;
 
 namespace dolfinx_eqlb
 {
+
 template <typename T>
 class KernelData
 {
@@ -66,13 +67,6 @@ public:
   /// @param[in] fct_id          The cell-local facet id
   void physical_fct_normal(std::span<double> normal_phys,
                            mdspan_t<const double, 2> K, std::int8_t fct_id);
-
-  /* Tabulate shape function */
-  std::array<std::size_t, 5>
-  tabulate_basis(const basix::FiniteElement& basix_element,
-                 const std::vector<double>& points,
-                 std::vector<double>& storage, bool tabulate_gradient,
-                 bool stoarge_elmtcur);
 
   /* Getter functions (Cell geometry) */
   /// Returns number of nodes, forming a reference cell
@@ -169,6 +163,42 @@ public:
   }
 
 protected:
+  /* Tabulate shape function */
+  /// Extract interpolation data of an RT-space on facets
+  /// @param[in] basix_element     The Basix element (has to be RT!)
+  /// @param[in] points            The tabulation points
+  /// @param[in,out] storage       The storage for the tabulated basis functions
+  /// @param[in] tabulate_gradient True, if gradient is tabulated
+  /// @param[in] stoarge_elmtcur   ???
+  /// @return The Shape M for creation of an mdspan
+  std::array<std::size_t, 5>
+  tabulate_basis(const basix::FiniteElement& basix_element,
+                 const std::vector<double>& points,
+                 std::vector<double>& storage, bool tabulate_gradient,
+                 bool stoarge_elmtcur);
+
+  /// Extract interpolation data of an RT-space on facets
+  /// @param[in] basix_element   The Basix element (has to be RT!)
+  /// @param[in] flux_is_custom  Flag, if custom flux space is used
+  /// @param[in] gdim            The geometric dimension of the problem
+  /// @param[in] nfcts_per_cell  The number of facets per cell
+  /// @param[in,out] ipoints_fct Storage for interpolation points
+  /// @param[in,out] data_M_fct  Storage for interpolation matrix
+  /// @return The Shape M for creation of an mdspan
+  std::array<std::size_t, 4> interpolation_data_facet_rt(
+      const basix::FiniteElement& basix_element, const bool flux_is_custom,
+      const std::size_t gdim, const std::size_t nfcts_per_cell,
+      std::vector<double>& ipoints_fct, std::vector<double>& data_M_fct);
+
+  /// Get shape of facet interpolation data of an RT-space on facets
+  /// @param[in] shape Shape, used for creation of the mdspan
+  /// @return std::tuple(nipoints_per_fct, nipoints_all_fcts)
+  std::pair<std::size_t, std::size_t>
+  size_interpolation_data_facet_rt(std::array<std::size_t, 4> shape)
+  {
+    return {shape[3], shape[0] * shape[3]};
+  }
+
   /* Variable definitions */
   // Dimensions
   std::uint32_t _gdim, _tdim;

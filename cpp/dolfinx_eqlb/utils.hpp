@@ -101,31 +101,4 @@ void extract_constants_data(
 }
 // ------------------------------------------------------------------------------
 
-// ------------------------------------------------------------------------------
-
-/* Extract interpolation data of RT elements */
-
-/// Extract interpolation data of an RT-space on facets
-/// @param[in] basix_element   The Basix element (has to be RT!)
-/// @param[in] flux_is_custom  Flag, if custom flux space is used
-/// @param[in] gdim            The geometric dimension of the problem
-/// @param[in] nfcts_per_cell  The number of facets per cell
-/// @param[in,out] ipoints_fct Storage for interpolation points
-/// @param[in,out] data_M_fct  Storage for interpolation matrix
-/// @return The Shape M for creation of an mdspan
-std::array<std::size_t, 4> interpolation_data_facet_rt(
-    const basix::FiniteElement& basix_element, const bool flux_is_custom,
-    const std::size_t gdim, const std::size_t nfcts_per_cell,
-    std::vector<double>& ipoints_fct, std::vector<double>& data_M_fct);
-
-/// Get shape of facet interpolation data
-/// @param[in] shape Shape, used for creation of the mdspan
-/// @return std::tuple(nipoints_per_fct, nipoints_all_fcts)
-static inline std::pair<std::size_t, std::size_t>
-size_interpolation_data_facet_rt(std::array<std::size_t, 4> shape)
-{
-  return {shape[3], shape[0] * shape[3]};
-}
-// ------------------------------------------------------------------------------
-
 } // namespace dolfinx_eqlb
