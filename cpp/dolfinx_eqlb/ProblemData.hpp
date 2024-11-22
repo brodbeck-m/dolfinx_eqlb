@@ -82,7 +82,9 @@ public:
       const fem::Form<T>& l_i = *(l[i]);
 
       // Get sizes (constants, boundary conditions)
-      std::int32_t size_cnst_i = size_constants_data<T>(l_i.constants());
+      std::int32_t size_cnst_i = std::accumulate(
+          l_i.constants().cbegin(), l_i.constants().cend(), 0,
+          [](std::int32_t sum, auto& c) { return sum + c->value.size(); });
 
       if (!id_no_bcs)
       {
@@ -230,7 +232,9 @@ public:
       _l[i] = l[i];
 
       // Get sizes (constants, boundary conditions)
-      std::int32_t size_cnst_i = size_constants_data<T>(l_i.constants());
+      std::int32_t size_cnst_i = std::accumulate(
+          l_i.constants().cbegin(), l_i.constants().cend(), 0,
+          [](std::int32_t sum, auto& c) { return sum + c->value.size(); });
 
       // Increment overall size
       size_cnst += size_cnst_i;
@@ -361,7 +365,15 @@ protected:
       const fem::Form<T>& l_i = *(_l[i]);
 
       // Extract data
-      extract_constants_data<T>(l_i.constants(), constants(i));
+      std::int32_t offset = 0;
+
+      for (auto& cnst : l_i.constants())
+      {
+        const std::vector<T>& value = cnst->value;
+        std::copy(value.begin(), value.end(),
+                  std::next(constants(i).begin(), offset));
+        offset += value.size();
+      }
     }
   }
 

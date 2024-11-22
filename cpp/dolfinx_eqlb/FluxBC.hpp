@@ -6,8 +6,6 @@
 
 #pragma once
 
-#include "utils.hpp"
-
 #include <dolfinx/fem/Constant.h>
 #include <dolfinx/fem/ElementDofLayout.h>
 #include <dolfinx/fem/Function.h>
@@ -153,13 +151,23 @@ public:
     if (_constants.size() > 0)
     {
       // Calculate the number of constants
-      std::int32_t size_constants = size_constants_data<T>(_constants);
+      std::int32_t size_constants = std::accumulate(
+          _constants.cbegin(), _constants.cend(), 0,
+          [](std::int32_t sum, auto& c) { return sum + c->value.size(); });
 
       // Initialise storage
       constants.resize(size_constants);
 
       // Extract coefficients
-      extract_constants_data<T>(_constants, constants);
+      std::int32_t offset = 0;
+
+      for (auto& cnst : _constants)
+      {
+        const std::vector<T>& value = cnst->value;
+        std::copy(value.begin(), value.end(),
+                  std::next(constants.begin(), offset));
+        offset += value.size();
+      }
     }
 
     return std::move(constants);

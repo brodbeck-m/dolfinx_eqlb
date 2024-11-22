@@ -62,43 +62,4 @@ using kernel_fn_schursolver = std::function<void(
 
 // ------------------------------------------------------------------------------
 
-// ------------------------------------------------------------------------------
-
-/* Extract coefficients of a form */
-
-/// Compute size of coefficient data
-/// @tparam T Scalar value type
-/// @param constants Vector with fem::Constant objects
-/// @return Size of flattened storage vector
-template <typename T>
-std::int32_t size_constants_data(
-    const std::vector<std::shared_ptr<const fem::Constant<T>>>& constants)
-{
-  std::int32_t size = std::accumulate(constants.cbegin(), constants.cend(), 0,
-                                      [](std::int32_t sum, auto& c)
-                                      { return sum + c->value.size(); });
-  return size;
-}
-
-/// Extract coefficients into flattened storage
-/// @tparam T Scalar value type
-/// @param constants      Vector with fem::Constant objects
-/// @param data_constants Flattened storage for coefficients
-template <typename T>
-void extract_constants_data(
-    const std::vector<std::shared_ptr<const fem::Constant<T>>>& constants,
-    std::span<T> data_constants)
-{
-  std::int32_t offset = 0;
-
-  for (auto& cnst : constants)
-  {
-    const std::vector<T>& value = cnst->value;
-    std::copy(value.begin(), value.end(),
-              std::next(data_constants.begin(), offset));
-    offset += value.size();
-  }
-}
-// ------------------------------------------------------------------------------
-
 } // namespace dolfinx_eqlb
