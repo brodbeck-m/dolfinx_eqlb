@@ -70,8 +70,8 @@ BoundaryData<T>::BoundaryData(
   std::generate(_offset_fctdata.begin(), _offset_fctdata.end(),
                 [n = 0, num_fcts]() mutable { return num_fcts * (n++); });
 
-  mdspan_t<double, 2> J(_data_J.data(), _gdim, _gdim);
-  mdspan_t<double, 2> K(_data_K.data(), _gdim, _gdim);
+  base::mdspan_t<double, 2> J(_data_J.data(), _gdim, _gdim);
+  base::mdspan_t<double, 2> K(_data_K.data(), _gdim, _gdim);
 
   /* Extract required data */
   // The mesh
@@ -121,8 +121,8 @@ BoundaryData<T>::BoundaryData(
 
   // Storage for extraction of cell geometry
   std::vector<double> coordinates_data(mesh->geometry().cmap().dim() * 3);
-  mdspan_t<const double, 2> coordinates(coordinates_data.data(),
-                                        mesh->geometry().cmap().dim(), 3);
+  base::mdspan_t<const double, 2> coordinates(coordinates_data.data(),
+                                              mesh->geometry().cmap().dim(), 3);
 
   // Storage of normal-traces/normal on boundary
   std::vector<T> values_bkernel(std::max(nipoints, nqpoints));
@@ -136,8 +136,8 @@ BoundaryData<T>::BoundaryData(
   bool initialise_projection = true;
 
   std::vector<double> basis_projection_values, mbasis_projection_values;
-  mdspan_t<const double, 5> basis_projection;
-  mdspan_t<double, 3> mbasis_projection;
+  base::mdspan_t<const double, 5> basis_projection;
+  base::mdspan_t<double, 3> mbasis_projection;
 
   // Linear equation system (projection)
   Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic> A_e;
@@ -261,14 +261,14 @@ BoundaryData<T>::BoundaryData(
                     _V_flux_hdiv->element()->basix_element(),
                     basis_projection_values);
 
-            basis_projection = mdspan_t<const double, 5>(
+            basis_projection = base::mdspan_t<const double, 5>(
                 basis_projection_values.data(), shape);
 
             mbasis_projection_values.resize(nqpoints_per_fct * _ndofs_per_fct
                                             * _gdim);
-            mbasis_projection
-                = mdspan_t<double, 3>(mbasis_projection_values.data(),
-                                      nqpoints_per_fct, _ndofs_per_fct, _gdim);
+            mbasis_projection = base::mdspan_t<double, 3>(
+                mbasis_projection_values.data(), nqpoints_per_fct,
+                _ndofs_per_fct, _gdim);
 
             // The equation system
             A_e.resize(_ndofs_per_fct, _ndofs_per_fct);
@@ -383,8 +383,8 @@ void BoundaryData<T>::calculate_patch_bc(
   std::span<const double> node_coordinates = mesh->geometry().x();
 
   std::vector<double> coordinates_data(mesh->geometry().cmap().dim() * 3);
-  mdspan_t<const double, 2> coordinates(coordinates_data.data(),
-                                        mesh->geometry().cmap().dim(), 3);
+  base::mdspan_t<const double, 2> coordinates(coordinates_data.data(),
+                                              mesh->geometry().cmap().dim(), 3);
 
   /* Evaluate BCs for all RHS */
   for (std::size_t i_fct = 0; i_fct < bound_fcts.size(); i_fct++)
@@ -403,8 +403,8 @@ void BoundaryData<T>::calculate_patch_bc(
     }
 
     // Calculate J
-    mdspan_t<double, 2> J(_data_J.data(), _gdim, _gdim);
-    mdspan_t<double, 2> K(_data_K.data(), _gdim, _gdim);
+    base::mdspan_t<double, 2> J(_data_J.data(), _gdim, _gdim);
+    base::mdspan_t<double, 2> K(_data_K.data(), _gdim, _gdim);
 
     double detJ
         = _kernel_data.compute_jacobian(J, K, _detJ_scratch, coordinates);
@@ -418,9 +418,12 @@ void BoundaryData<T>::calculate_patch_bc(
 }
 
 template <typename T>
-void BoundaryData<T>::calculate_patch_bc(
-    const int rhs_i, const std::int32_t fct, const std::int8_t hat_id,
-    mdspan_t<const double, 2> J, const double detJ, mdspan_t<const double, 2> K)
+void BoundaryData<T>::calculate_patch_bc(const int rhs_i,
+                                         const std::int32_t fct,
+                                         const std::int8_t hat_id,
+                                         base::mdspan_t<const double, 2> J,
+                                         const double detJ,
+                                         base::mdspan_t<const double, 2> K)
 {
   if (facet_type(rhs_i)[fct] == base::PatchFacetType::essnt_dual)
   {

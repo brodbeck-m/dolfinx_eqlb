@@ -6,10 +6,6 @@
 
 #pragma once
 
-#include "utils.hpp"
-
-#include <dolfinx_eqlb/base/Patch.hpp>
-
 #include <basix/finite-element.h>
 #include <dolfinx/common/IndexMap.h>
 #include <dolfinx/fem/FiniteElement.h>
@@ -17,6 +13,8 @@
 #include <dolfinx/graph/AdjacencyList.h>
 #include <dolfinx/mesh/Mesh.h>
 #include <dolfinx/mesh/Topology.h>
+#include <dolfinx_eqlb/base/Patch.hpp>
+#include <dolfinx_eqlb/base/mdspan.hpp>
 
 #include <algorithm>
 #include <cassert>
@@ -48,7 +46,7 @@ public:
   /// @param ncells_crit  Critical number of cells on a boundary patch
   ///                     (modification required)
   OrientedPatch(std::shared_ptr<const mesh::Mesh> mesh,
-                mdspan_t<const std::int8_t, 2> bfct_type,
+                base::mdspan_t<const std::int8_t, 2> bfct_type,
                 std::span<const std::int8_t> pnts_on_essntbndr,
                 const int ncells_min, const int ncells_crit);
 
@@ -350,7 +348,7 @@ protected:
       _node_to_fct, _fct_to_node, _fct_to_cell, _cell_to_fct, _cell_to_node;
 
   // Types boundary facets
-  mdspan_t<const std::int8_t, 2> _bfct_type;
+  base::mdspan_t<const std::int8_t, 2> _bfct_type;
 
   /* Patch */
   // Central node of patch
@@ -402,7 +400,7 @@ public:
   /// @param ncells_crit             Critical number of cells on a boundary
   ///                                patch (modification required)
   PatchCstm(std::shared_ptr<const mesh::Mesh> mesh,
-            mdspan_t<const std::int8_t, 2> bfct_type,
+            base::mdspan_t<const std::int8_t, 2> bfct_type,
             std::span<const std::int8_t> pnt_on_essntbndr,
             std::shared_ptr<const fem::FunctionSpace> function_space_fluxhdiv,
             const bool symconstr_required, const int ncells_min,
@@ -445,7 +443,7 @@ public:
                             : _offset_dofmap[3];
   }
 
-  void flux_dofmap_cell(const int a, mdspan_t<std::int32_t, 3> dofmap)
+  void flux_dofmap_cell(const int a, base::mdspan_t<std::int32_t, 3> dofmap)
   {
     // Cell ID
     const std::int32_t cell = _cells[a];
@@ -598,7 +596,8 @@ public:
     }
   }
 
-  void fctdofs_contraint_space(const int a, mdspan_t<std::int32_t, 3> dofmap)
+  void fctdofs_contraint_space(const int a,
+                               base::mdspan_t<std::int32_t, 3> dofmap)
   {
     // Nodes on facet ii
     std::span<const std::int32_t> nodes_on_fct = _fct_to_node->links(_fcts[a]);
@@ -650,7 +649,7 @@ public:
   }
 
   void fctdofs_contraint_space(const int pfct, const int pcell,
-                               mdspan_t<std::int32_t, 3> dofmap)
+                               base::mdspan_t<std::int32_t, 3> dofmap)
   {
     // Nodes on facet ii
     std::span<const std::int32_t> nodes_on_fct
@@ -686,17 +685,17 @@ public:
     dofmap(3, pcell, offs) = 1;
   }
 
-  void
-  set_assembly_informations(const std::vector<bool>& facet_orientation,
-                            mdspan_t<const std::uint8_t, 2> facet_reversion,
-                            std::span<const double> storage_detJ)
+  void set_assembly_informations(
+      const std::vector<bool>& facet_orientation,
+      base::mdspan_t<const std::uint8_t, 2> facet_reversion,
+      std::span<const double> storage_detJ)
   {
     // Initialisation
     std::int8_t fctloc_ea, fctloc_eam1;
     std::int32_t prefactor_ea, prefactor_eam1;
 
     // Create mdspan of DOFmap
-    mdspan_t<std::int32_t, 3> dofmap(_ddofmap.data(), _dofmap_shape);
+    base::mdspan_t<std::int32_t, 3> dofmap(_ddofmap.data(), _dofmap_shape);
 
     // Loop over all cells
     for (std::size_t a = 1; a < _ncells + 1; ++a)
@@ -792,7 +791,7 @@ public:
     _dofmap_shape[1] = _ncells + 2;
 
     // Create mdspan of DOFmap
-    mdspan_t<std::int32_t, 3> dofmap(_ddofmap.data(), _dofmap_shape);
+    base::mdspan_t<std::int32_t, 3> dofmap(_ddofmap.data(), _dofmap_shape);
 
     // Initialise DOFmap on each cell of the patch
     for (std::size_t a = 1; a < _ncells + 1; ++a)
@@ -964,9 +963,10 @@ public:
   /// d_Ta-div]
   ///
   /// @return List DOFs
-  mdspan_t<const std::int32_t, 3> assembly_info_minimisation() const
+  base::mdspan_t<const std::int32_t, 3> assembly_info_minimisation() const
   {
-    return mdspan_t<const std::int32_t, 3>(_ddofmap.data(), _dofmap_shape);
+    return base::mdspan_t<const std::int32_t, 3>(_ddofmap.data(),
+                                                 _dofmap_shape);
   }
 
   /// Offsets within DOFmap on each element
@@ -1026,7 +1026,7 @@ public:
   ///                                patch (modification required)
   PatchFluxCstm(
       std::shared_ptr<const mesh::Mesh> mesh,
-      mdspan_t<const std::int8_t, 2> bfct_type,
+      base::mdspan_t<const std::int8_t, 2> bfct_type,
       std::span<const std::int8_t> pnt_on_essntbndr,
       const std::shared_ptr<const fem::FunctionSpace> function_space_fluxhdiv,
       const std::shared_ptr<const fem::FunctionSpace> function_space_fluxdg,
@@ -1088,9 +1088,9 @@ public:
     this->_dofmap_shape[1] = this->_ncells + 2;
 
     // Create mdspan of DOFmap
-    mdspan_t<std::int32_t, 3> dofmap(this->_ddofmap.data(),
-                                     this->_dofmap_shape);
-    mdspan_t<std::int32_t, 2> dofs_fluxdg(
+    base::mdspan_t<std::int32_t, 3> dofmap(this->_ddofmap.data(),
+                                           this->_dofmap_shape);
+    base::mdspan_t<std::int32_t, 2> dofs_fluxdg(
         _list_fctdofs_fluxdg.data(), this->_ncells + 1, 2 * _ndof_fluxdg_fct);
 
     // Initialise DOFmap on each cell of the patch

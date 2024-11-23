@@ -10,7 +10,7 @@ using namespace dolfinx;
 using namespace dolfinx_eqlb;
 
 Patch::Patch(int nnodes_proc, std::shared_ptr<const mesh::Mesh> mesh,
-             mdspan_t<const std::int8_t, 2> bfct_type)
+             base::mdspan_t<const std::int8_t, 2> bfct_type)
     : _mesh(mesh), _bfct_type(bfct_type), _dim(mesh->geometry().dim()),
       _dim_fct(mesh->geometry().dim() - 1),
       _type(bfct_type.extent(0), base::PatchType::internal),
@@ -435,7 +435,7 @@ Patch::next_facet_triangle(std::int32_t cell_i,
 // ---------------------------------------------------------------------------------------------------
 PatchFluxEV::PatchFluxEV(
     int nnodes_proc, std::shared_ptr<const mesh::Mesh> mesh,
-    mdspan_t<const std::int8_t, 2> bfct_type,
+    base::mdspan_t<const std::int8_t, 2> bfct_type,
     const std::shared_ptr<const fem::FunctionSpace> function_space,
     const std::shared_ptr<const fem::FunctionSpace> function_space_fluxhdiv,
     const basix::FiniteElement& basix_element_flux)

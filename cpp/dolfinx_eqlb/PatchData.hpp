@@ -7,7 +7,6 @@
 #pragma once
 
 #include "eigen3/Eigen/Dense"
-#include "utils.hpp"
 
 #include <dolfinx_eqlb/base/Patch.hpp>
 
@@ -243,7 +242,7 @@ public:
   /// @param detJ    The determinant of the Jacobian
   /// @param J       The Jacobian
   void store_piola_mapping(const int cell_id, const double detJ,
-                           mdspan_t<const double, 2> J)
+                           base::mdspan_t<const double, 2> J)
   {
     // The offset
     const int offset = _size_J * cell_id;
@@ -260,8 +259,8 @@ public:
   /// @param J       The Jacobian
   /// @param K       The inverse Jacobian
   void store_piola_mapping(const int cell_id, const double detJ,
-                           mdspan_t<const double, 2> J,
-                           mdspan_t<const double, 2> K)
+                           base::mdspan_t<const double, 2> J,
+                           base::mdspan_t<const double, 2> K)
   {
     // The offset
     const int offset = _size_J * cell_id;
@@ -300,21 +299,21 @@ public:
   /// Extract the Jacobian of the i-th cell
   /// @param cell_id The cell id (starting at 0)
   /// @return mdspan of the Jacobian
-  mdspan_t<const double, 2> jacobian(const int cell_id) const
+  base::mdspan_t<const double, 2> jacobian(const int cell_id) const
   {
     // Set offset
-    return mdspan_t<const double, 2>(_data_J.data() + _size_J * cell_id, _gdim,
-                                     _gdim);
+    return base::mdspan_t<const double, 2>(_data_J.data() + _size_J * cell_id,
+                                           _gdim, _gdim);
   }
 
   /// Extract the inverse Jacobian of the i-th cell
   /// @param cell_id The cell id (starting at 0)
   /// @return mdspan of the inverse Jacobian
-  mdspan_t<const double, 2> inverse_jacobian(const int cell_id) const
+  base::mdspan_t<const double, 2> inverse_jacobian(const int cell_id) const
   {
     // Set offset
-    return mdspan_t<const double, 2>(_data_K.data() + _size_J * cell_id, _gdim,
-                                     _gdim);
+    return base::mdspan_t<const double, 2>(_data_K.data() + _size_J * cell_id,
+                                           _gdim, _gdim);
   }
 
   /// Extract the determinant of the Jacobian of the i-th cell
@@ -336,16 +335,18 @@ public:
 
   /// Prefactors (facet orientation) on patch cells
   /// @return mdspan (cells x dim) of the prefactors
-  mdspan_t<T, 2> prefactors_facet_per_cell()
+  base::mdspan_t<T, 2> prefactors_facet_per_cell()
   {
-    return mdspan_t<T, 2>(_data_fctprefactors_cell.data(), _ncells, _gdim);
+    return base::mdspan_t<T, 2>(_data_fctprefactors_cell.data(), _ncells,
+                                _gdim);
   }
 
   /// Marker for reversed facets on patch cells
   /// @return mdspan (cells x dim) of the markers
-  mdspan_t<std::uint8_t, 2> reversed_facets_per_cell()
+  base::mdspan_t<std::uint8_t, 2> reversed_facets_per_cell()
   {
-    return mdspan_t<uint8_t, 2>(_data_reversedfct_cell.data(), _ncells, _gdim);
+    return base::mdspan_t<uint8_t, 2>(_data_reversedfct_cell.data(), _ncells,
+                                      _gdim);
   }
 
   /// Mapped interpolation matrix
@@ -354,28 +355,28 @@ public:
   /// Structure DOFs: Zero order on Eam1, higher order on Ea
   ///
   /// @return mdspan of the interpolation matrix
-  mdspan_t<double, 4> mapped_interpolation_matrix()
+  base::mdspan_t<double, 4> mapped_interpolation_matrix()
   {
-    return mdspan_t<double, 4>(_data_Mm.data(), _shape_Mm);
+    return base::mdspan_t<double, 4>(_data_Mm.data(), _shape_Mm);
   }
 
   /* Coefficients */
 
   /// Coefficients of the flux
   /// @return mdspan (rhs x cells x dofs) of the coefficients
-  mdspan_t<T, 3> coefficients_flux()
+  base::mdspan_t<T, 3> coefficients_flux()
   {
-    return mdspan_t<T, 3>(_coefficients_flux.data(), _shape_coeffsflux);
+    return base::mdspan_t<T, 3>(_coefficients_flux.data(), _shape_coeffsflux);
   }
 
   /// Coefficients of the i-th flux
   /// @param i The flux id (starting at 0)
   /// @return mdspan (cells x dofs) of the coefficients (i-th flux)
-  mdspan_t<T, 2> coefficients_flux(const int i)
+  base::mdspan_t<T, 2> coefficients_flux(const int i)
   {
     const int offset = i * _ncells * _shape_coeffsflux[2];
-    return mdspan_t<T, 2>(_coefficients_flux.data() + offset,
-                          _shape_coeffsflux[1], _shape_coeffsflux[2]);
+    return base::mdspan_t<T, 2>(_coefficients_flux.data() + offset,
+                                _shape_coeffsflux[1], _shape_coeffsflux[2]);
   }
 
   /// Coefficients of the i-th flux on cell a
@@ -440,9 +441,9 @@ public:
   /// (first index 0: Tam1, first index 1: Tap1)
   ///
   /// @return mdspan (ipoints x 2 x dim) of jump-related data
-  mdspan_t<T, 3> jumpG_Eam1()
+  base::mdspan_t<T, 3> jumpG_Eam1()
   {
-    return mdspan_t<T, 3>(_data_jumpG_Eam1.data(), _shape_jGEam1);
+    return base::mdspan_t<T, 3>(_data_jumpG_Eam1.data(), _shape_jGEam1);
   }
 
   /// Explicite solution: Divergence cell moments
@@ -508,15 +509,21 @@ public:
 
   /// Storage cell-contribution unconstrained minimisation
   /// @return mdspan (ndofs_per_cell + 1, ndofs_per_cell) of the storage
-  mdspan_t<T, 2> Te() { return mdspan_t<T, 2>(_data_Te.data(), _shape_Te); }
+  base::mdspan_t<T, 2> Te()
+  {
+    return base::mdspan_t<T, 2>(_data_Te.data(), _shape_Te);
+  }
 
   /// Storage cell-contribution sub-matrix A
   /// @return mdspan (ndofs_per_cell + 1, ndofs_per_cell) of the storage
-  mdspan_t<T, 2> Ae() { return Te(); }
+  base::mdspan_t<T, 2> Ae() { return Te(); }
 
   /// Storage cell-contribution sub-matrix B1 and B2
   /// @return mdspan (ndofs_per_cell, nnodes_per_ecll) of the storage
-  mdspan_t<T, 2> Be() { return mdspan_t<T, 2>(_data_Be.data(), _shape_Be); }
+  base::mdspan_t<T, 2> Be()
+  {
+    return base::mdspan_t<T, 2>(_data_Be.data(), _shape_Be);
+  }
 
   /// Storage cell-contribution sub-matrix C
   /// @return mdspan (nnodes_per_cell + 1, nnodes_per_cell + 1) of the storage
@@ -656,7 +663,7 @@ protected:
   /// @param storage The storage
   /// @param matrix  The matrix
   void store_piola_matrix(std::span<double> storage,
-                          mdspan_t<const double, 2> matrix)
+                          base::mdspan_t<const double, 2> matrix)
   {
     if (_gdim == 2)
     {

@@ -49,7 +49,8 @@ KernelData<T>::KernelData(
   std::array<std::size_t, 4> g_basis_shape = cmap.tabulate_shape(1, 1);
   _g_basis_values = std::vector<double>(std::reduce(
       g_basis_shape.begin(), g_basis_shape.end(), 1, std::multiplies{}));
-  _g_basis = mdspan_t<const double, 4>(_g_basis_values.data(), g_basis_shape);
+  _g_basis
+      = base::mdspan_t<const double, 4>(_g_basis_values.data(), g_basis_shape);
 
   std::vector<double> points(_gdim, 0);
   cmap.tabulate(1, points, {1, _gdim}, _g_basis_values);
@@ -66,14 +67,15 @@ KernelData<T>::KernelData(
 
 /* Basic transformations */
 template <typename T>
-double KernelData<T>::compute_jacobian(mdspan_t<double, 2> J,
-                                       mdspan_t<double, 2> K,
+double KernelData<T>::compute_jacobian(base::mdspan_t<double, 2> J,
+                                       base::mdspan_t<double, 2> K,
                                        std::span<double> detJ_scratch,
-                                       mdspan_t<const double, 2> coords)
+                                       base::mdspan_t<const double, 2> coords)
 {
   // Basis functions evaluated at first gauss-point
-  smdspan_t<const double, 2> dphi = stdex::submdspan(
-      _g_basis, std::pair{1, (std::size_t)_tdim + 1}, 0, stdex::full_extent, 0);
+  base::smdspan_t<const double, 2> dphi = std::experimental::submdspan(
+      _g_basis, std::pair{1, (std::size_t)_tdim + 1}, 0,
+      std::experimental::full_extent, 0);
 
   // Compute Jacobian
   for (std::size_t i = 0; i < J.extent(0); ++i)
@@ -92,13 +94,14 @@ double KernelData<T>::compute_jacobian(mdspan_t<double, 2> J,
 }
 
 template <typename T>
-double KernelData<T>::compute_jacobian(mdspan_t<double, 2> J,
+double KernelData<T>::compute_jacobian(base::mdspan_t<double, 2> J,
                                        std::span<double> detJ_scratch,
-                                       mdspan_t<const double, 2> coords)
+                                       base::mdspan_t<const double, 2> coords)
 {
   // Basis functions evaluated at first gauss-point
-  smdspan_t<const double, 2> dphi = stdex::submdspan(
-      _g_basis, std::pair{1, (std::size_t)_tdim + 1}, 0, stdex::full_extent, 0);
+  base::smdspan_t<const double, 2> dphi = std::experimental::submdspan(
+      _g_basis, std::pair{1, (std::size_t)_tdim + 1}, 0,
+      std::experimental::full_extent, 0);
 
   // Compute Jacobian
   for (std::size_t i = 0; i < J.extent(0); ++i)
@@ -116,7 +119,7 @@ double KernelData<T>::compute_jacobian(mdspan_t<double, 2> J,
 
 template <typename T>
 void KernelData<T>::physical_fct_normal(std::span<double> normal_phys,
-                                        mdspan_t<const double, 2> K,
+                                        base::mdspan_t<const double, 2> K,
                                         std::int8_t fct_id)
 {
   // Set physical normal to zero
@@ -197,7 +200,7 @@ std::array<std::size_t, 4> KernelData<T>::interpolation_data_facet_rt(
   // Extract interpolation points
   auto [X, Xshape] = basix_element.points();
   const auto [Mdata, Mshape] = basix_element.interpolation_matrix();
-  mdspan_t<const double, 2> M(Mdata.data(), Mshape);
+  base::mdspan_t<const double, 2> M(Mdata.data(), Mshape);
 
   // Determine number of pointe per facet
   std::size_t nipoints_per_fct = 0;
@@ -226,7 +229,7 @@ std::array<std::size_t, 4> KernelData<T>::interpolation_data_facet_rt(
   // Cast Interpolation matrix into mdspan
   std::array<std::size_t, 4> M_fct_shape
       = {nfcts_per_cell, ndofs_fct, gdim, nipoints_per_fct};
-  mdspan_t<double, 4> M_fct(data_M_fct.data(), M_fct_shape);
+  base::mdspan_t<double, 4> M_fct(data_M_fct.data(), M_fct_shape);
 
   // Copy interpolation points (on facets)
   std::copy_n(X.begin(), nipoints_fct * gdim, ipoints_fct.begin());
@@ -284,7 +287,7 @@ KernelDataEqlb<T>::KernelDataEqlb(
       basix_element_fluxpw, true, this->_gdim, this->_nfcts_per_cell,
       _ipoints_fct, _data_M_fct);
 
-  _M_fct = mdspan_t<const double, 4>(_data_M_fct.data(), shape_intpl);
+  _M_fct = base::mdspan_t<const double, 4>(_data_M_fct.data(), shape_intpl);
 
   std::tie(_nipoints_per_fct, _nipoints_fct)
       = this->size_interpolation_data_facet_rt(shape_intpl);
@@ -298,10 +301,10 @@ KernelDataEqlb<T>::KernelDataEqlb(
 
   /* H(div)-flux: Mapping */
   // Mapping between reference and current cell
-  using V_t = mdspan_t<T, 2>;
-  using v_t = mdspan_t<const T, 2>;
-  using J_t = mdspan_t<const double, 2>;
-  using K_t = mdspan_t<const double, 2>;
+  using V_t = base::mdspan_t<T, 2>;
+  using v_t = base::mdspan_t<const T, 2>;
+  using J_t = base::mdspan_t<const double, 2>;
+  using K_t = base::mdspan_t<const double, 2>;
 
   _pull_back_fluxspace = basix_element_fluxpw.map_fn<V_t, v_t, K_t, J_t>();
 
@@ -311,8 +314,8 @@ KernelDataEqlb<T>::KernelDataEqlb(
   _data_transform_shpfkt.resize(ndofs_flux_fct * ndofs_flux_fct, 0.0);
   _shape_transform_shpfkt
       = {(std::size_t)ndofs_flux_fct, (std::size_t)ndofs_flux_fct};
-  mdspan_t<double, 2> data_transform_shpfk(_data_transform_shpfkt.data(),
-                                           ndofs_flux_fct, ndofs_flux_fct);
+  base::mdspan_t<double, 2> data_transform_shpfk(
+      _data_transform_shpfkt.data(), ndofs_flux_fct, ndofs_flux_fct);
 
   for (int line = 0; line < ndofs_flux_fct; line++)
   {
@@ -365,9 +368,9 @@ void KernelDataEqlb<T>::tabulate_flux_basis(
                                 _flux_basis_values);
 
   // Recast functions into mdspans for later usage
-  _flux_fullbasis
-      = mdspan_t<const double, 4>(_flux_basis_values.data(), flux_basis_shape);
-  _flux_fullbasis_current = mdspan_t<double, 4>(
+  _flux_fullbasis = base::mdspan_t<const double, 4>(_flux_basis_values.data(),
+                                                    flux_basis_shape);
+  _flux_fullbasis_current = base::mdspan_t<double, 4>(
       _flux_basis_current_values.data(), flux_basis_shape);
 }
 
@@ -404,13 +407,13 @@ void KernelDataEqlb<T>::tabulate_rhs_basis(
                              _rhs_basis_fct_values);
 
   // Recast functions into mdspans for later usage
-  _rhs_cell_fullbasis = mdspan_t<const double, 4>(_rhs_basis_cell_values.data(),
-                                                  rhs_basis_shape_cell);
-  _rhs_fct_fullbasis = mdspan_t<const double, 4>(_rhs_basis_fct_values.data(),
-                                                 rhs_basis_shape_fct);
+  _rhs_cell_fullbasis = base::mdspan_t<const double, 4>(
+      _rhs_basis_cell_values.data(), rhs_basis_shape_cell);
+  _rhs_fct_fullbasis = base::mdspan_t<const double, 4>(
+      _rhs_basis_fct_values.data(), rhs_basis_shape_fct);
 
-  _rhs_fullbasis_current = mdspan_t<double, 4>(_rhs_basis_current_values.data(),
-                                               rhs_basis_shape_cell);
+  _rhs_fullbasis_current = base::mdspan_t<double, 4>(
+      _rhs_basis_current_values.data(), rhs_basis_shape_cell);
 
   // Apply identity-map (ref->cur) on shape-functions (on cell)
   for (std::size_t i = 0; i < _rhs_cell_fullbasis.extent(1); ++i)
@@ -452,17 +455,18 @@ void KernelDataEqlb<T>::tabulate_hat_basis(
                              _hat_basis_fct_values);
 
   // Recast functions into mdspans for later usage
-  _hat_cell_fullbasis = mdspan_t<const double, 4>(_hat_basis_cell_values.data(),
-                                                  hat_basis_shape_cell);
-  _hat_fct_fullbasis = mdspan_t<const double, 4>(_hat_basis_fct_values.data(),
-                                                 hat_basis_shape_fct);
+  _hat_cell_fullbasis = base::mdspan_t<const double, 4>(
+      _hat_basis_cell_values.data(), hat_basis_shape_cell);
+  _hat_fct_fullbasis = base::mdspan_t<const double, 4>(
+      _hat_basis_fct_values.data(), hat_basis_shape_fct);
 }
 
 /* Mapping routines */
 template <typename T>
 void KernelDataEqlb<T>::contravariant_piola_mapping(
-    smdspan_t<double, 3> phi_cur, smdspan_t<const double, 3> phi_ref,
-    mdspan_t<const double, 2> J, const double detJ)
+    base::smdspan_t<double, 3> phi_cur,
+    base::smdspan_t<const double, 3> phi_ref, base::mdspan_t<const double, 2> J,
+    const double detJ)
 {
   // Loop over all evaluation points
   for (std::size_t i = 0; i < phi_ref.extent(0); ++i)
@@ -483,8 +487,8 @@ void KernelDataEqlb<T>::contravariant_piola_mapping(
 
 /* Push-forward of shape-functions */
 template <typename T>
-smdspan_t<const double, 3>
-KernelDataEqlb<T>::shapefunctions_cell_rhs(mdspan_t<const double, 2> K)
+base::smdspan_t<const double, 3>
+KernelDataEqlb<T>::shapefunctions_cell_rhs(base::mdspan_t<const double, 2> K)
 {
   // Loop over all evaluation points
   for (std::size_t i = 0; i < _rhs_cell_fullbasis.extent(1); ++i)
@@ -502,8 +506,9 @@ KernelDataEqlb<T>::shapefunctions_cell_rhs(mdspan_t<const double, 2> K)
     }
   }
 
-  return stdex::submdspan(_rhs_fullbasis_current, stdex::full_extent,
-                          stdex::full_extent, stdex::full_extent, 0);
+  return std::experimental::submdspan(
+      _rhs_fullbasis_current, std::experimental::full_extent,
+      std::experimental::full_extent, std::experimental::full_extent, 0);
 }
 
 // ------------------------------------------------------------------------------
@@ -533,7 +538,7 @@ KernelDataBC<T>::KernelDataBC(
       basix_element_flux_hdiv, flux_is_custom, this->_gdim,
       this->_nfcts_per_cell, _ipoints, _data_M);
 
-  _M = mdspan_t<const double, 4>(_data_M.data(), shape_intpl);
+  _M = base::mdspan_t<const double, 4>(_data_M.data(), shape_intpl);
 
   std::tie(_nipoints_per_fct, _nipoints)
       = this->size_interpolation_data_facet_rt(shape_intpl);
@@ -544,19 +549,20 @@ KernelDataBC<T>::KernelDataBC(
   // Tabulate H(div) flux at interpolation points
   shape = this->tabulate_basis(basix_element_flux_hdiv, _ipoints,
                                _basis_flux_values, false, false);
-  _basis_flux = mdspan_t<const double, 5>(_basis_flux_values.data(), shape);
+  _basis_flux
+      = base::mdspan_t<const double, 5>(_basis_flux_values.data(), shape);
 
   _mbasis_flux_values.resize(_ndofs_cell * this->_gdim);
   _mbasis_scratch_values.resize(_ndofs_cell * this->_gdim);
-  _mbasis_flux = mdspan_t<double, 2>(_mbasis_flux_values.data(), _ndofs_cell,
-                                     this->_gdim);
-  _mbasis_scratch = mdspan_t<double, 2>(_mbasis_scratch_values.data(),
-                                        _ndofs_cell, this->_gdim);
+  _mbasis_flux = base::mdspan_t<double, 2>(_mbasis_flux_values.data(),
+                                           _ndofs_cell, this->_gdim);
+  _mbasis_scratch = base::mdspan_t<double, 2>(_mbasis_scratch_values.data(),
+                                              _ndofs_cell, this->_gdim);
 
   // Tabulate hat-function at interpolation points
   shape = this->tabulate_basis(_basix_element_hat, _ipoints, _basis_hat_values,
                                false, false);
-  _basis_hat = mdspan_t<const double, 5>(_basis_hat_values.data(), shape);
+  _basis_hat = base::mdspan_t<const double, 5>(_basis_hat_values.data(), shape);
 
   /* H(div)-flux: Pull back into reference */
   // Initialise scratch
@@ -565,24 +571,24 @@ KernelDataBC<T>::KernelDataBC(
   _flux_scratch_data.resize(_size_flux_scratch * this->_gdim);
   _mflux_scratch_data.resize(_size_flux_scratch * this->_gdim);
 
-  _flux_scratch = mdspan_t<T, 2>(_flux_scratch_data.data(), _size_flux_scratch,
-                                 this->_gdim);
-  _mflux_scratch = mdspan_t<T, 2>(_mflux_scratch_data.data(),
-                                  _size_flux_scratch, this->_gdim);
+  _flux_scratch = base::mdspan_t<T, 2>(_flux_scratch_data.data(),
+                                       _size_flux_scratch, this->_gdim);
+  _mflux_scratch = base::mdspan_t<T, 2>(_mflux_scratch_data.data(),
+                                        _size_flux_scratch, this->_gdim);
 
   /* Extract mapping functions */
-  using J_t = mdspan_t<const double, 2>;
-  using K_t = mdspan_t<const double, 2>;
+  using J_t = base::mdspan_t<const double, 2>;
+  using K_t = base::mdspan_t<const double, 2>;
 
   // Push-forward for shape-functions
-  using u_t = mdspan_t<double, 2>;
-  using U_t = mdspan_t<const double, 2>;
+  using u_t = base::mdspan_t<double, 2>;
+  using U_t = base::mdspan_t<const double, 2>;
 
   _push_forward_flux = basix_element_flux_hdiv.map_fn<u_t, U_t, K_t, J_t>();
 
   // Pull-back for values
-  using V_t = mdspan_t<T, 2>;
-  using v_t = mdspan_t<const T, 2>;
+  using V_t = base::mdspan_t<T, 2>;
+  using v_t = base::mdspan_t<const T, 2>;
 
   _pull_back_flux = basix_element_flux_hdiv.map_fn<V_t, v_t, K_t, J_t>();
 
@@ -593,11 +599,10 @@ KernelDataBC<T>::KernelDataBC(
 }
 
 template <typename T>
-void KernelDataBC<T>::map_shapefunctions_flux(std::int8_t lfct_id,
-                                              mdspan_t<double, 3> phi_cur,
-                                              mdspan_t<const double, 5> phi_ref,
-                                              mdspan_t<const double, 2> J,
-                                              double detJ)
+void KernelDataBC<T>::map_shapefunctions_flux(
+    std::int8_t lfct_id, base::mdspan_t<double, 3> phi_cur,
+    base::mdspan_t<const double, 5> phi_ref, base::mdspan_t<const double, 2> J,
+    double detJ)
 {
   const int offs_pnt = lfct_id * this->_quadrature_rule[0]->num_points(0);
   const int offs_dof = lfct_id * _ndofs_per_fct;
@@ -655,8 +660,9 @@ template <typename T>
 void KernelDataBC<T>::interpolate_flux(std::span<const T> flux_ntrace_cur,
                                        std::span<T> flux_dofs,
                                        std::int8_t lfct_id,
-                                       mdspan_t<const double, 2> J, double detJ,
-                                       mdspan_t<const double, 2> K)
+                                       base::mdspan_t<const double, 2> J,
+                                       double detJ,
+                                       base::mdspan_t<const double, 2> K)
 {
   // Calculate flux within current cell
   normaltrace_to_vector(flux_ntrace_cur, lfct_id, K);
@@ -666,13 +672,11 @@ void KernelDataBC<T>::interpolate_flux(std::span<const T> flux_ntrace_cur,
 }
 
 template <typename T>
-void KernelDataBC<T>::interpolate_flux(std::span<const T> flux_dofs_bc,
-                                       std::span<T> flux_dofs_patch,
-                                       std::int32_t cell_id,
-                                       std::int8_t lfct_id, std::int8_t hat_id,
-                                       std::span<const std::uint32_t> cell_info,
-                                       mdspan_t<const double, 2> J, double detJ,
-                                       mdspan_t<const double, 2> K)
+void KernelDataBC<T>::interpolate_flux(
+    std::span<const T> flux_dofs_bc, std::span<T> flux_dofs_patch,
+    std::int32_t cell_id, std::int8_t lfct_id, std::int8_t hat_id,
+    std::span<const std::uint32_t> cell_info, base::mdspan_t<const double, 2> J,
+    double detJ, base::mdspan_t<const double, 2> K)
 {
   /* Map shape functions*/
   // Copy shape-functions from reference element
@@ -720,11 +724,12 @@ void KernelDataBC<T>::interpolate_flux(std::span<const T> flux_dofs_bc,
 }
 
 template <typename T>
-void KernelDataBC<T>::interpolate_flux(mdspan_t<const T, 2> flux_cur,
+void KernelDataBC<T>::interpolate_flux(base::mdspan_t<const T, 2> flux_cur,
                                        std::span<T> flux_dofs,
                                        std::int8_t lfct_id,
-                                       mdspan_t<const double, 2> J, double detJ,
-                                       mdspan_t<const double, 2> K)
+                                       base::mdspan_t<const double, 2> J,
+                                       double detJ,
+                                       base::mdspan_t<const double, 2> K)
 {
   // Map flux to reference cell
   _pull_back_flux(_mflux_scratch, flux_cur, K, 1 / detJ, J);
@@ -750,7 +755,7 @@ void KernelDataBC<T>::interpolate_flux(mdspan_t<const T, 2> flux_cur,
 template <typename T>
 void KernelDataBC<T>::normaltrace_to_vector(std::span<const T> normaltrace_cur,
                                             std::int8_t lfct_id,
-                                            mdspan_t<const double, 2> K)
+                                            base::mdspan_t<const double, 2> K)
 {
   // Calculate physical facet normal
   std::span<double> normal_cur(_normal_scratch.data(), this->_gdim);

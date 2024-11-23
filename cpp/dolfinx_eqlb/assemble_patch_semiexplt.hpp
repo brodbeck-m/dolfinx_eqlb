@@ -13,14 +13,13 @@
 #include "PatchData.hpp"
 #include "utils.hpp"
 
-#include <dolfinx_eqlb/base/Patch.hpp>
-
 #include <dolfinx/fem/DofMap.h>
 #include <dolfinx/fem/Form.h>
 #include <dolfinx/fem/Function.h>
 #include <dolfinx/fem/assembler.h>
 #include <dolfinx/fem/utils.h>
 #include <dolfinx/graph/AdjacencyList.h>
+#include <dolfinx_eqlb/base/Patch.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -34,9 +33,6 @@ using namespace dolfinx;
 
 namespace dolfinx_eqlb
 {
-
-namespace stdex = std::experimental;
-
 // ------------------------------------------------------------------------------
 
 /* The minimisation kernels */
@@ -83,18 +79,18 @@ generate_flux_minimisation_kernel(KernelDataEqlb<T>& kernel_data,
   /// @param detJ         The Jacobi determinant
   /// @param J            The Jacobi matrix
   kernel_fn<T, asmbl_systmtrx> unconstrained_flux_minimisation
-      = [kernel_data, ndofs_hdivzero_per_cell,
-         ndofs_flux_fct](mdspan_t<T, 2> Te, std::span<const T> coefficients,
-                         smdspan_t<const std::int32_t, 2> asmbl_info,
-                         const std::uint8_t fct_eam1_reversed,
-                         const double detJ, mdspan_t<const double, 2> J) mutable
+      = [kernel_data, ndofs_hdivzero_per_cell, ndofs_flux_fct](
+            base::mdspan_t<T, 2> Te, std::span<const T> coefficients,
+            base::smdspan_t<const std::int32_t, 2> asmbl_info,
+            const std::uint8_t fct_eam1_reversed, const double detJ,
+            base::mdspan_t<const double, 2> J) mutable
   {
     const int index_load = ndofs_hdivzero_per_cell;
 
     /* Extract shape functions and quadrature data */
-    smdspan_t<double, 3> phi = kernel_data.shapefunctions_flux(J, detJ);
+    base::smdspan_t<double, 3> phi = kernel_data.shapefunctions_flux(J, detJ);
 
-    mdspan_t<const double, 2> shapetrafo
+    base::mdspan_t<const double, 2> shapetrafo
         = kernel_data.entity_transformations_flux();
 
     std::span<const double> quadrature_weights
@@ -106,7 +102,8 @@ generate_flux_minimisation_kernel(KernelDataEqlb<T>& kernel_data,
 
     // Intermediate storage for higher-order facet moments on reversed facet
     std::vector<double> data_gphi_Eam1(2 * ndofs_flux_fct, 0);
-    mdspan_t<double, 2> gphi_Eam1(data_gphi_Eam1.data(), ndofs_flux_fct, 2);
+    base::mdspan_t<double, 2> gphi_Eam1(data_gphi_Eam1.data(), ndofs_flux_fct,
+                                        2);
 
     // Data manipulation of shape function for d0
     std::int32_t ld0_Eam1 = asmbl_info(0, 0),
@@ -269,18 +266,19 @@ generate_stress_minimisation_kernel(Kernel type, KernelDataEqlb<T>& kernel_data,
   /// @param assemble_A     Flag if sub-matrix A has to be assembled
   kernel_fn_schursolver<T> stress_minimisation_2D
       = [kernel_data, ndofs_hdivzero_per_cell, ndofs_constr_per_cell,
-         ndofs_flux_fct](mdspan_t<T, 2> Ae, mdspan_t<T, 2> Be, std::span<T> Ce,
-                         std::span<T> Le, std::span<const T> coefficients,
-                         smdspan_t<const std::int32_t, 2> asmbl_info,
-                         const std::uint8_t fct_eam1_reversed,
-                         const double detJ, mdspan_t<const double, 2> J,
-                         const bool assemble_A) mutable
+         ndofs_flux_fct](
+            base::mdspan_t<T, 2> Ae, base::mdspan_t<T, 2> Be, std::span<T> Ce,
+            std::span<T> Le, std::span<const T> coefficients,
+            base::smdspan_t<const std::int32_t, 2> asmbl_info,
+            const std::uint8_t fct_eam1_reversed, const double detJ,
+            base::mdspan_t<const double, 2> J, const bool assemble_A) mutable
   {
     /* Extract shape functions and quadrature data */
-    smdspan_t<double, 3> phi_f = kernel_data.shapefunctions_flux(J, detJ);
-    smdspan_t<const double, 2> phi_c = kernel_data.shapefunctions_cell_hat();
+    base::smdspan_t<double, 3> phi_f = kernel_data.shapefunctions_flux(J, detJ);
+    base::smdspan_t<const double, 2> phi_c
+        = kernel_data.shapefunctions_cell_hat();
 
-    mdspan_t<const double, 2> shapetrafo
+    base::mdspan_t<const double, 2> shapetrafo
         = kernel_data.entity_transformations_flux();
 
     std::span<const double> quadrature_weights
@@ -294,7 +292,8 @@ generate_stress_minimisation_kernel(Kernel type, KernelDataEqlb<T>& kernel_data,
 
     // Intermediate storage for modified shape-functions on reversed facet
     std::vector<double> data_gphif_Eam1(2 * ndofs_flux_fct, 0);
-    mdspan_t<double, 2> gphif_Eam1(data_gphif_Eam1.data(), ndofs_flux_fct, 2);
+    base::mdspan_t<double, 2> gphif_Eam1(data_gphif_Eam1.data(), ndofs_flux_fct,
+                                         2);
 
     // Data manipulation of shape function for d0
     std::int32_t ld0_Eam1 = asmbl_info(0, 0),
@@ -554,8 +553,8 @@ void set_boundary_markers(std::span<std::int8_t> boundary_markers,
 template <typename T, int id_flux_order, bool asmbl_systmtrx>
 void assemble_fluxminimiser(kernel_fn<T, asmbl_systmtrx>& minimisation_kernel,
                             PatchDataCstm<T, id_flux_order>& patch_data,
-                            mdspan_t<const std::int32_t, 3> asmbl_info,
-                            mdspan_t<const std::uint8_t, 2> fct_reversion,
+                            base::mdspan_t<const std::int32_t, 3> asmbl_info,
+                            base::mdspan_t<const std::uint8_t, 2> fct_reversion,
                             const int i_rhs, const bool requires_flux_bc)
 {
   assert(id_flux_order < 0);
@@ -568,7 +567,7 @@ void assemble_fluxminimiser(kernel_fn<T, asmbl_systmtrx>& minimisation_kernel,
   const int ncells = patch_data.ncells();
 
   // Tangent storage
-  mdspan_t<T, 2> Te = patch_data.Te();
+  base::mdspan_t<T, 2> Te = patch_data.Te();
 
   Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>& A = patch_data.matrix_A();
   Eigen::Matrix<T, Eigen::Dynamic, 1>& L = patch_data.vector_L();
@@ -598,11 +597,13 @@ void assemble_fluxminimiser(kernel_fn<T, asmbl_systmtrx>& minimisation_kernel,
 
     // Isoparametric mapping
     const double detJ = patch_data.jacobi_determinant(id_a);
-    mdspan_t<const double, 2> J = patch_data.jacobian(id_a);
+    base::mdspan_t<const double, 2> J = patch_data.jacobian(id_a);
 
     // DOFmap on cell
-    smdspan_t<const std::int32_t, 2> asmbl_info_cell = stdex::submdspan(
-        asmbl_info, stdex::full_extent, a, stdex::full_extent);
+    base::smdspan_t<const std::int32_t, 2> asmbl_info_cell
+        = std::experimental::submdspan(asmbl_info,
+                                       std::experimental::full_extent, a,
+                                       std::experimental::full_extent);
 
     // DOFs on cell
     std::span<const T> coefficients = patch_data.coefficients_flux(i_rhs, a);
@@ -723,10 +724,11 @@ void assemble_fluxminimiser(kernel_fn<T, asmbl_systmtrx>& minimisation_kernel,
 /// @param asmbl_info               Informations patch-wise H(div=0) space
 /// @param fct_reversion            Marker for reversed facets
 template <typename T, int id_flux_order, bool bcs_required>
-void assemble_stressminimiser(kernel_fn_schursolver<T>& minimisation_kernel,
-                              PatchDataCstm<T, id_flux_order>& patch_data,
-                              mdspan_t<const std::int32_t, 3> asmbl_info,
-                              mdspan_t<const std::uint8_t, 2> fct_reversion)
+void assemble_stressminimiser(
+    kernel_fn_schursolver<T>& minimisation_kernel,
+    PatchDataCstm<T, id_flux_order>& patch_data,
+    base::mdspan_t<const std::int32_t, 3> asmbl_info,
+    base::mdspan_t<const std::uint8_t, 2> fct_reversion)
 {
   assert(id_flux_order < 0);
 
@@ -741,8 +743,8 @@ void assemble_stressminimiser(kernel_fn_schursolver<T>& minimisation_kernel,
   const bool requires_lagrmp = patch_data.meanvalue_zero_condition_required();
 
   // Tangent storage
-  mdspan_t<T, 2> Ae = patch_data.Ae();
-  mdspan_t<T, 2> Be = patch_data.Be();
+  base::mdspan_t<T, 2> Ae = patch_data.Ae();
+  base::mdspan_t<T, 2> Be = patch_data.Be();
   std::span<T> Ce = patch_data.Ce();
   std::span<T> Le = patch_data.Le();
 
@@ -791,11 +793,13 @@ void assemble_stressminimiser(kernel_fn_schursolver<T>& minimisation_kernel,
 
     // Isoparametric mapping
     const double detJ = patch_data.jacobi_determinant(id_a);
-    mdspan_t<const double, 2> J = patch_data.jacobian(id_a);
+    base::mdspan_t<const double, 2> J = patch_data.jacobian(id_a);
 
     // DOFmap on cell
-    smdspan_t<const std::int32_t, 2> asmbl_info_cell = stdex::submdspan(
-        asmbl_info, stdex::full_extent, a, stdex::full_extent);
+    base::smdspan_t<const std::int32_t, 2> asmbl_info_cell
+        = std::experimental::submdspan(asmbl_info,
+                                       std::experimental::full_extent, a,
+                                       std::experimental::full_extent);
 
     // DOFs on cell
     std::span<const T> coefficients = patch_data.coefficients_stress(a);

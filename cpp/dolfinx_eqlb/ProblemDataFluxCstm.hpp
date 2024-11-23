@@ -7,11 +7,11 @@
 #pragma once
 
 #include "BoundaryData.hpp"
-#include "utils.hpp"
 
 #include <dolfinx/fem/Function.h>
 #include <dolfinx/fem/FunctionSpace.h>
 #include <dolfinx/mesh/Mesh.h>
+#include <dolfinx_eqlb/base/mdspan.hpp>
 
 #include <memory>
 #include <span>
@@ -98,8 +98,8 @@ public:
   /// Calculate BCs for patch-problem
   void calculate_patch_bc(const int rhs_i, const std::int32_t bound_fcts,
                           const std::int8_t patchnode_local,
-                          mdspan_t<const double, 2> J, const double detJ,
-                          mdspan_t<const double, 2> K)
+                          base::mdspan_t<const double, 2> J, const double detJ,
+                          base::mdspan_t<const double, 2> K)
   {
     _boundary_data->calculate_patch_bc(rhs_i, bound_fcts, patchnode_local, J,
                                        detJ, K);
@@ -107,7 +107,7 @@ public:
 
   /// Extract facet-types of all sub-problems
   /// @return Mdspan of facet-types
-  mdspan_t<const std::int8_t, 2> facet_type() const
+  base::mdspan_t<const std::int8_t, 2> facet_type() const
   {
     return _boundary_data->facet_type();
   }

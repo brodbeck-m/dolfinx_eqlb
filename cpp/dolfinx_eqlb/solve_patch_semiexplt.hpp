@@ -16,14 +16,14 @@
 #include "solve_patch_weaksym.hpp"
 #include "utils.hpp"
 
-#include <dolfinx_eqlb/base/Patch.hpp>
-
 #include <dolfinx/fem/DofMap.h>
 #include <dolfinx/fem/Form.h>
 #include <dolfinx/fem/Function.h>
 #include <dolfinx/fem/assembler.h>
 #include <dolfinx/fem/utils.h>
 #include <dolfinx/graph/AdjacencyList.h>
+#include <dolfinx_eqlb/base/Patch.hpp>
+#include <dolfinx_eqlb/base/mdspan.hpp>
 
 #include <algorithm>
 #include <array>
@@ -40,9 +40,6 @@ using namespace dolfinx;
 
 namespace dolfinx_eqlb
 {
-
-namespace stdex = std::experimental;
-
 // ----------------------------------------------------------------------------
 // Auxiliaries
 // ----------------------------------------------------------------------------
@@ -62,12 +59,15 @@ namespace stdex = std::experimental;
 /// @param[in] hat_TaEa     The hat functions on cell Ta and facet Ea
 /// @return                 The jump of the projected flux
 template <typename T>
-void calculate_jump(
-    mdspan_t<T, 2> GtHat_Ea, const std::size_t nq, const std::size_t iq_Ta,
-    const std::int8_t Ea_reversed, std::span<const std::int32_t> dofs_G_Ea,
-    std::span<const T> G_Tap1Ea, smdspan_t<const double, 2> shp_Tap1Ea,
-    smdspan_t<const double, 1> hat_Tap1Ea, std::span<const T> G_TaEa,
-    smdspan_t<const double, 2> shp_TaEa, smdspan_t<const double, 1> hat_TaEa)
+void calculate_jump(base::mdspan_t<T, 2> GtHat_Ea, const std::size_t nq,
+                    const std::size_t iq_Ta, const std::int8_t Ea_reversed,
+                    std::span<const std::int32_t> dofs_G_Ea,
+                    std::span<const T> G_Tap1Ea,
+                    base::smdspan_t<const double, 2> shp_Tap1Ea,
+                    base::smdspan_t<const double, 1> hat_Tap1Ea,
+                    std::span<const T> G_TaEa,
+                    base::smdspan_t<const double, 2> shp_TaEa,
+                    base::smdspan_t<const double, 1> hat_TaEa)
 {
   // Number of DOFs per facet
   const int ndofs_projflux_fct = dofs_G_Ea.size() / 2;
@@ -249,23 +249,24 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
   // Representation/Storage isoparametric mapping
   std::array<double, 9> Jb, Kb;
   std::array<double, 18> detJ_scratch;
-  mdspan_t<double, 2> J(Jb.data(), 2, 2), K(Kb.data(), 2, 2);
+  base::mdspan_t<double, 2> J(Jb.data(), 2, 2), K(Kb.data(), 2, 2);
 
   // Storage cell geometry
   std::array<double, 12> coordinate_dofs_e;
-  mdspan_t<const double, 2> coords(coordinate_dofs_e.data(), nnodes_cell, 3);
+  base::mdspan_t<const double, 2> coords(coordinate_dofs_e.data(), nnodes_cell,
+                                         3);
 
   // Storage pre-factors (due to orientation of the normal)
-  mdspan_t<T, 2> prefactor_dof = patch_data.prefactors_facet_per_cell();
+  base::mdspan_t<T, 2> prefactor_dof = patch_data.prefactors_facet_per_cell();
 
   // Storage for markers of reversed edges
-  mdspan_t<std::uint8_t, 2> reversed_fct
+  base::mdspan_t<std::uint8_t, 2> reversed_fct
       = patch_data.reversed_facets_per_cell();
 
   /* Initialise Step 1 */
   // The interpolation matrix
-  mdspan_t<const double, 4> M = kernel_data.interpl_matrix_facte();
-  mdspan_t<double, 4> M_mapped = patch_data.mapped_interpolation_matrix();
+  base::mdspan_t<const double, 4> M = kernel_data.interpl_matrix_facte();
+  base::mdspan_t<double, 4> M_mapped = patch_data.mapped_interpolation_matrix();
 
   // Coefficient arrays for RHS/ projected flux
   std::span<T> coefficients_f = patch_data.coefficients_rhs();
@@ -278,8 +279,8 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
   std::array<T, 4> dGtHat_Ea;
   std::array<T, 2> jGtHat;
 
-  mdspan_t<T, 2> GtHat_Ea(dGtHat_Ea.data(), 2, 2);
-  mdspan_t<T, 3> GtHat_Eam1 = patch_data.jumpG_Eam1();
+  base::mdspan_t<T, 2> GtHat_Ea(dGtHat_Ea.data(), 2, 2);
+  base::mdspan_t<T, 3> GtHat_Eam1 = patch_data.jumpG_Eam1();
 
   // Storage for cell-wise solution
   T c_ta_ea = 0, c_ta_eam1 = 0, c_tam1_eam1 = 0, c_t1_e0 = 0;
@@ -428,7 +429,7 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
                                   reversed_fct,
                                   patch_data.jacobi_determinant());
 
-  mdspan_t<const std::int32_t, 3> dofmap_flux
+  base::mdspan_t<const std::int32_t, 3> dofmap_flux
       = patch.assembly_info_minimisation();
   std::span<const std::int32_t> offs_dofmap = patch.offset_dofmap();
 
@@ -447,7 +448,8 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
     bool reversion_required = patch.reversion_required(i_rhs);
 
     // Equilibarted flux
-    mdspan_t<T, 2> coefficients_flux = patch_data.coefficients_flux(i_rhs);
+    base::mdspan_t<T, 2> coefficients_flux
+        = patch_data.coefficients_flux(i_rhs);
 
     // Projected primal flux
     const graph::AdjacencyList<std::int32_t>& fluxdg_dofmap
@@ -545,17 +547,17 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
 
       /* Tabulate shape functions */
       // Shape functions RHS
-      smdspan_t<const double, 2> shp_TaEa
+      base::smdspan_t<const double, 2> shp_TaEa
           = kernel_data.shapefunctions_fct_rhs(fl_TaEa);
-      smdspan_t<const double, 2> shp_Tap1Ea
+      base::smdspan_t<const double, 2> shp_Tap1Ea
           = kernel_data.shapefunctions_fct_rhs(fl_Tap1Ea);
 
       // Shape-functions hat-function
-      smdspan_t<const double, 1> hat_TaEam1
+      base::smdspan_t<const double, 1> hat_TaEam1
           = kernel_data.shapefunctions_fct_hat(fl_TaEam1, node_i_Ta);
-      smdspan_t<const double, 1> hat_TaEa
+      base::smdspan_t<const double, 1> hat_TaEa
           = kernel_data.shapefunctions_fct_hat(fl_TaEa, node_i_Ta);
-      smdspan_t<const double, 1> hat_Tap1Ea
+      base::smdspan_t<const double, 1> hat_Tap1Ea
           = kernel_data.shapefunctions_fct_hat(fl_Tap1Ea, node_i_Tap1);
 
       /* Prepare data for inclusion of flux BCs */
@@ -563,7 +565,7 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
       std::span<const std::int32_t> pflux_ldofs_E0;
 
       // Tabulated shape functions on facet E0
-      smdspan_t<const double, 2> shp_TaEam1;
+      base::smdspan_t<const double, 2> shp_TaEam1;
 
       if ((a == 1)
           && (fct_has_bc || type_patch == base::PatchType::bound_mixed))
@@ -597,8 +599,8 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
         }
 
         // Calculate patch bcs
-        mdspan_t<const double, 2> J = patch_data.jacobian(0);
-        mdspan_t<const double, 2> K = patch_data.inverse_jacobian(0);
+        base::mdspan_t<const double, 2> J = patch_data.jacobian(0);
+        base::mdspan_t<const double, 2> K = patch_data.inverse_jacobian(0);
 
         problem_data.calculate_patch_bc(i_rhs, bfct_global, node_i_Ta, J, detJ,
                                         K);
@@ -674,12 +676,14 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
               if constexpr (id_flux_order > 1)
               {
                 // Extract mapping data
-                mdspan_t<const double, 2> J = patch_data.jacobian(id_a);
-                mdspan_t<const double, 2> K = patch_data.inverse_jacobian(id_a);
+                base::mdspan_t<const double, 2> J = patch_data.jacobian(id_a);
+                base::mdspan_t<const double, 2> K
+                    = patch_data.inverse_jacobian(id_a);
 
                 // Pull back flux to reference cell
-                mdspan_t<T, 2> GtHat_E0(dGtHat_Ei.data(), 1, dim);
-                mdspan_t<T, 2> GtHat_mapped_E0(dGtHat_Ei_mapped.data(), 1, dim);
+                base::mdspan_t<T, 2> GtHat_E0(dGtHat_Ei.data(), 1, dim);
+                base::mdspan_t<T, 2> GtHat_mapped_E0(dGtHat_Ei_mapped.data(), 1,
+                                                     dim);
 
                 if ((type_patch == base::PatchType::bound_mixed)
                     && (fct_has_bc == false))
@@ -760,12 +764,14 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
             if (reversion_required)
             {
               // Extract mapping data
-              mdspan_t<const double, 2> J = patch_data.jacobian(id_a);
-              mdspan_t<const double, 2> K = patch_data.inverse_jacobian(id_a);
+              base::mdspan_t<const double, 2> J = patch_data.jacobian(id_a);
+              base::mdspan_t<const double, 2> K
+                  = patch_data.inverse_jacobian(id_a);
 
               // Pull back flux to reference cell
-              mdspan_t<T, 2> GtHat_En(dGtHat_Ei.data(), 1, dim);
-              mdspan_t<T, 2> GtHat_mapped_En(dGtHat_Ei_mapped.data(), 1, dim);
+              base::mdspan_t<T, 2> GtHat_En(dGtHat_Ei.data(), 1, dim);
+              base::mdspan_t<T, 2> GtHat_mapped_En(dGtHat_Ei_mapped.data(), 1,
+                                                   dim);
 
               GtHat_En(0, 0) = GtHat_Ea(1, 0);
               GtHat_En(0, 1) = GtHat_Ea(1, 1);
@@ -851,19 +857,20 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
       else
       {
         // Isoparametric mapping
-        mdspan_t<const double, 2> K = patch_data.inverse_jacobian(id_a);
+        base::mdspan_t<const double, 2> K = patch_data.inverse_jacobian(id_a);
 
         // Quadrature points and weights
-        mdspan_t<const double, 2> qpoints = kernel_data.quadrature_points(0);
+        base::mdspan_t<const double, 2> qpoints
+            = kernel_data.quadrature_points(0);
         std::span<const double> weights = kernel_data.quadrature_weights(0);
         const int nqpoints = weights.size();
 
         // Shape-functions RHS
-        smdspan_t<const double, 3> shp_rhs
+        base::smdspan_t<const double, 3> shp_rhs
             = kernel_data.shapefunctions_cell_rhs(K);
 
         // Shape-functions hat-function
-        smdspan_t<const double, 2> shp_hat
+        base::smdspan_t<const double, 2> shp_hat
             = kernel_data.shapefunctions_cell_hat();
 
         // Quadrature loop
@@ -1081,7 +1088,7 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
         = problem_data.fspace_flux_hdiv()->dofmap()->list();
 
     // DOF transformation data
-    mdspan_t<const double, 2> doftrafo
+    base::mdspan_t<const double, 2> doftrafo
         = kernel_data.entity_transformations_flux();
 
     // Move cell contributions

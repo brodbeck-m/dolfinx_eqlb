@@ -6,9 +6,8 @@
 
 #pragma once
 
-#include "utils.hpp"
-
 #include <dolfinx_eqlb/base/Patch.hpp>
+#include <dolfinx_eqlb/base/mdspan.hpp>
 
 #include <basix/finite-element.h>
 #include <dolfinx/common/IndexMap.h>
@@ -45,7 +44,7 @@ public:
   /// @param mesh        The current mesh
   /// @param bfct_type   List with type of all boundary facets
   Patch(int nnodes_proc, std::shared_ptr<const mesh::Mesh> mesh,
-        mdspan_t<const std::int8_t, 2> bfct_type);
+        base::mdspan_t<const std::int8_t, 2> bfct_type);
 
   /// Construction of a sub-DOFmap on each patch
   ///
@@ -311,7 +310,7 @@ protected:
   int _fct_per_cell;
 
   // Types boundary facets
-  mdspan_t<const std::int8_t, 2> _bfct_type;
+  base::mdspan_t<const std::int8_t, 2> _bfct_type;
 
   /* Patch */
   // Central node of patch
@@ -348,7 +347,7 @@ public:
   /// @param bfct_type   List with type of all boundary facets
   PatchFluxEV(
       int nnodes_proc, std::shared_ptr<const mesh::Mesh> mesh,
-      mdspan_t<const std::int8_t, 2> bfct_type,
+      base::mdspan_t<const std::int8_t, 2> bfct_type,
       const std::shared_ptr<const fem::FunctionSpace> function_space,
       const std::shared_ptr<const fem::FunctionSpace> function_space_fluxhdiv,
       const basix::FiniteElement& basix_element_flux);

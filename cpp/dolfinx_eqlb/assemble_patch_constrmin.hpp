@@ -9,9 +9,6 @@
 #include "PatchFluxEV.hpp"
 #include "StorageStiffness.hpp"
 #include "eigen3/Eigen/Dense"
-#include "utils.hpp"
-
-#include <dolfinx_eqlb/base/Patch.hpp>
 
 #include <dolfinx/fem/DofMap.h>
 #include <dolfinx/fem/Form.h>
@@ -19,6 +16,7 @@
 #include <dolfinx/fem/assembler.h>
 #include <dolfinx/fem/utils.h>
 #include <dolfinx/graph/AdjacencyList.h>
+#include <dolfinx_eqlb/base/Patch.hpp>
 
 #include <algorithm>
 #include <cmath>

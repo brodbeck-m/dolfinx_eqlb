@@ -9,6 +9,8 @@
 #include "BoundaryData.hpp"
 #include "ProblemData.hpp"
 
+#include <dolfinx_eqlb/base/mdspan.hpp>
+
 using namespace dolfinx;
 
 namespace dolfinx_eqlb
@@ -200,8 +202,8 @@ public:
   }
 
   /// Extract facet-types of all sub-problems
-  /// @return Mdspan of facet-types
-  mdspan_t<const std::int8_t, 2> facet_type() const
+  /// @return mdspan of facet-types
+  base::mdspan_t<const std::int8_t, 2> facet_type() const
   {
     return _boundary_data->facet_type();
   }

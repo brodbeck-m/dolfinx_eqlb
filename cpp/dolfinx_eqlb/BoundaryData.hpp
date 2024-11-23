@@ -12,9 +12,6 @@
 #include "assemble_projection_boundary.hpp"
 #include "eigen3/Eigen/Dense"
 #include "eigen3/Eigen/Sparse"
-#include "utils.hpp"
-
-#include <dolfinx_eqlb/base/Patch.hpp>
 
 #include <basix/e-lagrange.h>
 #include <basix/element-families.h>
@@ -28,6 +25,8 @@
 #include <dolfinx/mesh/Mesh.h>
 #include <dolfinx/mesh/Topology.h>
 #include <dolfinx/mesh/cell_types.h>
+#include <dolfinx_eqlb/base/Patch.hpp>
+#include <dolfinx_eqlb/base/mdspan.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -98,8 +97,8 @@ public:
   /// @param K               The inverse of the Jacobian
   void calculate_patch_bc(const int rhs_i, const std::int32_t bound_fcts,
                           const std::int8_t patchnode_local,
-                          mdspan_t<const double, 2> J, const double detJ,
-                          mdspan_t<const double, 2> K);
+                          base::mdspan_t<const double, 2> J, const double detJ,
+                          base::mdspan_t<const double, 2> K);
 
   /* Getter methods: general */
   /// Get number of considered RHS
@@ -121,10 +120,10 @@ public:
   /// Get list of facet types
   /// (marked with respect to PatchFacetType)
   /// @return List of all facet types (sorted by facet-ids)
-  mdspan_t<const std::int8_t, 2> facet_type()
+  base::mdspan_t<const std::int8_t, 2> facet_type()
   {
-    return mdspan_t<const std::int8_t, 2>(_facet_type.data(), _num_rhs,
-                                          _num_fcts);
+    return base::mdspan_t<const std::int8_t, 2>(_facet_type.data(), _num_rhs,
+                                                _num_fcts);
   }
 
   /// Marker if mesh-node is on essential boundary of the stress field

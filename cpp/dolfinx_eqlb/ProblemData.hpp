@@ -6,8 +6,6 @@
 
 #pragma once
 
-#include "utils.hpp"
-
 #include <dolfinx/common/IndexMap.h>
 #include <dolfinx/fem/Constant.h>
 #include <dolfinx/fem/DirichletBC.h>

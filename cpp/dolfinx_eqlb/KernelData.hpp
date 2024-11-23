@@ -7,7 +7,6 @@
 #pragma once
 
 #include "QuadratureRule.hpp"
-#include "utils.hpp"
 
 #include <basix/cell.h>
 #include <basix/e-lagrange.h>
@@ -18,6 +17,7 @@
 #include <dolfinx/mesh/Mesh.h>
 #include <dolfinx/mesh/Topology.h>
 #include <dolfinx/mesh/cell_types.h>
+#include <dolfinx_eqlb/base/mdspan.hpp>
 
 #include <algorithm>
 #include <array>
@@ -48,9 +48,10 @@ public:
   /// @param[in,out] detJ_scratch Storage for determinant calculation
   /// @param[in] coords           The cell coordinates
   /// @return                     The determinant of the Jacobian
-  double compute_jacobian(mdspan_t<double, 2> J, mdspan_t<double, 2> K,
+  double compute_jacobian(base::mdspan_t<double, 2> J,
+                          base::mdspan_t<double, 2> K,
                           std::span<double> detJ_scratch,
-                          mdspan_t<const double, 2> coords);
+                          base::mdspan_t<const double, 2> coords);
 
   /* Basic transformations */
   /// Compute isogeometric mapping for a given cell
@@ -58,15 +59,17 @@ public:
   /// @param[in,out] detJ_scratch Storage for determinant calculation
   /// @param[in] coords           The cell coordinates
   /// @return                     The determinant of the Jacobian
-  double compute_jacobian(mdspan_t<double, 2> J, std::span<double> detJ_scratch,
-                          mdspan_t<const double, 2> coords);
+  double compute_jacobian(base::mdspan_t<double, 2> J,
+                          std::span<double> detJ_scratch,
+                          base::mdspan_t<const double, 2> coords);
 
   /// Calculate physical normal of facet
   /// @param[in,out] normal_phys The physical normal
   /// @param[in] K               The inverse Jacobi-Matrix
   /// @param[in] fct_id          The cell-local facet id
   void physical_fct_normal(std::span<double> normal_phys,
-                           mdspan_t<const double, 2> K, std::int8_t fct_id);
+                           base::mdspan_t<const double, 2> K,
+                           std::int8_t fct_id);
 
   /* Getter functions (Cell geometry) */
   /// Returns number of nodes, forming a reference cell
@@ -122,24 +125,24 @@ public:
   /// Extract quadrature points on all sub-entity of cell
   /// @param[in] id_qspace The id of the quadrature space
   /// @param[out] points   The quadrature points
-  mdspan_t<const double, 2> quadrature_points(int id_qspace)
+  base::mdspan_t<const double, 2> quadrature_points(int id_qspace)
   {
     // Extract quadrature rule
     std::shared_ptr<const QuadratureRule> quadrature_rule
         = _quadrature_rule[id_qspace];
 
     // Cast points to mdspan
-    return mdspan_t<const double, 2>(quadrature_rule->points().data(),
-                                     quadrature_rule->num_points(),
-                                     quadrature_rule->tdim());
+    return base::mdspan_t<const double, 2>(quadrature_rule->points().data(),
+                                           quadrature_rule->num_points(),
+                                           quadrature_rule->tdim());
   }
 
   /// Extract quadrature points on one sub-entity of cell
   /// @param[in] id_qspace    The id of the quadrature space
   /// @param[in] id_subentity The id of the sub-entity
   /// @param[out] points      The quadrature points
-  mdspan_t<const double, 2> quadrature_points(int id_qspace,
-                                              std::int8_t id_subentity)
+  base::mdspan_t<const double, 2> quadrature_points(int id_qspace,
+                                                    std::int8_t id_subentity)
   {
     return _quadrature_rule[id_qspace]->points(id_subentity);
   }
@@ -217,7 +220,7 @@ protected:
 
   // Tabulated shape-functions (geometry)
   std::vector<double> _g_basis_values;
-  mdspan_t<const double, 4> _g_basis;
+  base::mdspan_t<const double, 4> _g_basis;
 };
 
 template <typename T>
@@ -263,9 +266,10 @@ public:
   /// @param J        The Jacobian
   /// @param detJ     The determinant of the Jacobian
   /// @param K        The inverse of the Jacobian
-  void pull_back_flux(mdspan_t<T, 2> flux_ref, mdspan_t<const T, 2> flux_cur,
-                      mdspan_t<const double, 2> J, double detJ,
-                      mdspan_t<const double, 2> K)
+  void pull_back_flux(base::mdspan_t<T, 2> flux_ref,
+                      base::mdspan_t<const T, 2> flux_cur,
+                      base::mdspan_t<const double, 2> J, double detJ,
+                      base::mdspan_t<const double, 2> K)
   {
     _pull_back_fluxspace(flux_ref, flux_cur, K, 1.0 / detJ, J);
   }
@@ -278,10 +282,11 @@ public:
   /// Array with indexes i, j and k: phi_j(x_i)[k] is the
   /// shape-function j at point i within direction k.
   /// @return Array of shape functions (reference cell)
-  smdspan_t<const double, 3> shapefunctions_flux() const
+  base::smdspan_t<const double, 3> shapefunctions_flux() const
   {
-    return stdex::submdspan(_flux_fullbasis, 0, stdex::full_extent,
-                            stdex::full_extent, stdex::full_extent);
+    return std::experimental::submdspan(
+        _flux_fullbasis, 0, std::experimental::full_extent,
+        std::experimental::full_extent, std::experimental::full_extent);
   }
 
   /// Extract mapped shape functions (H(div) flux)
@@ -290,27 +295,30 @@ public:
   /// @param J     The Jacobian
   /// @param detJ  The determinant of the Jacobian
   /// @return Array of shape functions (current cell)
-  smdspan_t<double, 3> shapefunctions_flux(mdspan_t<const double, 2> J,
-                                           const double detJ)
+  base::smdspan_t<double, 3>
+  shapefunctions_flux(base::mdspan_t<const double, 2> J, const double detJ)
   {
     // Map shape functions
     contravariant_piola_mapping(
-        stdex::submdspan(_flux_fullbasis_current, 0, stdex::full_extent,
-                         stdex::full_extent, stdex::full_extent),
-        stdex::submdspan(_flux_fullbasis, 0, stdex::full_extent,
-                         stdex::full_extent, stdex::full_extent),
+        std::experimental::submdspan(
+            _flux_fullbasis_current, 0, std::experimental::full_extent,
+            std::experimental::full_extent, std::experimental::full_extent),
+        std::experimental::submdspan(
+            _flux_fullbasis, 0, std::experimental::full_extent,
+            std::experimental::full_extent, std::experimental::full_extent),
         J, detJ);
 
-    return stdex::submdspan(_flux_fullbasis_current, 0, stdex::full_extent,
-                            stdex::full_extent, stdex::full_extent);
+    return std::experimental::submdspan(
+        _flux_fullbasis_current, 0, std::experimental::full_extent,
+        std::experimental::full_extent, std::experimental::full_extent);
   }
 
   /// Extract transformation data for shape functions (H(div) flux)
   /// @return Array of transformation data
-  mdspan_t<const double, 2> entity_transformations_flux() const
+  base::mdspan_t<const double, 2> entity_transformations_flux() const
   {
-    return mdspan_t<const double, 2>(_data_transform_shpfkt.data(),
-                                     _shape_transform_shpfkt);
+    return base::mdspan_t<const double, 2>(_data_transform_shpfkt.data(),
+                                           _shape_transform_shpfkt);
   }
 
   /// Extract shape functions on cell (RHS, projected flux)
@@ -318,10 +326,11 @@ public:
   /// phi_k(x_j) is the shape-function k at point j while i determins
   /// if function or the derivative is returned.
   /// @return Array of shape functions (reference cell)
-  smdspan_t<const double, 3> shapefunctions_cell_rhs() const
+  base::smdspan_t<const double, 3> shapefunctions_cell_rhs() const
   {
-    return stdex::submdspan(_rhs_cell_fullbasis, stdex::full_extent,
-                            stdex::full_extent, stdex::full_extent, 0);
+    return std::experimental::submdspan(
+        _rhs_cell_fullbasis, std::experimental::full_extent,
+        std::experimental::full_extent, std::experimental::full_extent, 0);
   }
 
   /// Extract mapped shape functions on cell (RHS, projected flux)
@@ -330,59 +339,63 @@ public:
   /// if function or the derivative is returned.
   /// @param K The inverse Jacobian
   /// @return Array of shape functions (current cell)
-  smdspan_t<const double, 3>
-  shapefunctions_cell_rhs(mdspan_t<const double, 2> K);
+  base::smdspan_t<const double, 3>
+  shapefunctions_cell_rhs(base::mdspan_t<const double, 2> K);
 
   /// Extract shape functions on facet (RHS, projected flux)
   /// Array with indexes i, j: phi_j(x_i) is the shape-function j
   /// at point i.
   /// @return Array of shape functions (current cell)
-  smdspan_t<const double, 2> shapefunctions_fct_rhs(std::int8_t fct_id)
+  base::smdspan_t<const double, 2> shapefunctions_fct_rhs(std::int8_t fct_id)
   {
     // Offset of shpfkt for current facet
     std::size_t obgn = fct_id * _nipoints_per_fct;
     std::size_t oend = obgn + _nipoints_per_fct;
 
-    return stdex::submdspan(_rhs_fct_fullbasis, 0, std::pair{obgn, oend},
-                            stdex::full_extent, 0);
+    return std::experimental::submdspan(_rhs_fct_fullbasis, 0,
+                                        std::pair{obgn, oend},
+                                        std::experimental::full_extent, 0);
   }
 
   /// Extract shape functions on cell (hat-function)
   /// Array with indexes i and j: phi_k(x_j) is the shape-function k
   /// at point j
   /// @return Array of shape functions (reference cell)
-  smdspan_t<const double, 2> shapefunctions_cell_hat() const
+  base::smdspan_t<const double, 2> shapefunctions_cell_hat() const
   {
-    return stdex::submdspan(_hat_cell_fullbasis, 0, stdex::full_extent,
-                            stdex::full_extent, 0);
+    return std::experimental::submdspan(_hat_cell_fullbasis, 0,
+                                        std::experimental::full_extent,
+                                        std::experimental::full_extent, 0);
   }
 
   /// Extract shape functions on facet (hat-function)
   /// Array with indexes i, j: phi_j(x_i) is the shape-function j
   /// at point i.
   /// @return Array of shape functions (reference cell)
-  smdspan_t<const double, 2> shapefunctions_fct_hat(std::int8_t fct_id)
+  base::smdspan_t<const double, 2> shapefunctions_fct_hat(std::int8_t fct_id)
   {
     // Offset of shpfkt for current facet
     std::size_t obgn = fct_id * _nipoints_per_fct;
     std::size_t oend = obgn + _nipoints_per_fct;
 
-    return stdex::submdspan(_hat_fct_fullbasis, 0, std::pair{obgn, oend},
-                            stdex::full_extent, 0);
+    return std::experimental::submdspan(_hat_fct_fullbasis, 0,
+                                        std::pair{obgn, oend},
+                                        std::experimental::full_extent, 0);
   }
 
   /// Extract shape functions on facet (hat-function)
   /// Array with indexe i: phi_j(x_i) is the shape-function j
   /// at point i.
   /// @return Array of shape functions (reference cell)
-  smdspan_t<const double, 1> shapefunctions_fct_hat(std::int8_t fct_id,
-                                                    std::size_t j)
+  base::smdspan_t<const double, 1> shapefunctions_fct_hat(std::int8_t fct_id,
+                                                          std::size_t j)
   {
     // Offset of shpfkt for current facet
     std::size_t obgn = fct_id * _nipoints_per_fct;
     std::size_t oend = obgn + _nipoints_per_fct;
 
-    return stdex::submdspan(_hat_fct_fullbasis, 0, std::pair{obgn, oend}, j, 0);
+    return std::experimental::submdspan(_hat_fct_fullbasis, 0,
+                                        std::pair{obgn, oend}, j, 0);
   }
 
   /* Getter functions (Interpolation) */
@@ -394,16 +407,17 @@ public:
   /// Indices of M: nfct x ndofs x spacial dimension x points
   /// @param fct_id The cell-local facet id
   /// @return The interpolation matrix M
-  mdspan_t<const double, 4> interpl_matrix_facte() { return _M_fct; }
+  base::mdspan_t<const double, 4> interpl_matrix_facte() { return _M_fct; }
 
   /// Extract interpolation matrix on facet for single DOF
   /// Indices of M: ndofs x spacial dimension x points
   /// @param fct_id The cell-local facet id
   /// @return The interpolation matrix M
-  mdspan_t<const double, 3> interpl_matrix_facte(std::int8_t fct_id)
+  base::mdspan_t<const double, 3> interpl_matrix_facte(std::int8_t fct_id)
   {
-    return stdex::submdspan(_M_fct, (std::size_t)fct_id, stdex::full_extent,
-                            stdex::full_extent, stdex::full_extent);
+    return std::experimental::submdspan(
+        _M_fct, (std::size_t)fct_id, std::experimental::full_extent,
+        std::experimental::full_extent, std::experimental::full_extent);
   }
 
   /// Extract interpolation matrix on facet
@@ -411,11 +425,12 @@ public:
   /// @param fct_id The cell-local facet id
   /// @param dof_id The facet-local DOF id
   /// @return The interpolation matrix M
-  mdspan_t<const double, 2> interpl_matrix_facte(std::int8_t fct_id,
-                                                 std::int8_t dof_id)
+  base::mdspan_t<const double, 2> interpl_matrix_facte(std::int8_t fct_id,
+                                                       std::int8_t dof_id)
   {
-    return stdex::submdspan(_M_fct, (std::size_t)fct_id, (std::size_t)dof_id,
-                            stdex::full_extent, stdex::full_extent);
+    return std::experimental::submdspan(
+        _M_fct, (std::size_t)fct_id, (std::size_t)dof_id,
+        std::experimental::full_extent, std::experimental::full_extent);
   }
 
 protected:
@@ -437,36 +452,36 @@ protected:
   /// @param phi_ref The reference basis function values
   /// @param J    The Jacobian matrix
   /// @param detJ The determinant of the Jacobian matrix
-  void contravariant_piola_mapping(smdspan_t<double, 3> phi_cur,
-                                   smdspan_t<const double, 3> phi_ref,
-                                   mdspan_t<const double, 2> J,
+  void contravariant_piola_mapping(base::smdspan_t<double, 3> phi_cur,
+                                   base::smdspan_t<const double, 3> phi_ref,
+                                   base::mdspan_t<const double, 2> J,
                                    const double detJ);
 
   /* Variable definitions */
   // Interpolation data
   std::size_t _nipoints_per_fct, _nipoints_fct;
   std::vector<double> _ipoints_fct, _data_M_fct;
-  mdspan_t<const double, 4> _M_fct; // Indices: facet, dof, gdim, points
+  base::mdspan_t<const double, 4> _M_fct; // Indices: facet, dof, gdim, points
 
   // Tabulated shape-functions (pice-wise H(div) flux)
   std::vector<double> _flux_basis_values, _flux_basis_current_values;
-  mdspan_t<const double, 4> _flux_fullbasis;
-  mdspan_t<double, 4> _flux_fullbasis_current;
+  base::mdspan_t<const double, 4> _flux_fullbasis;
+  base::mdspan_t<double, 4> _flux_fullbasis_current;
 
   // Tabulated shape-functions (projected flux, RHS)
   std::vector<double> _rhs_basis_cell_values, _rhs_basis_fct_values,
       _rhs_basis_current_values;
-  mdspan_t<const double, 4> _rhs_cell_fullbasis, _rhs_fct_fullbasis;
-  mdspan_t<double, 4> _rhs_fullbasis_current;
+  base::mdspan_t<const double, 4> _rhs_cell_fullbasis, _rhs_fct_fullbasis;
+  base::mdspan_t<double, 4> _rhs_fullbasis_current;
 
   // Tabulated shape-functions (hat-function)
   std::vector<double> _hat_basis_cell_values, _hat_basis_fct_values;
-  mdspan_t<const double, 4> _hat_cell_fullbasis, _hat_fct_fullbasis;
+  base::mdspan_t<const double, 4> _hat_cell_fullbasis, _hat_fct_fullbasis;
 
   // Push-back H(div) data
-  std::function<void(mdspan_t<T, 2>&, const mdspan_t<const T, 2>&,
-                     const mdspan_t<const double, 2>&, double,
-                     const mdspan_t<const double, 2>&)>
+  std::function<void(base::mdspan_t<T, 2>&, const base::mdspan_t<const T, 2>&,
+                     const base::mdspan_t<const double, 2>&, double,
+                     const base::mdspan_t<const double, 2>&)>
       _pull_back_fluxspace;
 
   // Transformation infos for reversed facets
@@ -520,9 +535,10 @@ public:
   /// @param[in] phi_ref      The shape-functions on the reference cell
   /// @param[in] J            The Jacobina
   /// @param[in] detJ         The determinant of the Jacobian
-  void map_shapefunctions_flux(std::int8_t lfct_id, mdspan_t<double, 3> phi_cur,
-                               mdspan_t<const double, 5> phi_ref,
-                               mdspan_t<const double, 2> J, double detJ);
+  void map_shapefunctions_flux(std::int8_t lfct_id,
+                               base::mdspan_t<double, 3> phi_cur,
+                               base::mdspan_t<const double, 5> phi_ref,
+                               base::mdspan_t<const double, 2> J, double detJ);
 
   /* Calculate flux DOFs based on different inputs */
 
@@ -538,16 +554,16 @@ public:
   /// @param[in] K               The inverse of the Jacobian
   /// @param[out] flux_vector    A List of flux-vectors recovered from the
   ///                            normal-trace
-  mdspan_t<const T, 2> normaltrace_to_flux(std::span<const T> flux_ntrace_cur,
-                                           std::int8_t lfct_id,
-                                           mdspan_t<const double, 2> K)
+  base::mdspan_t<const T, 2>
+  normaltrace_to_flux(std::span<const T> flux_ntrace_cur, std::int8_t lfct_id,
+                      base::mdspan_t<const double, 2> K)
   {
     // Perform calculation
     normaltrace_to_vector(flux_ntrace_cur, lfct_id, K);
 
-    return mdspan_t<const T, 2>(_flux_scratch_data.data(),
-                                flux_ntrace_cur.size(),
-                                (std::size_t)this->_gdim);
+    return base::mdspan_t<const T, 2>(_flux_scratch_data.data(),
+                                      flux_ntrace_cur.size(),
+                                      (std::size_t)this->_gdim);
   }
 
   /// Calculates flux DOFs based on the normal-trace
@@ -564,8 +580,8 @@ public:
   /// @param[in] K               The inverse of the Jacobi matrix
   void interpolate_flux(std::span<const T> flux_ntrace_cur,
                         std::span<T> flux_dofs, std::int8_t lfct_id,
-                        mdspan_t<const double, 2> J, double detJ,
-                        mdspan_t<const double, 2> K);
+                        base::mdspan_t<const double, 2> J, double detJ,
+                        base::mdspan_t<const double, 2> K);
 
   /// Calculates boundary DOFs for a patch problem
   ///
@@ -590,8 +606,9 @@ public:
                                   std::int32_t cell_id, std::int8_t lfct_id,
                                   std::int8_t hat_id,
                                   std::span<const std::uint32_t> cell_info,
-                                  mdspan_t<const double, 2> J, double detJ,
-                                  mdspan_t<const double, 2> K)
+                                  base::mdspan_t<const double, 2> J,
+                                  double detJ,
+                                  base::mdspan_t<const double, 2> K)
   {
     // Initialise storage
     std::vector<T> flux_dofs_patch(flux_dofs_bc.size());
@@ -628,8 +645,8 @@ public:
                         std::span<T> flux_dofs_patch, std::int32_t cell_id,
                         std::int8_t lfct_id, std::int8_t hat_id,
                         std::span<const std::uint32_t> cell_info,
-                        mdspan_t<const double, 2> J, double detJ,
-                        mdspan_t<const double, 2> K);
+                        base::mdspan_t<const double, 2> J, double detJ,
+                        base::mdspan_t<const double, 2> K);
 
   /// Calculates flux-DOFs from flux-vector at the interpolation points
   ///
@@ -644,10 +661,10 @@ public:
   /// @param[in] J                    The Jacobi matrix of the mapping function
   /// @param[in] detJ                 The determinant of the Jacobi matrix
   /// @param[in] K                    The inverse of the Jacobi matrix
-  void interpolate_flux(mdspan_t<const T, 2> flux_cur,
+  void interpolate_flux(base::mdspan_t<const T, 2> flux_cur,
                         std::span<T> flux_dofs_patch, std::int8_t lfct_id,
-                        mdspan_t<const double, 2> J, double detJ,
-                        mdspan_t<const double, 2> K);
+                        base::mdspan_t<const double, 2> J, double detJ,
+                        base::mdspan_t<const double, 2> K);
 
   /* Getter methods: Interpolation */
 
@@ -661,44 +678,46 @@ public:
 
 protected:
   void normaltrace_to_vector(std::span<const T> normaltrace_cur,
-                             std::int8_t lfct_id, mdspan_t<const double, 2> K);
+                             std::int8_t lfct_id,
+                             base::mdspan_t<const double, 2> K);
 
   /* Variable definitions */
 
   // Interpolation data
   std::size_t _nipoints_per_fct, _nipoints;
   std::vector<double> _ipoints, _data_M;
-  mdspan_t<const double, 4> _M; // Indices: facet, dof, gdim, points
+  base::mdspan_t<const double, 4> _M; // Indices: facet, dof, gdim, points
 
   // Tabulated shape-functions H(div) flux (integration points)
   std::vector<double> _basis_flux_values;
-  mdspan_t<const double, 5> _basis_flux;
+  base::mdspan_t<const double, 5> _basis_flux;
   const int _ndofs_per_fct, _ndofs_fct, _ndofs_cell;
 
   // Tabulated shape-functions (hat-function)
   basix::FiniteElement _basix_element_hat;
   std::vector<double> _basis_hat_values;
-  mdspan_t<const double, 5> _basis_hat;
+  base::mdspan_t<const double, 5> _basis_hat;
 
   // Pull-back H(div) data
   std::size_t _size_flux_scratch;
   std::vector<T> _flux_scratch_data, _mflux_scratch_data;
-  mdspan_t<T, 2> _flux_scratch, _mflux_scratch;
+  base::mdspan_t<T, 2> _flux_scratch, _mflux_scratch;
 
   std::array<double, 3> _normal_scratch;
 
-  std::function<void(mdspan_t<T, 2>&, const mdspan_t<const T, 2>&,
-                     const mdspan_t<const double, 2>&, double,
-                     const mdspan_t<const double, 2>&)>
+  std::function<void(base::mdspan_t<T, 2>&, const base::mdspan_t<const T, 2>&,
+                     const base::mdspan_t<const double, 2>&, double,
+                     const base::mdspan_t<const double, 2>&)>
       _pull_back_flux;
 
   // Push-forward H(div) shape-functions
   std::vector<double> _mbasis_flux_values, _mbasis_scratch_values;
-  mdspan_t<double, 2> _mbasis_flux, _mbasis_scratch;
+  base::mdspan_t<double, 2> _mbasis_flux, _mbasis_scratch;
 
-  std::function<void(mdspan_t<double, 2>&, const mdspan_t<const double, 2>&,
-                     const mdspan_t<const double, 2>&, double,
-                     const mdspan_t<const double, 2>&)>
+  std::function<void(base::mdspan_t<double, 2>&,
+                     const base::mdspan_t<const double, 2>&,
+                     const base::mdspan_t<const double, 2>&, double,
+                     const base::mdspan_t<const double, 2>&)>
       _push_forward_flux;
 
   std::function<void(const std::span<double>&,

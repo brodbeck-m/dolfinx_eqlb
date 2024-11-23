@@ -13,14 +13,14 @@
 #include "eigen3/Eigen/Dense"
 #include "utils.hpp"
 
-#include <dolfinx_eqlb/base/Patch.hpp>
-
 #include <dolfinx/fem/DofMap.h>
 #include <dolfinx/fem/Form.h>
 #include <dolfinx/fem/Function.h>
 #include <dolfinx/fem/assembler.h>
 #include <dolfinx/fem/utils.h>
 #include <dolfinx/graph/AdjacencyList.h>
+#include <dolfinx_eqlb/base/Patch.hpp>
+#include <dolfinx_eqlb/base/mdspan.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -36,9 +36,6 @@ using namespace dolfinx;
 
 namespace dolfinx_eqlb
 {
-
-namespace stdex = std::experimental;
-
 /// Impose weak symmetry on a reconstructed stress tensor
 ///
 /// Based on o row-wise equilibrated stress tensors, weak symmetry
@@ -145,11 +142,11 @@ void impose_weak_symmetry(const mesh::Geometry& geometry,
 
   /* Solve minimisation problem */
   // The assembly information
-  mdspan_t<const std::int32_t, 3> asmbl_info
+  base::mdspan_t<const std::int32_t, 3> asmbl_info
       = patch.assembly_info_minimisation();
 
   // Marker for reversed facets
-  mdspan_t<std::uint8_t, 2> reversed_fct
+  base::mdspan_t<std::uint8_t, 2> reversed_fct
       = patch_data.reversed_facets_per_cell();
 
   // Set boundary markers
@@ -183,7 +180,7 @@ void impose_weak_symmetry(const mesh::Geometry& geometry,
   Eigen::Matrix<T, Eigen::Dynamic, 1>& u_patch = patch_data.vector_u_sigma();
 
   // DOF transformation data
-  mdspan_t<const double, 2> doftrafo
+  base::mdspan_t<const double, 2> doftrafo
       = kernel_data.entity_transformations_flux();
 
   // Move solution from patch-wise into global storage
@@ -191,7 +188,7 @@ void impose_weak_symmetry(const mesh::Geometry& geometry,
   {
     // Global storage of the solution
     std::span<T> x_stress = problem_data.flux(i).x()->mutable_array();
-    mdspan_t<T, 2> coefficients_flux = patch_data.coefficients_flux(i);
+    base::mdspan_t<T, 2> coefficients_flux = patch_data.coefficients_flux(i);
 
     // Initialise offset
     int offset_u = i * ndofs_hdivz;

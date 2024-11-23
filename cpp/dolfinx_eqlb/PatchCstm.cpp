@@ -11,7 +11,7 @@ using namespace dolfinx_eqlb;
 
 // ---------------------------------------------------------------------------------------------------
 OrientedPatch::OrientedPatch(std::shared_ptr<const mesh::Mesh> mesh,
-                             mdspan_t<const std::int8_t, 2> bfct_type,
+                             base::mdspan_t<const std::int8_t, 2> bfct_type,
                              std::span<const std::int8_t> pnts_on_bndr,
                              const int ncells_min, const int ncells_crit)
     : _mesh(mesh), _bfct_type(bfct_type), _dim(mesh->geometry().dim()),
@@ -194,7 +194,7 @@ double OrientedPatch::estimate_squared_korn_constant() const
   {
     // Coordinates stencil-central node
     std::array<double, 6> data_cnodes;
-    mdspan_t<double, 2> cnodes(data_cnodes.data(), 3, 2);
+    base::mdspan_t<double, 2> cnodes(data_cnodes.data(), 3, 2);
 
     // Minimal angles for different stencils
     std::array<double, 3> phi_min = {M_PI, M_PI, M_PI};
@@ -545,7 +545,7 @@ void OrientedPatch::initialize_patch(const int node_i)
   /* Structure sub-mesh */
   // Extract data
   base::PatchType type = _type[0];
-  mdspan_t<std::int8_t, 2> fcts_local(_fcts_local.data(), _nfcts, 2);
+  base::mdspan_t<std::int8_t, 2> fcts_local(_fcts_local.data(), _nfcts, 2);
 
   // Initialisation
   int lloop = _ncells + 1;
