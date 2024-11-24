@@ -6,7 +6,7 @@
 
 #pragma once
 
-#include <dolfinx_eqlb/base/mdspan.hpp>
+#include "mdspan.hpp"
 
 #include <basix/finite-element.h>
 #include <basix/polyset.h>
@@ -23,7 +23,7 @@
 
 using namespace dolfinx;
 
-namespace dolfinx_eqlb
+namespace dolfinx_eqlb::base
 {
 class QuadratureRule
 {
@@ -225,4 +225,4 @@ private:
   std::vector<std::size_t> _entity_offset; // The offset for each entity
 };
 
-} // namespace dolfinx_eqlb
+} // namespace dolfinx_eqlb::base

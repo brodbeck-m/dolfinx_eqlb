@@ -31,14 +31,14 @@ BoundaryData<T>::BoundaryData(
                 + V_flux_hdiv->dofmap()->index_map->num_ghosts()),
       _fct_to_cell(
           V_flux_hdiv->mesh()->topology().connectivity(_gdim - 1, _gdim)),
-      _quadrature_rule(QuadratureRule(
+      _quadrature_rule(base::QuadratureRule(
           V_flux_hdiv->mesh()->topology().cell_type(), quadrature_degree,
           V_flux_hdiv->mesh()->geometry().dim() - 1)),
-      _kernel_data(
-          KernelDataBC<T>(V_flux_hdiv->mesh(),
-                          {std::make_shared<QuadratureRule>(_quadrature_rule)},
-                          V_flux_hdiv->element(), _ndofs_per_fct,
-                          _ndofs_per_cell, rtflux_is_custom))
+      _kernel_data(KernelDataBC<T>(
+          V_flux_hdiv->mesh(),
+          {std::make_shared<base::QuadratureRule>(_quadrature_rule)},
+          V_flux_hdiv->element(), _ndofs_per_fct, _ndofs_per_cell,
+          rtflux_is_custom))
 {
   // Resize storage
   _num_bcfcts.resize(_num_rhs);

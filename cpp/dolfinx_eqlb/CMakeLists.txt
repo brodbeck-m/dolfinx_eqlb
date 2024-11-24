@@ -21,7 +21,6 @@ set(
   ProblemData.hpp
   ProblemDataFluxCstm.hpp
   ProblemDataFluxEV.hpp
-  QuadratureRule.hpp
   StorageStiffness.hpp
   assemble_patch_constrmin.hpp
   assemble_patch_semiexplt.hpp

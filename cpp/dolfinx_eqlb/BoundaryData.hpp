@@ -8,7 +8,6 @@
 
 #include "FluxBC.hpp"
 #include "KernelData.hpp"
-#include "QuadratureRule.hpp"
 #include "assemble_projection_boundary.hpp"
 #include "eigen3/Eigen/Dense"
 #include "eigen3/Eigen/Sparse"
@@ -26,6 +25,7 @@
 #include <dolfinx/mesh/Topology.h>
 #include <dolfinx/mesh/cell_types.h>
 #include <dolfinx_eqlb/base/Patch.hpp>
+#include <dolfinx_eqlb/base/QuadratureRule.hpp>
 #include <dolfinx_eqlb/base/mdspan.hpp>
 
 #include <algorithm>
@@ -285,7 +285,7 @@ protected:
 
   // --- Data for projection/ interpolation
   // Surface quadrature kernel
-  QuadratureRule _quadrature_rule;
+  base::QuadratureRule _quadrature_rule;
   KernelDataBC<T> _kernel_data;
 
   // Geometric mapping

@@ -10,5 +10,6 @@ namespace dolfinx_eqlb::base
 }
 
 #include "Patch.hpp"
+#include "QuadratureRule.hpp"
 
 // dolfinx_eqlb common interface

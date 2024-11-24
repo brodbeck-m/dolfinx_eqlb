@@ -35,6 +35,7 @@
 #include <dolfinx/mesh/Mesh.h>
 #include <dolfinx/mesh/Topology.h>
 #include <dolfinx/mesh/cell_types.h>
+#include <dolfinx_eqlb/base/QuadratureRule.hpp>
 
 #include <algorithm>
 #include <array>
@@ -226,12 +227,12 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data,
   // Set quadrature rule
   const int quadrature_degree
       = (degree_flux_hdiv == 1) ? 2 : 2 * degree_flux_hdiv + 1;
-  QuadratureRule quadrature_rule
-      = QuadratureRule(mesh->topology().cell_type(), quadrature_degree, dim);
+  base::QuadratureRule quadrature_rule = base::QuadratureRule(
+      mesh->topology().cell_type(), quadrature_degree, dim);
 
   // Initialize KernelData
   KernelDataEqlb<T> kernel_data = KernelDataEqlb<T>(
-      mesh, std::make_shared<QuadratureRule>(quadrature_rule),
+      mesh, std::make_shared<base::QuadratureRule>(quadrature_rule),
       basix_element_fluxhdiv, basix_element_rhs, basix_element_hat);
 
   // Generate minimisation kernels
