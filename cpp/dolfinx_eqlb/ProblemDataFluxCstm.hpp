@@ -6,11 +6,10 @@
 
 #pragma once
 
-#include "BoundaryData.hpp"
-
 #include <dolfinx/fem/Function.h>
 #include <dolfinx/fem/FunctionSpace.h>
 #include <dolfinx/mesh/Mesh.h>
+#include <dolfinx_eqlb/base/BoundaryData.hpp>
 #include <dolfinx_eqlb/base/mdspan.hpp>
 
 #include <memory>
@@ -37,7 +36,7 @@ public:
   ProblemDataFluxCstm(std::vector<std::shared_ptr<fem::Function<T>>>& fluxes,
                       std::vector<std::shared_ptr<fem::Function<T>>>& fluxes_dg,
                       std::vector<std::shared_ptr<fem::Function<T>>>& rhs_dg,
-                      std::shared_ptr<BoundaryData<T>> boundary_data)
+                      std::shared_ptr<base::BoundaryData<T>> boundary_data)
       : _nrhs(fluxes.size()), _flux_hdiv(fluxes), _flux_dg(fluxes_dg),
         _rhs_dg(rhs_dg), _boundary_data(boundary_data)
   {
@@ -160,6 +159,6 @@ protected:
   std::vector<std::shared_ptr<fem::Function<T>>>&_flux_hdiv, _flux_dg, _rhs_dg;
 
   // The boundary data
-  std::shared_ptr<BoundaryData<T>> _boundary_data;
+  std::shared_ptr<base::BoundaryData<T>> _boundary_data;
 };
 } // namespace dolfinx_eqlb

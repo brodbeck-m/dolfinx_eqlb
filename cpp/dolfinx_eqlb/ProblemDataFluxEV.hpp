@@ -6,9 +6,9 @@
 
 #pragma once
 
-#include "BoundaryData.hpp"
 #include "ProblemData.hpp"
 
+#include <dolfinx_eqlb/base/BoundaryData.hpp>
 #include <dolfinx_eqlb/base/mdspan.hpp>
 
 using namespace dolfinx;
@@ -30,7 +30,7 @@ public:
   /// @param l        List of all RHS (ufl)
   ProblemDataFluxEV(std::vector<std::shared_ptr<fem::Function<T>>>& fluxes,
                     const std::vector<std::shared_ptr<const fem::Form<T>>>& l,
-                    std::shared_ptr<BoundaryData<T>> boundary_data)
+                    std::shared_ptr<base::BoundaryData<T>> boundary_data)
       : ProblemData<T>(fluxes, {}, l), _boundary_data(boundary_data),
         _begin_hat(fluxes.size(), 0), _begin_fluxdg(fluxes.size(), 0)
   {
@@ -269,7 +269,7 @@ protected:
 
   /* Variables */
   // The boundary data (equilibration specific)
-  std::shared_ptr<BoundaryData<T>> _boundary_data;
+  std::shared_ptr<base::BoundaryData<T>> _boundary_data;
 
   // Infos on constants and coefficients
   std::vector<int> _begin_hat, _begin_fluxdg;

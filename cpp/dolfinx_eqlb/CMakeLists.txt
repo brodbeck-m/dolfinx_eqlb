@@ -12,8 +12,6 @@ set(EQLB_DIRS
 
 set(
   HEADERS_EQLB
-  BoundaryData.hpp
-  FluxBC.hpp
   KernelData.hpp
   PatchFluxEV.hpp
   PatchCstm.hpp
@@ -24,7 +22,6 @@ set(
   StorageStiffness.hpp
   assemble_patch_constrmin.hpp
   assemble_patch_semiexplt.hpp
-  assemble_projection_boundary.hpp
   local_solver.hpp
   reconstruction.hpp
   solve_patch_constrmin.hpp
@@ -35,7 +32,6 @@ set(
 
 target_sources(
   dolfinx_eqlb
-  PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/BoundaryData.cpp
   PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/KernelData.cpp
   PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/PatchCstm.cpp
   PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/PatchFluxEV.cpp

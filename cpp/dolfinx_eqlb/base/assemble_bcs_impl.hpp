@@ -7,18 +7,18 @@
 #pragma once
 
 #include "eigen3/Eigen/Dense"
-
-#include <dolfinx_eqlb/base/mdspan.hpp>
+#include "mdspan.hpp"
 
 #include <cmath>
 #include <span>
 
-namespace dolfinx_eqlb
+namespace dolfinx_eqlb::base
 {
+
 template <typename T>
 void boundary_projection_kernel(
     std::span<const double> ntrace_flux_boundary,
-    std::span<const double> facet_normal, base::mdspan_t<double, 3> phi,
+    std::span<const double> facet_normal, mdspan_t<double, 3> phi,
     std::span<const double> weights, const double detJ,
     Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>& A_e,
     Eigen::Matrix<T, Eigen::Dynamic, 1>& L_e)
@@ -80,4 +80,5 @@ void boundary_projection_kernel(
     }
   }
 }
-} // namespace dolfinx_eqlb
+
+} // namespace dolfinx_eqlb::base

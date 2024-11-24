@@ -23,8 +23,9 @@
 
 using namespace dolfinx;
 
-namespace dolfinx_eqlb
+namespace dolfinx_eqlb::base
 {
+
 template <typename T>
 class FluxBC
 {
@@ -298,4 +299,4 @@ protected:
   const int _quadrature_degree;
 };
 
-} // namespace dolfinx_eqlb
+} // namespace dolfinx_eqlb::base

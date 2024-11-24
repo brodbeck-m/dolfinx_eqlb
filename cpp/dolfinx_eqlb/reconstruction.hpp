@@ -6,7 +6,6 @@
 
 #pragma once
 
-#include "BoundaryData.hpp"
 #include "KernelData.hpp"
 #include "PatchCstm.hpp"
 #include "PatchData.hpp"
@@ -35,6 +34,7 @@
 #include <dolfinx/mesh/Mesh.h>
 #include <dolfinx/mesh/Topology.h>
 #include <dolfinx/mesh/cell_types.h>
+#include <dolfinx_eqlb/base/BoundaryData.hpp>
 #include <dolfinx_eqlb/base/QuadratureRule.hpp>
 
 #include <algorithm>
@@ -432,7 +432,7 @@ void reconstruct_fluxes_ev(
     const fem::Form<T>& a, const fem::Form<T>& l_pen,
     const std::vector<std::shared_ptr<const fem::Form<T>>>& l,
     std::vector<std::shared_ptr<fem::Function<T>>>& flux_hdiv,
-    std::shared_ptr<BoundaryData<T>> boundary_data)
+    std::shared_ptr<base::BoundaryData<T>> boundary_data)
 {
   // Check input
   int n_rhs = l.size();
@@ -468,7 +468,7 @@ void reconstruct_fluxes_cstm(
     std::vector<std::shared_ptr<fem::Function<T>>>& flux_hdiv,
     std::vector<std::shared_ptr<fem::Function<T>>>& flux_dg,
     std::vector<std::shared_ptr<fem::Function<T>>>& rhs_dg,
-    std::shared_ptr<BoundaryData<T>> boundary_data,
+    std::shared_ptr<base::BoundaryData<T>> boundary_data,
     const bool reconstruct_stress,
     std::shared_ptr<dolfinx::fem::Function<T>> cells_kornconst)
 {
