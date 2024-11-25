@@ -26,7 +26,7 @@
 
 using namespace dolfinx;
 
-namespace dolfinx_eqlb
+namespace dolfinx_eqlb::base
 {
 template <typename T>
 class ProblemData
@@ -497,4 +497,4 @@ protected:
   // Offset
   std::vector<std::int32_t> _offset_bc;
 };
-} // namespace dolfinx_eqlb
+} // namespace dolfinx_eqlb::base

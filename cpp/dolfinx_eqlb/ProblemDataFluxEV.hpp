@@ -6,9 +6,8 @@
 
 #pragma once
 
-#include "ProblemData.hpp"
-
 #include <dolfinx_eqlb/base/BoundaryData.hpp>
+#include <dolfinx_eqlb/base/ProblemData.hpp>
 #include <dolfinx_eqlb/base/mdspan.hpp>
 
 using namespace dolfinx;
@@ -16,7 +15,7 @@ using namespace dolfinx;
 namespace dolfinx_eqlb
 {
 template <typename T>
-class ProblemDataFluxEV : public ProblemData<T>
+class ProblemDataFluxEV : public base::ProblemData<T>
 {
 public:
   /// Initialize storage of data for equilibration of (multiple) fluxes
@@ -31,7 +30,7 @@ public:
   ProblemDataFluxEV(std::vector<std::shared_ptr<fem::Function<T>>>& fluxes,
                     const std::vector<std::shared_ptr<const fem::Form<T>>>& l,
                     std::shared_ptr<base::BoundaryData<T>> boundary_data)
-      : ProblemData<T>(fluxes, {}, l), _boundary_data(boundary_data),
+      : base::ProblemData<T>(fluxes, {}, l), _boundary_data(boundary_data),
         _begin_hat(fluxes.size(), 0), _begin_fluxdg(fluxes.size(), 0)
   {
   }

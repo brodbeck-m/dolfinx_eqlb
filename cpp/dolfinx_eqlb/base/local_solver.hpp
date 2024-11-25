@@ -9,13 +9,15 @@
 #include "ProblemData.hpp"
 #include "eigen3/Eigen/Dense"
 #include "eigen3/Eigen/Sparse"
-#include <algorithm>
+
 #include <dolfinx/fem/DofMap.h>
 #include <dolfinx/fem/Form.h>
 #include <dolfinx/fem/Function.h>
 #include <dolfinx/fem/assembler.h>
 #include <dolfinx/fem/utils.h>
 #include <dolfinx/graph/AdjacencyList.h>
+
+#include <algorithm>
 #include <functional>
 #include <iostream>
 #include <iterator>
@@ -24,7 +26,7 @@
 
 using namespace dolfinx;
 
-namespace dolfinx_eqlb
+namespace dolfinx_eqlb::base
 {
 /// Execute solution of problem in element-wise manner
 ///

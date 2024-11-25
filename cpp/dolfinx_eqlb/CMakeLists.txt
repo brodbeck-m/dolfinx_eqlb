@@ -16,13 +16,11 @@ set(
   PatchFluxEV.hpp
   PatchCstm.hpp
   PatchData.hpp
-  ProblemData.hpp
   ProblemDataFluxCstm.hpp
   ProblemDataFluxEV.hpp
   StorageStiffness.hpp
   assemble_patch_constrmin.hpp
   assemble_patch_semiexplt.hpp
-  local_solver.hpp
   reconstruction.hpp
   solve_patch_constrmin.hpp
   solve_patch_semiexplt.hpp
