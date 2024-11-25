@@ -7,10 +7,10 @@
 #include "KernelData.hpp"
 
 using namespace dolfinx;
-using namespace dolfinx_eqlb;
+using namespace dolfinx_eqlb::se;
 
 template <typename T>
-KernelDataEqlb<T>::KernelDataEqlb(
+KernelData<T>::KernelData(
     std::shared_ptr<const mesh::Mesh> mesh,
     std::shared_ptr<const base::QuadratureRule> quadrature_rule_cell,
     const basix::FiniteElement& basix_element_fluxpw,
@@ -65,14 +65,14 @@ KernelDataEqlb<T>::KernelDataEqlb(
 }
 
 template <typename T>
-KernelDataEqlb<T>::KernelDataEqlb(
+KernelData<T>::KernelData(
     std::shared_ptr<const mesh::Mesh> mesh,
     std::shared_ptr<const base::QuadratureRule> quadrature_rule_cell,
     const basix::FiniteElement& basix_element_fluxpw,
     const basix::FiniteElement& basix_element_rhs,
     const basix::FiniteElement& basix_element_hat)
-    : KernelDataEqlb<T>(mesh, quadrature_rule_cell, basix_element_fluxpw,
-                        basix_element_hat)
+    : KernelData<T>(mesh, quadrature_rule_cell, basix_element_fluxpw,
+                    basix_element_hat)
 {
   // Tabulate right-hand side
   // (Assumption: Same order for projected flux and RHS)
@@ -81,7 +81,7 @@ KernelDataEqlb<T>::KernelDataEqlb(
 
 /* Tabulation of shape-functions */
 template <typename T>
-void KernelDataEqlb<T>::tabulate_flux_basis(
+void KernelData<T>::tabulate_flux_basis(
     const basix::FiniteElement& basix_element_fluxpw)
 {
   // Number of surface quadrature points
@@ -110,7 +110,7 @@ void KernelDataEqlb<T>::tabulate_flux_basis(
 }
 
 template <typename T>
-void KernelDataEqlb<T>::tabulate_rhs_basis(
+void KernelData<T>::tabulate_rhs_basis(
     const basix::FiniteElement& basix_element_rhs)
 {
   // Number of surface quadrature points
@@ -161,7 +161,7 @@ void KernelDataEqlb<T>::tabulate_rhs_basis(
 }
 
 template <typename T>
-void KernelDataEqlb<T>::tabulate_hat_basis(
+void KernelData<T>::tabulate_hat_basis(
     const basix::FiniteElement& basix_element_hat)
 {
   // Number of surface quadrature points
@@ -198,7 +198,7 @@ void KernelDataEqlb<T>::tabulate_hat_basis(
 
 /* Mapping routines */
 template <typename T>
-void KernelDataEqlb<T>::contravariant_piola_mapping(
+void KernelData<T>::contravariant_piola_mapping(
     base::smdspan_t<double, 3> phi_cur,
     base::smdspan_t<const double, 3> phi_ref, base::mdspan_t<const double, 2> J,
     const double detJ)
@@ -223,7 +223,7 @@ void KernelDataEqlb<T>::contravariant_piola_mapping(
 /* Push-forward of shape-functions */
 template <typename T>
 base::smdspan_t<const double, 3>
-KernelDataEqlb<T>::shapefunctions_cell_rhs(base::mdspan_t<const double, 2> K)
+KernelData<T>::shapefunctions_cell_rhs(base::mdspan_t<const double, 2> K)
 {
   // Loop over all evaluation points
   for (std::size_t i = 0; i < _rhs_cell_fullbasis.extent(1); ++i)
@@ -247,6 +247,6 @@ KernelDataEqlb<T>::shapefunctions_cell_rhs(base::mdspan_t<const double, 2> K)
 }
 
 // ------------------------------------------------------------------------------
-template class KernelDataEqlb<float>;
-template class KernelDataEqlb<double>;
+template class KernelData<float>;
+template class KernelData<double>;
 // ------------------------------------------------------------------------------

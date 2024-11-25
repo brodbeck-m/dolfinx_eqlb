@@ -8,13 +8,13 @@
 
 #include "eigen3/Eigen/Dense"
 
-#include "KernelData.hpp"
+// #include "KernelData.hpp"
 #include "PatchCstm.hpp"
 #include "PatchData.hpp"
 #include "ProblemDataFluxCstm.hpp"
 #include "assemble_patch_semiexplt.hpp"
 #include "solve_patch_weaksym.hpp"
-#include "utils.hpp"
+// #include "utils.hpp"
 
 #include <dolfinx/fem/DofMap.h>
 #include <dolfinx/fem/Form.h>
@@ -24,6 +24,8 @@
 #include <dolfinx/graph/AdjacencyList.h>
 #include <dolfinx_eqlb/base/Patch.hpp>
 #include <dolfinx_eqlb/base/mdspan.hpp>
+#include <dolfinx_eqlb/se/KernelData.hpp>
+#include <dolfinx_eqlb/se/utils.hpp>
 
 #include <algorithm>
 #include <array>
@@ -212,9 +214,9 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
                                 PatchFluxCstm<T, id_flux_order>& patch,
                                 PatchDataCstm<T, id_flux_order>& patch_data,
                                 ProblemDataFluxCstm<T>& problem_data,
-                                KernelDataEqlb<T>& kernel_data,
-                                kernel_fn<T, true>& minkernel,
-                                kernel_fn<T, false>& minkernel_rhs)
+                                se::KernelData<T>& kernel_data,
+                                se::kernel_fn<T, true>& minkernel,
+                                se::kernel_fn<T, false>& minkernel_rhs)
 {
   /* Extract data */
   // Spacial dimension
@@ -1193,10 +1195,10 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
                                 PatchFluxCstm<T, id_flux_order>& patch,
                                 PatchDataCstm<T, id_flux_order>& patch_data,
                                 ProblemDataFluxCstm<T>& problem_data,
-                                KernelDataEqlb<T>& kernel_data,
-                                kernel_fn<T, true>& minkernel,
-                                kernel_fn<T, false>& minkernel_rhs,
-                                kernel_fn_schursolver<T>& kernel_weaksym)
+                                se::KernelData<T>& kernel_data,
+                                se::kernel_fn<T, true>& minkernel,
+                                se::kernel_fn<T, false>& minkernel_rhs,
+                                se::kernel_fn_schursolver<T>& kernel_weaksym)
 {
   /* Step 1: Unconstrained flux equilibration */
   equilibrate_flux_semiexplt<T, id_flux_order>(

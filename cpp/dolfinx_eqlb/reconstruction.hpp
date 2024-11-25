@@ -6,7 +6,7 @@
 
 #pragma once
 
-#include "KernelData.hpp"
+// #include "KernelData.hpp"
 #include "PatchCstm.hpp"
 #include "PatchData.hpp"
 #include "PatchFluxEV.hpp"
@@ -16,7 +16,7 @@
 #include "assemble_patch_semiexplt.hpp"
 #include "solve_patch_constrmin.hpp"
 #include "solve_patch_semiexplt.hpp"
-#include "utils.hpp"
+// #include "utils.hpp"
 
 #include <basix/e-lagrange.h>
 #include <basix/finite-element.h>
@@ -36,6 +36,8 @@
 #include <dolfinx/mesh/cell_types.h>
 #include <dolfinx_eqlb/base/BoundaryData.hpp>
 #include <dolfinx_eqlb/base/QuadratureRule.hpp>
+#include <dolfinx_eqlb/se/KernelData.hpp>
+#include <dolfinx_eqlb/se/utils.hpp>
 
 #include <algorithm>
 #include <array>
@@ -231,16 +233,16 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data,
       mesh->topology().cell_type(), quadrature_degree, dim);
 
   // Initialize KernelData
-  KernelDataEqlb<T> kernel_data = KernelDataEqlb<T>(
+  se::KernelData<T> kernel_data = se::KernelData<T>(
       mesh, std::make_shared<base::QuadratureRule>(quadrature_rule),
       basix_element_fluxhdiv, basix_element_rhs, basix_element_hat);
 
   // Generate minimisation kernels
-  kernel_fn<T, true> kernel_fluxmin
+  se::kernel_fn<T, true> kernel_fluxmin
       = generate_flux_minimisation_kernel<T, true>(kernel_data, dim,
                                                    degree_rt_flux_hdiv);
 
-  kernel_fn<T, false> kernel_fluxmin_l
+  se::kernel_fn<T, false> kernel_fluxmin_l
       = generate_flux_minimisation_kernel<T, false>(kernel_data, dim,
                                                     degree_rt_flux_hdiv);
 
@@ -264,7 +266,7 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data,
                                           true);
 
     // Set kernel for weak symmetry condition
-    kernel_fn_schursolver<T> kernel_weaksym
+    se::kernel_fn_schursolver<T> kernel_weaksym
         = generate_stress_minimisation_kernel<T>(Kernel::StressMin, kernel_data,
                                                  dim, patch.fcts_per_cell(),
                                                  degree_rt_flux_hdiv);

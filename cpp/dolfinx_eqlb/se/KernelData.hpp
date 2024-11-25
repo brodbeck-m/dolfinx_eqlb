@@ -31,11 +31,13 @@
 
 using namespace dolfinx;
 
-namespace dolfinx_eqlb
+namespace base = dolfinx_eqlb::base;
+
+namespace dolfinx_eqlb::se
 {
 
 template <typename T>
-class KernelDataEqlb : public base::KernelData<T>
+class KernelData : public base::KernelData<T>
 {
 public:
   /// Kernel data basic constructor
@@ -47,11 +49,10 @@ public:
   /// @param[in] quadrature_rule_cell The quadrature rule on the cell
   /// @param[in] basix_element_fluxpw The basix-element for the H(div) flux
   /// @param[in] basix_element_hat    The basix-element for the hat-function
-  KernelDataEqlb(
-      std::shared_ptr<const mesh::Mesh> mesh,
-      std::shared_ptr<const base::QuadratureRule> quadrature_rule_cell,
-      const basix::FiniteElement& basix_element_fluxpw,
-      const basix::FiniteElement& basix_element_hat);
+  KernelData(std::shared_ptr<const mesh::Mesh> mesh,
+             std::shared_ptr<const base::QuadratureRule> quadrature_rule_cell,
+             const basix::FiniteElement& basix_element_fluxpw,
+             const basix::FiniteElement& basix_element_hat);
 
   /// Kernel data constructor
   ///
@@ -66,12 +67,11 @@ public:
   ///                                 (continuous Pk element)
   /// @param[in] basix_element_hat    The basix-element for the hat-function
   ///                                 (continuous P1 element)
-  KernelDataEqlb(
-      std::shared_ptr<const mesh::Mesh> mesh,
-      std::shared_ptr<const base::QuadratureRule> quadrature_rule_cell,
-      const basix::FiniteElement& basix_element_fluxpw,
-      const basix::FiniteElement& basix_element_rhs,
-      const basix::FiniteElement& basix_element_hat);
+  KernelData(std::shared_ptr<const mesh::Mesh> mesh,
+             std::shared_ptr<const base::QuadratureRule> quadrature_rule_cell,
+             const basix::FiniteElement& basix_element_fluxpw,
+             const basix::FiniteElement& basix_element_rhs,
+             const basix::FiniteElement& basix_element_hat);
 
   /// Pull back of flux-data from current to reference cell
   /// @param flux_ref The flux data on reference cell
@@ -302,4 +302,4 @@ protected:
   std::vector<double> _data_transform_shpfkt;
 };
 
-} // namespace dolfinx_eqlb
+} // namespace dolfinx_eqlb::se

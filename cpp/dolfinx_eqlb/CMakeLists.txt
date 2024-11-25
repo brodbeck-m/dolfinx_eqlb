@@ -8,11 +8,11 @@ add_library(dolfinx_eqlb "")
 # Add source files
 set(EQLB_DIRS
     base
+    se
 )
 
 set(
   HEADERS_EQLB
-  KernelData.hpp
   PatchFluxEV.hpp
   PatchCstm.hpp
   PatchData.hpp
@@ -25,12 +25,10 @@ set(
   solve_patch_constrmin.hpp
   solve_patch_semiexplt.hpp
   solve_patch_weaksym.hpp
-  utils.hpp
 )
 
 target_sources(
   dolfinx_eqlb
-  PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/KernelData.cpp
   PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/PatchCstm.cpp
   PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/PatchFluxEV.cpp
 )

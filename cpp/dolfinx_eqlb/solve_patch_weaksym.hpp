@@ -6,12 +6,12 @@
 
 #pragma once
 
-#include "KernelData.hpp"
+// #include "KernelData.hpp"
 #include "PatchCstm.hpp"
 #include "PatchData.hpp"
 #include "assemble_patch_semiexplt.hpp"
 #include "eigen3/Eigen/Dense"
-#include "utils.hpp"
+// #include "utils.hpp"
 
 #include <dolfinx/fem/DofMap.h>
 #include <dolfinx/fem/Form.h>
@@ -21,6 +21,8 @@
 #include <dolfinx/graph/AdjacencyList.h>
 #include <dolfinx_eqlb/base/Patch.hpp>
 #include <dolfinx_eqlb/base/mdspan.hpp>
+#include <dolfinx_eqlb/se/KernelData.hpp>
+#include <dolfinx_eqlb/se/utils.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -58,8 +60,8 @@ void impose_weak_symmetry(const mesh::Geometry& geometry,
                           PatchFluxCstm<T, id_flux_order>& patch,
                           PatchDataCstm<T, id_flux_order>& patch_data,
                           ProblemDataFluxCstm<T>& problem_data,
-                          KernelDataEqlb<T>& kernel_data,
-                          kernel_fn_schursolver<T>& kernel)
+                          se::KernelData<T>& kernel_data,
+                          se::kernel_fn_schursolver<T>& kernel)
 {
   /* Extract data */
   // The spatial dimension

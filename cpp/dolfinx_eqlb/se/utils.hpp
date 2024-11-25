@@ -11,7 +11,7 @@
 #include <functional>
 #include <span>
 
-namespace dolfinx_eqlb
+namespace dolfinx_eqlb::se
 {
 
 /* Interface kernel functions */
