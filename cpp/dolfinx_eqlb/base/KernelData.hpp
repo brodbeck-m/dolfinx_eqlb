@@ -48,10 +48,9 @@ public:
   /// @param[in,out] detJ_scratch Storage for determinant calculation
   /// @param[in] coords           The cell coordinates
   /// @return                     The determinant of the Jacobian
-  double compute_jacobian(base::mdspan_t<double, 2> J,
-                          base::mdspan_t<double, 2> K,
+  double compute_jacobian(mdspan_t<double, 2> J, mdspan_t<double, 2> K,
                           std::span<double> detJ_scratch,
-                          base::mdspan_t<const double, 2> coords);
+                          mdspan_t<const double, 2> coords);
 
   /* Basic transformations */
   /// Compute isogeometric mapping for a given cell
@@ -59,17 +58,15 @@ public:
   /// @param[in,out] detJ_scratch Storage for determinant calculation
   /// @param[in] coords           The cell coordinates
   /// @return                     The determinant of the Jacobian
-  double compute_jacobian(base::mdspan_t<double, 2> J,
-                          std::span<double> detJ_scratch,
-                          base::mdspan_t<const double, 2> coords);
+  double compute_jacobian(mdspan_t<double, 2> J, std::span<double> detJ_scratch,
+                          mdspan_t<const double, 2> coords);
 
   /// Calculate physical normal of facet
   /// @param[in,out] normal_phys The physical normal
   /// @param[in] K               The inverse Jacobi-Matrix
   /// @param[in] fct_id          The cell-local facet id
   void physical_fct_normal(std::span<double> normal_phys,
-                           base::mdspan_t<const double, 2> K,
-                           std::int8_t fct_id);
+                           mdspan_t<const double, 2> K, std::int8_t fct_id);
 
   /* Getter functions (Cell geometry) */
   /// Returns number of nodes, forming a reference cell
@@ -125,24 +122,24 @@ public:
   /// Extract quadrature points on all sub-entity of cell
   /// @param[in] id_qspace The id of the quadrature space
   /// @param[out] points   The quadrature points
-  base::mdspan_t<const double, 2> quadrature_points(int id_qspace)
+  mdspan_t<const double, 2> quadrature_points(int id_qspace)
   {
     // Extract quadrature rule
     std::shared_ptr<const QuadratureRule> quadrature_rule
         = _quadrature_rule[id_qspace];
 
     // Cast points to mdspan
-    return base::mdspan_t<const double, 2>(quadrature_rule->points().data(),
-                                           quadrature_rule->num_points(),
-                                           quadrature_rule->tdim());
+    return mdspan_t<const double, 2>(quadrature_rule->points().data(),
+                                     quadrature_rule->num_points(),
+                                     quadrature_rule->tdim());
   }
 
   /// Extract quadrature points on one sub-entity of cell
   /// @param[in] id_qspace    The id of the quadrature space
   /// @param[in] id_subentity The id of the sub-entity
   /// @param[out] points      The quadrature points
-  base::mdspan_t<const double, 2> quadrature_points(int id_qspace,
-                                                    std::int8_t id_subentity)
+  mdspan_t<const double, 2> quadrature_points(int id_qspace,
+                                              std::int8_t id_subentity)
   {
     return _quadrature_rule[id_qspace]->points(id_subentity);
   }
@@ -220,7 +217,7 @@ protected:
 
   // Tabulated shape-functions (geometry)
   std::vector<double> _g_basis_values;
-  base::mdspan_t<const double, 4> _g_basis;
+  mdspan_t<const double, 4> _g_basis;
 };
 
 } // namespace dolfinx_eqlb::base

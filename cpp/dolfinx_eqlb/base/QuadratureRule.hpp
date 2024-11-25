@@ -54,8 +54,8 @@ public:
       std::vector<double>& q_weights = quadrature.back();
       std::size_t num_points = q_weights.size();
       std::size_t pt_shape = quadrature.front().size() / num_points;
-      base::mdspan_t<const double, 2> qp(quadrature.front().data(), num_points,
-                                         pt_shape);
+      mdspan_t<const double, 2> qp(quadrature.front().data(), num_points,
+                                   pt_shape);
 
       _points = std::vector<double>(num_points * _num_sub_entities * _tdim);
       _entity_offset = std::vector<std::size_t>(_num_sub_entities + 1, 0);
@@ -104,23 +104,22 @@ public:
         entity_element.tabulate(0, q_points, {num_points, tdim},
                                 reference_entity_b);
 
-        base::mdspan_t<const double, 4> basis_full(reference_entity_b.data(),
-                                                   e_tab_shape);
+        mdspan_t<const double, 4> basis_full(reference_entity_b.data(),
+                                             e_tab_shape);
         auto phi = std::experimental::submdspan(
             basis_full, 0, std::experimental::full_extent,
             std::experimental::full_extent, 0);
 
         auto [sub_geomb, sub_geom_shape]
             = basix::cell::sub_entity_geometry(b_ct, dim, i);
-        base::mdspan_t<const double, 2> coords(sub_geomb.data(),
-                                               sub_geom_shape);
+        mdspan_t<const double, 2> coords(sub_geomb.data(), sub_geom_shape);
 
         // Push forward quadrature point from reference entity to reference
         // entity on cell
         const std::size_t offset = _points.size();
         _points.resize(_points.size() + num_points * coords.extent(1));
-        base::mdspan_t<double, 2> entity_qp(_points.data() + offset, num_points,
-                                            coords.extent(1));
+        mdspan_t<double, 2> entity_qp(_points.data() + offset, num_points,
+                                      coords.extent(1));
         assert(coords.extent(1) == _tdim);
         dolfinx::math::dot(phi, coords, entity_qp);
         const std::size_t weights_offset = _weights.size();
@@ -155,11 +154,11 @@ public:
 
   /// Return the quadrature points for the ith entity
   /// @param[in] i The local entity index
-  base::mdspan_t<const double, 2> points(std::int8_t i) const
+  mdspan_t<const double, 2> points(std::int8_t i) const
   {
     assert(i < _num_sub_entities);
-    base::mdspan_t<const double, 2> all_points(_points.data(), _weights.size(),
-                                               _tdim);
+    mdspan_t<const double, 2> all_points(_points.data(), _weights.size(),
+                                         _tdim);
     return std::experimental::submdspan(
         all_points, std::pair(_entity_offset[i], _entity_offset[i + 1]),
         std::experimental::full_extent);

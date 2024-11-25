@@ -46,8 +46,7 @@ KernelData<T>::KernelData(
   std::array<std::size_t, 4> g_basis_shape = cmap.tabulate_shape(1, 1);
   _g_basis_values = std::vector<double>(std::reduce(
       g_basis_shape.begin(), g_basis_shape.end(), 1, std::multiplies{}));
-  _g_basis
-      = base::mdspan_t<const double, 4>(_g_basis_values.data(), g_basis_shape);
+  _g_basis = mdspan_t<const double, 4>(_g_basis_values.data(), g_basis_shape);
 
   std::vector<double> points(_gdim, 0);
   cmap.tabulate(1, points, {1, _gdim}, _g_basis_values);
@@ -64,10 +63,10 @@ KernelData<T>::KernelData(
 
 /* Basic transformations */
 template <typename T>
-double KernelData<T>::compute_jacobian(base::mdspan_t<double, 2> J,
-                                       base::mdspan_t<double, 2> K,
+double KernelData<T>::compute_jacobian(mdspan_t<double, 2> J,
+                                       mdspan_t<double, 2> K,
                                        std::span<double> detJ_scratch,
-                                       base::mdspan_t<const double, 2> coords)
+                                       mdspan_t<const double, 2> coords)
 {
   // Basis functions evaluated at first gauss-point
   base::smdspan_t<const double, 2> dphi = std::experimental::submdspan(
@@ -91,9 +90,9 @@ double KernelData<T>::compute_jacobian(base::mdspan_t<double, 2> J,
 }
 
 template <typename T>
-double KernelData<T>::compute_jacobian(base::mdspan_t<double, 2> J,
+double KernelData<T>::compute_jacobian(mdspan_t<double, 2> J,
                                        std::span<double> detJ_scratch,
-                                       base::mdspan_t<const double, 2> coords)
+                                       mdspan_t<const double, 2> coords)
 {
   // Basis functions evaluated at first gauss-point
   base::smdspan_t<const double, 2> dphi = std::experimental::submdspan(
@@ -116,7 +115,7 @@ double KernelData<T>::compute_jacobian(base::mdspan_t<double, 2> J,
 
 template <typename T>
 void KernelData<T>::physical_fct_normal(std::span<double> normal_phys,
-                                        base::mdspan_t<const double, 2> K,
+                                        mdspan_t<const double, 2> K,
                                         std::int8_t fct_id)
 {
   // Set physical normal to zero
@@ -197,7 +196,7 @@ std::array<std::size_t, 4> KernelData<T>::interpolation_data_facet_rt(
   // Extract interpolation points
   auto [X, Xshape] = basix_element.points();
   const auto [Mdata, Mshape] = basix_element.interpolation_matrix();
-  base::mdspan_t<const double, 2> M(Mdata.data(), Mshape);
+  mdspan_t<const double, 2> M(Mdata.data(), Mshape);
 
   // Determine number of pointe per facet
   std::size_t nipoints_per_fct = 0;
@@ -226,7 +225,7 @@ std::array<std::size_t, 4> KernelData<T>::interpolation_data_facet_rt(
   // Cast Interpolation matrix into mdspan
   std::array<std::size_t, 4> M_fct_shape
       = {nfcts_per_cell, ndofs_fct, gdim, nipoints_per_fct};
-  base::mdspan_t<double, 4> M_fct(data_M_fct.data(), M_fct_shape);
+  mdspan_t<double, 4> M_fct(data_M_fct.data(), M_fct_shape);
 
   // Copy interpolation points (on facets)
   std::copy_n(X.begin(), nipoints_fct * gdim, ipoints_fct.begin());
