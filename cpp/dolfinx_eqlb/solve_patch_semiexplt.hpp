@@ -9,7 +9,7 @@
 #include "eigen3/Eigen/Dense"
 
 // #include "KernelData.hpp"
-#include "PatchCstm.hpp"
+// #include "PatchCstm.hpp"
 #include "PatchData.hpp"
 #include "ProblemDataFluxCstm.hpp"
 #include "assemble_patch_semiexplt.hpp"
@@ -25,6 +25,7 @@
 #include <dolfinx_eqlb/base/Patch.hpp>
 #include <dolfinx_eqlb/base/mdspan.hpp>
 #include <dolfinx_eqlb/se/KernelData.hpp>
+#include <dolfinx_eqlb/se/Patch.hpp>
 #include <dolfinx_eqlb/se/utils.hpp>
 
 #include <algorithm>
@@ -211,7 +212,7 @@ void copy_cell_data(std::span<const std::int32_t> cells,
 template <typename T, int id_flux_order>
 void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
                                 std::span<const std::uint8_t> fct_perms,
-                                PatchFluxCstm<T, id_flux_order>& patch,
+                                se::Patch<T, id_flux_order>& patch,
                                 PatchDataCstm<T, id_flux_order>& patch_data,
                                 ProblemDataFluxCstm<T>& problem_data,
                                 se::KernelData<T>& kernel_data,
@@ -1192,7 +1193,7 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
 template <typename T, int id_flux_order>
 void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
                                 std::span<const std::uint8_t> fct_perms,
-                                PatchFluxCstm<T, id_flux_order>& patch,
+                                se::Patch<T, id_flux_order>& patch,
                                 PatchDataCstm<T, id_flux_order>& patch_data,
                                 ProblemDataFluxCstm<T>& problem_data,
                                 se::KernelData<T>& kernel_data,

@@ -9,7 +9,6 @@
 #include "eigen3/Eigen/Dense"
 
 // #include "KernelData.hpp"
-#include "PatchCstm.hpp"
 #include "PatchData.hpp"
 // #include "utils.hpp"
 

@@ -14,7 +14,6 @@ set(EQLB_DIRS
 set(
   HEADERS_EQLB
   PatchFluxEV.hpp
-  PatchCstm.hpp
   PatchData.hpp
   ProblemDataFluxCstm.hpp
   ProblemDataFluxEV.hpp
@@ -29,7 +28,6 @@ set(
 
 target_sources(
   dolfinx_eqlb
-  PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/PatchCstm.cpp
   PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/PatchFluxEV.cpp
 )
 

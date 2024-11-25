@@ -4,10 +4,10 @@
 //
 // SPDX-License-Identifier:    LGPL-3.0-or-later
 
-#include "PatchCstm.hpp"
+#include "Patch.hpp"
 
 using namespace dolfinx;
-using namespace dolfinx_eqlb;
+using namespace dolfinx_eqlb::se;
 
 // ---------------------------------------------------------------------------------------------------
 OrientedPatch::OrientedPatch(std::shared_ptr<const mesh::Mesh> mesh,

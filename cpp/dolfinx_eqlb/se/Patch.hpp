@@ -28,7 +28,9 @@
 
 using namespace dolfinx;
 
-namespace dolfinx_eqlb
+namespace base = dolfinx_eqlb::base;
+
+namespace dolfinx_eqlb::se
 {
 
 class OrientedPatch
@@ -379,7 +381,7 @@ protected:
 };
 
 template <typename T, int id_flux_order>
-class PatchCstm : public OrientedPatch
+class Patch : public OrientedPatch
 {
 public:
   /// Initialization
@@ -399,24 +401,38 @@ public:
   ///                                (below: Error)
   /// @param ncells_crit             Critical number of cells on a boundary
   ///                                patch (modification required)
-  PatchCstm(std::shared_ptr<const mesh::Mesh> mesh,
-            base::mdspan_t<const std::int8_t, 2> bfct_type,
-            std::span<const std::int8_t> pnt_on_essntbndr,
-            std::shared_ptr<const fem::FunctionSpace> function_space_fluxhdiv,
-            const bool symconstr_required, const int ncells_min,
-            const int ncells_crit)
+  Patch(std::shared_ptr<const mesh::Mesh> mesh,
+        base::mdspan_t<const std::int8_t, 2> bfct_type,
+        std::span<const std::int8_t> pnt_on_essntbndr,
+        const std::shared_ptr<const fem::FunctionSpace> function_space_fluxhdiv,
+        const std::shared_ptr<const fem::FunctionSpace> function_space_fluxdg,
+        const basix::FiniteElement& basix_element_fluxdg,
+        bool symconstr_required = false, int ncells_min = 1,
+        int ncells_crit = 1)
       : OrientedPatch(mesh, bfct_type, pnt_on_essntbndr, ncells_min,
                       ncells_crit),
         _symconstr_required(symconstr_required),
+        _degree_elmt_fluxdg(basix_element_fluxdg.degree()),
         _degree_elmt_fluxhdiv(
             function_space_fluxhdiv->element()->basix_element().degree() - 1),
-        _function_space_fluxhdiv(function_space_fluxhdiv)
+        _function_space_fluxdg(function_space_fluxdg),
+        _function_space_fluxhdiv(function_space_fluxhdiv),
+        _entity_dofs_fluxcg(basix_element_fluxdg.entity_closure_dofs())
   {
     assert(id_flux_order < 0);
 
     // Set DOF counters of flux element
+    _ndof_fluxdg = _function_space_fluxdg->element()->space_dimension();
     _ndof_flux = _function_space_fluxhdiv->element()->space_dimension();
 
+    if (_degree_elmt_fluxdg == 0)
+    {
+      _ndof_fluxdg_fct = 1;
+    }
+    else
+    {
+      _ndof_fluxdg_fct = _entity_dofs_fluxcg[this->_dim_fct][0].size();
+    }
     _ndof_flux_fct = _degree_elmt_fluxhdiv + 1;
 
     _ndof_flux_cell = _ndof_flux - _fct_per_cell * _ndof_flux_fct;
@@ -426,21 +442,27 @@ public:
 
     _ndof_flux_nz = _ndof_flux - (_fct_per_cell - 2) * _ndof_flux_fct;
 
-    // Resize storage of DOFmap
+    // Number of DOFs (projected RHS)
+    _ndof_rhsdg = _ndof_fluxdg / this->_dim;
+
+    /* Reserve storage */
+    // DOFmap
     const std::size_t ndofs_per_cell
         = (_symconstr_required) ? _ndof_flux_nz + _fct_per_cell : _ndof_flux_nz;
     _dofmap_shape = {4, (std::size_t)(_ncells_max + 2), ndofs_per_cell};
     _ddofmap.resize(_dofmap_shape[0] * _dofmap_shape[1] * _dofmap_shape[2], 0);
 
-    // Specify offsets in DOFmap
     _offset_dofmap.resize(5, 0);
-
     _offset_dofmap[1] = _ndof_flux_fct;
     _offset_dofmap[2] = _offset_dofmap[1] + _ndof_flux_fct;
     _offset_dofmap[3] = _offset_dofmap[2] + _ndof_flux_add_cell;
     _offset_dofmap[4] = (_symconstr_required)
                             ? _offset_dofmap[3] + _fct_per_cell
                             : _offset_dofmap[3];
+
+    // DOFs of projected flux on facets
+    _list_fctdofs_fluxdg.resize(2 * (this->_ncells_max + 1) * _ndof_fluxdg_fct,
+                                0);
   }
 
   void flux_dofmap_cell(const int a, base::mdspan_t<std::int32_t, 3> dofmap)
@@ -770,55 +792,110 @@ public:
   void create_subdofmap(const int node_i)
   {
     // Initialize patch
-    initialize_patch(node_i);
+    this->initialize_patch(node_i);
 
     // Set DOF counters for (constraint) minimisation problem
-    _ndof_min_flux
-        = 1 + _degree_elmt_fluxhdiv * _nfcts + _ndof_flux_add_cell * _ncells;
+    this->_ndof_min_flux = 1 + this->_degree_elmt_fluxhdiv * this->_nfcts
+                           + this->_ndof_flux_add_cell * this->_ncells;
 
-    if (_symconstr_required)
+    if (this->_symconstr_required)
     {
-      _ndof_min_cons = _nfcts + 1;
-      _ndof_min = _ndof_min_flux + _ndof_min_cons;
+      this->_ndof_min_cons = this->_nfcts + 1;
+      this->_ndof_min = this->_ndof_min_flux + this->_ndof_min_cons;
     }
     else
     {
-      _ndof_min_cons = 0;
-      _ndof_min = _ndof_min_flux;
+      this->_ndof_min_cons = 0;
+      this->_ndof_min = this->_ndof_min_flux;
     }
 
     // Adjust pattern for mdspan of DOFmap
-    _dofmap_shape[1] = _ncells + 2;
+    this->_dofmap_shape[1] = this->_ncells + 2;
 
     // Create mdspan of DOFmap
-    base::mdspan_t<std::int32_t, 3> dofmap(_ddofmap.data(), _dofmap_shape);
+    base::mdspan_t<std::int32_t, 3> dofmap(this->_ddofmap.data(),
+                                           this->_dofmap_shape);
+    base::mdspan_t<std::int32_t, 2> dofs_fluxdg(
+        _list_fctdofs_fluxdg.data(), this->_ncells + 1, 2 * _ndof_fluxdg_fct);
 
     // Initialise DOFmap on each cell of the patch
-    for (std::size_t a = 1; a < _ncells + 1; ++a)
+    for (std::size_t a = 1; a < this->_ncells + 1; ++a)
     {
-      flux_dofmap_cell(a, dofmap);
+      // DOFmap H(div) flux
+      this->flux_dofmap_cell(a, dofmap);
+
+      // DOFs of projected fluxes on facets
+      if constexpr (id_flux_order == 1)
+      {
+        // Cell-local DOFs of projected flux on facets
+        dofs_fluxdg(a, 0) = 0;
+        dofs_fluxdg(a, 1) = 0;
+      }
+      else
+      {
+        if (_degree_elmt_fluxdg > 0)
+        {
+          // Local facet IDs on cell
+          std::int8_t lfct_ta_eam1, lfct_ta_ea;
+          std::tie(lfct_ta_eam1, lfct_ta_ea) = this->fctid_local(a);
+
+          // Loop over DOFs
+          for (std::int8_t i = 0; i < _ndof_fluxdg_fct; ++i)
+          {
+            // Cell-local DOFs o projected flux on facets
+            dofs_fluxdg(a - 1, i)
+                = _entity_dofs_fluxcg[this->_dim_fct][lfct_ta_eam1][i];
+            dofs_fluxdg(a, _ndof_fluxdg_fct + i)
+                = _entity_dofs_fluxcg[this->_dim_fct][lfct_ta_ea][i];
+          }
+        }
+        else
+        {
+          // Cell-local DOFs of projected flux on facets
+          dofs_fluxdg(a, 0) = 0;
+          dofs_fluxdg(a, 1) = 0;
+        }
+      }
     }
 
     // Complete DOFmap
-    if (is_internal())
+    if (this->is_internal())
     {
-      // Set DOFmap on cell 0
+      // Set DOFmap on cell 0, n+1
       for (std::size_t ii = 0; ii < dofmap.extent(2); ++ii)
       {
         // DOFmap on cell 0 (=ncells)
-        dofmap(0, 0, ii) = dofmap(0, _ncells, ii);
-        dofmap(1, 0, ii) = dofmap(1, _ncells, ii);
-        dofmap(2, 0, ii) = dofmap(2, _ncells, ii);
+        dofmap(0, 0, ii) = dofmap(0, this->_ncells, ii);
+        dofmap(1, 0, ii) = dofmap(1, this->_ncells, ii);
+        dofmap(2, 0, ii) = dofmap(2, this->_ncells, ii);
 
         // DOFmap on cell ncells+1 (=1)
-        dofmap(0, _ncells + 1, ii) = dofmap(0, 1, ii);
-        dofmap(1, _ncells + 1, ii) = dofmap(1, 1, ii);
-        dofmap(2, _ncells + 1, ii) = dofmap(2, 1, ii);
+        dofmap(0, this->_ncells + 1, ii) = dofmap(0, 1, ii);
+        dofmap(1, this->_ncells + 1, ii) = dofmap(1, 1, ii);
+        dofmap(2, this->_ncells + 1, ii) = dofmap(2, 1, ii);
+      }
+
+      // Set DOFs of projected  flux on facet 0
+      for (std::size_t ii = 0; ii < _ndof_fluxdg_fct; ++ii)
+      {
+        int offs = _ndof_fluxdg_fct + ii;
+
+        dofs_fluxdg(this->_ncells, ii) = dofs_fluxdg(0, ii);
+        dofs_fluxdg(0, offs) = dofs_fluxdg(this->_ncells, offs);
+      }
+    }
+    else
+    {
+      // Handle facets 0 and _nfcts
+      for (std::size_t ii = 0; ii < _ndof_fluxdg_fct; ++ii)
+      {
+        int offs = _ndof_fluxdg_fct + ii;
+
+        dofs_fluxdg(0, offs) = dofs_fluxdg(0, ii);
+        dofs_fluxdg(this->_ncells, ii) = dofs_fluxdg(this->_ncells, offs);
       }
     }
   }
-
-  /* Setter functions */
 
   /* Getter functions (Geometry) */
   /// @return Number of mesh nodes on patch
@@ -933,6 +1010,15 @@ public:
   /// @return The element degree of the RT space
   int degree_raviart_thomas() { return _degree_elmt_fluxhdiv; }
 
+  /// @return Number of RHS-DOFs on cell
+  int ndofs_rhs_cell() { return _ndof_rhsdg; }
+
+  /// @return Number of projected-flux-DOFs on cell
+  int ndofs_fluxdg_cell() { return _ndof_fluxdg; }
+
+  /// @return Number of projected-flux-DOFs on facet
+  int ndofs_fluxdg_fct() { return _ndof_fluxdg_fct; }
+
   /// @return Number of flux-DOFs on element
   int ndofs_flux() { return _ndof_flux; }
 
@@ -983,205 +1069,6 @@ public:
     return std::span<const std::int32_t>(_offset_dofmap.data(), 5);
   }
 
-protected:
-  const bool _symconstr_required;
-
-  /* Variables */
-  // Element degree of fluxes (degree of RT elements starts with 0!)
-  const int _degree_elmt_fluxhdiv;
-
-  // The function space
-  std::shared_ptr<const fem::FunctionSpace> _function_space_fluxhdiv;
-
-  // Number of DOFs on sub-elements (element definition)
-  int _ndof_flux_fct, _ndof_flux_div_cell, _ndof_flux_add_cell, _ndof_flux_cell,
-      _ndof_flux, _ndof_flux_nz;
-  int _ndof_min, _ndof_min_flux, _ndof_min_cons;
-};
-
-template <typename T, int id_flux_order>
-class PatchFluxCstm : public PatchCstm<T, id_flux_order>
-{
-public:
-  /// Initialization
-  ///
-  /// Storage is designed for the maximum patch size occurring within
-  /// the current mesh. (Cell-IDs start at 1, facet-IDs at 0!)
-  ///
-  /// @param mesh                    The current mesh
-  /// @param bfct_type               List with type of all boundary facets
-  /// @param ncells_crit             Number of cells on critical patch
-  /// @param pnt_on_essntbndr        List with points on essnt. stress boundary
-  ///                                (only for stress eqlb. required
-  ///                                 --> empty else)
-  /// @param function_space_fluxhdiv Function space of H(div) flux
-  /// @param function_space_fluxdg   Function space of projected flux
-  /// @param basix_element_fluxdg    BasiX element of projected flux
-  ///                                (continuous version for required
-  ///                                entity_closure_dofs)
-  /// @param symconstr_required      Flag for constrained minimisation
-  /// @param ncells_min              Minimum number of cells patches
-  ///                                (below: Error)
-  /// @param ncells_crit             Critical number of cells on a boundary
-  ///                                patch (modification required)
-  PatchFluxCstm(
-      std::shared_ptr<const mesh::Mesh> mesh,
-      base::mdspan_t<const std::int8_t, 2> bfct_type,
-      std::span<const std::int8_t> pnt_on_essntbndr,
-      const std::shared_ptr<const fem::FunctionSpace> function_space_fluxhdiv,
-      const std::shared_ptr<const fem::FunctionSpace> function_space_fluxdg,
-      const basix::FiniteElement& basix_element_fluxdg,
-      bool symconstr_required = false, int ncells_min = 1, int ncells_crit = 1)
-      : PatchCstm<T, id_flux_order>(mesh, bfct_type, pnt_on_essntbndr,
-                                    function_space_fluxhdiv, symconstr_required,
-                                    ncells_min, ncells_crit),
-        _degree_elmt_fluxdg(basix_element_fluxdg.degree()),
-        _function_space_fluxdg(function_space_fluxdg),
-        _entity_dofs_fluxcg(basix_element_fluxdg.entity_closure_dofs())
-  {
-    assert(id_flux_order < 0);
-
-    /* Counter DOFs */
-    // Number of DOFs (projected flux)
-    _ndof_fluxdg = _function_space_fluxdg->element()->space_dimension();
-
-    // Number of DOFs (projected RHS)
-    _ndof_rhsdg = _ndof_fluxdg / this->_dim;
-
-    if (_degree_elmt_fluxdg == 0)
-    {
-      _ndof_fluxdg_fct = 1;
-    }
-    else
-    {
-      _ndof_fluxdg_fct = _entity_dofs_fluxcg[this->_dim_fct][0].size();
-    }
-
-    /* Reserve storage */
-    // DOFs of projected flux on facets
-    _list_fctdofs_fluxdg.resize(2 * (this->_ncells_max + 1) * _ndof_fluxdg_fct,
-                                0);
-  }
-
-  /* Overload functions from base-class */
-  void create_subdofmap(const int node_i)
-  {
-    // Initialize patch
-    this->initialize_patch(node_i);
-
-    // Set DOF counters for (constraint) minimisation problem
-    this->_ndof_min_flux = 1 + this->_degree_elmt_fluxhdiv * this->_nfcts
-                           + this->_ndof_flux_add_cell * this->_ncells;
-
-    if (this->_symconstr_required)
-    {
-      this->_ndof_min_cons = this->_nfcts + 1;
-      this->_ndof_min = this->_ndof_min_flux + this->_ndof_min_cons;
-    }
-    else
-    {
-      this->_ndof_min_cons = 0;
-      this->_ndof_min = this->_ndof_min_flux;
-    }
-
-    // Adjust pattern for mdspan of DOFmap
-    this->_dofmap_shape[1] = this->_ncells + 2;
-
-    // Create mdspan of DOFmap
-    base::mdspan_t<std::int32_t, 3> dofmap(this->_ddofmap.data(),
-                                           this->_dofmap_shape);
-    base::mdspan_t<std::int32_t, 2> dofs_fluxdg(
-        _list_fctdofs_fluxdg.data(), this->_ncells + 1, 2 * _ndof_fluxdg_fct);
-
-    // Initialise DOFmap on each cell of the patch
-    for (std::size_t a = 1; a < this->_ncells + 1; ++a)
-    {
-      // DOFmap H(div) flux
-      this->flux_dofmap_cell(a, dofmap);
-
-      // DOFs of projected fluxes on facets
-      if constexpr (id_flux_order == 1)
-      {
-        // Cell-local DOFs of projected flux on facets
-        dofs_fluxdg(a, 0) = 0;
-        dofs_fluxdg(a, 1) = 0;
-      }
-      else
-      {
-        if (_degree_elmt_fluxdg > 0)
-        {
-          // Local facet IDs on cell
-          std::int8_t lfct_ta_eam1, lfct_ta_ea;
-          std::tie(lfct_ta_eam1, lfct_ta_ea) = this->fctid_local(a);
-
-          // Loop over DOFs
-          for (std::int8_t i = 0; i < _ndof_fluxdg_fct; ++i)
-          {
-            // Cell-local DOFs o projected flux on facets
-            dofs_fluxdg(a - 1, i)
-                = _entity_dofs_fluxcg[this->_dim_fct][lfct_ta_eam1][i];
-            dofs_fluxdg(a, _ndof_fluxdg_fct + i)
-                = _entity_dofs_fluxcg[this->_dim_fct][lfct_ta_ea][i];
-          }
-        }
-        else
-        {
-          // Cell-local DOFs of projected flux on facets
-          dofs_fluxdg(a, 0) = 0;
-          dofs_fluxdg(a, 1) = 0;
-        }
-      }
-    }
-
-    // Complete DOFmap
-    if (this->is_internal())
-    {
-      // Set DOFmap on cell 0, n+1
-      for (std::size_t ii = 0; ii < dofmap.extent(2); ++ii)
-      {
-        // DOFmap on cell 0 (=ncells)
-        dofmap(0, 0, ii) = dofmap(0, this->_ncells, ii);
-        dofmap(1, 0, ii) = dofmap(1, this->_ncells, ii);
-        dofmap(2, 0, ii) = dofmap(2, this->_ncells, ii);
-
-        // DOFmap on cell ncells+1 (=1)
-        dofmap(0, this->_ncells + 1, ii) = dofmap(0, 1, ii);
-        dofmap(1, this->_ncells + 1, ii) = dofmap(1, 1, ii);
-        dofmap(2, this->_ncells + 1, ii) = dofmap(2, 1, ii);
-      }
-
-      // Set DOFs of projected  flux on facet 0
-      for (std::size_t ii = 0; ii < _ndof_fluxdg_fct; ++ii)
-      {
-        int offs = _ndof_fluxdg_fct + ii;
-
-        dofs_fluxdg(this->_ncells, ii) = dofs_fluxdg(0, ii);
-        dofs_fluxdg(0, offs) = dofs_fluxdg(this->_ncells, offs);
-      }
-    }
-    else
-    {
-      // Handle facets 0 and _nfcts
-      for (std::size_t ii = 0; ii < _ndof_fluxdg_fct; ++ii)
-      {
-        int offs = _ndof_fluxdg_fct + ii;
-
-        dofs_fluxdg(0, offs) = dofs_fluxdg(0, ii);
-        dofs_fluxdg(this->_ncells, ii) = dofs_fluxdg(this->_ncells, offs);
-      }
-    }
-  }
-
-  /* Getter functions (DOFmap) */
-  /// @return Number of RHS-DOFs on cell
-  int ndofs_rhs_cell() { return _ndof_rhsdg; }
-
-  /// @return Number of projected-flux-DOFs on cell
-  int ndofs_fluxdg_cell() { return _ndof_fluxdg; }
-
-  /// @return Number of projected-flux-DOFs on facet
-  int ndofs_fluxdg_fct() { return _ndof_fluxdg_fct; }
-
   /// Extract facet-DOFs (projected flux)
   /// @param fct_i Patch-local facet-id
   /// @return List DOFs [dof1_cip1, ..., dofn_cip1, dof1_ci, ..., dofn_ci]
@@ -1194,12 +1081,16 @@ public:
   }
 
 protected:
+  const bool _symconstr_required;
+
   /* Variables */
   // Element degree of fluxes (degree of RT elements starts with 0!)
   const int _degree_elmt_fluxdg;
+  const int _degree_elmt_fluxhdiv;
 
   // The function space
   std::shared_ptr<const fem::FunctionSpace> _function_space_fluxdg;
+  std::shared_ptr<const fem::FunctionSpace> _function_space_fluxhdiv;
 
   // Connectivity between entities and cell local DOFs
   const std::vector<std::vector<std::vector<int>>>& _entity_dofs_fluxcg;
@@ -1210,7 +1101,11 @@ protected:
   std::vector<std::int32_t> _list_fctdofs_fluxdg;
 
   // Number of DOFs on sub-elements (element definition)
-  int _ndof_fluxdg_fct, _ndof_fluxdg, _ndof_rhsdg;
+  int _ndof_rhsdg;
+  int _ndof_fluxdg_fct, _ndof_fluxdg;
+  int _ndof_flux_fct, _ndof_flux_div_cell, _ndof_flux_add_cell, _ndof_flux_cell,
+      _ndof_flux, _ndof_flux_nz;
+  int _ndof_min, _ndof_min_flux, _ndof_min_cons;
 };
 
-} // namespace dolfinx_eqlb
+} // namespace dolfinx_eqlb::se

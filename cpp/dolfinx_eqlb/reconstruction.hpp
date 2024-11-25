@@ -7,7 +7,7 @@
 #pragma once
 
 // #include "KernelData.hpp"
-#include "PatchCstm.hpp"
+// #include "PatchCstm.hpp"
 #include "PatchData.hpp"
 #include "PatchFluxEV.hpp"
 #include "ProblemDataFluxCstm.hpp"
@@ -37,6 +37,7 @@
 #include <dolfinx_eqlb/base/BoundaryData.hpp>
 #include <dolfinx_eqlb/base/QuadratureRule.hpp>
 #include <dolfinx_eqlb/se/KernelData.hpp>
+#include <dolfinx_eqlb/se/Patch.hpp>
 #include <dolfinx_eqlb/se/utils.hpp>
 
 #include <algorithm>
@@ -255,7 +256,7 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data,
         = problem_data.node_on_essnt_boundary_stress();
 
     // Initialise patch
-    PatchFluxCstm<T, id_flux_order> patch = PatchFluxCstm<T, id_flux_order>(
+    se::Patch<T, id_flux_order> patch = se::Patch<T, id_flux_order>(
         mesh, problem_data.facet_type(), pnt_on_stress_boundary,
         problem_data.fspace_flux_hdiv(), problem_data.fspace_flux_dg(),
         basix_element_rhscg, true, 1, 2);
@@ -377,7 +378,7 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data,
   else
   {
     // Initialise patch
-    PatchFluxCstm<T, id_flux_order> patch = PatchFluxCstm<T, id_flux_order>(
+    se::Patch<T, id_flux_order> patch = se::Patch<T, id_flux_order>(
         mesh, problem_data.facet_type(),
         problem_data.node_on_essnt_boundary_stress(),
         problem_data.fspace_flux_hdiv(), problem_data.fspace_flux_dg(),

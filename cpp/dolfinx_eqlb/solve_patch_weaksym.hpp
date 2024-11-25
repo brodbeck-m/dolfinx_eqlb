@@ -7,7 +7,7 @@
 #pragma once
 
 // #include "KernelData.hpp"
-#include "PatchCstm.hpp"
+// #include "PatchCstm.hpp"
 #include "PatchData.hpp"
 #include "assemble_patch_semiexplt.hpp"
 #include "eigen3/Eigen/Dense"
@@ -22,6 +22,7 @@
 #include <dolfinx_eqlb/base/Patch.hpp>
 #include <dolfinx_eqlb/base/mdspan.hpp>
 #include <dolfinx_eqlb/se/KernelData.hpp>
+#include <dolfinx_eqlb/se/Patch.hpp>
 #include <dolfinx_eqlb/se/utils.hpp>
 
 #include <algorithm>
@@ -57,7 +58,7 @@ namespace dolfinx_eqlb
 /// @param kernel       The kernel function
 template <typename T, int id_flux_order, bool modified_patch>
 void impose_weak_symmetry(const mesh::Geometry& geometry,
-                          PatchFluxCstm<T, id_flux_order>& patch,
+                          se::Patch<T, id_flux_order>& patch,
                           PatchDataCstm<T, id_flux_order>& patch_data,
                           ProblemDataFluxCstm<T>& problem_data,
                           se::KernelData<T>& kernel_data,

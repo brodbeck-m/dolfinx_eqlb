@@ -9,6 +9,8 @@
 #include "eigen3/Eigen/Dense"
 
 #include <dolfinx_eqlb/base/Patch.hpp>
+#include <dolfinx_eqlb/base/mdspan.hpp>
+#include <dolfinx_eqlb/se/Patch.hpp>
 
 #include <algorithm>
 #include <span>
@@ -30,8 +32,8 @@ public:
   /// @param patch              The patch
   /// @param niponts_per_fct    The number of integration points per facet
   /// @param symconstr_required Flag for constrained minimisation
-  PatchDataCstm(PatchFluxCstm<T, id_flux_order>& patch,
-                const int niponts_per_fct, const bool symconstr_required)
+  PatchDataCstm(se::Patch<T, id_flux_order>& patch, const int niponts_per_fct,
+                const bool symconstr_required)
       : _symconstr_required(symconstr_required), _gdim(patch.dim()),
         _degree_flux_rt(patch.degree_raviart_thomas()),
         _ndofs_flux(patch.ndofs_flux()),
