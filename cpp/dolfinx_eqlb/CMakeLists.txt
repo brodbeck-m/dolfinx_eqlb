@@ -14,16 +14,11 @@ set(EQLB_DIRS
 set(
   HEADERS_EQLB
   PatchFluxEV.hpp
-  PatchData.hpp
-  ProblemDataFluxCstm.hpp
   ProblemDataFluxEV.hpp
   StorageStiffness.hpp
   assemble_patch_constrmin.hpp
-  assemble_patch_semiexplt.hpp
   reconstruction.hpp
   solve_patch_constrmin.hpp
-  solve_patch_semiexplt.hpp
-  solve_patch_weaksym.hpp
 )
 
 target_sources(

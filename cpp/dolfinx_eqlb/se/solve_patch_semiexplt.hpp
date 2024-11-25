@@ -8,13 +8,13 @@
 
 #include "eigen3/Eigen/Dense"
 
-// #include "KernelData.hpp"
-// #include "PatchCstm.hpp"
+#include "KernelData.hpp"
+#include "Patch.hpp"
 #include "PatchData.hpp"
-#include "ProblemDataFluxCstm.hpp"
+#include "ProblemData.hpp"
 #include "assemble_patch_semiexplt.hpp"
 #include "solve_patch_weaksym.hpp"
-// #include "utils.hpp"
+#include "utils.hpp"
 
 #include <dolfinx/fem/DofMap.h>
 #include <dolfinx/fem/Form.h>
@@ -24,9 +24,6 @@
 #include <dolfinx/graph/AdjacencyList.h>
 #include <dolfinx_eqlb/base/Patch.hpp>
 #include <dolfinx_eqlb/base/mdspan.hpp>
-#include <dolfinx_eqlb/se/KernelData.hpp>
-#include <dolfinx_eqlb/se/Patch.hpp>
-#include <dolfinx_eqlb/se/utils.hpp>
 
 #include <algorithm>
 #include <array>
@@ -41,7 +38,9 @@
 
 using namespace dolfinx;
 
-namespace dolfinx_eqlb
+namespace base = dolfinx_eqlb::base;
+
+namespace dolfinx_eqlb::se
 {
 // ----------------------------------------------------------------------------
 // Auxiliaries
@@ -210,14 +209,11 @@ void copy_cell_data(std::span<const std::int32_t> cells,
 /// @param minkernel       The kernel for unconstrained minimisation
 /// @param minkernel_rhs   The kernel (RHS) for unconstrained minimisation
 template <typename T, int id_flux_order>
-void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
-                                std::span<const std::uint8_t> fct_perms,
-                                se::Patch<T, id_flux_order>& patch,
-                                PatchDataCstm<T, id_flux_order>& patch_data,
-                                ProblemDataFluxCstm<T>& problem_data,
-                                se::KernelData<T>& kernel_data,
-                                se::kernel_fn<T, true>& minkernel,
-                                se::kernel_fn<T, false>& minkernel_rhs)
+void equilibrate_flux_semiexplt(
+    const mesh::Geometry& geometry, std::span<const std::uint8_t> fct_perms,
+    Patch<T, id_flux_order>& patch, PatchData<T, id_flux_order>& patch_data,
+    ProblemData<T>& problem_data, KernelData<T>& kernel_data,
+    kernel_fn<T, true>& minkernel, kernel_fn<T, false>& minkernel_rhs)
 {
   /* Extract data */
   // Spacial dimension
@@ -1191,15 +1187,12 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
 /// @param kernel_weaksym  The kernel for imposition of the weak symmetry
 ///                        constraind
 template <typename T, int id_flux_order>
-void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
-                                std::span<const std::uint8_t> fct_perms,
-                                se::Patch<T, id_flux_order>& patch,
-                                PatchDataCstm<T, id_flux_order>& patch_data,
-                                ProblemDataFluxCstm<T>& problem_data,
-                                se::KernelData<T>& kernel_data,
-                                se::kernel_fn<T, true>& minkernel,
-                                se::kernel_fn<T, false>& minkernel_rhs,
-                                se::kernel_fn_schursolver<T>& kernel_weaksym)
+void equilibrate_flux_semiexplt(
+    const mesh::Geometry& geometry, std::span<const std::uint8_t> fct_perms,
+    Patch<T, id_flux_order>& patch, PatchData<T, id_flux_order>& patch_data,
+    ProblemData<T>& problem_data, KernelData<T>& kernel_data,
+    kernel_fn<T, true>& minkernel, kernel_fn<T, false>& minkernel_rhs,
+    kernel_fn_schursolver<T>& kernel_weaksym)
 {
   /* Step 1: Unconstrained flux equilibration */
   equilibrate_flux_semiexplt<T, id_flux_order>(
@@ -1211,4 +1204,4 @@ void equilibrate_flux_semiexplt(const mesh::Geometry& geometry,
       geometry, patch, patch_data, problem_data, kernel_data, kernel_weaksym);
 }
 
-} // namespace dolfinx_eqlb
+} // namespace dolfinx_eqlb::se

@@ -6,11 +6,11 @@
 
 #pragma once
 
+#include "Patch.hpp"
 #include "eigen3/Eigen/Dense"
 
 #include <dolfinx_eqlb/base/Patch.hpp>
 #include <dolfinx_eqlb/base/mdspan.hpp>
-#include <dolfinx_eqlb/se/Patch.hpp>
 
 #include <algorithm>
 #include <span>
@@ -18,10 +18,12 @@
 
 using namespace dolfinx;
 
-namespace dolfinx_eqlb
+namespace base = dolfinx_eqlb::base;
+
+namespace dolfinx_eqlb::se
 {
 template <typename T, int id_flux_order>
-class PatchDataCstm
+class PatchData
 {
 public:
   /// Initialisation
@@ -32,8 +34,8 @@ public:
   /// @param patch              The patch
   /// @param niponts_per_fct    The number of integration points per facet
   /// @param symconstr_required Flag for constrained minimisation
-  PatchDataCstm(se::Patch<T, id_flux_order>& patch, const int niponts_per_fct,
-                const bool symconstr_required)
+  PatchData(Patch<T, id_flux_order>& patch, const int niponts_per_fct,
+            const bool symconstr_required)
       : _symconstr_required(symconstr_required), _gdim(patch.dim()),
         _degree_flux_rt(patch.degree_raviart_thomas()),
         _ndofs_flux(patch.ndofs_flux()),
@@ -830,4 +832,4 @@ protected:
   Eigen::PartialPivLU<Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>>
       _solver_C;
 };
-} // namespace dolfinx_eqlb
+} // namespace dolfinx_eqlb::se

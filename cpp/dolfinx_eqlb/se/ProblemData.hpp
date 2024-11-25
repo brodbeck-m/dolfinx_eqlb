@@ -18,10 +18,12 @@
 
 using namespace dolfinx;
 
-namespace dolfinx_eqlb
+namespace base = dolfinx_eqlb::base;
+
+namespace dolfinx_eqlb::se
 {
 template <typename T>
-class ProblemDataFluxCstm
+class ProblemData
 {
 public:
   /// Initialize storage of data for equilibration of (multiple) fluxes
@@ -33,10 +35,10 @@ public:
   /// @param fluxes    List of list of flux functions (H(div))
   /// @param fluxed_dg List of list of flux functions (DG)
   /// @param rhs_dg    List of list of projected right-hand-sides
-  ProblemDataFluxCstm(std::vector<std::shared_ptr<fem::Function<T>>>& fluxes,
-                      std::vector<std::shared_ptr<fem::Function<T>>>& fluxes_dg,
-                      std::vector<std::shared_ptr<fem::Function<T>>>& rhs_dg,
-                      std::shared_ptr<base::BoundaryData<T>> boundary_data)
+  ProblemData(std::vector<std::shared_ptr<fem::Function<T>>>& fluxes,
+              std::vector<std::shared_ptr<fem::Function<T>>>& fluxes_dg,
+              std::vector<std::shared_ptr<fem::Function<T>>>& rhs_dg,
+              std::shared_ptr<base::BoundaryData<T>> boundary_data)
       : _nrhs(fluxes.size()), _flux_hdiv(fluxes), _flux_dg(fluxes_dg),
         _rhs_dg(rhs_dg), _boundary_data(boundary_data)
   {
@@ -161,4 +163,4 @@ protected:
   // The boundary data
   std::shared_ptr<base::BoundaryData<T>> _boundary_data;
 };
-} // namespace dolfinx_eqlb
+} // namespace dolfinx_eqlb::se

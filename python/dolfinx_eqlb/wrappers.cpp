@@ -18,6 +18,7 @@
 #include <dolfinx_eqlb/base/FluxBC.hpp>
 #include <dolfinx_eqlb/base/local_solver.hpp>
 #include <dolfinx_eqlb/reconstruction.hpp>
+#include <dolfinx_eqlb/se/reconstruction.hpp>
 
 #include <cstdint>
 #include <functional>
@@ -101,9 +102,9 @@ void declare_fluxeqlb(py::module& m)
          std::shared_ptr<base::BoundaryData<T>> boundary_data,
          const bool reconstruct_stress)
       {
-        reconstruct_fluxes_cstm<T>(flux_hdiv, flux_dg, rhs_dg, boundary_data,
-                                   reconstruct_stress,
-                                   std::shared_ptr<fem::Function<T>>());
+        se::reconstruction<T>(flux_hdiv, flux_dg, rhs_dg, boundary_data,
+                              reconstruct_stress,
+                              std::shared_ptr<fem::Function<T>>());
       },
       py::arg("flux_hdiv"), py::arg("flux_dg"), py::arg("rhs_dg"),
       py::arg("boundary_data"), py::arg("reconstruct_stress"),
@@ -122,8 +123,8 @@ void declare_fluxeqlb(py::module& m)
          const bool reconstruct_stress,
          std::shared_ptr<dolfinx::fem::Function<T>> cells_kornconst)
       {
-        reconstruct_fluxes_cstm<T>(flux_hdiv, flux_dg, rhs_dg, boundary_data,
-                                   reconstruct_stress, cells_kornconst);
+        se::reconstruction<T>(flux_hdiv, flux_dg, rhs_dg, boundary_data,
+                              reconstruct_stress, cells_kornconst);
       },
       py::arg("flux_hdiv"), py::arg("flux_dg"), py::arg("rhs_dg"),
       py::arg("boundary_data"), py::arg("reconstruct_stress"),

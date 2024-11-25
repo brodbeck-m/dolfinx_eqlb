@@ -8,9 +8,9 @@
 
 #include "eigen3/Eigen/Dense"
 
-// #include "KernelData.hpp"
+#include "KernelData.hpp"
 #include "PatchData.hpp"
-// #include "utils.hpp"
+#include "utils.hpp"
 
 #include <dolfinx/fem/DofMap.h>
 #include <dolfinx/fem/Form.h>
@@ -20,8 +20,6 @@
 #include <dolfinx/graph/AdjacencyList.h>
 #include <dolfinx_eqlb/base/Patch.hpp>
 #include <dolfinx_eqlb/base/mdspan.hpp>
-#include <dolfinx_eqlb/se/KernelData.hpp>
-#include <dolfinx_eqlb/se/utils.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -33,7 +31,7 @@
 
 using namespace dolfinx;
 
-namespace dolfinx_eqlb
+namespace dolfinx_eqlb::se
 {
 // ------------------------------------------------------------------------------
 
@@ -80,7 +78,7 @@ generate_flux_minimisation_kernel(se::KernelData<T>& kernel_data,
   /// @param asmbl_info   Information to create the patch-wise H(div=0) space
   /// @param detJ         The Jacobi determinant
   /// @param J            The Jacobi matrix
-  se::kernel_fn<T, asmbl_systmtrx> unconstrained_flux_minimisation
+  kernel_fn<T, asmbl_systmtrx> unconstrained_flux_minimisation
       = [kernel_data, ndofs_hdivzero_per_cell, ndofs_flux_fct](
             base::mdspan_t<T, 2> Te, std::span<const T> coefficients,
             base::smdspan_t<const std::int32_t, 2> asmbl_info,
@@ -234,7 +232,7 @@ generate_flux_minimisation_kernel(se::KernelData<T>& kernel_data,
 /// @return                The kernel function
 template <typename T>
 se::kernel_fn_schursolver<T>
-generate_stress_minimisation_kernel(Kernel type, se::KernelData<T>& kernel_data,
+generate_stress_minimisation_kernel(Kernel type, KernelData<T>& kernel_data,
                                     const int gdim, const int facets_per_cell,
                                     const int degree_rt)
 {
@@ -266,7 +264,7 @@ generate_stress_minimisation_kernel(Kernel type, se::KernelData<T>& kernel_data,
   /// @param detJ           The Jacobi determinant
   /// @param J              The Jacobi matrix
   /// @param assemble_A     Flag if sub-matrix A has to be assembled
-  se::kernel_fn_schursolver<T> stress_minimisation_2D
+  kernel_fn_schursolver<T> stress_minimisation_2D
       = [kernel_data, ndofs_hdivzero_per_cell, ndofs_constr_per_cell,
          ndofs_flux_fct](
             base::mdspan_t<T, 2> Ae, base::mdspan_t<T, 2> Be, std::span<T> Ce,
@@ -553,12 +551,11 @@ void set_boundary_markers(std::span<std::int8_t> boundary_markers,
 /// @param i_rhs                    Index of the right-hand side
 /// @param requires_flux_bc         Marker if flux BCs are required
 template <typename T, int id_flux_order, bool asmbl_systmtrx>
-void assemble_fluxminimiser(
-    se::kernel_fn<T, asmbl_systmtrx>& minimisation_kernel,
-    PatchDataCstm<T, id_flux_order>& patch_data,
-    base::mdspan_t<const std::int32_t, 3> asmbl_info,
-    base::mdspan_t<const std::uint8_t, 2> fct_reversion, const int i_rhs,
-    const bool requires_flux_bc)
+void assemble_fluxminimiser(kernel_fn<T, asmbl_systmtrx>& minimisation_kernel,
+                            PatchData<T, id_flux_order>& patch_data,
+                            base::mdspan_t<const std::int32_t, 3> asmbl_info,
+                            base::mdspan_t<const std::uint8_t, 2> fct_reversion,
+                            const int i_rhs, const bool requires_flux_bc)
 {
   assert(id_flux_order < 0);
 
@@ -728,8 +725,8 @@ void assemble_fluxminimiser(
 /// @param fct_reversion            Marker for reversed facets
 template <typename T, int id_flux_order, bool bcs_required>
 void assemble_stressminimiser(
-    se::kernel_fn_schursolver<T>& minimisation_kernel,
-    PatchDataCstm<T, id_flux_order>& patch_data,
+    kernel_fn_schursolver<T>& minimisation_kernel,
+    PatchData<T, id_flux_order>& patch_data,
     base::mdspan_t<const std::int32_t, 3> asmbl_info,
     base::mdspan_t<const std::uint8_t, 2> fct_reversion)
 {
@@ -908,4 +905,4 @@ void assemble_stressminimiser(
     }
   }
 }
-} // namespace dolfinx_eqlb
+} // namespace dolfinx_eqlb::se
