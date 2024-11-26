@@ -9,7 +9,7 @@
 #include "KernelData.hpp"
 #include "Patch.hpp"
 #include "PatchData.hpp"
-#include "assemble_patch_semiexplt.hpp"
+#include "assembly.hpp"
 #include "eigen3/Eigen/Dense"
 #include "utils.hpp"
 

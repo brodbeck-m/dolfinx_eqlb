@@ -12,7 +12,7 @@
 #include "Patch.hpp"
 #include "PatchData.hpp"
 #include "ProblemData.hpp"
-#include "assemble_patch_semiexplt.hpp"
+#include "assembly.hpp"
 #include "solve_patch_weaksym.hpp"
 #include "utils.hpp"
 

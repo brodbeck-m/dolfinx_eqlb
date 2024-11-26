@@ -10,26 +10,16 @@
 #include "Patch.hpp"
 #include "PatchData.hpp"
 #include "ProblemData.hpp"
-#include "assemble_patch_semiexplt.hpp"
+#include "fluxmin_kernel.hpp"
 #include "solve_patch_semiexplt.hpp"
+#include "stressmin_kernel.hpp"
 #include "utils.hpp"
 
 #include <basix/e-lagrange.h>
 #include <basix/finite-element.h>
-#include <dolfinx/common/IndexMap.h>
 #include <dolfinx/fem/CoordinateElement.h>
-#include <dolfinx/fem/DirichletBC.h>
-#include <dolfinx/fem/DofMap.h>
-#include <dolfinx/fem/Form.h>
 #include <dolfinx/fem/Function.h>
-#include <dolfinx/fem/FunctionSpace.h>
-#include <dolfinx/fem/assembler.h>
-#include <dolfinx/fem/utils.h>
-#include <dolfinx/graph/AdjacencyList.h>
-#include <dolfinx/mesh/Geometry.h>
 #include <dolfinx/mesh/Mesh.h>
-#include <dolfinx/mesh/Topology.h>
-#include <dolfinx/mesh/cell_types.h>
 #include <dolfinx_eqlb/base/BoundaryData.hpp>
 #include <dolfinx_eqlb/base/QuadratureRule.hpp>
 
@@ -37,7 +27,6 @@
 #include <array>
 #include <exception>
 #include <functional>
-#include <iostream>
 #include <iterator>
 #include <memory>
 #include <span>
