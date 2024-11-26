@@ -1,5 +1,4 @@
 # - Build details for DOLFINX_EQLB - An extension for H(div) conforming equilibration with dolfinx
-#
 
 @PACKAGE_INIT@
 

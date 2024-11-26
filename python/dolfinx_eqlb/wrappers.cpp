@@ -5,19 +5,20 @@
 // SPDX-License-Identifier:    LGPL-3.0-or-later
 
 #include "caster_petsc.h"
+
 #include <dolfinx/fem/DirichletBC.h>
 #include <dolfinx/fem/Form.h>
 #include <dolfinx/fem/Function.h>
+#include <dolfinx_eqlb/base/BoundaryData.hpp>
+#include <dolfinx_eqlb/base/FluxBC.hpp>
+#include <dolfinx_eqlb/base/local_solver.hpp>
+#include <dolfinx_eqlb/ev/reconstruction.hpp>
+#include <dolfinx_eqlb/se/reconstruction.hpp>
 #include <pybind11/eigen.h>
 #include <pybind11/pybind11.h>
 #include <pybind11/pytypes.h>
 #include <pybind11/stl.h>
 #include <ufcx.h>
-
-#include <dolfinx_eqlb/BoundaryData.hpp>
-#include <dolfinx_eqlb/FluxBC.hpp>
-#include <dolfinx_eqlb/local_solver.hpp>
-#include <dolfinx_eqlb/reconstruction.hpp>
 
 #include <cstdint>
 #include <functional>
@@ -55,7 +56,7 @@ void declare_lsolver(py::module& m)
       [](std::vector<std::shared_ptr<dolfinx::fem::Function<T>>>& sol_elmt,
          const dolfinx::fem::Form<T>& a,
          const std::vector<std::shared_ptr<const dolfinx::fem::Form<T>>>& l)
-      { local_solver_lu<T>(sol_elmt, a, l); },
+      { base::local_solver_lu<T>(sol_elmt, a, l); },
       py::arg("solution"), py::arg("a"), py::arg("l"),
       "Local solver based on the LU decomposition");
 
@@ -64,7 +65,7 @@ void declare_lsolver(py::module& m)
       [](std::vector<std::shared_ptr<dolfinx::fem::Function<T>>>& sol_elmt,
          const dolfinx::fem::Form<T>& a,
          const std::vector<std::shared_ptr<const dolfinx::fem::Form<T>>>& l)
-      { local_solver_cholesky<T>(sol_elmt, a, l); },
+      { base::local_solver_cholesky<T>(sol_elmt, a, l); },
       py::arg("solution"), py::arg("a"), py::arg("l"),
       "Local solver based on the Cholesky decomposition");
 
@@ -73,7 +74,7 @@ void declare_lsolver(py::module& m)
       [](std::vector<std::shared_ptr<dolfinx::fem::Function<T>>>& sol_elmt,
          const dolfinx::fem::Form<T>& a,
          const std::vector<std::shared_ptr<const dolfinx::fem::Form<T>>>& l)
-      { local_solver_cg<T>(sol_elmt, a, l); },
+      { base::local_solver_cg<T>(sol_elmt, a, l); },
       py::arg("solution"), py::arg("a"), py::arg("l"),
       "Local solver based on a Conjugated-Gradient solver");
 }
@@ -86,8 +87,8 @@ void declare_fluxeqlb(py::module& m)
       [](const dolfinx::fem::Form<T>& a, const dolfinx::fem::Form<T>& l_pen,
          const std::vector<std::shared_ptr<const dolfinx::fem::Form<T>>>& l,
          std::vector<std::shared_ptr<dolfinx::fem::Function<T>>>& flux_hdiv,
-         std::shared_ptr<BoundaryData<T>> boundary_data)
-      { reconstruct_fluxes_ev<T>(a, l_pen, l, flux_hdiv, boundary_data); },
+         std::shared_ptr<base::BoundaryData<T>> boundary_data)
+      { ev::reconstruction<T>(a, l_pen, l, flux_hdiv, boundary_data); },
       py::arg("a"), py::arg("l_pen"), py::arg("l"), py::arg("flux_hdiv"),
       py::arg("boundary_data"),
       "Local equilibration of H(div) conforming fluxes, solving patch-wise, "
@@ -98,12 +99,12 @@ void declare_fluxeqlb(py::module& m)
       [](std::vector<std::shared_ptr<dolfinx::fem::Function<T>>>& flux_hdiv,
          std::vector<std::shared_ptr<dolfinx::fem::Function<T>>>& flux_dg,
          std::vector<std::shared_ptr<dolfinx::fem::Function<T>>>& rhs_dg,
-         std::shared_ptr<BoundaryData<T>> boundary_data,
+         std::shared_ptr<base::BoundaryData<T>> boundary_data,
          const bool reconstruct_stress)
       {
-        reconstruct_fluxes_cstm<T>(flux_hdiv, flux_dg, rhs_dg, boundary_data,
-                                   reconstruct_stress,
-                                   std::shared_ptr<fem::Function<T>>());
+        se::reconstruction<T>(flux_hdiv, flux_dg, rhs_dg, boundary_data,
+                              reconstruct_stress,
+                              std::shared_ptr<fem::Function<T>>());
       },
       py::arg("flux_hdiv"), py::arg("flux_dg"), py::arg("rhs_dg"),
       py::arg("boundary_data"), py::arg("reconstruct_stress"),
@@ -118,12 +119,12 @@ void declare_fluxeqlb(py::module& m)
       [](std::vector<std::shared_ptr<dolfinx::fem::Function<T>>>& flux_hdiv,
          std::vector<std::shared_ptr<dolfinx::fem::Function<T>>>& flux_dg,
          std::vector<std::shared_ptr<dolfinx::fem::Function<T>>>& rhs_dg,
-         std::shared_ptr<BoundaryData<T>> boundary_data,
+         std::shared_ptr<base::BoundaryData<T>> boundary_data,
          const bool reconstruct_stress,
          std::shared_ptr<dolfinx::fem::Function<T>> cells_kornconst)
       {
-        reconstruct_fluxes_cstm<T>(flux_hdiv, flux_dg, rhs_dg, boundary_data,
-                                   reconstruct_stress, cells_kornconst);
+        se::reconstruction<T>(flux_hdiv, flux_dg, rhs_dg, boundary_data,
+                              reconstruct_stress, cells_kornconst);
       },
       py::arg("flux_hdiv"), py::arg("flux_dg"), py::arg("rhs_dg"),
       py::arg("boundary_data"), py::arg("reconstruct_stress"),
@@ -140,8 +141,8 @@ template <typename T>
 void declare_bcs(py::module& m)
 {
   /* A single boundary-condition for the flux */
-  py::class_<FluxBC<T>, std::shared_ptr<FluxBC<T>>>(m, "FluxBC",
-                                                    "FluxBC object")
+  py::class_<base::FluxBC<T>, std::shared_ptr<base::FluxBC<T>>>(m, "FluxBC",
+                                                                "FluxBC object")
       .def(
           py::init(
               [](std::shared_ptr<const fem::FunctionSpace> function_space,
@@ -175,10 +176,10 @@ void declare_bcs(py::module& m)
                 }
 
                 // Return class
-                return FluxBC<T>(function_space, boundary_facets,
-                                 tabulate_tensor_ptr, n_bceval_per_fct,
-                                 coefficients, positions_of_coefficients,
-                                 constants);
+                return base::FluxBC<T>(function_space, boundary_facets,
+                                       tabulate_tensor_ptr, n_bceval_per_fct,
+                                       coefficients, positions_of_coefficients,
+                                       constants);
               }),
           py::arg("function_space"), py::arg("facets"),
           py::arg("pointer_boundary_kernel"), py::arg("nevals_per_fct"),
@@ -218,40 +219,41 @@ void declare_bcs(py::module& m)
                 }
 
                 // Return class
-                return FluxBC<T>(function_space, boundary_facets,
-                                 tabulate_tensor_ptr, n_bceval_per_fct,
-                                 quadrature_degree, coefficients,
-                                 positions_of_coefficients, constants);
+                return base::FluxBC<T>(function_space, boundary_facets,
+                                       tabulate_tensor_ptr, n_bceval_per_fct,
+                                       quadrature_degree, coefficients,
+                                       positions_of_coefficients, constants);
               }),
           py::arg("function_space"), py::arg("facets"),
           py::arg("pointer_boundary_kernel"), py::arg("nevals_per_fct"),
           py::arg("quadrature_degree"), py::arg("coefficients"),
           py::arg("position_of_coefficients"), py::arg("constants"))
       .def_property_readonly("quadrature_degree",
-                             &FluxBC<T>::quadrature_degree);
+                             &base::FluxBC<T>::quadrature_degree);
 
   /* The collection of all BCs of all RHS */
-  py::class_<BoundaryData<T>, std::shared_ptr<BoundaryData<T>>>(
+  py::class_<base::BoundaryData<T>, std::shared_ptr<base::BoundaryData<T>>>(
       m, "BoundaryData", "BoundaryData object")
-      .def(
-          py::init(
-              [](std::vector<std::vector<std::shared_ptr<FluxBC<T>>>>& list_bcs,
-                 std::vector<std::shared_ptr<fem::Function<T>>>& boundary_flux,
-                 std::shared_ptr<const fem::FunctionSpace> V_flux_hdiv,
-                 bool rtflux_is_custom, int quadrature_degree,
-                 const std::vector<std::vector<std::int32_t>>&
-                     fct_esntbound_prime,
-                 const bool reconstruct_stress)
-              {
-                // Return class
-                return BoundaryData<T>(list_bcs, boundary_flux, V_flux_hdiv,
-                                       rtflux_is_custom, quadrature_degree,
-                                       fct_esntbound_prime, reconstruct_stress);
-              }),
-          py::arg("list_of_bcs"), py::arg("list_of_boundary_fluxes"),
-          py::arg("V_flux_hdiv"), py::arg("rtflux_is_custom"),
-          py::arg("quadrature_degree"), py::arg("list_bfcts_prime"),
-          py::arg("reconstruct_stress"));
+      .def(py::init(
+               [](std::vector<std::vector<std::shared_ptr<base::FluxBC<T>>>>&
+                      list_bcs,
+                  std::vector<std::shared_ptr<fem::Function<T>>>& boundary_flux,
+                  std::shared_ptr<const fem::FunctionSpace> V_flux_hdiv,
+                  bool rtflux_is_custom, int quadrature_degree,
+                  const std::vector<std::vector<std::int32_t>>&
+                      fct_esntbound_prime,
+                  const bool reconstruct_stress)
+               {
+                 // Return class
+                 return base::BoundaryData<T>(
+                     list_bcs, boundary_flux, V_flux_hdiv, rtflux_is_custom,
+                     quadrature_degree, fct_esntbound_prime,
+                     reconstruct_stress);
+               }),
+           py::arg("list_of_bcs"), py::arg("list_of_boundary_fluxes"),
+           py::arg("V_flux_hdiv"), py::arg("rtflux_is_custom"),
+           py::arg("quadrature_degree"), py::arg("list_bfcts_prime"),
+           py::arg("reconstruct_stress"));
 }
 
 PYBIND11_MODULE(cpp, m)
