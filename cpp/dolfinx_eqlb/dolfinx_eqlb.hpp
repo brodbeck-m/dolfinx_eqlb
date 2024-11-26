@@ -9,4 +9,5 @@ namespace dolfinx_eqlb
 
 // dolfinx_eqlb interface
 #include "base/deqlb_base.hpp"
-#include "reconstruction.hpp"
+#include "ev/deqlb_ev.hpp"
+#include "se/deqlb_se.hpp"

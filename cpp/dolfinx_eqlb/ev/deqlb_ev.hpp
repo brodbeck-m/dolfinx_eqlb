@@ -14,3 +14,5 @@ namespace dolfinx_eqlb::ev
 }
 
 // dolfinx_eqlb ev interface
+#include "Patch.hpp"
+#include "reconstruction.hpp"

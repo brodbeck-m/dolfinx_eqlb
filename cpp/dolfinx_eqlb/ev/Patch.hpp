@@ -6,9 +6,6 @@
 
 #pragma once
 
-#include <dolfinx_eqlb/base/Patch.hpp>
-#include <dolfinx_eqlb/base/mdspan.hpp>
-
 #include <basix/finite-element.h>
 #include <dolfinx/common/IndexMap.h>
 #include <dolfinx/fem/DofMap.h>
@@ -17,6 +14,8 @@
 #include <dolfinx/graph/AdjacencyList.h>
 #include <dolfinx/mesh/Mesh.h>
 #include <dolfinx/mesh/Topology.h>
+#include <dolfinx_eqlb/base/Patch.hpp>
+#include <dolfinx_eqlb/base/mdspan.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -29,10 +28,12 @@
 
 using namespace dolfinx;
 
-namespace dolfinx_eqlb
+namespace base = dolfinx_eqlb::base;
+
+namespace dolfinx_eqlb::ev
 {
 
-class Patch
+class OrientedPatch
 {
 public:
   /// Create storage of patch data
@@ -43,8 +44,8 @@ public:
   /// @param nnodes_proc Numbe rof nodes on current processor
   /// @param mesh        The current mesh
   /// @param bfct_type   List with type of all boundary facets
-  Patch(int nnodes_proc, std::shared_ptr<const mesh::Mesh> mesh,
-        base::mdspan_t<const std::int8_t, 2> bfct_type);
+  OrientedPatch(int nnodes_proc, std::shared_ptr<const mesh::Mesh> mesh,
+                base::mdspan_t<const std::int8_t, 2> bfct_type);
 
   /// Construction of a sub-DOFmap on each patch
   ///
@@ -334,23 +335,22 @@ protected:
   std::vector<std::int8_t> _inodes_local;
 };
 
-class PatchFluxEV : public Patch
+class Patch : public OrientedPatch
 {
 public:
   /// Initialization
   ///
-  /// Storage is designed for the maximum patch size occuring within
+  /// Storage is designed for the maximum patch size occurring within
   /// the current mesh.
   ///
-  /// @param nnodes_proc Numbe rof nodes on current processor
+  /// @param nnodes_proc Number of nodes on current processor
   /// @param mesh        The current mesh
   /// @param bfct_type   List with type of all boundary facets
-  PatchFluxEV(
-      int nnodes_proc, std::shared_ptr<const mesh::Mesh> mesh,
-      base::mdspan_t<const std::int8_t, 2> bfct_type,
-      const std::shared_ptr<const fem::FunctionSpace> function_space,
-      const std::shared_ptr<const fem::FunctionSpace> function_space_fluxhdiv,
-      const basix::FiniteElement& basix_element_flux);
+  Patch(int nnodes_proc, std::shared_ptr<const mesh::Mesh> mesh,
+        base::mdspan_t<const std::int8_t, 2> bfct_type,
+        const std::shared_ptr<const fem::FunctionSpace> function_space,
+        const std::shared_ptr<const fem::FunctionSpace> function_space_fluxhdiv,
+        const basix::FiniteElement& basix_element_flux);
 
   /* Overload functions from base-class */
   void create_subdofmap(int node_i);
@@ -512,4 +512,4 @@ protected:
   int _ndof_elmt_nz, _ndof_flux_nz, _ndof_patch_nz, _ndof_fluxhdiv;
 };
 
-} // namespace dolfinx_eqlb
+} // namespace dolfinx_eqlb::ev

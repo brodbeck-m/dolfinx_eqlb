@@ -12,10 +12,12 @@
 
 using namespace dolfinx;
 
-namespace dolfinx_eqlb
+namespace base = dolfinx_eqlb::base;
+
+namespace dolfinx_eqlb::ev
 {
 template <typename T>
-class ProblemDataFluxEV : public base::ProblemData<T>
+class ProblemData : public base::ProblemData<T>
 {
 public:
   /// Initialize storage of data for equilibration of (multiple) fluxes
@@ -27,9 +29,9 @@ public:
   /// @param fluxes   List of list of flux functions for each sub-problem
   /// @param bcs_flux List of list of BCs for each equilibrated flux
   /// @param l        List of all RHS (ufl)
-  ProblemDataFluxEV(std::vector<std::shared_ptr<fem::Function<T>>>& fluxes,
-                    const std::vector<std::shared_ptr<const fem::Form<T>>>& l,
-                    std::shared_ptr<base::BoundaryData<T>> boundary_data)
+  ProblemData(std::vector<std::shared_ptr<fem::Function<T>>>& fluxes,
+              const std::vector<std::shared_ptr<const fem::Form<T>>>& l,
+              std::shared_ptr<base::BoundaryData<T>> boundary_data)
       : base::ProblemData<T>(fluxes, {}, l), _boundary_data(boundary_data),
         _begin_hat(fluxes.size(), 0), _begin_fluxdg(fluxes.size(), 0)
   {
@@ -273,4 +275,5 @@ protected:
   // Infos on constants and coefficients
   std::vector<int> _begin_hat, _begin_fluxdg;
 };
-} // namespace dolfinx_eqlb
+
+} // namespace dolfinx_eqlb::ev

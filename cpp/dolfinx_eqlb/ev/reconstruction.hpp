@@ -6,10 +6,10 @@
 
 #pragma once
 
-#include "PatchFluxEV.hpp"
-#include "ProblemDataFluxEV.hpp"
+#include "Patch.hpp"
+#include "ProblemData.hpp"
 #include "StorageStiffness.hpp"
-#include "solve_patch_constrmin.hpp"
+#include "solve_patch.hpp"
 
 #include <basix/e-lagrange.h>
 #include <basix/finite-element.h>
@@ -28,7 +28,6 @@
 #include <dolfinx/mesh/Topology.h>
 #include <dolfinx/mesh/cell_types.h>
 #include <dolfinx_eqlb/base/BoundaryData.hpp>
-#include <dolfinx_eqlb/base/QuadratureRule.hpp>
 
 #include <algorithm>
 #include <array>
@@ -44,7 +43,9 @@
 
 using namespace dolfinx;
 
-namespace dolfinx_eqlb
+namespace base = dolfinx_eqlb::base;
+
+namespace dolfinx_eqlb::ev
 {
 /// Calculation of patch contributions to flux
 ///
@@ -60,8 +61,8 @@ namespace dolfinx_eqlb
 /// @param fct_type       Lookup-table for facet-types
 /// @param flux_dg        Function that holds the projected fluxes
 template <typename T>
-void reconstruct_fluxes_patch(const fem::Form<T>& a, const fem::Form<T>& l_pen,
-                              ProblemDataFluxEV<T>& problem_data)
+void reconstruction(const fem::Form<T>& a, const fem::Form<T>& l_pen,
+                    ProblemData<T>& problem_data)
 {
   /* Geometry */
   const mesh::Geometry& geometry = a.mesh()->geometry();
@@ -111,7 +112,7 @@ void reconstruct_fluxes_patch(const fem::Form<T>& a, const fem::Form<T>& l_pen,
   const basix::FiniteElement& basix_element_flux
       = function_space->sub(sub0)->element()->basix_element();
 
-  PatchFluxEV patch = PatchFluxEV(
+  Patch patch = Patch(
       n_nodes, a.mesh(), problem_data.facet_type(), a.function_spaces().at(0),
       problem_data.flux(0).function_space(), basix_element_flux);
 
@@ -141,8 +142,10 @@ void reconstruct_fluxes_patch(const fem::Form<T>& a, const fem::Form<T>& l_pen,
 
 /// Execute flux calculation based on H(div) conforming equilibration
 ///
-/// Equilibration based on local minimization problems. Weak forms
-/// discretized using ufl.
+/// Equilibration procedure is based on the solution of patch-wise
+/// constrained minimisation problems as described in [1].
+///
+/// [1] Ern, A. and Vohralík, M.: https://doi.org/10.1137/130950100, 2015
 ///
 /// @param a                   The bilinears form to assemble
 /// @param l                   The linar form to assemble
@@ -151,11 +154,10 @@ void reconstruct_fluxes_patch(const fem::Form<T>& a, const fem::Form<T>& l_pen,
 /// @param bcs_flux            Essential boundary conditions for the flux
 /// @param flux                Function that holds the reconstructed flux
 template <typename T>
-void reconstruct_fluxes_ev(
-    const fem::Form<T>& a, const fem::Form<T>& l_pen,
-    const std::vector<std::shared_ptr<const fem::Form<T>>>& l,
-    std::vector<std::shared_ptr<fem::Function<T>>>& flux_hdiv,
-    std::shared_ptr<base::BoundaryData<T>> boundary_data)
+void reconstruction(const fem::Form<T>& a, const fem::Form<T>& l_pen,
+                    const std::vector<std::shared_ptr<const fem::Form<T>>>& l,
+                    std::vector<std::shared_ptr<fem::Function<T>>>& flux_hdiv,
+                    std::shared_ptr<base::BoundaryData<T>> boundary_data)
 {
   // Check input
   int n_rhs = l.size();
@@ -168,11 +170,10 @@ void reconstruct_fluxes_ev(
   }
 
   /* Initialize problem data */
-  ProblemDataFluxEV<T> problem_data
-      = ProblemDataFluxEV<T>(flux_hdiv, l, boundary_data);
+  ProblemData<T> problem_data = ProblemData<T>(flux_hdiv, l, boundary_data);
 
   /* Call equilibration */
-  reconstruct_fluxes_patch<T>(a, l_pen, problem_data);
+  reconstruction<T>(a, l_pen, problem_data);
 }
 
-} // namespace dolfinx_eqlb
+} // namespace dolfinx_eqlb::ev

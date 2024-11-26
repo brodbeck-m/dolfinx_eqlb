@@ -5,20 +5,20 @@
 // SPDX-License-Identifier:    LGPL-3.0-or-later
 
 #include "caster_petsc.h"
+
 #include <dolfinx/fem/DirichletBC.h>
 #include <dolfinx/fem/Form.h>
 #include <dolfinx/fem/Function.h>
+#include <dolfinx_eqlb/base/BoundaryData.hpp>
+#include <dolfinx_eqlb/base/FluxBC.hpp>
+#include <dolfinx_eqlb/base/local_solver.hpp>
+#include <dolfinx_eqlb/ev/reconstruction.hpp>
+#include <dolfinx_eqlb/se/reconstruction.hpp>
 #include <pybind11/eigen.h>
 #include <pybind11/pybind11.h>
 #include <pybind11/pytypes.h>
 #include <pybind11/stl.h>
 #include <ufcx.h>
-
-#include <dolfinx_eqlb/base/BoundaryData.hpp>
-#include <dolfinx_eqlb/base/FluxBC.hpp>
-#include <dolfinx_eqlb/base/local_solver.hpp>
-#include <dolfinx_eqlb/reconstruction.hpp>
-#include <dolfinx_eqlb/se/reconstruction.hpp>
 
 #include <cstdint>
 #include <functional>
@@ -88,7 +88,7 @@ void declare_fluxeqlb(py::module& m)
          const std::vector<std::shared_ptr<const dolfinx::fem::Form<T>>>& l,
          std::vector<std::shared_ptr<dolfinx::fem::Function<T>>>& flux_hdiv,
          std::shared_ptr<base::BoundaryData<T>> boundary_data)
-      { reconstruct_fluxes_ev<T>(a, l_pen, l, flux_hdiv, boundary_data); },
+      { ev::reconstruction<T>(a, l_pen, l, flux_hdiv, boundary_data); },
       py::arg("a"), py::arg("l_pen"), py::arg("l"), py::arg("flux_hdiv"),
       py::arg("boundary_data"),
       "Local equilibration of H(div) conforming fluxes, solving patch-wise, "

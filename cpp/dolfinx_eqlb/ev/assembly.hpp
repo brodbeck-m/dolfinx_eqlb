@@ -6,7 +6,7 @@
 
 #pragma once
 
-#include "PatchFluxEV.hpp"
+#include "Patch.hpp"
 #include "StorageStiffness.hpp"
 #include "eigen3/Eigen/Dense"
 
@@ -28,7 +28,9 @@
 
 using namespace dolfinx;
 
-namespace dolfinx_eqlb
+namespace base = dolfinx_eqlb::base;
+
+namespace dolfinx_eqlb::ev
 {
 /// Apply lifting of non-homogenous boundary conditions
 ///
@@ -121,7 +123,7 @@ void assemble_tangents(
     Eigen::Matrix<T, Eigen::Dynamic, 1>& L_patch,
     std::span<const std::int32_t> cells,
     std::vector<fem::impl::scalar_value_type_t<T>>& coordinate_dofs,
-    const int cstride_geom, PatchFluxEV& patch,
+    const int cstride_geom, Patch& patch,
     const std::function<void(const std::span<T>&,
                              const std::span<const std::uint32_t>&,
                              std::int32_t, int)>& dof_transform,
@@ -304,4 +306,4 @@ void assemble_tangents(
   }
 }
 
-} // namespace dolfinx_eqlb
+} // namespace dolfinx_eqlb::ev

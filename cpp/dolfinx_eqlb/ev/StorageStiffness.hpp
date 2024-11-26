@@ -12,8 +12,9 @@
 #include <span>
 #include <vector>
 
-namespace dolfinx_eqlb
+namespace dolfinx_eqlb::ev
 {
+
 template <typename T>
 class StorageStiffness
 {
@@ -103,4 +104,5 @@ private:
   std::vector<std::int32_t> _offset_stf, _offset_pen;
   std::vector<std::int8_t> _is_evaluated;
 };
-}
+
+} // namespace dolfinx_eqlb::ev

@@ -8,22 +8,8 @@ add_library(dolfinx_eqlb "")
 # Add source files
 set(EQLB_DIRS
     base
+    ev
     se
-)
-
-set(
-  HEADERS_EQLB
-  PatchFluxEV.hpp
-  ProblemDataFluxEV.hpp
-  StorageStiffness.hpp
-  assemble_patch_constrmin.hpp
-  reconstruction.hpp
-  solve_patch_constrmin.hpp
-)
-
-target_sources(
-  dolfinx_eqlb
-  PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/PatchFluxEV.cpp
 )
 
 foreach(DIR ${EQLB_DIRS})

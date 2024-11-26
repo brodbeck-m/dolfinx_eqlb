@@ -6,22 +6,22 @@
 
 #pragma once
 
-#include "PatchFluxEV.hpp"
-#include "ProblemDataFluxEV.hpp"
+#include "Patch.hpp"
+#include "ProblemData.hpp"
 #include "StorageStiffness.hpp"
-#include "assemble_patch_constrmin.hpp"
+#include "assembly.hpp"
 #include "eigen3/Eigen/Dense"
 
-#include <dolfinx_eqlb/base/Patch.hpp>
-
-#include <algorithm>
-#include <cmath>
 #include <dolfinx/fem/DofMap.h>
 #include <dolfinx/fem/Form.h>
 #include <dolfinx/fem/Function.h>
 #include <dolfinx/fem/assembler.h>
 #include <dolfinx/fem/utils.h>
 #include <dolfinx/graph/AdjacencyList.h>
+#include <dolfinx_eqlb/base/Patch.hpp>
+
+#include <algorithm>
+#include <cmath>
 #include <functional>
 #include <iostream>
 #include <iterator>
@@ -30,7 +30,7 @@
 
 using namespace dolfinx;
 
-namespace dolfinx_eqlb
+namespace dolfinx_eqlb::ev
 {
 /// Assembly and solution of patch problems
 ///
@@ -56,7 +56,7 @@ namespace dolfinx_eqlb
 
 template <typename T>
 void equilibrate_flux_constrmin(
-    const mesh::Geometry& geometry, PatchFluxEV& patch,
+    const mesh::Geometry& geometry, Patch& patch,
     const graph::AdjacencyList<std::int32_t>& dofmap_global,
     const std::function<void(const std::span<T>&,
                              const std::span<const std::uint32_t>&,
@@ -65,7 +65,7 @@ void equilibrate_flux_constrmin(
                              const std::span<const std::uint32_t>&,
                              std::int32_t, int)>& dof_transform_to_transpose,
     std::span<const std::uint32_t> cell_info, fem::FEkernel<T> auto kernel_a,
-    fem::FEkernel<T> auto kernel_lpen, ProblemDataFluxEV<T>& problem_data,
+    fem::FEkernel<T> auto kernel_lpen, ProblemData<T>& problem_data,
     StorageStiffness<T>& storage_stiffness)
 {
   /* Extract required data */
@@ -237,4 +237,5 @@ void equilibrate_flux_constrmin(
     problem_data.set_hat_function(c, inode_local[index], 0.0);
   }
 }
-} // namespace dolfinx_eqlb
+
+} // namespace dolfinx_eqlb::ev

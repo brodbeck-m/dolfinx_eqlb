@@ -4,13 +4,14 @@
 //
 // SPDX-License-Identifier:    LGPL-3.0-or-later
 
-#include "PatchFluxEV.hpp"
+#include "Patch.hpp"
 
 using namespace dolfinx;
-using namespace dolfinx_eqlb;
+using namespace dolfinx_eqlb::ev;
 
-Patch::Patch(int nnodes_proc, std::shared_ptr<const mesh::Mesh> mesh,
-             base::mdspan_t<const std::int8_t, 2> bfct_type)
+OrientedPatch::OrientedPatch(int nnodes_proc,
+                             std::shared_ptr<const mesh::Mesh> mesh,
+                             base::mdspan_t<const std::int8_t, 2> bfct_type)
     : _mesh(mesh), _bfct_type(bfct_type), _dim(mesh->geometry().dim()),
       _dim_fct(mesh->geometry().dim() - 1),
       _type(bfct_type.extent(0), base::PatchType::internal),
@@ -37,7 +38,7 @@ Patch::Patch(int nnodes_proc, std::shared_ptr<const mesh::Mesh> mesh,
   _fct_per_cell = _cell_to_fct->links(0).size();
 }
 
-bool Patch::reversion_required(int index)
+bool OrientedPatch::reversion_required(int index)
 {
   // Initialise output
   bool patch_reversed = false;
@@ -61,7 +62,7 @@ bool Patch::reversion_required(int index)
   return patch_reversed;
 }
 
-void Patch::set_max_patch_size(int nnodes_proc)
+void OrientedPatch::set_max_patch_size(int nnodes_proc)
 {
   // Initialization
   _ncells_max = 0;
@@ -79,7 +80,8 @@ void Patch::set_max_patch_size(int nnodes_proc)
   }
 }
 
-std::pair<std::int32_t, std::int32_t> Patch::initialize_patch(int node_i)
+std::pair<std::int32_t, std::int32_t>
+OrientedPatch::initialize_patch(int node_i)
 {
   // Set central node
   _nodei = node_i;
@@ -218,8 +220,8 @@ std::pair<std::int32_t, std::int32_t> Patch::initialize_patch(int node_i)
 }
 
 std::tuple<std::int8_t, std::int8_t, std::int8_t, std::int32_t>
-Patch::fcti_to_celli(int id_l, int c_fct, std::int32_t fct_i,
-                     std::int32_t cell_in)
+OrientedPatch::fcti_to_celli(int id_l, int c_fct, std::int32_t fct_i,
+                             std::int32_t cell_in)
 {
   // Initialize local facet_ids
   std::int8_t id_fct_loc_ci = 0;
@@ -306,7 +308,8 @@ Patch::fcti_to_celli(int id_l, int c_fct, std::int32_t fct_i,
   return {id_fct_loc_ci, id_fct_loc_cim1, id_cell_plus, fct_next};
 }
 
-std::int8_t Patch::get_fctid_local(std::int32_t fct_i, std::int32_t cell_i)
+std::int8_t OrientedPatch::get_fctid_local(std::int32_t fct_i,
+                                           std::int32_t cell_i)
 {
   // Get facets on cell
   std::span<const std::int32_t> fct_cell_i = _cell_to_fct->links(cell_i);
@@ -314,8 +317,9 @@ std::int8_t Patch::get_fctid_local(std::int32_t fct_i, std::int32_t cell_i)
   return get_fctid_local(fct_i, fct_cell_i);
 }
 
-std::int8_t Patch::get_fctid_local(std::int32_t fct_i,
-                                   std::span<const std::int32_t> fct_cell_i)
+std::int8_t
+OrientedPatch::get_fctid_local(std::int32_t fct_i,
+                               std::span<const std::int32_t> fct_cell_i)
 {
   // Initialize local id
   std::int8_t fct_loc = 0;
@@ -332,7 +336,7 @@ std::int8_t Patch::get_fctid_local(std::int32_t fct_i,
   return fct_loc;
 }
 
-std::int8_t Patch::node_local(std::int32_t cell_i, std::int32_t node_i)
+std::int8_t OrientedPatch::node_local(std::int32_t cell_i, std::int32_t node_i)
 {
   // Initialize cell-local node-id
   std::int8_t id_node_loc_ci = 0;
@@ -348,15 +352,15 @@ std::int8_t Patch::node_local(std::int32_t cell_i, std::int32_t node_i)
   return id_node_loc_ci;
 }
 
-std::int8_t Patch::nodei_local(std::int32_t cell_i)
+std::int8_t OrientedPatch::nodei_local(std::int32_t cell_i)
 {
   return node_local(cell_i, _nodei);
 }
 
 std::int32_t
-Patch::next_facet_triangle(std::int32_t cell_i,
-                           std::span<const std::int32_t> fct_cell_i,
-                           std::int8_t id_fct_loc)
+OrientedPatch::next_facet_triangle(std::int32_t cell_i,
+                                   std::span<const std::int32_t> fct_cell_i,
+                                   std::int8_t id_fct_loc)
 {
   // Get remaining factes in correct order
   std::vector<std::int32_t> fct_es(2);
@@ -433,13 +437,14 @@ Patch::next_facet_triangle(std::int32_t cell_i,
 }
 
 // ---------------------------------------------------------------------------------------------------
-PatchFluxEV::PatchFluxEV(
+Patch::Patch(
     int nnodes_proc, std::shared_ptr<const mesh::Mesh> mesh,
     base::mdspan_t<const std::int8_t, 2> bfct_type,
     const std::shared_ptr<const fem::FunctionSpace> function_space,
     const std::shared_ptr<const fem::FunctionSpace> function_space_fluxhdiv,
     const basix::FiniteElement& basix_element_flux)
-    : Patch(nnodes_proc, mesh, bfct_type), _function_space(function_space),
+    : OrientedPatch(nnodes_proc, mesh, bfct_type),
+      _function_space(function_space),
       _function_space_fluxhdiv(function_space_fluxhdiv),
       _entity_dofs_flux(basix_element_flux.entity_dofs()),
       _ndof_elmt(function_space->element()->space_dimension())
@@ -474,7 +479,7 @@ PatchFluxEV::PatchFluxEV(
   _list_dofsnz_global_fluxhdiv.resize(len_adjacency_flux);
 }
 
-void PatchFluxEV::create_subdofmap(int node_i)
+void Patch::create_subdofmap(int node_i)
 {
   // Initialize patch
   auto [fct_i, c_fct_loop] = initialize_patch(node_i);
