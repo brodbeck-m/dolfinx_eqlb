@@ -10,5 +10,8 @@ find_dependency(DOLFINX REQUIRED)
 find_dependency(MPI REQUIRED)
 find_dependency(Basix REQUIRED)
 
+if (NOT TARGET dolfinx_eqlb)
+  include("${CMAKE_CURRENT_LIST_DIR}/DOLFINX_EQLBTargets.cmake")
+endif()
 
 check_required_components(DOLFINX_EQLB)

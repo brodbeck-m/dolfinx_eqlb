@@ -44,7 +44,6 @@ install(
   )
 
 foreach(DIR ${EQLB_DIRS})
-  message(STATUS "folder=${${DIR}}")
   install(
     FILES ${HEADERS_${DIR}}
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/dolfinx_eqlb/${DIR}

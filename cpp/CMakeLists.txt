@@ -2,7 +2,7 @@
 cmake_minimum_required(VERSION 3.19)
 
 # Set project name and version number
-project(DOLFINX_EQLB VERSION 1.2.0)
+project(DOLFINX_EQLB VERSION 1.3.0)
 
 #------------------------------------------------------------------------------
 # Use C++20
@@ -28,8 +28,8 @@ add_feature_info(CMAKE_INSTALL_RPATH_USE_LINK_PATH CMAKE_INSTALL_RPATH_USE_LINK_
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}) # Not identical to dolfinx make
 
 # Find packages
-find_package(DOLFINX 0.6.0.0 REQUIRED)
-find_package(Basix 0.6.0.0 REQUIRED)
+find_package(DOLFINX 0.9.0.0 REQUIRED)
+find_package(Basix 0.9.0.0 REQUIRED)
 find_package(Eigen3 REQUIRED NO_MODULE)
 feature_summary(WHAT ALL)
 

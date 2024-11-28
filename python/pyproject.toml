@@ -1,0 +1,81 @@
+[build-system]
+requires = [
+      "scikit-build-core[pyproject]",
+      "nanobind>=2.0.0",
+      "petsc4py",
+      "mpi4py",
+]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "dolfinx_eqlb"
+version = "1.3.0"
+description = "dolfinx_eqlb Python interface"
+requires-python = ">=3.8.0"
+license = { file = "../COPYING" }
+authors = [{ email = "brodbeck@isd.uni-stuttgart.de", name = "Maximilian Brodbeck" }]
+dependencies = [
+      "numpy>=1.21",
+      "cffi",
+      "petsc4py",
+      "mpi4py",
+      "fenics-dolfinx>=0.9.0,<0.10.0",
+      "fenics-basix>=0.9.0,<0.10.0",
+      "fenics-ffcx>=0.9.0,<0.10.0",
+      "fenics-ufl>=2024.2.0,<2024.3.0",
+]
+
+[tool.scikit-build]
+wheel.packages = ["dolfinx_eqlb"]
+sdist.exclude = ["*.cpp"]
+cmake.build-type = "Release"
+
+[tool.pytest]
+junit_family = "xunit2"
+
+[tool.mypy]
+ignore_missing_imports = true
+# Folders to exclude
+exclude = ["docs/", "build/"]
+# Folder to check with mypy
+files = ["src", "tests"]
+
+[tool.ruff]
+src = ["dolfinx_eqlb"]
+line-length = 120
+indent-width = 4
+
+[tool.ruff.lint]
+select = [
+      # Pyflakes
+      "F",
+      # Pycodestyle
+      "E",
+      "W",
+      # isort
+      "I001",
+]
+
+
+[tool.ruff.lint.isort]
+known-first-party = ["dolfinx_eqlb"]
+known-third-party = [
+      "basix",
+      "dolfinx",
+      "ffcx",
+      "ufl",
+      "gmsh",
+      "numpy",
+      "pytest",
+]
+section-order = [
+      "future",
+      "standard-library",
+      "mpi",
+      "third-party",
+      "first-party",
+      "local-folder",
+]
+
+[tool.ruff.lint.isort.sections]
+"mpi" = ["mpi4py", "petsc4py"]

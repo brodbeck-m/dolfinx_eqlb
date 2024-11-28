@@ -1,33 +1,80 @@
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.21)
 
-set(PROJECT_NAME dolfinx_eqlb_pybind11)
+set(PROJECT_NAME dolfinx_eqlb_nanobind)
 project(${PROJECT_NAME})
 
-# Set C++ standard before finding pybind11
+# Set C++ standard
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-find_package(Eigen3 REQUIRED NO_MODULE) # Is this realy neccessary???
+find_package(Python COMPONENTS Interpreter Development REQUIRED)
 
-find_package(pybind11 REQUIRED CONFIG HINTS ${PYBIND11_DIR} ${PYBIND11_ROOT}
-  $ENV{PYBIND11_DIR} $ENV{PYBIND11_ROOT})
+# Detect the installed nanobind package and import it into CMake
+execute_process(
+  COMMAND "${Python_EXECUTABLE}" -m nanobind --cmake_dir
+  OUTPUT_STRIP_TRAILING_WHITESPACE OUTPUT_VARIABLE NB_DIR)
+list(APPEND CMAKE_PREFIX_PATH "${NB_DIR}")
+find_package(nanobind CONFIG REQUIRED)
 
+# # Detect Eigen3
+# find_package(Eigen3 REQUIRED NO_MODULE)
 
-find_package(DOLFINX REQUIRED)
-find_package(DOLFINX_EQLB REQUIRED)
+# Detect DOLFINx and Basix
+execute_process(
+  COMMAND
+  ${Python3_EXECUTABLE} -c "import os, sys, basix; sys.stdout.write(os.path.dirname(basix.__file__))"
+  OUTPUT_VARIABLE BASIX_PY_DIR
+  RESULT_VARIABLE BASIX_PY_COMMAND_RESULT
+  ERROR_VARIABLE BASIX_ERROR_OUT OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+find_package(Basix REQUIRED CONFIG HINTS ${BASIX_PY_DIR})
+if (Basix_FOUND)
+  message(STATUS "Found Basix at ${Basix_DIR}")
+endif()
 
+find_package(DOLFINX REQUIRED CONFIG)
+if (DOLFINX_FOUND)
+  message(STATUS "Found DOLFINx at ${DOLFINX_DIR}")
+endif()
 
-# Create the binding library
-pybind11_add_module(cpp SHARED 
-  dolfinx_eqlb/wrappers.cpp)
+# Add dolfinx_eqlb libraries
+# list(APPEND CMAKE_MODULE_PATH "/usr/local/dolfinx-real/share/dolfinx_eqlb/")
+message(STATUS "Module patch ${CMAKE_MODULE_PATH}")
+find_package(DOLFINX_EQLB REQUIRED CONFIG)
+if (DOLFINX_EQLB_FOUND)
+  message(STATUS "Found dolfinx_eqlb at ${DOLFINX_EQLB_DIR}")
+endif()
 
+# Create the binding library nanobind handles its own calls to target_link_libraries
+nanobind_add_module(
+  cpp
+  NOMINSIZE
+  MODULE
+  dolfinx_eqlb/wrappers.cpp
+)
 
-target_link_libraries(cpp PUBLIC pybind11::module)
+target_compile_definitions(cpp PRIVATE DOLFINX_EQLB_VERSION="${DOLFINX_EQLB_VERSION}")
 target_link_libraries(cpp PUBLIC dolfinx)
 target_link_libraries(cpp PUBLIC basix)
 target_link_libraries(cpp PRIVATE dolfinx_eqlb)
 
+# Check for petsc4py
+execute_process(
+  COMMAND ${Python_EXECUTABLE} -c
+          "import petsc4py; print(petsc4py.get_include())"
+  OUTPUT_VARIABLE PETSC4PY_INCLUDE_DIR
+  RESULT_VARIABLE PETSC4PY_COMMAND_RESULT
+  ERROR_QUIET OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+
+if(NOT PETSC4PY_COMMAND_RESULT)
+  message(STATUS "Found petsc4py include directory at ${PETSC4PY_INCLUDE_DIR}")
+  target_include_directories(cpp PRIVATE ${PETSC4PY_INCLUDE_DIR})
+  target_compile_definitions(cpp PRIVATE HAS_PETSC4PY)
+else()
+  message(FATAL_ERROR "petsc4py not found.")
+endif()
 
 # Get python include-dirs
 execute_process(
@@ -40,17 +87,6 @@ if (DOLFINX_PY_DIR)
   target_include_directories(cpp PRIVATE ${DOLFINX_PY_DIR})
 endif()
 
-   
-# Find petsc4py through python
-execute_process(
-  COMMAND ${PYTHON_EXECUTABLE} -c "import petsc4py; print(petsc4py.get_include())"
-  OUTPUT_VARIABLE PETSC4PY_INCLUDE_DIR
-  RESULT_VARIABLE PETSC4PY_NOT_FOUND
-  ERROR_QUIET
-  OUTPUT_STRIP_TRAILING_WHITESPACE
-  )
-target_include_directories(cpp PRIVATE ${PETSC4PY_INCLUDE_DIR})
+set_target_properties(cpp PROPERTIES INSTALL_RPATH_USE_LINK_PATH TRUE)
 
-
-# Add to CMake search path
-set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR})
+install(TARGETS cpp DESTINATION dolfinx_eqlb)

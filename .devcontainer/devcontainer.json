@@ -14,7 +14,7 @@
 				"path": "/bin/bash"
 			}
 		},
-		"python.defaultInterpreterPath": "/usr/bin/python3",
+		"python.defaultInterpreterPath": "/dolfinx-env/bin/python3",
 		"[python]": {
 			"editor.defaultFormatter": "ms-python.black-formatter",
 			"editor.formatOnSave": true,
