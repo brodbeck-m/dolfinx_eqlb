@@ -60,6 +60,7 @@ NB_MODULE(cpp, m)
       "function_base", []() { base::function_base(); }, "A function from base");
 
   m.def("function_ev", []() { ev::function_ev(); }, "A function from ev");
+  m.def("test_eigen", []() { ev::test_eigen(); }, "Test usage of eigen in c++");
 
   m.def("function_se", []() { se::function_se(); }, "A function from se");
 }

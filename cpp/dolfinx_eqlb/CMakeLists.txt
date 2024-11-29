@@ -30,6 +30,7 @@ set_target_properties(
 
 # ------------------------------------------------------------------------------
 # Add include directories and libraries of required packages
+target_link_libraries (dolfinx_eqlb PUBLIC Eigen3::Eigen)
 target_link_libraries(dolfinx_eqlb PUBLIC Basix::basix)
 target_link_libraries(dolfinx_eqlb PUBLIC dolfinx)
 

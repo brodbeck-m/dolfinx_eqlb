@@ -17,8 +17,8 @@ execute_process(
 list(APPEND CMAKE_PREFIX_PATH "${NB_DIR}")
 find_package(nanobind CONFIG REQUIRED)
 
-# # Detect Eigen3
-# find_package(Eigen3 REQUIRED NO_MODULE)
+# Detect Eigen3
+find_package(Eigen3 3.4 REQUIRED NO_MODULE)
 
 # Detect DOLFINx and Basix
 execute_process(
@@ -39,7 +39,6 @@ if (DOLFINX_FOUND)
 endif()
 
 # Add dolfinx_eqlb libraries
-# list(APPEND CMAKE_MODULE_PATH "/usr/local/dolfinx-real/share/dolfinx_eqlb/")
 message(STATUS "Module patch ${CMAKE_MODULE_PATH}")
 find_package(DOLFINX_EQLB REQUIRED CONFIG)
 if (DOLFINX_EQLB_FOUND)
@@ -55,6 +54,7 @@ nanobind_add_module(
 )
 
 target_compile_definitions(cpp PRIVATE DOLFINX_EQLB_VERSION="${DOLFINX_EQLB_VERSION}")
+target_link_libraries(cpp PUBLIC Eigen3::Eigen)
 target_link_libraries(cpp PUBLIC dolfinx)
 target_link_libraries(cpp PUBLIC basix)
 target_link_libraries(cpp PRIVATE dolfinx_eqlb)

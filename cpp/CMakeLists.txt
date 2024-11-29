@@ -30,7 +30,7 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}) # Not id
 # Find packages
 find_package(DOLFINX 0.9.0.0 REQUIRED)
 find_package(Basix 0.9.0.0 REQUIRED)
-find_package(Eigen3 REQUIRED NO_MODULE)
+find_package(Eigen3 3.4 REQUIRED NO_MODULE)
 feature_summary(WHAT ALL)
 
 #------------------------------------------------------------------------------
