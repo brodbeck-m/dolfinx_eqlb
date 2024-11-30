@@ -12,12 +12,12 @@ namespace dolfinx_eqlb::base
 {
 
 template <typename T, std::size_t d>
-using mdspan_t
-    = std::experimental::mdspan<T, std::experimental::dextents<std::size_t, d>>;
+using mdspan_t = MDSPAN_IMPL_STANDARD_NAMESPACE::mdspan<
+    T, MDSPAN_IMPL_STANDARD_NAMESPACE::dextents<std::size_t, d>>;
 
 template <typename T, std::size_t d>
-using smdspan_t
-    = std::experimental::mdspan<T, std::experimental::dextents<std::size_t, d>,
-                                std::experimental::layout_stride>;
+using smdspan_t = MDSPAN_IMPL_STANDARD_NAMESPACE::mdspan<
+    T, MDSPAN_IMPL_STANDARD_NAMESPACE::dextents<std::size_t, d>,
+    MDSPAN_IMPL_STANDARD_NAMESPACE::layout_stride>;
 
 } // namespace dolfinx_eqlb::base

@@ -11,7 +11,7 @@ import typing
 from dolfinx import fem
 import ufl
 
-from dolfinx_eqlb.cpp import local_solver_cholesky
+from .lsolver import local_solver
 
 
 def local_projection(
@@ -21,27 +21,20 @@ def local_projection(
 ) -> typing.List[fem.Function]:
     """Projection data into DG space
 
-    Solves
+    Project data sets into arbitrary FE spaces with cell-local support:
 
-            (u, v) = (rhs, v) with u,v in V
-
-    for multiple RHS and arbitrary FE spaces V, with cell local support.
+            (u, v) = (data_i, v) with u,v in V
 
     Args:
         V:                 The target function-space
-        data:              The data to project into the space V
+        rhs:               The data to project into the space V
         quadrature_degree: The quadrature Degree
 
     Returns:
         A List of functions into which the data is projected
     """
     # Number of LHS
-    n_lhs = len(data)
-
-    # Initialisation
-    list_sol = []
-    list_sol_cpp = []
-    list_l = []
+    nrhs = len(data)
 
     # --- Setup variational problem
     # Trial- and testfunctions
@@ -62,16 +55,17 @@ def local_projection(
         )
 
     # Linear form/ and solution
-    for i in range(0, n_lhs):
+    solutions = []
+    ls = []
+
+    for i in range(0, nrhs):
         # Linear form
-        list_l.append(fem.form(ufl.inner(data[i], v) * dvol))
+        ls.append(fem.form(ufl.inner(data[i], v) * dvol))
 
         # Solution function
-        func = fem.Function(V)
-        list_sol.append(func)
-        list_sol_cpp.append(func._cpp_object)
+        solutions.append(fem.Function(V))
 
     # --- Solve projection locally (Cholesky, as problem is SPD)
-    local_solver_cholesky(list_sol_cpp, a, list_l)
+    local_solver(solutions, a, ls)
 
-    return list_sol
+    return solutions

@@ -7,9 +7,10 @@
 #pragma once
 
 #include "ProblemData.hpp"
-#include "eigen3/Eigen/Dense"
-#include "eigen3/Eigen/Sparse"
+#include "mdspan.hpp"
 
+#include <Eigen/Dense>
+#include <Eigen/Sparse>
 #include <dolfinx/fem/DofMap.h>
 #include <dolfinx/fem/Form.h>
 #include <dolfinx/fem/Function.h>
@@ -28,80 +29,83 @@ using namespace dolfinx;
 
 namespace dolfinx_eqlb::base
 {
-/// Execute solution of problem in element-wise manner
+
+/// Solve cell-local problems
 ///
-/// @param vec_sol List of solution vectors
-/// @param a       Bilinear form of all problems
-/// @param vec_l   List of multiple linear forms
-/// @param solver  Solver for linear equation system
-template <typename T, typename S>
-void local_solver(std::vector<std::shared_ptr<fem::Function<T>>>& vec_sol,
-                  const fem::Form<T>& a,
-                  const std::vector<std::shared_ptr<const fem::Form<T>>>& vec_l,
-                  S& solver)
+/// Solve a set of cell local problems with identical bilinear- but multiple,
+/// different linear forms. Each problem has no boundary conditions.
+///
+/// @param[in,out] solutions List of solution functions
+/// @param[in] a             The Bilinear form
+/// @param[in] ls            The linear forms
+template <dolfinx::scalar T, std::floating_point U>
+void local_solver(std::vector<std::shared_ptr<fem::Function<T, U>>>& solutions,
+                  const fem::Form<T, U>& a,
+                  const std::vector<std::shared_ptr<const fem::Form<T, U>>>& ls)
 {
-  /* Handle multiple LHS */
-  // Check input data
-  if (vec_l.size() != vec_sol.size())
+  /* Check input */
+  if (ls.size() != solutions.size())
   {
     throw std::runtime_error("Local solver: Input sizes does not match");
   }
 
-  // Initilize data of LHS
-  ProblemData<T> problem_data = ProblemData<T>(vec_sol, {}, vec_l);
+  /* Initialise data */
+  // Cell geometry
+  std::span<const dolfinx::scalar_value_type_t<T>> x = a.mesh()->geometry().x();
+  mdspan_t<const std::int32_t, 2> x_dofmap = a.mesh()->geometry().dofmap();
 
-  // Prepare cell geometry
-  const mesh::Geometry& geometry = a.mesh()->geometry();
+  std::vector<scalar_value_type_t<T>> coordinate_dofs(3 * x_dofmap.extent(1));
 
-  const graph::AdjacencyList<std::int32_t>& x_dofmap = geometry.dofmap();
-  const std::size_t num_dofs_g = geometry.cmap().dim();
-  std::span<const double> x = geometry.x();
-  std::vector<double> coordinate_dofs(3 * num_dofs_g);
-
-  // Prepare constants and coefficients
+  // Constants and coefficients (bilinear form)
   const std::vector<T> constants_a = fem::pack_constants(a);
 
-  auto coefficients_a_stdvec = fem::allocate_coefficient_storage(a);
-  fem::pack_coefficients(a, coefficients_a_stdvec);
+  auto interm_coefficients_a = fem::allocate_coefficient_storage(a);
+  fem::pack_coefficients(a, interm_coefficients_a);
 
   std::map<std::pair<fem::IntegralType, int>,
            std::pair<std::span<const T>, int>>
-      coefficients_a = fem::make_coefficients_span(coefficients_a_stdvec);
+      coefficients_a = fem::make_coefficients_span(interm_coefficients_a);
 
-  // Extract dofmap from functionspace
-  std::shared_ptr<const fem::DofMap> dofmap0
+  // Data for the linear form
+  ProblemData<T, U> problem_data = ProblemData<T, U>(solutions, ls);
+
+  // The DofMap
+  std::shared_ptr<const fem::DofMap> dofmap
       = a.function_spaces().at(0)->dofmap();
-  assert(dofmap0);
 
-  const graph::AdjacencyList<std::int32_t>& dofs0 = dofmap0->list();
-  const int bs0 = dofmap0->bs();
+  mdspan_t<const std::int32_t, 2> dofs = dofmap->map();
+  const int bs = dofmap->bs();
 
-  // Initialize element arrays
-  const int num_dofs0 = dofs0.links(0).size();
-  const int ndim0 = bs0 * num_dofs0;
+  // The equation system
+  const int num_dofs = dofs.extent(1);
+  const int ndim = bs * num_dofs;
 
   Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic> A_e;
   Eigen::Matrix<T, Eigen::Dynamic, 1> L_e, u_e;
 
-  A_e.resize(ndim0, ndim0);
-  L_e.resize(ndim0);
-  u_e.resize(ndim0);
+  A_e.resize(ndim, ndim);
+  L_e.resize(ndim);
+  u_e.resize(ndim);
+
+  // The solver
+  Eigen::LLT<Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>> solver;
 
   /* Solve element-wise equation systems */
   // Loop over all cell domains
   for (int i : a.integral_ids(fem::IntegralType::cell))
   {
     // Extract cells
-    const std::vector<std::int32_t>& cells = a.cell_domains(i);
+    const std::span<const std::int32_t> cells
+        = a.domain(fem::IntegralType::cell, i);
 
     // Prepare assembly bilinear form
-    const auto& kernel_a = a.kernel(fem::IntegralType::cell, i);
+    auto kernel_a = a.kernel(fem::IntegralType::cell, i);
 
-    const auto& [coeffs_a, cstride_a]
+    auto& [coeffs_a, cstride_a]
         = coefficients_a.at({fem::IntegralType::cell, i});
 
-    // Initialize LHS for current integrator
-    problem_data.initialize_kernels(fem::IntegralType::cell, i);
+    // Initialize RHS for current integrator
+    problem_data.initialize_kernel(fem::IntegralType::cell, i);
 
     // Loop over all cells
     if (!cells.empty())
@@ -112,33 +116,31 @@ void local_solver(std::vector<std::shared_ptr<fem::Function<T>>>& vec_sol,
         std::int32_t c = cells[index];
 
         // Get cell coordinates
-        auto x_dofs = x_dofmap.links(c);
-        for (std::size_t j = 0; j < x_dofs.size(); ++j)
+        auto x_dofs = MDSPAN_IMPL_STANDARD_NAMESPACE::submdspan(
+            x_dofmap, c, MDSPAN_IMPL_STANDARD_NAMESPACE::full_extent);
+
+        for (std::size_t i = 0; i < x_dofs.size(); ++i)
         {
-          std::copy_n(std::next(x.begin(), 3 * x_dofs[j]), 3,
-                      std::next(coordinate_dofs.begin(), 3 * j));
+          std::copy_n(std::next(x.begin(), 3 * x_dofs[i]), 3,
+                      std::next(coordinate_dofs.begin(), 3 * i));
         }
 
-        // Loop over all LHS
-        for (std::size_t i_lhs = 0; i_lhs < problem_data.nlhs(); ++i_lhs)
+        // Loop over all RHS
+        for (std::size_t i_rhs = 0; i_rhs < problem_data.nrhs(); ++i_rhs)
         {
-          /* Extract data for current LHS */
+          /* Extract data for current RHS */
           // Integration kernel
-          const auto& kernel_l = problem_data.kernel(i_lhs);
+          const auto& kernel_l = problem_data.kernel(i_rhs);
 
           // Constants and coefficients
-          std::span<const T> constants_l = problem_data.constants(i_lhs);
-          std::span<T> coefficients_l = problem_data.coefficients(i_lhs);
+          std::span<const T> constants_l = problem_data.constants(i_rhs);
+          std::span<T> coefficients_l = problem_data.coefficients(i_rhs);
 
           // Infos about coefficients
-          int cstride_l = problem_data.cstride(i_lhs);
-
-          // Solution vector
-          std::span<T> vec_sol_elmt
-              = problem_data.solution_function(i_lhs).x()->mutable_array();
+          int cstride_l = problem_data.cstride(i_rhs);
 
           /* Solve cell-wise problem */
-          if (i_lhs == 0)
+          if (i_rhs == 0)
           {
             // Evaluate bilinear form
             A_e.setZero();
@@ -160,23 +162,27 @@ void local_solver(std::vector<std::shared_ptr<fem::Function<T>>>& vec_sol,
           u_e = solver.solve(L_e);
 
           // Global dofs of currect element
-          std::span<const int32_t> sol_dof = dofs0.links(c);
+          smdspan_t<const std::int32_t, 1> sol_dof
+              = MDSPAN_IMPL_STANDARD_NAMESPACE::submdspan(
+                  dofs, c, MDSPAN_IMPL_STANDARD_NAMESPACE::full_extent);
 
           // Map solution into global function space
-          if (bs0 == 1)
+          std::span<T> sol_i
+              = problem_data.solution_function(i_rhs).x()->mutable_array();
+          if (bs == 1)
           {
-            for (std::size_t k = 0; k < num_dofs0; ++k)
+            for (std::size_t k = 0; k < num_dofs; ++k)
             {
-              vec_sol_elmt[sol_dof[k]] = u_e[k];
+              sol_i[sol_dof(k)] = u_e[k];
             }
           }
           else
           {
-            for (std::size_t k = 0; k < num_dofs0; ++k)
+            for (std::size_t k = 0; k < num_dofs; ++k)
             {
-              for (std::size_t cb = 0; cb < bs0; ++cb)
+              for (std::size_t m = 0; m < bs; ++m)
               {
-                vec_sol_elmt[bs0 * sol_dof[k] + cb] = u_e[bs0 * k + cb];
+                sol_i[bs * sol_dof(k) + m] = u_e[bs * k + m];
               }
             }
           }
@@ -186,60 +192,4 @@ void local_solver(std::vector<std::shared_ptr<fem::Function<T>>>& vec_sol,
   }
 }
 
-/// Local solver (using LU decomposition)
-///
-/// @param vec_sol List of solution vectors
-/// @param a       Bilinear form of all problems
-/// @param vec_l   List of multiple linear forms
-template <typename T>
-void local_solver_lu(
-    std::vector<std::shared_ptr<fem::Function<T>>>& vec_sol,
-    const fem::Form<T>& a,
-    const std::vector<std::shared_ptr<const fem::Form<T>>>& vec_l)
-{
-  // Initialize solver
-  Eigen::PartialPivLU<Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>>
-      lu_solver;
-
-  // Solve problems element-wise
-  local_solver(vec_sol, a, vec_l, lu_solver);
-}
-
-/// Local solver (using Cholesky decomposition)
-///
-/// @param vec_sol List of solution vectors
-/// @param a       Bilinear form of all problems
-/// @param vec_l   List of multiple linear forms
-template <typename T>
-void local_solver_cholesky(
-    std::vector<std::shared_ptr<fem::Function<T>>>& vec_sol,
-    const fem::Form<T>& a,
-    const std::vector<std::shared_ptr<const fem::Form<T>>>& vec_l)
-{
-  // Initialize solver
-  Eigen::LLT<Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>> llt_solver;
-
-  // Solve problems element-wise
-  local_solver(vec_sol, a, vec_l, llt_solver);
-}
-
-/// Local solver (using the CG solver)
-///
-/// @param vec_sol List of solution vectors
-/// @param a       Bilinear form of all problems
-/// @param vec_l   List of multiple linear forms
-template <typename T>
-void local_solver_cg(
-    std::vector<std::shared_ptr<fem::Function<T>>>& vec_sol,
-    const fem::Form<T>& a,
-    const std::vector<std::shared_ptr<const fem::Form<T>>>& vec_l)
-{
-  // Initialize solver
-  Eigen::ConjugateGradient<Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>,
-                           Eigen::Lower | Eigen::Upper>
-      cg_solver;
-
-  // Solve problems element-wise
-  local_solver(vec_sol, a, vec_l, cg_solver);
-}
-} // namespace dolfinx_eqlb
+} // namespace dolfinx_eqlb::base

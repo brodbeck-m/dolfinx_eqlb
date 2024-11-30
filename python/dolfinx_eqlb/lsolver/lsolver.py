@@ -8,86 +8,36 @@
 
 import typing
 
+from dolfinx import cpp as _cpp
 from dolfinx import fem
 
 import dolfinx_eqlb.cpp as eqlb_cpp
 
 
-def prepare_input(
-    list_l: typing.List[typing.Any], list_func: typing.List[fem.Function]
-) -> typing.List[typing.Any]:
-    """Prepare input for local solvers"""
-
-    # Determine number of inputs and check input data
-    n_lhs = len(list_l)
-
-    if len(list_func) != n_lhs:
-        raise RuntimeError("Missmatching inputs!")
-
-    # Create list of cpp-functions
-    list_func_cpp = []
-
-    for func in list_func:
-        list_func_cpp.append(func._cpp_object)
-
-    return list_func_cpp
-
-
-def local_solver_lu(
-    list_func: typing.List[fem.Function],
-    a: fem.FormMetaClass,
-    list_l: typing.List[fem.FormMetaClass],
-):
-    """Cell local solver based on the LU decomposition
-
-    Args:
-        list_func: The solution functions
-        a:         The bilinear form
-        list_l:    The list of linear forms
-    """
-
-    # Prepare input for local solver
-    list_func_cpp = prepare_input(list_l, list_func)
-
-    # Perform local solution
-    eqlb_cpp.local_solver_lu(list_func_cpp, a, list_l)
-
-
-def local_solver_cholesky(
-    list_func: typing.List[fem.Function],
-    a: fem.FormMetaClass,
-    list_l: typing.List[fem.FormMetaClass],
+def local_solver(
+    solutions: typing.List[fem.Function], a: fem.Form, ls: typing.List[fem.Form]
 ):
     """Cell local solver based on the Cholesky decomposition
 
-    Args:
-        list_func: The solution functions
-        a:         The bilinear form
-        list_l:    The list of linear forms
-    """
+    A problem
 
-    # Prepare input for local solver
-    list_func_cpp = prepare_input(list_l, list_func)
+                a(u, v) = l(v) with u,v in V
 
-    # Perform local solution
-    eqlb_cpp.local_solver_cholesky(list_func_cpp, a, list_l)
-
-
-def local_solver_cg(
-    list_func: typing.List[fem.Function],
-    a: fem.FormMetaClass,
-    list_l: typing.List[fem.FormMetaClass],
-):
-    """Cell local solver based on a CG solver
+    is solved for multiple RHS ls sharing a common bilinear form a.
 
     Args:
-        list_func: The solution functions
+        solutions: The solution functions
         a:         The bilinear form
-        list_l:    The list of linear forms
+        ls:        The linear forms
     """
 
+    # Check input
+    if len(solutions) != len(ls):
+        raise RuntimeError("Missmatching inputs!")
+
     # Prepare input for local solver
-    list_func_cpp = prepare_input(list_l, list_func)
+    solutions_cpp = [s._cpp_object for s in solutions]
+    ls_cpp = [l._cpp_object for l in ls]
 
     # Perform local solution
-    eqlb_cpp.local_solver_cg(list_func_cpp, a, list_l)
+    eqlb_cpp.local_solver(solutions_cpp, a._cpp_object, ls_cpp)

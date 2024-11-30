@@ -7,12 +7,12 @@
 /// projections.
 namespace dolfinx_eqlb::base
 {
-}
 
-#include "BoundaryData.hpp"
-#include "FluxBC.hpp"
-#include "Patch.hpp"
-#include "QuadratureRule.hpp"
-#include "mdspan.hpp"
+} // namespace dolfinx_eqlb::base
 
 // dolfinx_eqlb common interface
+// #include "BoundaryData.hpp"
+// #include "FluxBC.hpp"
+// #include "Patch.hpp"
+// #include "QuadratureRule.hpp"
+#include "mdspan.hpp"
