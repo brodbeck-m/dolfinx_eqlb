@@ -181,7 +181,7 @@ def create_hierarchic_rt(cell: basix.CellType, degree: int, discontinuous: bool)
     else:
         space = basix.SobolevSpace.HDiv
 
-    return basix.create_custom_element(
+    return basix.ufl.custom_element(
         cell,
         [tdim],
         wcoeffs,

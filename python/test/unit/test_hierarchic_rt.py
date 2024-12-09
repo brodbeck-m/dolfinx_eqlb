@@ -11,6 +11,7 @@ import numpy as np
 import pytest
 
 import basix
+import basix.ufl
 from dolfinx import fem, mesh
 
 from dolfinx_eqlb.elmtlib import create_hierarchic_rt
@@ -54,7 +55,7 @@ def evaluate_dofs_hierarchic_rt(tdim, degree, rt_basix, dofs_basix):
                 pnt_fct = np.array([[p[0], 0] for p in pnt])
 
             # evaluate reference function
-            shp_fkt = rt_basix.tabulate(0, pnt_fct)
+            shp_fkt = rt_basix.basix_element.tabulate(0, pnt_fct)
 
             values_fct = evaluate_fe_functions(shp_fkt[0, :, :, :], dofs_basix)
             normal_moment = values_fct[:, 0] * normal[0] + values_fct[:, 1] * normal[1]
@@ -72,7 +73,7 @@ def evaluate_dofs_hierarchic_rt(tdim, degree, rt_basix, dofs_basix):
             pnt, wts = basix.make_quadrature(basix.CellType.triangle, 2 * degree)
 
             # evaluate reference function
-            shp_fkt = rt_basix.tabulate(1, pnt)
+            shp_fkt = rt_basix.basix_element.tabulate(1, pnt)
 
             values_cell = evaluate_fe_functions(shp_fkt[0, :, :, :], dofs_basix)
             values_cell_dx = evaluate_fe_functions(shp_fkt[1, :, :, :], dofs_basix)
@@ -133,11 +134,11 @@ def test_element_reference(cell: basix.CellType, degree: int, discontinuous: boo
         tdim = 3
 
     # setup test function
-    rt_basix = basix.create_element(
+    rt_basix = basix.ufl.element(
         basix.ElementFamily.RT,
-        basix.CellType.triangle,
+        cell,
         degree,
-        basix.LagrangeVariant.equispaced,
+        discontinuous=discontinuous,
     )
     dofs_basix = 2 * (np.random.rand(rt_basix.dim) + 0.1)
 
@@ -150,10 +151,10 @@ def test_element_reference(cell: basix.CellType, degree: int, discontinuous: boo
 
     # compare functions at test-points
     pvalues_basix = evaluate_fe_functions(
-        rt_basix.tabulate(0, points)[0, :, :, :], dofs_basix
+        rt_basix.basix_element.tabulate(0, points)[0, :, :, :], dofs_basix
     )
     pvalues_custom = evaluate_fe_functions(
-        rt_custom.tabulate(0, points)[0, :, :, :], dofs_custom
+        rt_custom.basix_element.tabulate(0, points)[0, :, :, :], dofs_custom
     )
 
     assert np.allclose(pvalues_basix, pvalues_custom)
@@ -189,16 +190,15 @@ def test_interpolation(cell: basix.CellType, degree: int, discontinuous: bool):
 
     # create function spaces
     P_rt_custom = create_hierarchic_rt(cell, degree, discontinuous)
-    P_rt_basix = basix.create_element(
+    P_rt_basix = basix.ufl.element(
         basix.ElementFamily.RT,
         cell,
         degree,
-        basix.LagrangeVariant.equispaced,
-        discontinuous,
+        discontinuous=discontinuous,
     )
 
-    V_rt_custom = fem.FunctionSpace(domain, basix.ufl_wrapper.BasixElement(P_rt_custom))
-    V_rt_basix = fem.FunctionSpace(domain, basix.ufl_wrapper.BasixElement(P_rt_basix))
+    V_rt_custom = fem.functionspace(domain, P_rt_custom)
+    V_rt_basix = fem.functionspace(domain, P_rt_basix)
 
     # create random function
     f_rt_custom = fem.Function(V_rt_custom)
@@ -226,27 +226,27 @@ def test_interpolation(cell: basix.CellType, degree: int, discontinuous: bool):
     geometry = np.zeros((ndof_cell_geom, 2), dtype=np.float64)
 
     # tabulate shape functions on reference cell
-    shpfkt_custom_ref = P_rt_custom.tabulate(0, points)
-    shpfkt_basix_ref = P_rt_basix.tabulate(0, points)
+    shpfkt_custom_ref = P_rt_custom.basix_element.tabulate(0, points)
+    shpfkt_basix_ref = P_rt_basix.basix_element.tabulate(0, points)
 
     # loop over cells
     ncells = domain.topology.index_map(domain.topology.dim).size_local
 
     for c in range(0, ncells):
         # mapping of shape functions
-        geometry[:] = domain.geometry.x[dofmap_geom.links(c), :2]
+        geometry[:] = domain.geometry.x[dofmap_geom[c, :], :2]
 
         J_q = np.dot(geometry.T, dphi_geom.T)
         K_q = np.linalg.inv(J_q)
         detj = np.linalg.det(J_q)
 
-        shpfkt_custom_cur = P_rt_custom.push_forward(
+        shpfkt_custom_cur = P_rt_custom.basix_element.push_forward(
             shpfkt_custom_ref[0],
             np.array([J_q for p in points]),
             np.array([detj for p in points]),
             np.array([K_q for p in points]),
         )
-        shpfkt_basix_cur = P_rt_basix.push_forward(
+        shpfkt_basix_cur = P_rt_basix.basix_element.push_forward(
             shpfkt_basix_ref[0],
             np.array([J_q for p in points]),
             np.array([detj for p in points]),
@@ -254,8 +254,8 @@ def test_interpolation(cell: basix.CellType, degree: int, discontinuous: bool):
         )
 
         # extract cell DOFs
-        dofs_custom = f_rt_custom.x.array[V_rt_custom.dofmap.list.links(c)]
-        dofs_basix = f_rt_basix.x.array[V_rt_basix.dofmap.list.links(c)]
+        dofs_custom = f_rt_custom.x.array[V_rt_custom.dofmap.list[c, :]]
+        dofs_basix = f_rt_basix.x.array[V_rt_basix.dofmap.list[c, :]]
 
         # evaluate functions at test-points
         pvalues_custom = evaluate_fe_functions(shpfkt_custom_cur[:, :, :], dofs_custom)
