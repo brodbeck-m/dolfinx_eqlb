@@ -33,7 +33,7 @@ class Geometry:
     def __init__(
         self,
         mesh: dmesh.Mesh,
-        facet_fkt: dmesh.MeshTagsMetaClass,
+        facet_fkt: dmesh.MeshTags,
         ds: ufl.Measure,
         dv: typing.Optional[ufl.Measure] = None,
     ):

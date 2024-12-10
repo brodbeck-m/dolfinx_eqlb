@@ -4,13 +4,17 @@
 #
 # SPDX-License-Identifier:    LGPL-3.0-or-later
 
-from .FluxEqlbEV import FluxEqlbEV
-from .FluxEqlbSE import FluxEqlbSE
-from .bcs import fluxbc, boundarydata
+from .BoundaryFunction import BoundaryFunction
+from .FluxBCs import FluxBCs
+
+# from .FluxEqlbEV import FluxEqlbEV
+# from .FluxEqlbSE import FluxEqlbSE
+
+# from .bcs import fluxbc, boundarydata
 
 __all__ = [
-    "FluxEqlbEV",
-    "FluxEqlbSE",
-    "fluxbc",
-    "boundarydata",
+    "BoundaryFunction",
+    "FluxBCs",
+    # "FluxEqlbEV",
+    # "FluxEqlbSE",
 ]
