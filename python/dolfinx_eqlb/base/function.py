@@ -43,9 +43,9 @@ class Expression(fem.Expression):
         """
 
         # Extract from precompiled expression
-        self._ufcx_form = e.ufcx_form
+        self._ufcx_expression = e.ufcx_form
         self._code = e.code
-        self._ufl_expression = e.ufl_form
+        self._ufl_expression = e.ufl_expression
 
         # Prepare constants and coefficients
         ufl_coefficients = ufl.algorithms.extract_coefficients(self.ufl_expression)
@@ -87,7 +87,9 @@ class Expression(fem.Expression):
                 raise NotImplementedError(f"Type {dtype} not supported.")
 
         self._cpp_object = _create_expression(e.dtype)(
-            e.module.cast("uintptr_t", e.module.addressof(self._ufcx_expression)),
+            e.module.ffi.cast(
+                "uintptr_t", e.module.ffi.addressof(self._ufcx_expression)
+            ),
             coefficients,
             constants,
             self.argument_function_space,
