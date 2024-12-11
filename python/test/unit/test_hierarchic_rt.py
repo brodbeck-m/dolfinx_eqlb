@@ -14,7 +14,7 @@ import basix
 import basix.ufl
 from dolfinx import fem, mesh
 
-from dolfinx_eqlb.elmtlib import create_hierarchic_rt
+from dolfinx_eqlb.base import create_hierarchic_rt
 
 
 # --- Auxiliary functions ---
