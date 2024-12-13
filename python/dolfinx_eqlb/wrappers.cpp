@@ -8,19 +8,19 @@
 #include <dolfinx/fem/Form.h>
 #include <dolfinx/fem/Function.h>
 // #include <dolfinx_eqlb/base/BoundaryData.hpp>
-// #include <dolfinx_eqlb/base/FluxBC.hpp>
+#include <dolfinx_eqlb/base/FluxBC.hpp>
+#include <dolfinx_eqlb/base/deqlb_base.hpp>
 #include <dolfinx_eqlb/base/local_solver.hpp>
 // #include <dolfinx_eqlb/ev/reconstruction.hpp>
 // #include <dolfinx_eqlb/se/reconstruction.hpp>
-// #include <ufcx.h>
+#include <ufcx.h>
 
-#include <dolfinx_eqlb/base/deqlb_base.hpp>
 #include <dolfinx_eqlb/ev/deqlb_ev.hpp>
 #include <dolfinx_eqlb/se/deqlb_se.hpp>
 
 #include <caster_petsc.h>
 #include <nanobind/nanobind.h>
-// #include <nanobind/ndarray.h>
+#include <nanobind/ndarray.h>
 // #include <nanobind/stl/array.h>
 // #include <nanobind/stl/map.h>
 // #include <nanobind/stl/pair.h>
@@ -58,6 +58,39 @@ void declare_lsolver(nb::module_& m)
       nb::arg("solutions"), nb::arg("a"), nb::arg("ls"), "Local solver");
 }
 
+template <dolfinx::scalar T, std::floating_point U>
+void declare_bcs(nb::module_& m)
+{
+  nb::class_<base::FluxBC<T, U>>(m, "FluxBC", "FluxBC object")
+      .def(
+          "__init__",
+          [](base::FluxBC<T, U>* fp,
+             const std::vector<std::int32_t>& boundary_facets,
+             std::uintptr_t fn_addr,
+             std::vector<std::shared_ptr<const fem::Constant<T>>> constants,
+             std::vector<std::shared_ptr<const fem::Function<T, U>>>
+                 coefficients,
+             bool is_zero, bool is_timedependent, bool has_time_function,
+             int quadrature_degree)
+          {
+            using kern = std::function<void(T*, const T*, const T*, const U*,
+                                            const int*, const std::uint8_t*)>;
+
+            auto tabulate_expression_ptr
+                = (void (*)(T*, const T*, const T*, const U*, const int*,
+                            const std::uint8_t*))fn_addr;
+
+            new (fp) base::FluxBC<T, U>(boundary_facets,
+                                        tabulate_expression_ptr, constants,
+                                        coefficients, is_zero, is_timedependent,
+                                        has_time_function, quadrature_degree);
+          },
+          nb::arg("boundary_facets"), nb::arg("boundary_expression"),
+          nb::arg("constants"), nb::arg("coefficients"), nb::arg("is_zero"),
+          nb::arg("is_timedependent"), nb::arg("has_time_function"),
+          nb::arg("quadrature_degree"));
+}
+
 NB_MODULE(cpp, m)
 {
   // Create module for C++ wrappers
@@ -70,6 +103,7 @@ NB_MODULE(cpp, m)
 
   // The local solver
   declare_lsolver<double, double>(m);
+  declare_bcs<double, double>(m);
 
   // Some simple test functions
   m.def("function_ev", []() { ev::function_ev(); }, "A function from ev");

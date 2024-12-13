@@ -71,7 +71,9 @@ class BoundaryFunction:
 
         # Required quadrature for equilibration
         self.projected_for_eqlb = False if (quadrature_degree is None) else True
-        self.quadrature_degree = quadrature_degree
+        self.quadrature_degree = (
+            -1 if (quadrature_degree is None) else quadrature_degree
+        )
 
         # Required constants and coefficients
         self.has_constants: bool = False

@@ -16,7 +16,7 @@ from dolfinx import default_scalar_type, default_real_type, fem, mesh
 import dolfinx.fem.petsc
 import ufl
 
-from dolfinx_eqlb.elmtlib import create_hierarchic_rt
+from dolfinx_eqlb.base import create_hierarchic_rt
 from dolfinx_eqlb.lsolver import local_projection
 
 # from dolfinx_eqlb.eqlb import fluxbc, boundarydata

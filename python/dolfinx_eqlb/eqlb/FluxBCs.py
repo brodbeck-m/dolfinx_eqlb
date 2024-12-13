@@ -13,11 +13,16 @@ import typing
 
 import basix.ufl
 import basix.cell
-import ffcx
-from dolfinx import default_scalar_type, fem, jit, mesh
+from dolfinx import default_scalar_type, fem, mesh
 import ufl
 
-# from dolfinx_eqlb.cpp import FluxBC
+from dolfinx_eqlb.base import (
+    CompiledExpression,
+    compile_expression,
+    extract_constants_and_coefficients,
+)
+
+from dolfinx_eqlb.cpp import FluxBC
 
 from .BoundaryFunction import BoundaryFunction, ConstantBoundaryFunction
 
@@ -34,11 +39,6 @@ class CompiledForm:
     code: str  # The source code
     dtype: npt.DTypeLike  # data type used for the `ufcx_form`
     evaluation_points: int  # The evaluation points
-
-
-class FluxBC:
-    def __init__(self, V, fcts, form, pnts, qderee: typing.Optional[int]):
-        pass
 
 
 class FluxBCs:
@@ -79,13 +79,13 @@ class FluxBCs:
         # Time dependency
         self.timedependent: bool = False
 
-        # Projections of boundary data
+        # Evaluation of boundary data
         self.projections_for_eqlb: bool = False
         self.quadrature_degree: typing.Optional[int] = None
 
         # Boundary functions
         self.boundary_functions: typing.List[typing.Type[BoundaryFunction]] = []
-        self.boundary_forms: typing.List[CompiledForm] = []
+        self.boundary_expressions: typing.List[CompiledExpression] = []
 
         # Required constants (for compilation)
         self.cnsts: typing.Dict[str, ufl.Constant] = {}
@@ -242,8 +242,17 @@ class FluxBCs:
         V: fem.FunctionSpace,
         facet_functions: mesh.MeshTags,
         time: fem.Constant,
-        time_functions: fem.Constant,
+        tfunc: fem.Constant,
     ) -> typing.List[FluxBC]:
+        """The essential boundary conditions for the equilibration problem
+
+        Args:
+            V:               The function space
+            facet_functions: The boundary markers
+            time:            The physical time
+            tfunc:           The time-dependent scaling factors for each boundary function
+        """
+
         # Check compilation status
         if not self.boundary_functions_complied:
             raise RuntimeError("Essential flux BCs have not been pre-complied yet!")
@@ -257,23 +266,19 @@ class FluxBCs:
         # Create data structure with flux BCs
         bcs = [[] for _ in range(self.nfluxes)]
 
-        for i in self.size:
-            # The boundary function
-            f = self.boundary_functions[i]
-            cf = self.boundary_forms[i]
+        for f, cf in zip(self.boundary_functions, self.boundary_expressions):
+            # Constant and coefficient maps
+            cnsts_map = f.constants(domain, time)
+            cnsts_map.update({self.cnsts["tfunc"]: tfunc})
+            coeff_map = f.coefficients(domain, time)
 
-            # Create the mesh-dependent form
-            cnsts_map = f.constants(V.mesh)
-            cnsts_map.update({self.cnsts["time"]: time})
-            cnsts_map.update({self.cnsts["tfunc"]: time_functions})
+            # Data of pre-complied expression
+            cnsts, coeff = extract_constants_and_coefficients(
+                cf.ufl_expression, cf.ufcx_expression, cnsts_map, coeff_map
+            )
 
-            coeffs_map = f.coefficients(V.mesh)
-
-            form_i = fem.create_form(cf, [], domain, {}, coeffs_map, cnsts_map)
-
-            # Append list of FluxBCs
+            # The FluxBC
             offs = 0
-
             for j in range(0, f.id_subspace):
                 if self.flux_is_tensorvalued[j]:
                     offs += gdim
@@ -287,20 +292,17 @@ class FluxBCs:
                 ]
 
                 # The flux BC
-                if f.projected_for_eqlb:
-                    bcs[offs + k].append(
-                        FluxBC(
-                            V._cpp_object,
-                            fcts,
-                            form_i,
-                            cf.evaluation_points,
-                            self.quadrature_degree,
-                        )
+                bcs[offs + k].append(
+                    FluxBC(
+                        fcts,
+                        cnsts,
+                        coeff,
+                        f.is_zero,
+                        f.is_timedependent,
+                        f.has_time_function,
+                        f.quadrature_degree,
                     )
-                else:
-                    bcs[offs + k].append(
-                        FluxBC(V._cpp_object, fcts, form_i, cf.evaluation_points)
-                    )
+                )
 
     # --- Time update
     def update_time(self, time: fem.Constant, tfunc: fem.Constant) -> None:
@@ -472,10 +474,6 @@ class FluxBCs:
         facet_type = facet_types[0]
         nfcts = len(facet_types)
 
-        # Compile options
-        p_ffcx = ffcx.get_options(form_compiler_options)
-        p_jit = jit.get_options(jit_options)
-
         # Pre-compile the boundary functions for the equilibration problem
         try:
             # Evaluation points (interpolation of a projected function)
@@ -516,24 +514,14 @@ class FluxBCs:
 
             for i, f in enumerate(self.boundary_functions):
                 # The boundary value
-                value = self.cnsts["tfunc"][i] * f.value(domain, self.cnsts["time"])
+                value = f.value(domain, self.cnsts["time"])
 
                 # Compile the value for later usage in c++
-                if f.projected_for_eqlb:
-                    ufcx_form, module, code = jit.ffcx_jit(
-                        MPI.COMM_WORLD, (value, qpnts), p_ffcx, p_jit
-                    )
-                    npnts = nqpnts_fct
-                else:
-                    ufcx_form, module, code = jit.ffcx_jit(
-                        MPI.COMM_WORLD, (value, ipnts), p_ffcx, p_jit
-                    )
-                    npnts = nipnts_fct
+                pnts = qpnts if (f.projected_for_eqlb) else ipnts
 
-                # Store the compiled form
-                self.boundary_forms.append(
-                    CompiledForm(
-                        value, ufcx_form, module, code, p_ffcx["scalar_type"], npnts
+                self.boundary_expressions.append(
+                    compile_expression(
+                        MPI.COMM_WORLD, value, pnts, form_compiler_options, jit_options
                     )
                 )
         except:

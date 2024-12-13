@@ -48,20 +48,9 @@ class Expression(fem.Expression):
         self._ufl_expression = e.ufl_expression
 
         # Prepare constants and coefficients
-        ufl_coefficients = ufl.algorithms.extract_coefficients(self.ufl_expression)
-        coefficients = []
-
-        for i in range(self._ufcx_expression.num_coefficients):
-            # Get the ufl coefficient
-            ufl_coeff_i = ufl_coefficients[
-                self._ufcx_expression.original_coefficient_positions[i]
-            ]
-
-            # Replace it by the corresponding function
-            coefficients.append(coefficient_map[ufl_coeff_i]._cpp_object)
-
-        ufl_constants = ufl.algorithms.analysis.extract_constants(self.ufl_expression)
-        constants = [constant_map[ufl_const]._cpp_object for ufl_const in ufl_constants]
+        constants, coefficients = extract_constants_and_coefficients(
+            self.ufl_expression, self._ufcx_expression, constant_map, coefficient_map
+        )
 
         # Get related function space
         arguments = ufl.algorithms.extract_arguments(self._ufl_expression)
@@ -94,6 +83,39 @@ class Expression(fem.Expression):
             constants,
             self.argument_function_space,
         )
+
+
+def extract_constants_and_coefficients(
+    ufl_expression: ufl.core.expr.Expr,
+    ufcx_expression: typing.Any,
+    constant_map: typing.Dict[ufl.Constant, fem.Constant],
+    coefficient_map: typing.Dict[ufl.Coefficient, fem.Function],
+) -> typing.Tuple[typing.List[ufl.Constant], typing.List[ufl.Coefficient]]:
+    """Prepare mesh-dependent data of a pre-compiled UFL expression.
+
+    Args:
+        ufl_expression:  The UFL expression
+        ufcx_expression: The compiled UFL expression
+        constant_map:    Map from UFL constant to constant with data
+        coefficient_map: Map from UFL coefficient to function with data
+    """
+
+    ufl_coefficients = ufl.algorithms.extract_coefficients(ufl_expression)
+    coefficients = []
+
+    for i in range(ufcx_expression.num_coefficients):
+        # Get the ufl coefficient
+        ufl_coeff_i = ufl_coefficients[
+            ufcx_expression.original_coefficient_positions[i]
+        ]
+
+        # Replace it by the corresponding function
+        coefficients.append(coefficient_map[ufl_coeff_i]._cpp_object)
+
+    ufl_constants = ufl.algorithms.analysis.extract_constants(ufl_expression)
+    constants = [constant_map[ufl_const]._cpp_object for ufl_const in ufl_constants]
+
+    return constants, coefficients
 
 
 def compile_expression(

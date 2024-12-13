@@ -1,6 +1,6 @@
 set(HEADERS_base
     # ${CMAKE_CURRENT_SOURCE_DIR}/BoundaryData.hpp
-    # ${CMAKE_CURRENT_SOURCE_DIR}/FluxBC.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/FluxBC.hpp
     # ${CMAKE_CURRENT_SOURCE_DIR}/KernelData.hpp
     # ${CMAKE_CURRENT_SOURCE_DIR}/Patch.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/ProblemData.hpp
