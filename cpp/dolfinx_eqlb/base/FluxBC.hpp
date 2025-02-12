@@ -32,41 +32,54 @@ class FluxBC
 public:
   /// Storage of boundary conditions (no quadrature required)
   ///
-  /// Passes the boundary conditions for the flux-space from the python
-  /// interface to the c++ level. The precompiled normal-trace of the flux is
-  /// stored, together with the boundary facets an some informations, required
-  /// for calculation the boundary DOFs therefrom.
+  /// Pass a boundary condition for the flux-space from the python
+  /// interface to the c++ level. Its precompiled normal-trace is stored,
+  /// together with the boundary facets and information, required for the
+  /// calculation the actual boundary DOFs. If negative values are passed
+  /// for the quadrature degree, no projection is performed.
   ///
-  /// @param boundary_facets           The mesh-facets on which the flux is
-  ///                                  prescribed
-  /// @param boundary_expression       The pre-complied normal-trace of the flux
-  /// @param n_bceval_per_fct          Number of evaluations per facet
-  /// @param coefficients              The vector of coefficient data
-  /// @param positions_of_coefficients The positions each data set within the
-  ///                                  extracted vector of coefficients.
-  /// @param constants                 The constants
-  FluxBC(const std::vector<std::int32_t>& boundary_facets,
-         std::function<void(T*, const T*, const T*, const U*, const int*,
+  /// @param boundary_expression The boundary expression
+  /// @param constants           The constants
+  /// @param coefficients        The coefficients
+  /// @param n_eval_per_fct      The number of point-evaluations per facet
+  /// @param quadrature_degree   The quadrature degree used for the projection
+  ///                            of the normal-trace into a polynomial space
+  /// @param is_zero             True, if the boundary value is zero
+  /// @param is_timedependent    True, if the boundary value is time-dependent
+  /// @param has_time_function   True, if the time-dependency is covered by a
+  ///                            multiplicative time function
+  /// @param boundary_facets     The boundary facets
+  /// @param n_bdofs             The number of boundary DOFs
+  FluxBC(std::function<void(T*, const T*, const T*, const U*, const int*,
                             const std::uint8_t*)>
              boundary_expression,
          std::vector<std::shared_ptr<const fem::Constant<T>>> constants,
          std::vector<std::shared_ptr<const fem::Function<T, U>>> coefficients,
-         bool is_zero, bool is_timedependent, bool has_time_function,
-         int quadrature_degree)
-      : _fcts(boundary_facets), _nfcts(boundary_facets.size()),
-        _boundary_kernel(boundary_expression), _constants(constants),
-        _coefficients(coefficients), _is_zero(is_zero),
-        _is_timedependent(is_timedependent),
-        _has_time_function(has_time_function),
+         int n_eval_per_fct, int quadrature_degree, bool is_zero,
+         bool is_timedependent, bool has_time_function,
+         const std::vector<std::int32_t>& boundary_facets, int n_bdofs)
+      : _boundary_kernel(boundary_expression), _constants(constants),
+        _coefficients(coefficients), _quadrature_degree(quadrature_degree),
         _projection_required((quadrature_degree < 0) ? false : true),
-        _quadrature_degree(quadrature_degree)
+        _cstide_eval(n_eval_per_fct), _is_zero(is_zero),
+        _is_timedependent(is_timedependent),
+        _has_time_function(has_time_function), _fcts(boundary_facets),
+        _nfcts(boundary_facets.size()), _nbdofs(n_bdofs)
   {
+    if ((_is_timedependent) && (_has_time_function))
+    {
+      _boundary_values.resize(n_bdofs);
+    }
   }
 
   /* Getter functions */
   /// Return the number of boundary facets
   /// @param[out] nfcts The number of boundary facets
   std::int32_t num_facets() const { return _nfcts; }
+
+  /// Return the number of point evaluations per facet
+  /// @param[out] num_eval The number of point evaluations per facet
+  int num_eval_per_facet() const { return _cstide_eval; }
 
   /// Check if projection is required
   /// @param[out] projection_id The projection id
@@ -218,14 +231,20 @@ protected:
   const bool _is_zero, _is_timedependent, _has_time_function,
       _projection_required;
 
+  // Quadrature degree
+  const int _quadrature_degree;
+
   // Boundary facets
-  const std::int32_t _nfcts;
   const std::vector<std::int32_t> _fcts;
+  const std::int32_t _nfcts, _nbdofs;
 
   // Kernel (executable c++ code)
   std::function<void(T*, const T*, const T*, const U*, const int*,
                      const std::uint8_t*)>
       _boundary_kernel;
+
+  // Number of evaluation-points per facet
+  const int _cstide_eval;
 
   // Coefficients associated with the BCs
   std::vector<std::shared_ptr<const fem::Function<T, U>>> _coefficients;
@@ -233,8 +252,8 @@ protected:
   // Constants associated with the BCs
   std::vector<std::shared_ptr<const fem::Constant<T>>> _constants;
 
-  // Projection
-  const int _quadrature_degree;
+  // Storage for the boundary values (only for BCs with time-function)
+  std::vector<T> _boundary_values;
 };
 
 } // namespace dolfinx_eqlb::base

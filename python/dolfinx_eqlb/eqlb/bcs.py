@@ -26,21 +26,26 @@ def fluxbc(
     value: typing.Any,
     facets: NDArray,
     V: fem.FunctionSpace,
+    is_time_depended: typing.Optional[bool] = False,
+    has_time_function: typing.Optional[bool] = False,
     requires_projection: typing.Optional[bool] = False,
     quadrature_degree: typing.Optional[int] = None,
 ) -> FluxBC:
     """Essential boundary condition for one flux on a set of facets
 
     Args:
-        value:               Boundary values (flux x normal) as ufl-function
+        value:               Boundary values (flux x normal) as ufl expression
         facets:              The boundary facets
         V:                   The function space of the reconstructed flux
+        is_time_depended:    True, if the boundary data are time dependent
+        has_time_function:   True, if the time-dependency can be expressed by a
+                             multiplicative factor
         requires_projection: Perform projection for non matching (non-polynomial or
                              higher-order polynomial) boundary data
         quadrature_degree:   Degree of quadrature rule for projection
 
     Returns:
-        The essential flux BCs on a group of facets
+        The essential flux BC on a group of facets
     """
 
     # --- Extract required data
@@ -60,6 +65,12 @@ def fluxbc(
 
     # Degree of flux element
     flux_degree = V.element.basix_element.degree
+
+    # The number of boundary DOFs
+    if domain.geometry.dim == 2:
+        bdofs = flux_degree * facets.shape[0]
+    else:
+        raise NotImplementedError("3D meshes currently not supported")
 
     # --- Compile boundary function
     # Evaluation points of boundary function
@@ -102,6 +113,9 @@ def fluxbc(
         else:
             raise NotImplementedError("3D meshes currently not supported")
     else:
+        # Set default value for the quadrature degree
+        quadrature_degree = -1
+
         # Points required for interpolation into element
         pnts = V.element.basix_element.points
 
@@ -137,29 +151,18 @@ def fluxbc(
         positions.append(c_positions[i])
 
     # Initialise FluxBC
-    if requires_projection:
-        bc = FluxBC(
-            V._cpp_object,
-            facets,
-            ffi.cast("uintptr_t", ffi.addressof(ufcx_form)),
-            int(pnts_eval.shape[0] / nfcts_per_cell),
-            quadrature_degree,
-            coefficients_cpp,
-            positions,
-            constants_cpp,
-        )
-    else:
-        bc = FluxBC(
-            V._cpp_object,
-            facets,
-            ffi.cast("uintptr_t", ffi.addressof(ufcx_form)),
-            int(pnts_eval.shape[0] / nfcts_per_cell),
-            coefficients_cpp,
-            positions,
-            constants_cpp,
-        )
-
-    return bc
+    return FluxBC(
+        ffi.cast("uintptr_t", ffi.addressof(ufcx_form)),
+        constants_cpp,
+        coefficients_cpp,
+        int(pnts_eval.shape[0] / nfcts_per_cell),
+        quadrature_degree,
+        False,
+        is_time_depended,
+        has_time_function,
+        facets,
+        bdofs,
+    )
 
 
 def boundarydata(
