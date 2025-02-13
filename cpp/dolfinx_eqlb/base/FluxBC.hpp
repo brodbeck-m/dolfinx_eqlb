@@ -6,6 +6,8 @@
 
 #pragma once
 
+#include "mdspan.hpp"
+
 #include <dolfinx/fem/Constant.h>
 #include <dolfinx/fem/ElementDofLayout.h>
 #include <dolfinx/fem/Function.h>
@@ -70,9 +72,26 @@ public:
     {
       _boundary_values.resize(n_bdofs);
     }
+    std::cout << "Test boundary kernel: " << std::endl;
+    std::vector<T> values(3);
+    std::vector<U> coordinates(9);
+
+    _boundary_kernel(values.data(), nullptr, nullptr, coordinates.data(),
+                     nullptr, nullptr);
+
+    std::cout << "Calculated values: " << values[0] << ", " << values[1] << ", "
+              << values[2] << std::endl;
   }
 
   /* Getter functions */
+  /// Return if the BC is a function of time
+  /// @param[out] is_timedependent True, if the BC is a function of time
+  bool is_timedependent() const { return _is_timedependent; }
+
+  /// Return if the BC has a time function
+  /// @param[out] is_timedependent True, if the BC has a time function
+  bool has_time_function() const { return _has_time_function; }
+
   /// Return the number of boundary facets
   /// @param[out] nfcts The number of boundary facets
   std::int32_t num_facets() const { return _nfcts; }
@@ -152,13 +171,13 @@ public:
       coefficients.resize(_nfcts * cstride);
 
       // The mesh
-      std::shared_ptr<mesh::Mesh<U>> mesh
+      std::shared_ptr<const mesh::Mesh<U>> mesh
           = _coefficients[0]->function_space()->mesh();
 
       // Extract connectivity facets->cell
       int dim = mesh->geometry().dim();
       std::shared_ptr<const graph::AdjacencyList<std::int32_t>> fct_to_cell
-          = mesh->topology().connectivity(dim - 1, dim);
+          = mesh->topology()->connectivity(dim - 1, dim);
 
       // Extract coefficients
       std::int32_t offs_cstride = 0;
@@ -168,9 +187,11 @@ public:
         // Data storage
         std::span<const T> x_coeff = function->x()->array();
 
-        // Function space
+        // Function space and DOFmap
         std::shared_ptr<const fem::FunctionSpace<U>> function_space
             = function->function_space();
+        mdspan_t<const std::int32_t, 2> dofmap
+            = function_space->dofmap()->map();
 
         // cstride of current coefficients
         const int bs = function_space->element()->block_size();
@@ -187,8 +208,9 @@ public:
           std::int32_t c = fct_to_cell->links(fct)[0];
 
           // DOFmap of cell
-          std::span<const int32_t> dofs
-              = function_space->dofmap()->list().links(c);
+          smdspan_t<const std::int32_t, 1> dofs
+              = MDSPAN_IMPL_STANDARD_NAMESPACE::submdspan(
+                  dofmap, c, MDSPAN_IMPL_STANDARD_NAMESPACE::full_extent);
 
           // Flattened storage
           std::int32_t offs_coef = i * cstride + offs_cstride;
