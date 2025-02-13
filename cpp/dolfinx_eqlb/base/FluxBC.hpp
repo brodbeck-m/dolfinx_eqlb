@@ -10,8 +10,10 @@
 
 #include <dolfinx/fem/Constant.h>
 #include <dolfinx/fem/ElementDofLayout.h>
+#include <dolfinx/fem/Expression.h>
 #include <dolfinx/fem/Function.h>
 #include <dolfinx/fem/FunctionSpace.h>
+#include <dolfinx/fem/utils.h>
 #include <dolfinx/graph/AdjacencyList.h>
 
 #include <algorithm>
@@ -46,51 +48,87 @@ public:
   /// @param n_eval_per_fct      The number of point-evaluations per facet
   /// @param quadrature_degree   The quadrature degree used for the projection
   ///                            of the normal-trace into a polynomial space
-  /// @param is_zero             True, if the boundary value is zero
   /// @param is_timedependent    True, if the boundary value is time-dependent
   /// @param has_time_function   True, if the time-dependency is covered by a
   ///                            multiplicative time function
   /// @param boundary_facets     The boundary facets
   /// @param n_bdofs             The number of boundary DOFs
-  FluxBC(std::function<void(T*, const T*, const T*, const U*, const int*,
-                            const std::uint8_t*)>
-             boundary_expression,
-         std::vector<std::shared_ptr<const fem::Constant<T>>> constants,
-         std::vector<std::shared_ptr<const fem::Function<T, U>>> coefficients,
-         int n_eval_per_fct, int quadrature_degree, bool is_zero,
-         bool is_timedependent, bool has_time_function,
-         const std::vector<std::int32_t>& boundary_facets, int n_bdofs)
-      : _boundary_kernel(boundary_expression), _constants(constants),
-        _coefficients(coefficients), _quadrature_degree(quadrature_degree),
-        _projection_required((quadrature_degree < 0) ? false : true),
-        _cstide_eval(n_eval_per_fct), _is_zero(is_zero),
-        _is_timedependent(is_timedependent),
-        _has_time_function(has_time_function), _fcts(boundary_facets),
-        _nfcts(boundary_facets.size()), _nbdofs(n_bdofs)
+  FluxBC(std::shared_ptr<const fem::Expression<T, U>> value,
+         const std::vector<std::int32_t>& facets,
+         const fem::FunctionSpace<U>& V)
+      : _expression(value), _nfcts(facets.size()), _is_zero(false),
+        _projection_required(false), _facets(facets), _quadrature_degree(0)
   {
-    if ((_is_timedependent) && (_has_time_function))
+    // Set up entities (pair of cell and local facet id)
+    if (!(_is_zero))
     {
-      _boundary_values.resize(n_bdofs);
+      // The mesh
+      std::shared_ptr<const mesh::Mesh<U>> mesh = V.mesh();
+
+      // The spatial dimension
+      const int gdim = mesh->geometry().dim();
+
+      // The connectivity between facets and cells
+      std::shared_ptr<const graph::AdjacencyList<std::int32_t>> fct_to_cell
+          = mesh->topology()->connectivity(gdim - 1, gdim);
+      std::shared_ptr<const graph::AdjacencyList<std::int32_t>> cell_to_fct
+          = mesh->topology()->connectivity(gdim, gdim - 1);
+
+      // Resize storage
+      _entities.resize(2 * _nfcts);
+
+      for (int i = 0; i < _nfcts; ++i)
+      {
+        // Facet and adjacent cell
+        std::int32_t f = facets[i];
+        std::int32_t c = fct_to_cell->links(f)[0];
+
+        // All facets on cell
+        std::span<const std::int32_t> fs = cell_to_fct->links(c);
+
+        // Add to entity list
+        _entities[2 * i] = c;
+        _entities[2 * i + 1]
+            = std::distance(fs.begin(), std::find(fs.begin(), fs.end(), f));
+      }
     }
-    std::cout << "Test boundary kernel: " << std::endl;
-    std::vector<T> values(3);
-    std::vector<U> coordinates(9);
 
-    _boundary_kernel(values.data(), nullptr, nullptr, coordinates.data(),
-                     nullptr, nullptr);
+    // Create entities
 
-    std::cout << "Calculated values: " << values[0] << ", " << values[1] << ", "
-              << values[2] << std::endl;
+    // if ((_is_timedependent) && (_has_time_function))
+    // {
+    //   _boundary_values.resize(n_bdofs);
+    // }
+    // std::cout << "Test boundary kernel: " << std::endl;
+    // std::vector<T> values(3);
+    // std::vector<U> coordinates(9);
+
+    // // _boundary_kernel(values.data(), nullptr, nullptr, coordinates.data(),
+    // //                  nullptr, nullptr);
+    // std::vector<std::int32_t> entities{0, 1, 1, 0, 2, 1};
+    // _expression->eval(*V.mesh().get(), entities, values, {3, 1});
+
+    // std::cout << "Calculated values: " << values[0] << ", " << values[1] <<
+    // ", "
+    //           << values[2] << std::endl;
   }
 
   /* Getter functions */
   /// Return if the BC is a function of time
   /// @param[out] is_timedependent True, if the BC is a function of time
-  bool is_timedependent() const { return _is_timedependent; }
+  bool is_timedependent() const
+  {
+    // return _is_timedependent;
+    throw std::runtime_error("Not implemented!");
+  }
 
   /// Return if the BC has a time function
   /// @param[out] is_timedependent True, if the BC has a time function
-  bool has_time_function() const { return _has_time_function; }
+  bool has_time_function() const
+  {
+    // return _has_time_function;
+    throw std::runtime_error("Not implemented!");
+  }
 
   /// Return the number of boundary facets
   /// @param[out] nfcts The number of boundary facets
@@ -98,7 +136,10 @@ public:
 
   /// Return the number of point evaluations per facet
   /// @param[out] num_eval The number of point evaluations per facet
-  int num_eval_per_facet() const { return _cstide_eval; }
+  int num_eval_per_facet() const
+  {
+    return _expression->X().second[0] * _expression->value_size();
+  }
 
   /// Check if projection is required
   /// @param[out] projection_id The projection id
@@ -108,174 +149,70 @@ public:
   /// @param[out] projection_id The projection id
   int quadrature_degree() const { return _quadrature_degree; }
 
-  /// Return list of boundary facets
-  /// @param[out] fcts The list of boundary facets
-  std::span<const std::int32_t> facets() const
+  /// Return list of boundary entities
+
+  /// Each entity constains the boundary cell and the cell-local facet id of the
+  /// boundary facet.
+
+  /// @param[out] entities The list of boundary entities
+  std::span<const std::int32_t> entities() const
   {
-    return std::span<const std::int32_t>(_fcts.data(), _fcts.size());
+    return std::span<const std::int32_t>(_entities.data(), _entities.size());
   }
 
-  /// Extract constants for evaluation of boundary kernel
-  /// @returns The constants vector
-  std::vector<T> extract_constants()
+  std::span<const std::int32_t> facets() const
   {
-    // Initialise constants
-    std::vector<T> constants;
+    return std::span<const std::int32_t>(_facets.data(), _facets.size());
+  }
 
-    if (_constants.size() > 0)
-    {
-      // Calculate the number of constants
-      std::int32_t size_constants = std::accumulate(
-          _constants.cbegin(), _constants.cend(), 0,
-          [](std::int32_t sum, auto& c) { return sum + c->value.size(); });
-
-      // Initialise storage
-      constants.resize(size_constants);
-
-      // Extract coefficients
-      std::int32_t offset = 0;
-
-      for (auto& cnst : _constants)
-      {
-        const std::vector<T>& value = cnst->value;
-        std::copy(value.begin(), value.end(),
-                  std::next(constants.begin(), offset));
-        offset += value.size();
-      }
-    }
-
-    return std::move(constants);
+  /// Pack constants to evaluate boundary values
+  /// @returns The constants vector
+  std::vector<T> pack_constants()
+  {
+    return fem::pack_constants(*_expression.get());
   }
 
   /// Extract coefficients for each boundary cell
   ///
-  /// Extract coefficients for each boundary cell and store values in flattened
-  /// array. Array structure relative to counter on boundary cells for this
-  /// boundary.
+  /// Extract coefficients for each cell and store values in flattened array.
+  /// The array structure is relative to the boundary facets/cells affected by
+  /// this condition.
   ///
-  /// @returns std::pair<cstride, The coefficient vector>
-  std::pair<std::int32_t, std::vector<T>> extract_coefficients()
+  /// @returns The coefficients and its cstride
+  std::pair<std::vector<T>, int> pack_coefficients()
   {
-    // Initialise storage
-    std::int32_t cstride = 0;
-    std::vector<T> coefficients;
-
-    if (_coefficients.size() > 0)
-    {
-      // Number of constants
-      cstride = std::accumulate(
-          _coefficients.cbegin(), _coefficients.cend(), 0, [](int sum, auto& f)
-          { return sum + f->function_space()->element()->space_dimension(); });
-
-      // Initialise storage
-      coefficients.resize(_nfcts * cstride);
-
-      // The mesh
-      std::shared_ptr<const mesh::Mesh<U>> mesh
-          = _coefficients[0]->function_space()->mesh();
-
-      // Extract connectivity facets->cell
-      int dim = mesh->geometry().dim();
-      std::shared_ptr<const graph::AdjacencyList<std::int32_t>> fct_to_cell
-          = mesh->topology()->connectivity(dim - 1, dim);
-
-      // Extract coefficients
-      std::int32_t offs_cstride = 0;
-
-      for (std::shared_ptr<const fem::Function<T>> function : _coefficients)
-      {
-        // Data storage
-        std::span<const T> x_coeff = function->x()->array();
-
-        // Function space and DOFmap
-        std::shared_ptr<const fem::FunctionSpace<U>> function_space
-            = function->function_space();
-        mdspan_t<const std::int32_t, 2> dofmap
-            = function_space->dofmap()->map();
-
-        // cstride of current coefficients
-        const int bs = function_space->element()->block_size();
-        const int space_dimension
-            = function_space->element()->space_dimension();
-        const int map_dimension = space_dimension / bs;
-
-        for (std::size_t i = 0; i < _nfcts; ++i)
-        {
-          // Global facet id
-          std::int32_t fct = _fcts[i];
-
-          // Get cell, adjacent to facet
-          std::int32_t c = fct_to_cell->links(fct)[0];
-
-          // DOFmap of cell
-          smdspan_t<const std::int32_t, 1> dofs
-              = MDSPAN_IMPL_STANDARD_NAMESPACE::submdspan(
-                  dofmap, c, MDSPAN_IMPL_STANDARD_NAMESPACE::full_extent);
-
-          // Flattened storage
-          std::int32_t offs_coef = i * cstride + offs_cstride;
-
-          // Extract coefficient data
-          for (std::size_t j = 0; j < map_dimension; ++j)
-          {
-            // DOF id
-            std::int32_t offs_dof = bs * dofs[j];
-            std::int32_t offs = offs_coef + j * bs;
-
-            // Copy DOF
-            for (std::size_t k = 0; k < bs; ++k)
-            {
-              coefficients[offs + k] = x_coeff[offs_dof + k];
-            }
-          }
-        }
-
-        // Update cstride
-        offs_cstride += space_dimension;
-      }
-    }
-
-    return {cstride, std::move(coefficients)};
+    return fem::pack_coefficients(*_expression.get(), _entities, 2);
   }
 
   /// Extract the boundary kernel
   /// @return The boundary kernel
   const std::function<void(T*, const T*, const T*, const U*, const int*,
-                           const std::uint8_t*)>&
-  boundary_kernel() const
+                           const uint8_t*)>&
+  get_tabulate_expression() const
   {
-    return _boundary_kernel;
+    return _expression->get_tabulate_expression();
   }
 
 protected:
   /* Variable definitions */
   // Identifiers
-  const bool _is_zero, _is_timedependent, _has_time_function,
-      _projection_required;
+  // const bool _is_zero, _is_timedependent, _has_time_function,
+  //     _projection_required;
+  const bool _is_zero, _projection_required;
 
   // Quadrature degree
   const int _quadrature_degree;
 
   // Boundary facets
-  const std::vector<std::int32_t> _fcts;
-  const std::int32_t _nfcts, _nbdofs;
+  std::vector<std::int32_t> _entities;
+  const std::vector<std::int32_t> _facets;
+  const std::int32_t _nfcts;
 
-  // Kernel (executable c++ code)
-  std::function<void(T*, const T*, const T*, const U*, const int*,
-                     const std::uint8_t*)>
-      _boundary_kernel;
+  // The boundary expression
+  std::shared_ptr<const fem::Expression<T, U>> _expression;
 
-  // Number of evaluation-points per facet
-  const int _cstide_eval;
-
-  // Coefficients associated with the BCs
-  std::vector<std::shared_ptr<const fem::Function<T, U>>> _coefficients;
-
-  // Constants associated with the BCs
-  std::vector<std::shared_ptr<const fem::Constant<T>>> _constants;
-
-  // Storage for the boundary values (only for BCs with time-function)
-  std::vector<T> _boundary_values;
+  // The boundary values
+  std::vector<T> _values;
 };
 
 } // namespace dolfinx_eqlb::base

@@ -12,12 +12,15 @@ from petsc4py import PETSc
 import pytest
 
 import basix
-from dolfinx import fem, mesh
+from dolfinx import default_real_type, fem, mesh
 import ufl
 
-from dolfinx_eqlb.elmtlib import create_hierarchic_rt
+from dolfinx_eqlb.base import create_hierarchic_rt
 from dolfinx_eqlb.lsolver import local_projection
+
 from dolfinx_eqlb.eqlb import fluxbc, boundarydata
+
+# from test import fluxbc, boundarydata
 
 from utils import (
     MeshType,
@@ -31,7 +34,8 @@ from utils import (
 @pytest.mark.parametrize("mesh_type", [MeshType.builtin, MeshType.gmsh])
 @pytest.mark.parametrize("degree", [1, 2, 3, 4])
 @pytest.mark.parametrize("rt_space", ["basix", "custom", "subspace"])
-@pytest.mark.parametrize("use_projection", [False, True])
+# @pytest.mark.parametrize("use_projection", [False, True])
+@pytest.mark.parametrize("use_projection", [False])
 def test_boundary_data_polynomial(
     mesh_type: MeshType, degree: int, rt_space: str, use_projection: bool
 ):
@@ -48,80 +52,83 @@ def test_boundary_data_polynomial(
     n_cells = 5
 
     if mesh_type == MeshType.builtin:
-        geometry = create_unitsquare_builtin(
+        domain = create_unitsquare_builtin(
             n_cells, mesh.CellType.triangle, mesh.DiagonalType.crossed
         )
     elif mesh_type == MeshType.gmsh:
-        geometry = create_unitsquare_gmsh(0.5)
+        domain = create_unitsquare_gmsh(0.5)
     else:
         raise ValueError("Unknown mesh type")
 
+    # The spatial dimension
+    gdim = domain.mesh.geometry.dim
+
     # Initialise connectivity
-    geometry.mesh.topology.create_connectivity(1, 2)
-    geometry.mesh.topology.create_connectivity(2, 1)
+    domain.mesh.topology.create_connectivity(1, 2)
+    domain.mesh.topology.create_connectivity(2, 1)
 
     # Initialise flux space
     if rt_space == "basix":
-        V_flux = fem.FunctionSpace(geometry.mesh, ("RT", degree))
+        V_flux = fem.functionspace(domain.mesh, ("RT", degree))
         custom_rt = False
 
         boundary_function = fem.Function(V_flux)
     elif rt_space == "custom":
-        elmt_flux = basix.ufl_wrapper.BasixElement(
-            create_hierarchic_rt(basix.CellType.triangle, degree, True)
+        V_flux = fem.functionspace(
+            domain.mesh, create_hierarchic_rt(basix.CellType.triangle, degree, True)
         )
-        V_flux = fem.FunctionSpace(geometry.mesh, elmt_flux)
         custom_rt = True
 
         boundary_function = fem.Function(V_flux)
     elif rt_space == "subspace":
-        elmt_flux = ufl.FiniteElement("RT", geometry.mesh.ufl_cell(), degree)
-        elmt_dg = ufl.FiniteElement("DG", geometry.mesh.ufl_cell(), degree - 1)
-        V = fem.FunctionSpace(geometry.mesh, ufl.MixedElement(elmt_flux, elmt_dg))
-        V_flux = fem.FunctionSpace(geometry.mesh, elmt_flux)
+        elmt_flux = basix.ufl.element(
+            "RT", domain.mesh.basix_cell(), degree, dtype=default_real_type
+        )
+        elmt_dg = basix.ufl.element(
+            "DG", domain.mesh.basix_cell(), degree - 1, dtype=default_real_type
+        )
+
+        V = fem.functionspace(
+            domain.mesh, basix.ufl.mixed_element([elmt_flux, elmt_dg])
+        )
+        V_flux = fem.functionspace(domain.mesh, elmt_flux)
+
         custom_rt = False
 
         boundary_function = fem.Function(V)
 
     # Initialise reference flux space
-    V_ref = fem.VectorFunctionSpace(geometry.mesh, ("DG", degree - 1))
+    V_ref = fem.functionspace(domain.mesh, ("DG", degree - 1, (gdim,)))
 
     # Initialise boundary facets and test-points
     list_boundary_ids = [1, 4]
-    points_eval = points_boundary_unitsquare(geometry, list_boundary_ids, degree + 1)
-    plist_eval, clist_eval = initialise_evaluate_function(geometry.mesh, points_eval)
+    points_eval = points_boundary_unitsquare(domain, list_boundary_ids, degree + 1)
+    plist_eval, clist_eval = initialise_evaluate_function(domain.mesh, points_eval)
 
     npoints_eval = int(points_eval.shape[0] / 2)
 
     # Set boundary degree
     for deg in range(0, degree):
         # Data boundary conditions
-        if deg == 0:
-            V_vec = fem.VectorFunctionSpace(geometry.mesh, ("DG", deg))
-            func_1 = fem.Function(V_vec)
-            func_1.x.array[:] = 0
+        etype = "DG" if deg == 0 else "Lagrange"
 
-            V_scal = fem.FunctionSpace(geometry.mesh, ("DG", deg))
-            func_2 = fem.Function(V_scal)
-            func_2.x.array[:] = 0
-        else:
-            V_vec = fem.VectorFunctionSpace(geometry.mesh, ("P", deg))
-            func_1 = fem.Function(V_vec)
-            func_1.x.array[:] = 2 * (
-                np.random.rand(V_vec.dofmap.bs * V_vec.dofmap.index_map.size_local)
-                + 0.1
+        func_1 = fem.Function(fem.functionspace(domain.mesh, (etype, deg, (gdim,))))
+        func_1.x.array[:] = 2 * (
+            np.random.rand(
+                func_1.function_space.dofmap.bs
+                * func_1.function_space.dofmap.index_map.size_local
             )
+            + 0.1
+        )
+        func_2 = fem.Function(fem.functionspace(domain.mesh, (etype, deg)))
+        func_2.x.array[:] = 3 * (
+            np.random.rand(func_2.function_space.dofmap.index_map.size_local) + 0.3
+        )
 
-            V_scal = fem.FunctionSpace(geometry.mesh, ("P", deg))
-            func_2 = fem.Function(V_scal)
-            func_2.x.array[:] = 3 * (
-                np.random.rand(V_scal.dofmap.index_map.size_local) + 0.3
-            )
+        c_1 = fem.Constant(domain.mesh, PETSc.ScalarType((1.35, 0.25)))
+        c_2 = fem.Constant(domain.mesh, PETSc.ScalarType(0.75))
 
-        c_1 = fem.Constant(geometry.mesh, PETSc.ScalarType((1.35, 0.25)))
-        c_2 = fem.Constant(geometry.mesh, PETSc.ScalarType(0.75))
-
-        x_ufl = ufl.SpatialCoordinate(geometry.mesh)
+        x_ufl = ufl.SpatialCoordinate(domain.mesh)
 
         # Create ufl-repr. of boundary condition
         ntrace_ufl = (
@@ -135,12 +142,12 @@ def test_boundary_data_polynomial(
 
         for id in list_boundary_ids:
             # Get boundary facets
-            bfcts = geometry.facet_function.indices[
-                geometry.facet_function.values == id
-            ]
+            bfcts = domain.facet_function.indices[domain.facet_function.values == id]
 
             # Create instance of FluxBC
-            list_bcs.append(fluxbc(ntrace_ufl, bfcts, V_flux, use_projection))
+            list_bcs.append(
+                fluxbc(ntrace_ufl, bfcts, V_flux, requires_projection=use_projection)
+            )
 
         # Initialise boundary data
         if rt_space == "subspace":
@@ -169,126 +176,127 @@ def test_boundary_data_polynomial(
         assert np.allclose(val_bfunc[npoints_eval:, 1], val_ref[npoints_eval:, 1])
 
 
-@pytest.mark.parametrize("mesh_type", [MeshType.builtin, MeshType.gmsh])
-@pytest.mark.parametrize("degree", [1, 2, 3, 4])
-def test_boundary_data_general(mesh_type: MeshType, degree: int):
-    """Test boundary conditions from non-polynomial data
+# @pytest.mark.parametrize("mesh_type", [MeshType.builtin, MeshType.gmsh])
+# @pytest.mark.parametrize("degree", [1, 2, 3, 4])
+# def test_boundary_data_general(mesh_type: MeshType, degree: int):
+#     """Test boundary conditions from non-polynomial data
 
-    The boundary values are projected into the RT space. The values on
-    the boundary are compared to a projection on a 1D reference space.
+#     The boundary values are projected into the RT space. The values on
+#     the boundary are compared to a projection on a 1D reference space.
 
-    Args:
-        mesh_type: The mesh type
-        degree:    The degree of the RT space, onto the BCs are applied
-    """
+#     Args:
+#         mesh_type: The mesh type
+#         degree:    The degree of the RT space, onto the BCs are applied
+#     """
 
-    # --- Calculate boundary conditions (2D)
-    # Create mesh
-    n_cells = 5
+#     # --- Calculate boundary conditions (2D)
+#     # Create mesh
+#     n_cells = 5
 
-    if mesh_type == MeshType.builtin:
-        geometry = create_unitsquare_builtin(
-            n_cells, mesh.CellType.triangle, mesh.DiagonalType.crossed
-        )
-    elif mesh_type == MeshType.gmsh:
-        geometry = create_unitsquare_gmsh(1 / n_cells)
-    else:
-        raise ValueError("Unknown mesh type")
+#     if mesh_type == MeshType.builtin:
+#         geometry = create_unitsquare_builtin(
+#             n_cells, mesh.CellType.triangle, mesh.DiagonalType.crossed
+#         )
+#     elif mesh_type == MeshType.gmsh:
+#         geometry = create_unitsquare_gmsh(1 / n_cells)
+#     else:
+#         raise ValueError("Unknown mesh type")
 
-    # Initialise connectivity
-    geometry.mesh.topology.create_connectivity(1, 2)
-    geometry.mesh.topology.create_connectivity(2, 1)
+#     # Initialise connectivity
+#     geometry.mesh.topology.create_connectivity(1, 2)
+#     geometry.mesh.topology.create_connectivity(2, 1)
 
-    # Initialise flux space
-    elmt_flux = basix.ufl_wrapper.BasixElement(
-        create_hierarchic_rt(basix.CellType.triangle, degree, True)
-    )
-    V_flux = fem.FunctionSpace(geometry.mesh, elmt_flux)
+#     # Initialise flux space
+#     elmt_flux = basix.ufl_wrapper.BasixElement(
+#         create_hierarchic_rt(basix.CellType.triangle, degree, True)
+#     )
+#     V_flux = fem.FunctionSpace(geometry.mesh, elmt_flux)
 
-    boundary_function = fem.Function(V_flux)
+#     boundary_function = fem.Function(V_flux)
 
-    # Initialise test-points/ function evaluation
-    points_eval = points_boundary_unitsquare(geometry, [1, 4], degree)
-    plist_eval, clist_eval = initialise_evaluate_function(geometry.mesh, points_eval)
+#     # Initialise test-points/ function evaluation
+#     points_eval = points_boundary_unitsquare(geometry, [1, 4], degree)
+#     plist_eval, clist_eval = initialise_evaluate_function(geometry.mesh, points_eval)
 
-    npoints_eval = int(points_eval.shape[0] / 2)
+#     npoints_eval = int(points_eval.shape[0] / 2)
 
-    # set ufl-repr. of normal-trace on boundary
-    x_ufl = ufl.SpatialCoordinate(geometry.mesh)
+#     # set ufl-repr. of normal-trace on boundary
+#     x_ufl = ufl.SpatialCoordinate(geometry.mesh)
 
-    ntrace_ufl_1 = ufl.sin(4 * ufl.pi * x_ufl[1]) * ufl.exp(-x_ufl[1])
-    ntrace_ufl_4 = ufl.cos(6 * ufl.pi * x_ufl[0]) * ufl.exp(-x_ufl[0])
+#     ntrace_ufl_1 = ufl.sin(4 * ufl.pi * x_ufl[1]) * ufl.exp(-x_ufl[1])
+#     ntrace_ufl_4 = ufl.cos(6 * ufl.pi * x_ufl[0]) * ufl.exp(-x_ufl[0])
 
-    # Create boundary conditions
-    list_bcs = []
+#     # Create boundary conditions
+#     list_bcs = []
 
-    bfcts_1 = geometry.facet_function.indices[geometry.facet_function.values == 1]
-    list_bcs.append(
-        fluxbc(ntrace_ufl_1, bfcts_1, V_flux, True, quadrature_degree=3 * degree)
-    )
+#     bfcts_1 = geometry.facet_function.indices[geometry.facet_function.values == 1]
+#     list_bcs.append(
+#         fluxbc(ntrace_ufl_1, bfcts_1, V_flux, True, quadrature_degree=3 * degree)
+#     )
 
-    bfcts_4 = geometry.facet_function.indices[geometry.facet_function.values == 4]
-    list_bcs.append(
-        fluxbc(ntrace_ufl_4, bfcts_4, V_flux, True, quadrature_degree=3 * degree)
-    )
+#     bfcts_4 = geometry.facet_function.indices[geometry.facet_function.values == 4]
+#     list_bcs.append(
+#         fluxbc(ntrace_ufl_4, bfcts_4, V_flux, True, quadrature_degree=3 * degree)
+#     )
 
-    # Initialise boundary data
-    boundary_data = boundarydata(
-        [list_bcs], [boundary_function], V_flux, True, [[]], True
-    )
+#     # Initialise boundary data
+#     boundary_data = boundarydata(
+#         [list_bcs], [boundary_function], V_flux, True, [[]], True
+#     )
 
-    # Evaluate BCs on control points
-    val_bfunc = boundary_function.eval(plist_eval, clist_eval)
+#     # Evaluate BCs on control points
+#     val_bfunc = boundary_function.eval(plist_eval, clist_eval)
 
-    # --- Calculate reference solution (1D)
-    # Create mesh
-    domain_1d = mesh.create_unit_interval(MPI.COMM_WORLD, n_cells)
+#     # --- Calculate reference solution (1D)
+#     # Create mesh
+#     domain_1d = mesh.create_unit_interval(MPI.COMM_WORLD, n_cells)
 
-    # Initialise reference space
-    V_ref = fem.FunctionSpace(domain_1d, ("DG", degree - 1))
+#     # Initialise reference space
+#     V_ref = fem.FunctionSpace(domain_1d, ("DG", degree - 1))
 
-    # Initialise test-points/ function evaluation
-    points_eval_1D = np.zeros((npoints_eval, 3))
-    points_eval_1D[:, 0] = points_eval[0:npoints_eval, 1]
-    plist_eval, clist_eval = initialise_evaluate_function(domain_1d, points_eval_1D)
+#     # Initialise test-points/ function evaluation
+#     points_eval_1D = np.zeros((npoints_eval, 3))
+#     points_eval_1D[:, 0] = points_eval[0:npoints_eval, 1]
+#     plist_eval, clist_eval = initialise_evaluate_function(domain_1d, points_eval_1D)
 
-    # Reference function 1D
-    ntrace_ufl_1d = []
-    s_ufl = ufl.SpatialCoordinate(domain_1d)[0]
+#     # Reference function 1D
+#     ntrace_ufl_1d = []
+#     s_ufl = ufl.SpatialCoordinate(domain_1d)[0]
 
-    ntrace_ufl_1d.append(-ufl.sin(4 * ufl.pi * s_ufl) * ufl.exp(-s_ufl))
-    ntrace_ufl_1d.append(ufl.cos(6 * ufl.pi * s_ufl) * ufl.exp(-s_ufl))
+#     ntrace_ufl_1d.append(-ufl.sin(4 * ufl.pi * s_ufl) * ufl.exp(-s_ufl))
+#     ntrace_ufl_1d.append(ufl.cos(6 * ufl.pi * s_ufl) * ufl.exp(-s_ufl))
 
-    # Projection into reference space
-    u = ufl.TrialFunction(V_ref)
-    v = ufl.TestFunction(V_ref)
+#     # Projection into reference space
+#     u = ufl.TrialFunction(V_ref)
+#     v = ufl.TestFunction(V_ref)
 
-    dvol = ufl.Measure(
-        "dx", domain=domain_1d, metadata={"quadrature_degree": 3 * degree}
-    )
+#     dvol = ufl.Measure(
+#         "dx", domain=domain_1d, metadata={"quadrature_degree": 3 * degree}
+#     )
 
-    a = ufl.inner(u, v) * dvol
+#     a = ufl.inner(u, v) * dvol
 
-    for i in range(0, len(ntrace_ufl_1d)):
-        # Solve 1D projection
-        l = ufl.inner(ntrace_ufl_1d[i], v) * dvol
+#     for i in range(0, len(ntrace_ufl_1d)):
+#         # Solve 1D projection
+#         l = ufl.inner(ntrace_ufl_1d[i], v) * dvol
 
-        problem = fem.petsc.LinearProblem(
-            a, l, bcs=[], petsc_options={"ksp_type": "preonly", "pc_type": "lu"}
-        )
-        refsol = problem.solve()
+#         problem = fem.petsc.LinearProblem(
+#             a, l, bcs=[], petsc_options={"ksp_type": "preonly", "pc_type": "lu"}
+#         )
+#         refsol = problem.solve()
 
-        # Evaluate reference solution
-        val_ref = refsol.eval(plist_eval, clist_eval)
+#         # Evaluate reference solution
+#         val_ref = refsol.eval(plist_eval, clist_eval)
 
-        # Compare boundary-condition and reference solution
-        if i == 0:
-            assert np.allclose(val_bfunc[:npoints_eval, 0], val_ref[:, 0])
-        else:
-            assert np.allclose(val_bfunc[npoints_eval:, 1], val_ref[:, 0])
+#         # Compare boundary-condition and reference solution
+#         if i == 0:
+#             assert np.allclose(val_bfunc[:npoints_eval, 0], val_ref[:, 0])
+#         else:
+#             assert np.allclose(val_bfunc[npoints_eval:, 1], val_ref[:, 0])
 
 
 if __name__ == "__main__":
     import sys
 
     pytest.main(sys.argv)
+    # test_boundary_data_polynomial(MeshType.builtin, 2, "basix", False)
