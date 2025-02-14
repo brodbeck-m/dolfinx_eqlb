@@ -22,6 +22,19 @@ from dolfinx_eqlb.cpp import FluxBC, BoundaryData, TimeType
 ffi = cffi.FFI()
 
 
+def homogenous_fluxbc(facets: NDArray) -> FluxBC:
+    """Essential, homogenous boundary condition for one flux on a set of facets
+
+    Args:
+        facets:              The boundary facets
+
+    Returns:
+        The essential flux BC on a group of facets
+    """
+
+    return FluxBC(facets)
+
+
 def fluxbc(
     value: typing.Any,
     facets: NDArray,

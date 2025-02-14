@@ -86,6 +86,10 @@ void declare_bcs(nb::module_& m)
           nb::arg("boundary_expression"), nb::arg("boundary_facets"),
           nb::arg("FunctionSpace"), nb::arg("quadrature_degree"),
           nb::arg("transient_behaviour"))
+      .def(
+          "__init__",
+          [](base::FluxBC<T, U>* fp, const std::vector<std::int32_t>& facets)
+          { new (fp) base::FluxBC<T, U>(facets); }, nb::arg("boundary_facets"))
       .def_prop_ro("quadrature_degree", &base::FluxBC<T, U>::quadrature_degree);
 
   nb::class_<base::BoundaryData<T, U>>(m, "BoundaryData", "BoundaryData object")

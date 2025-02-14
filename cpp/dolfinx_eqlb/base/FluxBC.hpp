@@ -79,21 +79,13 @@ public:
   }
 
   /* Getter functions */
-  /// Return if the BC is a function of time
-  /// @param[out] is_timedependent True, if the BC is a function of time
-  bool is_timedependent() const
-  {
-    // return _is_timedependent;
-    throw std::runtime_error("Not implemented!");
-  }
+  /// Marker for homogenous BC
+  /// @return True, if the BC is homogenous
+  bool is_zero() const { return _is_zero; }
 
-  /// Return if the BC has a time function
-  /// @param[out] is_timedependent True, if the BC has a time function
-  bool has_time_function() const
-  {
-    // return _has_time_function;
-    throw std::runtime_error("Not implemented!");
-  }
+  /// The transient behaviour
+  /// @return The transient behaviour of the boundary expression
+  TimeType transient_behaviour() const { return _tbehaviour; }
 
   /// Return the number of boundary facets
   /// @param[out] nfcts The number of boundary facets

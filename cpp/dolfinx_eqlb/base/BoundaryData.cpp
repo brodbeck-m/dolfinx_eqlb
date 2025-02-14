@@ -651,9 +651,9 @@ void BoundaryData<T, U>::evaluate_boundary_flux(
     // Handle facets with essential BCs on dual problem
     for (std::shared_ptr<FluxBC<T, U>> bc : _bcs[i_rhs])
     {
-      // if (initialise_boundary_values
-      //     || (bc->is_timedependent() && !bc->has_time_function()))
-      if (initialise_boundary_values)
+      if ((initialise_boundary_values
+           || (bc->transient_behaviour() == TimeType::timedependent))
+          && !(bc->is_zero()))
       {
         // The boundary facets
         std::span<const std::int32_t> bfcts = bc->facets();

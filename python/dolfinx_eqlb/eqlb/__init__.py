@@ -7,11 +7,12 @@
 # from .FluxEqlbEV import FluxEqlbEV
 # from .FluxEqlbSE import FluxEqlbSE
 
-from .bcs import fluxbc, boundarydata
+from .bcs import homogenous_fluxbc, fluxbc, boundarydata
 
 __all__ = [
     # "FluxEqlbEV",
     # "FluxEqlbSE",
+    "homogenous_fluxbc",
     "fluxbc",
     "boundarydata",
 ]

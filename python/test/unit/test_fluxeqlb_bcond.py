@@ -19,9 +19,7 @@ import ufl
 from dolfinx_eqlb.base import create_hierarchic_rt
 from dolfinx_eqlb.lsolver import local_projection
 
-from dolfinx_eqlb.eqlb import fluxbc, boundarydata
-
-# from test import fluxbc, boundarydata
+from dolfinx_eqlb.eqlb import homogenous_fluxbc, fluxbc, boundarydata
 
 from utils import (
     MeshType,
@@ -32,22 +30,8 @@ from utils import (
 )
 
 
-@pytest.mark.parametrize("mesh_type", [MeshType.builtin, MeshType.gmsh])
-@pytest.mark.parametrize("degree", [1, 2, 3, 4])
-@pytest.mark.parametrize("rt_space", ["basix", "custom", "subspace"])
-@pytest.mark.parametrize("use_projection", [False, True])
-def test_boundary_data_polynomial(
-    mesh_type: MeshType, degree: int, rt_space: str, use_projection: bool
-):
-    """Test boundary conditions from data with know polynomial degree
-
-    Args:
-        mesh_type:      The mesh type
-        degree:         The degree of the RT space, onto the BCs are applied
-        rt_space:       Type of RT-space
-        use_projection: If True, RT DOFs are gained by projection from boundary data
-    """
-
+# --- Auxiliaries ---
+def setup_tests(mesh_type: MeshType, degree: int, rt_space: str):
     # Create mesh
     n_cells = 5
 
@@ -56,16 +40,69 @@ def test_boundary_data_polynomial(
             n_cells, mesh.CellType.triangle, mesh.DiagonalType.crossed
         )
     elif mesh_type == MeshType.gmsh:
-        domain = create_unitsquare_gmsh(0.5)
+        domain = create_unitsquare_gmsh(1 / n_cells)
     else:
         raise ValueError("Unknown mesh type")
-
-    # The spatial dimension
-    gdim = domain.mesh.geometry.dim
 
     # Initialise connectivity
     domain.mesh.topology.create_connectivity(1, 2)
     domain.mesh.topology.create_connectivity(2, 1)
+
+    # Initialise flux space
+    if rt_space == "basix":
+        V = None
+        V_flux = fem.functionspace(domain.mesh, ("RT", degree))
+        custom_rt = False
+
+        boundary_function = fem.Function(V_flux)
+    elif rt_space == "custom":
+        V = None
+        V_flux = fem.functionspace(
+            domain.mesh, create_hierarchic_rt(basix.CellType.triangle, degree, True)
+        )
+        custom_rt = True
+
+        boundary_function = fem.Function(V_flux)
+    elif rt_space == "subspace":
+        elmt_flux = basix.ufl.element(
+            "RT", domain.mesh.basix_cell(), degree, dtype=default_real_type
+        )
+        elmt_dg = basix.ufl.element(
+            "DG", domain.mesh.basix_cell(), degree - 1, dtype=default_real_type
+        )
+
+        V = fem.functionspace(
+            domain.mesh, basix.ufl.mixed_element([elmt_flux, elmt_dg])
+        )
+        V_flux = fem.functionspace(domain.mesh, elmt_flux)
+
+        custom_rt = False
+
+        boundary_function = fem.Function(V)
+    else:
+        raise ValueError("Unknown RT-space")
+
+    return domain, (V, V_flux), boundary_function, custom_rt
+
+
+# --- Test cases ---
+@pytest.mark.parametrize("mesh_type", [MeshType.builtin, MeshType.gmsh])
+@pytest.mark.parametrize("degree", [1, 2, 3, 4])
+@pytest.mark.parametrize("rt_space", ["basix", "custom", "subspace"])
+def test_boundary_data_polynomial(mesh_type: MeshType, degree: int, rt_space: str):
+    """Test the homogenous boundary conditions
+
+    Args:
+        mesh_type:      The mesh type
+        degree:         The degree of the RT space, onto the BCs are applied
+        rt_space:       Type of RT-space
+        use_projection: If True, RT DOFs are gained by projection from boundary data
+    """
+
+    # Test setup
+    domain, (V, V_flux), boundary_function, custom_rt = setup_tests(
+        mesh_type, degree, rt_space
+    )
 
     # Initialise flux space
     if rt_space == "basix":
@@ -96,6 +133,54 @@ def test_boundary_data_polynomial(
         custom_rt = False
 
         boundary_function = fem.Function(V)
+
+    # Initialise boundary facets and test-points
+    list_boundary_ids = [1, 4]
+    list_bcs = []
+
+    for id in list_boundary_ids:
+        # Get boundary facets
+        bfcts = domain.facet_function.indices[domain.facet_function.values == id]
+
+        # Create instance of FluxBC
+        list_bcs.append(homogenous_fluxbc(bfcts))
+
+    # Initialise boundary data
+    if rt_space == "subspace":
+        boundary_data = boundarydata(
+            [list_bcs], [boundary_function], V.sub(0), custom_rt, [[]], True
+        )
+    else:
+        boundary_data = boundarydata(
+            [list_bcs], [boundary_function], V_flux, custom_rt, [[]], True
+        )
+
+    assert np.allclose(boundary_function.x.array, 0.0)
+
+
+@pytest.mark.parametrize("mesh_type", [MeshType.builtin, MeshType.gmsh])
+@pytest.mark.parametrize("degree", [1, 2, 3, 4])
+@pytest.mark.parametrize("rt_space", ["basix", "custom", "subspace"])
+@pytest.mark.parametrize("use_projection", [False, True])
+def test_boundary_data_polynomial(
+    mesh_type: MeshType, degree: int, rt_space: str, use_projection: bool
+):
+    """Test boundary conditions from data with know polynomial degree
+
+    Args:
+        mesh_type:      The mesh type
+        degree:         The degree of the RT space, onto the BCs are applied
+        rt_space:       Type of RT-space
+        use_projection: If True, RT DOFs are gained by projection from boundary data
+    """
+
+    # Test setup
+    domain, (V, V_flux), boundary_function, custom_rt = setup_tests(
+        mesh_type, degree, rt_space
+    )
+
+    # The spatial dimension
+    gdim = domain.mesh.geometry.dim
 
     # Initialise reference flux space
     V_ref = fem.functionspace(domain.mesh, ("DG", degree - 1, (gdim,)))
@@ -189,26 +274,8 @@ def test_boundary_data_general(mesh_type: MeshType, degree: int):
         degree:    The degree of the RT space, onto the BCs are applied
     """
 
-    # --- Calculate boundary conditions (2D)
-    # Create mesh
-    n_cells = 5
-
-    if mesh_type == MeshType.builtin:
-        domain = create_unitsquare_builtin(
-            n_cells, mesh.CellType.triangle, mesh.DiagonalType.crossed
-        )
-    elif mesh_type == MeshType.gmsh:
-        domain = create_unitsquare_gmsh(1 / n_cells)
-    else:
-        raise ValueError("Unknown mesh type")
-
-    # Initialise connectivity
-    domain.mesh.topology.create_connectivity(1, 2)
-    domain.mesh.topology.create_connectivity(2, 1)
-
-    # Initialise flux space
-    V_flux = fem.functionspace(domain.mesh, ("RT", degree))
-    boundary_function = fem.Function(V_flux)
+    # Test setup
+    domain, (_, V_flux), boundary_function, _ = setup_tests(mesh_type, degree, "basix")
 
     # Initialise test-points/ function evaluation
     points_eval = points_boundary_unitsquare(domain, [1, 4], degree)
@@ -245,7 +312,7 @@ def test_boundary_data_general(mesh_type: MeshType, degree: int):
 
     # --- Calculate reference solution (1D)
     # Create mesh
-    domain_1d = mesh.create_unit_interval(MPI.COMM_WORLD, n_cells)
+    domain_1d = mesh.create_unit_interval(MPI.COMM_WORLD, 5)
 
     # Initialise reference space
     V_ref = fem.functionspace(domain_1d, ("DG", degree - 1))
