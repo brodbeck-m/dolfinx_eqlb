@@ -277,6 +277,22 @@ protected:
 // ------------------------------------------------------------------------------
 /* Projection kernel */
 // ------------------------------------------------------------------------------
+/// Evaluate the projection kernel
+///
+/// For non-polynomial boundary expression or expression with to large degree
+/// the boundary data hev to be projected onto the flux space. This routine
+/// assembles mass-matrix as well as RHS required for the projection based on
+/// the exact normal trace of the flux.
+///
+/// @param[in] ntrace_flux_boundary The exact flux normal-trace on the boundary
+/// @param[in] facet_normal         The facet normal
+/// @param[in] phi                  The (mapped) ansatz function of the flux
+///                                 space
+/// @param[in] weights              The quadrature weights
+/// @param[in] detJ                 The determinant of the Jacobian of the
+///                                 current element
+/// @param[in, out] Ae              The mass matrix
+/// @param[in, out] Le              The RHS of the projection
 template <dolfinx::scalar T, std::floating_point U>
 void boundary_projection_kernel(
     std::span<const U> ntrace_flux_boundary, std::span<const U> facet_normal,

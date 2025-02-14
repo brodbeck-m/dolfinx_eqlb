@@ -10,6 +10,7 @@ import numpy as np
 from mpi4py import MPI
 from petsc4py import PETSc
 import pytest
+import typing
 
 import basix
 from dolfinx import default_real_type, fem, mesh
@@ -23,6 +24,7 @@ from dolfinx_eqlb.eqlb import homogenous_fluxbc, fluxbc, boundarydata
 
 from utils import (
     MeshType,
+    Domain,
     create_unitsquare_builtin,
     create_unitsquare_gmsh,
     points_boundary_unitsquare,
@@ -31,7 +33,11 @@ from utils import (
 
 
 # --- Auxiliaries ---
-def setup_tests(mesh_type: MeshType, degree: int, rt_space: str):
+def setup_tests(
+    mesh_type: MeshType, degree: int, rt_space: str
+) -> typing.Tuple[
+    Domain, typing.Tuple[fem.FunctionSpace, fem.FunctionSpace], fem.Function, bool
+]:
     # Create mesh
     n_cells = 5
 
