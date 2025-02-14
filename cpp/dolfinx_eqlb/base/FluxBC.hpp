@@ -55,62 +55,10 @@ public:
   /// @param n_bdofs             The number of boundary DOFs
   FluxBC(std::shared_ptr<const fem::Expression<T, U>> value,
          const std::vector<std::int32_t>& facets,
-         const fem::FunctionSpace<U>& V)
-      : _expression(value), _nfcts(facets.size()), _is_zero(false),
+         std::shared_ptr<const fem::FunctionSpace<U>> V)
+      : _expression(value), _nfcts(facets.size()), _V(V), _is_zero(false),
         _projection_required(false), _facets(facets), _quadrature_degree(0)
   {
-    // Set up entities (pair of cell and local facet id)
-    if (!(_is_zero))
-    {
-      // The mesh
-      std::shared_ptr<const mesh::Mesh<U>> mesh = V.mesh();
-
-      // The spatial dimension
-      const int gdim = mesh->geometry().dim();
-
-      // The connectivity between facets and cells
-      std::shared_ptr<const graph::AdjacencyList<std::int32_t>> fct_to_cell
-          = mesh->topology()->connectivity(gdim - 1, gdim);
-      std::shared_ptr<const graph::AdjacencyList<std::int32_t>> cell_to_fct
-          = mesh->topology()->connectivity(gdim, gdim - 1);
-
-      // Resize storage
-      _entities.resize(2 * _nfcts);
-
-      for (int i = 0; i < _nfcts; ++i)
-      {
-        // Facet and adjacent cell
-        std::int32_t f = facets[i];
-        std::int32_t c = fct_to_cell->links(f)[0];
-
-        // All facets on cell
-        std::span<const std::int32_t> fs = cell_to_fct->links(c);
-
-        // Add to entity list
-        _entities[2 * i] = c;
-        _entities[2 * i + 1]
-            = std::distance(fs.begin(), std::find(fs.begin(), fs.end(), f));
-      }
-    }
-
-    // Create entities
-
-    // if ((_is_timedependent) && (_has_time_function))
-    // {
-    //   _boundary_values.resize(n_bdofs);
-    // }
-    // std::cout << "Test boundary kernel: " << std::endl;
-    // std::vector<T> values(3);
-    // std::vector<U> coordinates(9);
-
-    // // _boundary_kernel(values.data(), nullptr, nullptr, coordinates.data(),
-    // //                  nullptr, nullptr);
-    // std::vector<std::int32_t> entities{0, 1, 1, 0, 2, 1};
-    // _expression->eval(*V.mesh().get(), entities, values, {3, 1});
-
-    // std::cout << "Calculated values: " << values[0] << ", " << values[1] <<
-    // ", "
-    //           << values[2] << std::endl;
   }
 
   /* Getter functions */
@@ -149,17 +97,8 @@ public:
   /// @param[out] projection_id The projection id
   int quadrature_degree() const { return _quadrature_degree; }
 
-  /// Return list of boundary entities
-
-  /// Each entity constains the boundary cell and the cell-local facet id of the
-  /// boundary facet.
-
+  /// Return list of boundary facets
   /// @param[out] entities The list of boundary entities
-  std::span<const std::int32_t> entities() const
-  {
-    return std::span<const std::int32_t>(_entities.data(), _entities.size());
-  }
-
   std::span<const std::int32_t> facets() const
   {
     return std::span<const std::int32_t>(_facets.data(), _facets.size());
@@ -178,10 +117,33 @@ public:
   /// The array structure is relative to the boundary facets/cells affected by
   /// this condition.
   ///
-  /// @returns The coefficients and its cstride
-  std::pair<std::vector<T>, int> pack_coefficients()
+  /// @param[in] local_factet_ids The local facet ids
+  /// @returns The coefficients and their stride
+  std::pair<std::vector<T>, int>
+  pack_coefficients(std::span<const std::int8_t> local_factet_ids)
   {
-    return fem::pack_coefficients(*_expression.get(), _entities, 2);
+    // --- Create entities
+    std::vector<std::int32_t> entities(2 * _nfcts, 0);
+
+    // The spatial dimension
+    const int gdim = _V->mesh()->geometry().dim();
+
+    // The connectivity between facets and cells
+    std::shared_ptr<const graph::AdjacencyList<std::int32_t>> fct_to_cell
+        = _V->mesh()->topology()->connectivity(gdim - 1, gdim);
+
+    for (int i = 0; i < _nfcts; ++i)
+    {
+      // The facet
+      std::int32_t f = _facets[i];
+
+      // Add to entity list
+      entities[2 * i] = fct_to_cell->links(f)[0];
+      entities[2 * i + 1] = local_factet_ids[f];
+    }
+
+    // Flatten coefficients
+    return fem::pack_coefficients(*_expression.get(), entities, 2);
   }
 
   /// Extract the boundary kernel
@@ -200,19 +162,18 @@ protected:
   //     _projection_required;
   const bool _is_zero, _projection_required;
 
-  // Quadrature degree
+  // The Quadrature degree
   const int _quadrature_degree;
 
-  // Boundary facets
-  std::vector<std::int32_t> _entities;
+  // The boundary facets
   const std::vector<std::int32_t> _facets;
   const std::int32_t _nfcts;
 
   // The boundary expression
   std::shared_ptr<const fem::Expression<T, U>> _expression;
 
-  // The boundary values
-  std::vector<T> _values;
+  // The function space
+  std::shared_ptr<const fem::FunctionSpace<U>> _V;
 };
 
 } // namespace dolfinx_eqlb::base

@@ -549,7 +549,7 @@ protected:
   ///
   /// @param initialise_boundary_values If True, all BCs (not just the
   ///                                   time-dependet ones) are evaluated
-  void calculate_boundary_values(const bool initialise_boundary_values);
+  void evaluate_boundary_flux(const bool initialise_boundary_values);
 
   /* Variable definitions */
   // The boundary conditions

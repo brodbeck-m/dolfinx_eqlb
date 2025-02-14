@@ -419,7 +419,7 @@ BoundaryData<T, U>::BoundaryData(
   }
 
   /* Evluate boundary values */
-  calculate_boundary_values(true);
+  evaluate_boundary_flux(true);
 
   // Finalise markers for pure essential stress BCs
   if (reconstruct_stress && (_gdim == 2))
@@ -581,7 +581,7 @@ void BoundaryData<T, U>::boundary_dofs(const std::int32_t cell,
 }
 
 template <dolfinx::scalar T, std::floating_point U>
-void BoundaryData<T, U>::calculate_boundary_values(
+void BoundaryData<T, U>::evaluate_boundary_flux(
     const bool initialise_boundary_values)
 {
   /* Extract required data */
@@ -639,22 +639,25 @@ void BoundaryData<T, U>::calculate_boundary_values(
       //     || (bc->is_timedependent() && !bc->has_time_function()))
       if (initialise_boundary_values)
       {
-        // The entities
-        std::span<const std::int32_t> entities = bc->entities();
+        // The boundary facets
+        std::span<const std::int32_t> bfcts = bc->facets();
 
         // Prepare evaluation of boundary expression
-        auto [coeffs, cstride] = bc->pack_coefficients();
+        auto [coeffs, cstride] = bc->pack_coefficients(_local_fct_id);
         std::vector<T> constant_data = bc->pack_constants();
 
         auto bfn = bc->get_tabulate_expression();
 
         // Evlaute boundary values
         std::vector<T> values_local(bc->num_eval_per_facet(), 0);
-        for (std::size_t e = 0; e < entities.size() / 2; ++e)
+        for (std::size_t e = 0; e < bc->num_facets(); ++e)
         {
-          // The cell and (local) facet
-          std::int32_t c = entities[2 * e];
-          std::int32_t f = entities[2 * e + 1];
+          // The facet
+          std::int32_t bfct = bfcts[e];
+
+          // The boundary entity
+          std::int32_t c = _fct_to_cell->links(bfct)[0];
+          std::int32_t f = _local_fct_id[bfct];
 
           // The cell geometry
           auto x_dofs = MDSPAN_IMPL_STANDARD_NAMESPACE::submdspan(
@@ -668,11 +671,10 @@ void BoundaryData<T, U>::calculate_boundary_values(
 
           // Evaluate the boundary expression
           const T* coeff_cell = coeffs.data() + e * cstride;
-          const int* entity_index = entities.data() + 2 * e + 1;
-
           std::ranges::fill(values_local, 0);
+
           bfn(values_local.data(), coeff_cell, constant_data.data(),
-              coord_dofs.data(), entity_index, nullptr);
+              coord_dofs.data(), &f, nullptr);
 
           // Evalute mapping tensors
           U detJ = _kernel_data.compute_jacobian(J, K, _detJ_scratch, coord);

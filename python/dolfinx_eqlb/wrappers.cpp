@@ -71,7 +71,7 @@ void declare_bcs(nb::module_& m)
           [](base::FluxBC<T, U>* fp,
              std::shared_ptr<const fem::Expression<T, U>> value,
              const std::vector<std::int32_t>& facets,
-             const fem::FunctionSpace<U>& V)
+             std::shared_ptr<const fem::FunctionSpace<U>> V)
           { new (fp) base::FluxBC<T, U>(value, facets, V); },
           nb::arg("boundary_expression"), nb::arg("boundary_facets"),
           nb::arg("FunctionSpace"))
