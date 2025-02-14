@@ -30,11 +30,18 @@ using namespace dolfinx;
 namespace dolfinx_eqlb::base
 {
 
+enum class TimeType : int
+{
+  stationary = 0,
+  timefunction = 1,
+  timedependent = 2,
+};
+
 template <dolfinx::scalar T, std::floating_point U>
 class FluxBC
 {
 public:
-  /// Storage of boundary conditions (no quadrature required)
+  /// Storage of boundary conditions
   ///
   /// Pass a boundary condition for the flux-space from the python
   /// interface to the c++ level. Its precompiled normal-trace is stored,
@@ -42,22 +49,32 @@ public:
   /// calculation the actual boundary DOFs. If negative values are passed
   /// for the quadrature degree, no projection is performed.
   ///
-  /// @param boundary_expression The boundary expression
-  /// @param constants           The constants
-  /// @param coefficients        The coefficients
-  /// @param n_eval_per_fct      The number of point-evaluations per facet
-  /// @param quadrature_degree   The quadrature degree used for the projection
-  ///                            of the normal-trace into a polynomial space
-  /// @param is_timedependent    True, if the boundary value is time-dependent
-  /// @param has_time_function   True, if the time-dependency is covered by a
-  ///                            multiplicative time function
-  /// @param boundary_facets     The boundary facets
-  /// @param n_bdofs             The number of boundary DOFs
+  /// @param value              The boundary expression
+  /// @param facets             The boundary facets
+  /// @param V                  The function space
+  /// @param quadrature_degree  The quadrature degree used for the projection
+  /// @param tbehaviour         The behaviour in time
   FluxBC(std::shared_ptr<const fem::Expression<T, U>> value,
          const std::vector<std::int32_t>& facets,
-         std::shared_ptr<const fem::FunctionSpace<U>> V)
-      : _expression(value), _nfcts(facets.size()), _V(V), _is_zero(false),
-        _projection_required(false), _facets(facets), _quadrature_degree(0)
+         std::shared_ptr<const fem::FunctionSpace<U>> V,
+         const int quadrature_degree, const TimeType tbehaviour)
+      : _expression(value), _facets(facets), _nfcts(facets.size()), _V(V),
+        _quadrature_degree(quadrature_degree),
+        _projection_required((quadrature_degree < 0) ? false : true),
+        _is_zero(false), _tbehaviour(tbehaviour)
+  {
+  }
+
+  /// Storage of boundary conditions (no quadrature required)
+  ///
+  /// This constructor is used for homogenous BCs, where no boundary expression
+  /// is required.
+  ///
+  /// @param facets             The boundary facets
+  FluxBC(const std::vector<std::int32_t>& facets)
+      : _expression(nullptr), _facets(facets), _nfcts(facets.size()),
+        _V(nullptr), _quadrature_degree(-1), _projection_required(false),
+        _is_zero(true), _tbehaviour(TimeType::stationary)
   {
   }
 
@@ -158,9 +175,10 @@ public:
 protected:
   /* Variable definitions */
   // Identifiers
-  // const bool _is_zero, _is_timedependent, _has_time_function,
-  //     _projection_required;
   const bool _is_zero, _projection_required;
+
+  // Behaviour in time
+  const TimeType _tbehaviour;
 
   // The Quadrature degree
   const int _quadrature_degree;

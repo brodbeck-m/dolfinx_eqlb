@@ -65,16 +65,27 @@ void declare_bcs(nb::module_& m)
 {
   using U = typename dolfinx::scalar_value_type_t<T>;
 
+  nb::enum_<base::TimeType>(m, "TimeType", nb::is_arithmetic(),
+                            "Time-dependency of a boundary condition.")
+      .value("stationary", base::TimeType::stationary)
+      .value("timefunction", base::TimeType::timefunction)
+      .value("timedependent", base::TimeType::timedependent);
+
   nb::class_<base::FluxBC<T, U>>(m, "FluxBC", "FluxBC object")
       .def(
           "__init__",
           [](base::FluxBC<T, U>* fp,
              std::shared_ptr<const fem::Expression<T, U>> value,
              const std::vector<std::int32_t>& facets,
-             std::shared_ptr<const fem::FunctionSpace<U>> V)
-          { new (fp) base::FluxBC<T, U>(value, facets, V); },
+             std::shared_ptr<const fem::FunctionSpace<U>> V,
+             const int quadrature_degree, const base::TimeType tbehaviour)
+          {
+            new (fp) base::FluxBC<T, U>(value, facets, V, quadrature_degree,
+                                        tbehaviour);
+          },
           nb::arg("boundary_expression"), nb::arg("boundary_facets"),
-          nb::arg("FunctionSpace"))
+          nb::arg("FunctionSpace"), nb::arg("quadrature_degree"),
+          nb::arg("transient_behaviour"))
       .def_prop_ro("quadrature_degree", &base::FluxBC<T, U>::quadrature_degree);
 
   nb::class_<base::BoundaryData<T, U>>(m, "BoundaryData", "BoundaryData object")

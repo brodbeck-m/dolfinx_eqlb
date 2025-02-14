@@ -619,12 +619,28 @@ void BoundaryData<T, U>::evaluate_boundary_flux(
   mdspan_t<U, 2> J(_data_J.data(), _gdim, _gdim);
   mdspan_t<U, 2> K(_data_K.data(), _gdim, _gdim);
 
-  // Evaluating the boundary kernels
-  std::vector<U> boundary_normal;
-
   // The DOF ids and values on boundary facets
   // (values on entire element to enable application of DOF transformations)
   std::vector<T> x_bvals_cell(_ndofs_per_cell);
+
+  // Projection of boundary values
+  std::vector<U> boundary_normal(_gdim);
+
+  Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic> A_e(_ndofs_per_fct,
+                                                       _ndofs_per_fct);
+  Eigen::Matrix<T, Eigen::Dynamic, 1> L_e(_ndofs_per_fct), u_e(_ndofs_per_fct);
+  Eigen::LLT<Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>> solver;
+
+  std::vector<double> basis_projection_values, mbasis_projection_values;
+
+  std::array<std::size_t, 5> shape = _kernel_data.shapefunctions_flux_qpoints(
+      _V_flux_hdiv->element()->basix_element(), basis_projection_values);
+  mdspan_t<const double, 5> basis_projection
+      = mdspan_t<const U, 5>(basis_projection_values.data(), shape);
+
+  mbasis_projection_values.resize(nqpoints_per_fct * _ndofs_per_fct * _gdim);
+  mdspan_t<double, 3> mbasis_projection = mdspan_t<U, 3>(
+      mbasis_projection_values.data(), nqpoints_per_fct, _ndofs_per_fct, _gdim);
 
   /* Evaluate the boundary DOFs */
   for (int i_rhs = 0; i_rhs < _num_rhs; ++i_rhs)
@@ -682,7 +698,39 @@ void BoundaryData<T, U>::evaluate_boundary_flux(
           // Interpolate BC into flux function
           if (bc->projection_required())
           {
-            throw std::runtime_error("Projection not implemented");
+            // The quadrature weights
+            std::span<const U> weights = _kernel_data.quadrature_weights(0, f);
+
+            // The boundary normal vector
+            _kernel_data.physical_fct_normal(boundary_normal, K, f);
+
+            // Map shape functions to current cell
+            _kernel_data.map_shapefunctions_flux(f, mbasis_projection,
+                                                 basis_projection, J, detJ);
+
+            // Assemble projection operator
+            boundary_projection_kernel<T, U>(values_local, boundary_normal,
+                                             mbasis_projection, weights, detJ,
+                                             A_e, L_e);
+
+            // Solve the projection
+            std::span<T> x_bvals_fct(x_bvals_cell.data() + f * _ndofs_per_fct,
+                                     _ndofs_per_fct);
+
+            if (_ndofs_per_fct > 1)
+            {
+              solver.compute(A_e);
+              u_e = solver.solve(L_e);
+
+              for (std::size_t i = 0; i < _ndofs_per_fct; ++i)
+              {
+                x_bvals_fct[i] = u_e(i);
+              }
+            }
+            else
+            {
+              x_bvals_fct[0] = L_e(0) / A_e(0, 0);
+            }
           }
           else
           {

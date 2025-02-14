@@ -17,7 +17,7 @@ import dolfinx
 from dolfinx import fem, mesh
 import ufl
 
-from dolfinx_eqlb.cpp import FluxBC, BoundaryData
+from dolfinx_eqlb.cpp import FluxBC, BoundaryData, TimeType
 
 ffi = cffi.FFI()
 
@@ -26,10 +26,9 @@ def fluxbc(
     value: typing.Any,
     facets: NDArray,
     V: fem.FunctionSpace,
-    is_time_depended: typing.Optional[bool] = False,
-    has_time_function: typing.Optional[bool] = False,
     requires_projection: typing.Optional[bool] = False,
     quadrature_degree: typing.Optional[int] = None,
+    transient_behavior: typing.Optional[TimeType] = TimeType.stationary,
 ) -> FluxBC:
     """Essential boundary condition for one flux on a set of facets
 
@@ -60,8 +59,10 @@ def fluxbc(
         qdegree = (
             2 * flux_degree - 2 if quadrature_degree is None else quadrature_degree
         )
+        quadrature_degree = qdegree
     else:
         qdegree = 2 * flux_degree - 1
+        quadrature_degree = -1
 
     if msh.topology.cell_type == mesh.CellType.triangle:
         pnts_eval, _ = basix.make_quadrature(basix.CellType.interval, qdegree)
@@ -73,7 +74,9 @@ def fluxbc(
 
     expr = fem.Expression(value, pnts_eval, dtype=np.float64)
 
-    return FluxBC(expr._cpp_object, facets, V._cpp_object)
+    return FluxBC(
+        expr._cpp_object, facets, V._cpp_object, quadrature_degree, transient_behavior
+    )
 
 
 def boundarydata(

@@ -10,9 +10,7 @@
 #include "KernelData.hpp"
 #include "Patch.hpp"
 #include "QuadratureRule.hpp"
-// #include "assemble_bcs_impl.hpp"
 #include "eigen3/Eigen/Dense"
-// #include "eigen3/Eigen/Sparse"
 #include "mdspan.hpp"
 
 #include <basix/e-lagrange.h>
