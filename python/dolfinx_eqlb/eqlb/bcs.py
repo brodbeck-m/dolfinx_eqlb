@@ -17,9 +17,22 @@ import dolfinx
 from dolfinx import fem, mesh
 import ufl
 
-from dolfinx_eqlb.cpp import FluxBC, BoundaryData
+from dolfinx_eqlb.cpp import FluxBC, BoundaryData, TimeType
 
 ffi = cffi.FFI()
+
+
+def homogenous_fluxbc(facets: NDArray) -> FluxBC:
+    """Essential, homogenous boundary condition for one flux on a set of facets
+
+    Args:
+        facets:              The boundary facets
+
+    Returns:
+        The essential flux BC on a group of facets
+    """
+
+    return FluxBC(facets)
 
 
 def fluxbc(
@@ -28,138 +41,55 @@ def fluxbc(
     V: fem.FunctionSpace,
     requires_projection: typing.Optional[bool] = False,
     quadrature_degree: typing.Optional[int] = None,
+    transient_behavior: typing.Optional[TimeType] = TimeType.stationary,
 ) -> FluxBC:
     """Essential boundary condition for one flux on a set of facets
 
     Args:
-        value:               Boundary values (flux x normal) as ufl-function
+        value:               Boundary values (flux x normal) as ufl expression
         facets:              The boundary facets
         V:                   The function space of the reconstructed flux
+        is_time_depended:    True, if the boundary data are time dependent
+        has_time_function:   True, if the time-dependency can be expressed by a
+                             multiplicative factor
         requires_projection: Perform projection for non matching (non-polynomial or
                              higher-order polynomial) boundary data
         quadrature_degree:   Degree of quadrature rule for projection
 
     Returns:
-        The essential flux BCs on a group of facets
+        The essential flux BC on a group of facets
     """
 
     # --- Extract required data
     # The mesh
-    domain = V.mesh
-
-    # Number of facets per cell
-    if domain.topology.cell_type == mesh.CellType.triangle:
-        fct_type = basix.CellType.interval
-        nfcts_per_cell = 3
-    elif domain.topology.cell_type == mesh.CellType.tetrahedron:
-        fct_type = basix.CellType.triangle
-        nfcts_per_cell = 4
-        raise NotImplementedError("3D meshes currently not supported")
-    else:
-        raise NotImplementedError("Unsupported cell type")
+    msh = V.mesh
 
     # Degree of flux element
     flux_degree = V.element.basix_element.degree
 
     # --- Compile boundary function
-    # Evaluation points of boundary function
     if requires_projection:
-        # Quadrature degree
-        if quadrature_degree is None:
-            quadrature_degree = 2 * (flux_degree - 1)
-
-        # Create appropriate quadrature rule
-        qpnts, _ = basix.make_quadrature(fct_type, quadrature_degree)
-
-        # Number of evaluation points per facet
-        neval_per_fct = qpnts.shape[0]
-
-        # Map points to reference cell
-        pnts_eval = np.zeros(
-            (nfcts_per_cell * neval_per_fct, domain.topology.dim), dtype=np.float64
+        qdegree = (
+            2 * flux_degree - 2 if quadrature_degree is None else quadrature_degree
         )
-
-        if domain.topology.cell_type == mesh.CellType.triangle:
-            # Initialisations
-            id_fct1 = neval_per_fct
-            id_fct2 = 2 * neval_per_fct
-
-            # Map 1D points to 2D facet
-            for i in range(0, neval_per_fct):
-                # Point on facet 0
-                pnts_eval[i, 0] = 1 - qpnts[i]
-                pnts_eval[i, 1] = qpnts[0]
-
-                # Point on facet 1
-                pnts_eval[id_fct1, 0] = 0
-                pnts_eval[id_fct1, 1] = qpnts[i]
-                id_fct1 += 1
-
-                # Point on facet 2
-                pnts_eval[id_fct2, 0] = qpnts[i]
-                pnts_eval[id_fct2, 1] = 0
-                id_fct2 += 1
-        else:
-            raise NotImplementedError("3D meshes currently not supported")
+        quadrature_degree = qdegree
     else:
-        # Points required for interpolation into element
-        pnts = V.element.basix_element.points
+        qdegree = 2 * flux_degree - 1
+        quadrature_degree = -1
 
-        # Number of evaluation points per facet
-        # (Check if point is on facet 0 --> x != 0)
-        x_pnt = pnts[0, 0]
-        neval_per_fct = 0
-
-        while x_pnt > 0:
-            neval_per_fct += 1
-            x_pnt = pnts[neval_per_fct, 0]
-
-        # Extract points
-        pnts_eval = pnts[: neval_per_fct * nfcts_per_cell, :]
-
-    # Precompile ufl-function
-    ufcx_form, _, _ = dolfinx.jit.ffcx_jit(domain.comm, (value, pnts_eval))
-
-    # Extract constants
-    constants = ufl.algorithms.analysis.extract_constants(value)
-
-    constants_cpp = [c._cpp_object for c in constants]
-
-    # Extract coefficients
-    coefficients = ufl.algorithms.analysis.extract_coefficients(value)
-    n_positions = ufcx_form.num_coefficients
-    c_positions = ufcx_form.original_coefficient_positions
-
-    coefficients_cpp = []
-    positions = []
-    for i in range(0, n_positions):
-        coefficients_cpp.append(coefficients[i]._cpp_object)
-        positions.append(c_positions[i])
-
-    # Initialise FluxBC
-    if requires_projection:
-        bc = FluxBC(
-            V._cpp_object,
-            facets,
-            ffi.cast("uintptr_t", ffi.addressof(ufcx_form)),
-            int(pnts_eval.shape[0] / nfcts_per_cell),
-            quadrature_degree,
-            coefficients_cpp,
-            positions,
-            constants_cpp,
-        )
+    if msh.topology.cell_type == mesh.CellType.triangle:
+        pnts_eval, _ = basix.make_quadrature(basix.CellType.interval, qdegree)
+    elif msh.topology.cell_type == mesh.CellType.tetrahedron:
+        pnts_eval, _ = basix.make_quadrature(basix.CellType.triangle, qdegree)
+        raise NotImplementedError("3D meshes currently not supported")
     else:
-        bc = FluxBC(
-            V._cpp_object,
-            facets,
-            ffi.cast("uintptr_t", ffi.addressof(ufcx_form)),
-            int(pnts_eval.shape[0] / nfcts_per_cell),
-            coefficients_cpp,
-            positions,
-            constants_cpp,
-        )
+        raise NotImplementedError("Unsupported cell type")
 
-    return bc
+    expr = fem.Expression(value, pnts_eval, dtype=np.float64)
+
+    return FluxBC(
+        expr._cpp_object, facets, V._cpp_object, quadrature_degree, transient_behavior
+    )
 
 
 def boundarydata(

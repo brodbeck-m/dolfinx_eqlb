@@ -68,7 +68,7 @@ def create_hierarchic_rt(cell: basix.CellType, degree: int, discontinuous: bool)
         qdegree = degree
 
     # Quadrature points on reference fact
-    pnt, wts = basix.make_quadrature(fct, qdegree)
+    pnt, wts = basix.make_quadrature(fct, 2 * degree - 1)
 
     # Set-up the interpolation
     if tdim == 2:
@@ -92,7 +92,7 @@ def create_hierarchic_rt(cell: basix.CellType, degree: int, discontinuous: bool)
         # --- Cell contribution
         if degree > 1:
             # quadrature points on cell
-            pnt, wts = basix.make_quadrature(cell, qdegree)
+            pnt, wts = basix.make_quadrature(cell, 2 * degree - 2)
             x[2].append(pnt)
 
             # initialisation of interpolation matrix

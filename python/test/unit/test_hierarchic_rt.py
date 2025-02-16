@@ -40,7 +40,7 @@ def evaluate_dofs_hierarchic_rt(tdim, degree, rt_basix, dofs_basix):
 
         # --- Facet contribution
         # evaluate 1D quadrature rule
-        pnt, wts = basix.make_quadrature(basix.CellType.interval, 2 * degree)
+        pnt, wts = basix.make_quadrature(basix.CellType.interval, 2 * degree - 1)
 
         for ifct in range(0, 3):
             # map quadrature points of facet of reference cell
@@ -70,7 +70,7 @@ def evaluate_dofs_hierarchic_rt(tdim, degree, rt_basix, dofs_basix):
         # --- Cell contribution
         if degree > 1:
             # evaluate 2D quadrature rule
-            pnt, wts = basix.make_quadrature(basix.CellType.triangle, 2 * degree)
+            pnt, wts = basix.make_quadrature(basix.CellType.triangle, 2 * degree - 2)
 
             # evaluate reference function
             shp_fkt = rt_basix.basix_element.tabulate(1, pnt)

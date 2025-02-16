@@ -4,7 +4,7 @@
 //
 // SPDX-License-Identifier:    LGPL-3.0-or-later
 
-// #include <dolfinx/fem/DirichletBC.h>
+#include <dolfinx/fem/Constant.h>
 #include <dolfinx/fem/Form.h>
 #include <dolfinx/fem/Function.h>
 // #include <dolfinx_eqlb/base/BoundaryData.hpp>
@@ -46,9 +46,11 @@ using namespace nb::literals;
 using namespace dolfinx_eqlb;
 using scalar_t = PetscScalar;
 
-template <dolfinx::scalar T, std::floating_point U>
+template <dolfinx::scalar T>
 void declare_lsolver(nb::module_& m)
 {
+  using U = typename dolfinx::scalar_value_type_t<T>;
+
   m.def(
       "local_solver",
       [](std::vector<std::shared_ptr<dolfinx::fem::Function<T, U>>>& solutions,
@@ -58,37 +60,63 @@ void declare_lsolver(nb::module_& m)
       nb::arg("solutions"), nb::arg("a"), nb::arg("ls"), "Local solver");
 }
 
-template <dolfinx::scalar T, std::floating_point U>
+template <dolfinx::scalar T>
 void declare_bcs(nb::module_& m)
 {
+  using U = typename dolfinx::scalar_value_type_t<T>;
+
+  nb::enum_<base::TimeType>(m, "TimeType", nb::is_arithmetic(),
+                            "Time-dependency of a boundary condition.")
+      .value("stationary", base::TimeType::stationary)
+      .value("timefunction", base::TimeType::timefunction)
+      .value("timedependent", base::TimeType::timedependent);
+
   nb::class_<base::FluxBC<T, U>>(m, "FluxBC", "FluxBC object")
       .def(
           "__init__",
           [](base::FluxBC<T, U>* fp,
-             const std::vector<std::int32_t>& boundary_facets,
-             std::uintptr_t fn_addr,
-             std::vector<std::shared_ptr<const fem::Constant<T>>> constants,
-             std::vector<std::shared_ptr<const fem::Function<T, U>>>
-                 coefficients,
-             bool is_zero, bool is_timedependent, bool has_time_function,
-             int quadrature_degree)
+             std::shared_ptr<const fem::Expression<T, U>> value,
+             const std::vector<std::int32_t>& facets,
+             std::shared_ptr<const fem::FunctionSpace<U>> V,
+             const int quadrature_degree, const base::TimeType tbehaviour)
           {
-            using kern = std::function<void(T*, const T*, const T*, const U*,
-                                            const int*, const std::uint8_t*)>;
-
-            auto tabulate_expression_ptr
-                = (void (*)(T*, const T*, const T*, const U*, const int*,
-                            const std::uint8_t*))fn_addr;
-
-            new (fp) base::FluxBC<T, U>(boundary_facets,
-                                        tabulate_expression_ptr, constants,
-                                        coefficients, is_zero, is_timedependent,
-                                        has_time_function, quadrature_degree);
+            new (fp) base::FluxBC<T, U>(value, facets, V, quadrature_degree,
+                                        tbehaviour);
           },
-          nb::arg("boundary_facets"), nb::arg("boundary_expression"),
-          nb::arg("constants"), nb::arg("coefficients"), nb::arg("is_zero"),
-          nb::arg("is_timedependent"), nb::arg("has_time_function"),
-          nb::arg("quadrature_degree"));
+          nb::arg("boundary_expression"), nb::arg("boundary_facets"),
+          nb::arg("FunctionSpace"), nb::arg("quadrature_degree"),
+          nb::arg("transient_behaviour"))
+      .def(
+          "__init__",
+          [](base::FluxBC<T, U>* fp, const std::vector<std::int32_t>& facets)
+          { new (fp) base::FluxBC<T, U>(facets); }, nb::arg("boundary_facets"))
+      .def_prop_ro("quadrature_degree", &base::FluxBC<T, U>::quadrature_degree);
+
+  nb::class_<base::BoundaryData<T, U>>(m, "BoundaryData", "BoundaryData object")
+      .def(
+          "__init__",
+          [](base::BoundaryData<T, U>* fp,
+             std::vector<std::vector<std::shared_ptr<base::FluxBC<T, U>>>>&
+                 list_bcs,
+             std::vector<std::shared_ptr<fem::Function<T, U>>>& boundary_flux,
+             std::shared_ptr<const fem::FunctionSpace<U>> V_flux_hdiv,
+             bool rtflux_is_custom, int quadrature_degree,
+             const std::vector<std::vector<std::int32_t>>& fct_esntbound_prime,
+             const bool reconstruct_stress)
+          {
+            new (fp) base::BoundaryData<T, U>(
+                list_bcs, boundary_flux, V_flux_hdiv, rtflux_is_custom,
+                quadrature_degree, fct_esntbound_prime, reconstruct_stress);
+          },
+          nb::arg("list_bcs"), nb::arg("boundary_flux"), nb::arg("V_flux_hdiv"),
+          nb::arg("rtflux_is_custom"), nb::arg("quadrature_degree"),
+          nb::arg("fct_esntbound_prime"), nb::arg("reconstruct_stress"))
+      .def(
+          "update",
+          [](base::BoundaryData<T, U>& self,
+             std::vector<std::shared_ptr<const fem::Constant<T>>>&
+                 time_functions) { self.update(time_functions); },
+          nb::arg("time_functions"));
 }
 
 NB_MODULE(cpp, m)
@@ -102,8 +130,8 @@ NB_MODULE(cpp, m)
 #endif
 
   // The local solver
-  declare_lsolver<double, double>(m);
-  declare_bcs<double, double>(m);
+  declare_lsolver<double>(m);
+  declare_bcs<double>(m);
 
   // Some simple test functions
   m.def("function_ev", []() { ev::function_ev(); }, "A function from ev");

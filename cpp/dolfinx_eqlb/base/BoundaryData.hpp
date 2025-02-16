@@ -10,9 +10,7 @@
 #include "KernelData.hpp"
 #include "Patch.hpp"
 #include "QuadratureRule.hpp"
-#include "assemble_bcs_impl.hpp"
 #include "eigen3/Eigen/Dense"
-// #include "eigen3/Eigen/Sparse"
 #include "mdspan.hpp"
 
 #include <basix/e-lagrange.h>
@@ -34,6 +32,7 @@
 #include <iterator>
 #include <memory>
 #include <span>
+#include <stdexcept>
 #include <tuple>
 #include <vector>
 
@@ -44,9 +43,11 @@ namespace dolfinx_eqlb::base
 // ------------------------------------------------------------------------------
 /* KernelDataBC */
 // ------------------------------------------------------------------------------
-template <typename T>
-class KernelDataBC : public KernelData<T>
+template <dolfinx::scalar T, std::floating_point U>
+class KernelDataBC : public KernelData<U>
 {
+  // TODO - Implement general casting between T and U in interpolation routines!
+
 public:
   /// Kernel data for calculation of patch boundary-conditions
   ///
@@ -57,9 +58,9 @@ public:
   /// @param[in] quadrature_rule_fct  The quadrature rule on the cell facets
   /// @param[in] basix_element_fluxpw The basix-element for the H(div) flux
   /// @param[in] basix_element_rhs    The basix-element for RHS and proj. flux
-  KernelDataBC(std::shared_ptr<const mesh::Mesh> mesh,
-               std::shared_ptr<const QuadratureRule> quadrature_rule_fct,
-               std::shared_ptr<const fem::FiniteElement> element_flux_hdiv,
+  KernelDataBC(std::shared_ptr<const mesh::Mesh<U>> mesh,
+               std::shared_ptr<const QuadratureRule<U>> quadrature_rule_fct,
+               std::shared_ptr<const fem::FiniteElement<U>> element_flux_hdiv,
                const int nfluxdofs_per_fct, const int nfluxdofs_cell,
                const bool flux_is_custom);
 
@@ -71,35 +72,35 @@ public:
   /// @param[out] shape_vector The shape for creating an mdspan of the tabulated
   /// functions
   std::array<std::size_t, 5>
-  shapefunctions_flux_qpoints(const basix::FiniteElement& basix_element,
-                              std::vector<double>& storage)
+  shapefunctions_flux_qpoints(const basix::FiniteElement<U>& basix_element,
+                              std::vector<U>& storage)
   {
     return this->tabulate_basis(basix_element,
                                 this->_quadrature_rule[0]->points(), storage,
                                 false, false);
   }
 
-  /// Map flux-functions from refrence to current cell
+  /// Map flux-functions from reference to current cell
   ///
-  /// Aplies the contra-variant Piola mapping to the shape-functions of the
-  /// flux. The here performed mapping is restriced to the shape-functions of
-  /// one cell facet. All other functions will be neglected.
+  /// Applies the contra-variant Piola mapping to the shape-functions of the
+  /// flux. The here performed mapping is restricted to the shape-functions
+  /// of one cell facet. All other functions will be neglected.
   ///
   /// @param[in] lfct_id      The cell-local Id of the facet
   /// @param[in, out] phi_cur The shape-function on the current cell
   /// @param[in] phi_ref      The shape-functions on the reference cell
-  /// @param[in] J            The Jacobina
+  /// @param[in] J            The Jacobian
   /// @param[in] detJ         The determinant of the Jacobian
-  void map_shapefunctions_flux(std::int8_t lfct_id, mdspan_t<double, 3> phi_cur,
-                               mdspan_t<const double, 5> phi_ref,
-                               mdspan_t<const double, 2> J, double detJ);
+  void map_shapefunctions_flux(std::int8_t lfct_id, mdspan_t<U, 3> phi_cur,
+                               mdspan_t<const U, 5> phi_ref,
+                               mdspan_t<const U, 2> J, U detJ);
 
   /* Calculate flux DOFs based on different inputs */
 
   /// Calculates a flux (vector) from a given normal-trace on a cell-facet
   ///
   /// Takes over a list of normal-traces at (multiple) points and return the
-  /// flux-vectors calculates from facet_normal x trace, where the facte_normal
+  /// flux-vectors calculates from facet-normal x trace, where the facet-normal
   /// has a magnitude of 1.
   ///
   /// @param[in] flux_ntrace_cur The vector of flux normal-traces within the
@@ -110,7 +111,7 @@ public:
   ///                            normal-trace
   mdspan_t<const T, 2> normaltrace_to_flux(std::span<const T> flux_ntrace_cur,
                                            std::int8_t lfct_id,
-                                           mdspan_t<const double, 2> K)
+                                           mdspan_t<const U, 2> K)
   {
     // Perform calculation
     normaltrace_to_vector(flux_ntrace_cur, lfct_id, K);
@@ -134,8 +135,7 @@ public:
   /// @param[in] K               The inverse of the Jacobi matrix
   void interpolate_flux(std::span<const T> flux_ntrace_cur,
                         std::span<T> flux_dofs, std::int8_t lfct_id,
-                        mdspan_t<const double, 2> J, double detJ,
-                        mdspan_t<const double, 2> K);
+                        mdspan_t<const U, 2> J, U detJ, mdspan_t<const U, 2> K);
 
   /// Calculates boundary DOFs for a patch problem
   ///
@@ -160,8 +160,8 @@ public:
                                   std::int32_t cell_id, std::int8_t lfct_id,
                                   std::int8_t hat_id,
                                   std::span<const std::uint32_t> cell_info,
-                                  mdspan_t<const double, 2> J, double detJ,
-                                  mdspan_t<const double, 2> K)
+                                  mdspan_t<const U, 2> J, U detJ,
+                                  mdspan_t<const U, 2> K)
   {
     // Initialise storage
     std::vector<T> flux_dofs_patch(flux_dofs_bc.size());
@@ -198,12 +198,11 @@ public:
                         std::span<T> flux_dofs_patch, std::int32_t cell_id,
                         std::int8_t lfct_id, std::int8_t hat_id,
                         std::span<const std::uint32_t> cell_info,
-                        mdspan_t<const double, 2> J, double detJ,
-                        mdspan_t<const double, 2> K);
+                        mdspan_t<const U, 2> J, U detJ, mdspan_t<const U, 2> K);
 
   /// Calculates flux-DOFs from flux-vector at the interpolation points
   ///
-  /// Calculates flux DOFs on one cell facte from the flux-values (on the
+  /// Calculates flux DOFs on one cell facet from the flux-values (on the
   /// current cell) on the interpolation points of the flux-space.
   ///
   /// @param[in] flux_cur             The flux (current cell) on the
@@ -216,8 +215,7 @@ public:
   /// @param[in] K                    The inverse of the Jacobi matrix
   void interpolate_flux(mdspan_t<const T, 2> flux_cur,
                         std::span<T> flux_dofs_patch, std::int8_t lfct_id,
-                        mdspan_t<const double, 2> J, double detJ,
-                        mdspan_t<const double, 2> K);
+                        mdspan_t<const U, 2> J, U detJ, mdspan_t<const U, 2> K);
 
   /* Getter methods: Interpolation */
 
@@ -231,58 +229,146 @@ public:
 
 protected:
   void normaltrace_to_vector(std::span<const T> normaltrace_cur,
-                             std::int8_t lfct_id, mdspan_t<const double, 2> K);
+                             std::int8_t lfct_id, mdspan_t<const U, 2> K);
 
   /* Variable definitions */
 
   // Interpolation data
   std::size_t _nipoints_per_fct, _nipoints;
-  std::vector<double> _ipoints, _data_M;
-  mdspan_t<const double, 4> _M; // Indices: facet, dof, gdim, points
+  std::vector<U> _ipoints, _data_M;
+  mdspan_t<const U, 4> _M; // Indices: facet, dof, gdim, points
 
   // Tabulated shape-functions H(div) flux (integration points)
-  std::vector<double> _basis_flux_values;
-  mdspan_t<const double, 5> _basis_flux;
+  std::vector<U> _basis_flux_values;
+  mdspan_t<const U, 5> _basis_flux;
   const int _ndofs_per_fct, _ndofs_fct, _ndofs_cell;
 
   // Tabulated shape-functions (hat-function)
-  basix::FiniteElement _basix_element_hat;
-  std::vector<double> _basis_hat_values;
-  mdspan_t<const double, 5> _basis_hat;
+  basix::FiniteElement<U> _basix_element_hat;
+  std::vector<U> _basis_hat_values;
+  mdspan_t<const U, 5> _basis_hat;
 
   // Pull-back H(div) data
   std::size_t _size_flux_scratch;
   std::vector<T> _flux_scratch_data, _mflux_scratch_data;
   mdspan_t<T, 2> _flux_scratch, _mflux_scratch;
 
-  std::array<double, 3> _normal_scratch;
+  std::array<U, 3> _normal_scratch;
 
   std::function<void(mdspan_t<T, 2>&, const mdspan_t<const T, 2>&,
-                     const mdspan_t<const double, 2>&, double,
-                     const mdspan_t<const double, 2>&)>
+                     const mdspan_t<const U, 2>&, U,
+                     const mdspan_t<const U, 2>&)>
       _pull_back_flux;
 
   // Push-forward H(div) shape-functions
-  std::vector<double> _mbasis_flux_values, _mbasis_scratch_values;
-  mdspan_t<double, 2> _mbasis_flux, _mbasis_scratch;
+  std::vector<U> _mbasis_flux_values, _mbasis_scratch_values;
+  mdspan_t<U, 2> _mbasis_flux, _mbasis_scratch;
 
-  std::function<void(mdspan_t<double, 2>&, const mdspan_t<const double, 2>&,
-                     const mdspan_t<const double, 2>&, double,
-                     const mdspan_t<const double, 2>&)>
+  std::function<void(mdspan_t<U, 2>&, const mdspan_t<const U, 2>&,
+                     const mdspan_t<const U, 2>&, U,
+                     const mdspan_t<const U, 2>&)>
       _push_forward_flux;
 
-  std::function<void(const std::span<double>&,
-                     const std::span<const std::uint32_t>&, std::int32_t, int)>
+  std::function<void(const std::span<T>&, const std::span<const std::uint32_t>&,
+                     std::int32_t, int)>
       _apply_dof_transformation;
 };
 // ------------------------------------------------------------------------------
 
 // ------------------------------------------------------------------------------
+/* Projection kernel */
+// ------------------------------------------------------------------------------
+/// Evaluate the projection kernel
+///
+/// For non-polynomial boundary expression or expression with to large degree
+/// the boundary data hev to be projected onto the flux space. This routine
+/// assembles mass-matrix as well as RHS required for the projection based on
+/// the exact normal trace of the flux.
+///
+/// @param[in] ntrace_flux_boundary The exact flux normal-trace on the boundary
+/// @param[in] facet_normal         The facet normal
+/// @param[in] phi                  The (mapped) ansatz function of the flux
+///                                 space
+/// @param[in] weights              The quadrature weights
+/// @param[in] detJ                 The determinant of the Jacobian of the
+///                                 current element
+/// @param[in, out] Ae              The mass matrix
+/// @param[in, out] Le              The RHS of the projection
+template <dolfinx::scalar T, std::floating_point U>
+void boundary_projection_kernel(
+    std::span<const U> ntrace_flux_boundary, std::span<const U> facet_normal,
+    mdspan_t<U, 3> phi, std::span<const U> weights, const U detJ,
+    Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>& A_e,
+    Eigen::Matrix<T, Eigen::Dynamic, 1>& L_e)
+{
+  // The spacial dimension
+  const int gdim = phi.extent(2);
+
+  // The number of quadrature points
+  const int num_qpoints = weights.size();
+
+  // The number of shape functions per facet
+  const int ndofs_per_fct = phi.extent(1);
+
+  // Initialise tangent arrays
+  A_e.setZero();
+  L_e.setZero();
+
+  // Initialise normal-trace of flux
+  double ntrace_phi_i, ntrace_phi_j;
+
+  // Quadrature loop
+  for (std::size_t iq = 0; iq < num_qpoints; ++iq)
+  {
+    for (std::size_t i = 0; i < ndofs_per_fct; ++i)
+    {
+      // Normal trace of phi_i
+      ntrace_phi_i = 0.0;
+
+      for (std::size_t k = 0; k < gdim; ++k)
+      {
+        ntrace_phi_i += phi(iq, i, k) * facet_normal[k];
+      }
+
+      // Set RHS
+      L_e(i) += ntrace_phi_i * ntrace_flux_boundary[iq] * weights[iq];
+
+      for (std::size_t j = i; j < ndofs_per_fct; ++j)
+      {
+        // Normal trace of phi_i
+        ntrace_phi_j = 0.0;
+
+        for (std::size_t k = 0; k < gdim; ++k)
+        {
+          ntrace_phi_j += phi(iq, j, k) * facet_normal[k];
+        }
+
+        // Set entry mass matrix
+        A_e(i, j) += ntrace_phi_i * ntrace_phi_j * weights[iq];
+      }
+    }
+  }
+
+  // Add symmetric entries of mass-matrix
+  for (std::size_t i = 1; i < ndofs_per_fct; ++i)
+  {
+    for (std::size_t j = 0; j < i; ++j)
+    {
+      A_e(i, j) += A_e(j, i);
+    }
+  }
+}
+// ------------------------------------------------------------------------------
+
+// ------------------------------------------------------------------------------
 /* BoundaryData */
 // ------------------------------------------------------------------------------
-template <typename T>
+template <dolfinx::scalar T, std::floating_point U>
 class BoundaryData
 {
+
+  // TODO - Implement general casting between T and U in interpolation routines!
+
 public:
   /// Storage and handling of boundary data
   ///
@@ -303,13 +389,25 @@ public:
   /// @param quadrature_degree   Degree for surface quadrature
   /// @param fct_esntbound_prime List of facets, where essential BCs are applied
   ///                            on the primal problem
+  /// @param reconstruct_stress  True, if the first gdim fluxes form a stress
+  ///                            tensor
   BoundaryData(
-      std::vector<std::vector<std::shared_ptr<FluxBC<T>>>>& list_bcs,
-      std::vector<std::shared_ptr<fem::Function<T>>>& boundary_flux,
-      std::shared_ptr<const fem::FunctionSpace> V_flux_hdiv,
+      std::vector<std::vector<std::shared_ptr<FluxBC<T, U>>>>& list_bcs,
+      std::vector<std::shared_ptr<fem::Function<T, U>>>& boundary_flux,
+      std::shared_ptr<const fem::FunctionSpace<U>> V_flux_hdiv,
       bool rtflux_is_custom, int quadrature_degree,
       const std::vector<std::vector<std::int32_t>>& fct_esntbound_prime,
       const bool reconstruct_stress);
+
+  /// Update the boundary values
+  ///
+  /// Update flux values on the boundary. The calculated values are then used
+  /// for evaluating the BCs for each individual patch problem.
+  ///
+  /// @param time_functions List of time-dependent functions
+  ///                       (on for each subspace)
+  void
+  update(std::vector<std::shared_ptr<const fem::Constant<T>>>& time_functions);
 
   /// Calculate the boundary DOFs for a patch problem
   ///
@@ -336,8 +434,8 @@ public:
   /// @param K               The inverse of the Jacobian
   void calculate_patch_bc(const int rhs_i, const std::int32_t bound_fcts,
                           const std::int8_t patchnode_local,
-                          mdspan_t<const double, 2> J, const double detJ,
-                          mdspan_t<const double, 2> K);
+                          mdspan_t<const U, 2> J, const U detJ,
+                          mdspan_t<const U, 2> K);
 
   /* Getter methods: general */
   /// Get number of considered RHS
@@ -361,8 +459,11 @@ public:
   /// @return List of all facet types (sorted by facet-ids)
   mdspan_t<const std::int8_t, 2> facet_type()
   {
+    const std::int32_t num_fcts
+        = _V_flux_hdiv->mesh()->topology()->index_map(_gdim - 1)->size_local();
+
     return mdspan_t<const std::int8_t, 2>(_facet_type.data(), _num_rhs,
-                                          _num_fcts);
+                                          num_fcts);
   }
 
   /// Marker if mesh-node is on essential boundary of the stress field
@@ -456,9 +557,19 @@ protected:
   void boundary_dofs(const std::int32_t cell, const std::int8_t fct_loc,
                      std::span<std::int32_t> boundary_dofs);
 
+  /// Calculate the boundary values
+  ///
+  /// Evaluates RT-DOFs on a subset of the boundary. The calculated values
+  /// are then used for evaluating the BCs for each individual patch problem.
+  ///
+  /// @param initialise_boundary_values If True, all BCs (not just the
+  ///                                   time-dependet ones) are evaluated
+  void evaluate_boundary_flux(const bool initialise_boundary_values);
+
   /* Variable definitions */
   // The boundary conditions
-  std::vector<std::shared_ptr<const la::Vector<T>>> _x_boundary_flux;
+  std::vector<std::vector<std::shared_ptr<FluxBC<T, U>>>> _bcs;
+  std::vector<std::shared_ptr<fem::Function<T, U>>> _boundary_fluxes;
 
   // --- Counters
   // The number of considered RHS
@@ -467,26 +578,11 @@ protected:
   // The geometric dimension
   const int _gdim;
 
-  // The number of facets (on current processor)
-  const std::int32_t _num_fcts;
-
-  // The number of boundary facets (per subproblem)
-  std::vector<std::int32_t> _num_bcfcts;
-
-  // The number of facets per cell
-  const int _nfcts_per_cell;
-
   // The degree of the flux-space (Hdiv)
   const int _flux_degree;
 
-  // The number of DOFs per cell-facet
-  const int _ndofs_per_cell;
-
-  // The number of DOFs per cell-facet
-  const int _ndofs_per_fct;
-
-  // The number of DOFs (on current processor)
-  const std::int32_t _num_dofs;
+  // DOF counter
+  const int _ndofs_per_cell, _ndofs_per_fct;
 
   // --- Data per DOF
   // The boundary values
@@ -514,22 +610,22 @@ protected:
 
   // --- Data for determination of boundary DOFs
   // The flux function space
-  std::shared_ptr<const fem::FunctionSpace> _V_flux_hdiv;
+  std::shared_ptr<const fem::FunctionSpace<U>> _V_flux_hdiv;
 
   // Id if flux is discontinuous
-  const double _flux_is_discontinous;
+  const bool _flux_is_discontinous;
 
   // Mesh conductivities
   std::shared_ptr<const graph::AdjacencyList<std::int32_t>> _fct_to_cell;
 
   // --- Data for projection/ interpolation
   // Surface quadrature kernel
-  QuadratureRule _quadrature_rule;
-  KernelDataBC<T> _kernel_data;
+  QuadratureRule<U> _quadrature_rule;
+  KernelDataBC<T, U> _kernel_data;
 
   // Geometric mapping
-  std::array<double, 9> _data_J, _data_K;
-  std::array<double, 18> _detJ_scratch;
+  std::array<U, 9> _data_J, _data_K;
+  std::array<U, 18> _detJ_scratch;
 };
 // ------------------------------------------------------------------------------
 

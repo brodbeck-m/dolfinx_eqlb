@@ -12,14 +12,11 @@ import numpy as np
 from mpi4py import MPI
 import typing
 
-import dolfinx
-import dolfinx.fem as dfem
-import dolfinx.geometry as dgeom
-from dolfinx.io import gmshio
-import dolfinx.mesh as dmesh
+from dolfinx import geometry, io, mesh
 
 import ufl
 
+from dolfinx_eqlb.base.mesh import prepare_mesh_for_equilibration
 from dolfinx_eqlb.eqlb import check_eqlb_conditions
 
 
@@ -29,11 +26,11 @@ class MeshType(Enum):
     gmsh = 1
 
 
-class Geometry:
+class Domain:
     def __init__(
         self,
-        mesh: dmesh.Mesh,
-        facet_fkt: dmesh.MeshTags,
+        mesh: mesh.Mesh,
+        facet_fkt: mesh.MeshTags,
         ds: ufl.Measure,
         dv: typing.Optional[ufl.Measure] = None,
     ):
@@ -53,17 +50,17 @@ class Geometry:
 
 
 def create_unitsquare_builtin(
-    n_elmt: int, cell: dolfinx.mesh.CellType, diagonal_type: dolfinx.mesh.DiagonalType
-) -> Geometry:
+    n_elmt: int, cell: mesh.CellType, diagonal_type: mesh.DiagonalType
+) -> Domain:
     # --- Set default options
     if cell is None:
-        cell = dmesh.CellType.triangle
+        cell = mesh.CellType.triangle
 
     if diagonal_type is None:
-        diagonal_type = dmesh.DiagonalType.crossed
+        diagonal_type = mesh.DiagonalType.crossed
 
     # --- Create mesh
-    domain = dmesh.create_rectangle(
+    msh = mesh.create_rectangle(
         MPI.COMM_WORLD,
         [np.array([0, 0]), np.array([1, 1])],
         [n_elmt, n_elmt],
@@ -80,22 +77,22 @@ def create_unitsquare_builtin(
 
     facet_indices, facet_markers = [], []
     for marker, locator in boundaries:
-        facets = dolfinx.mesh.locate_entities(domain, 1, locator)
+        facets = mesh.locate_entities(msh, 1, locator)
         facet_indices.append(facets)
         facet_markers.append(np.full(len(facets), marker))
 
     facet_indices = np.array(np.hstack(facet_indices), dtype=np.int32)
     facet_markers = np.array(np.hstack(facet_markers), dtype=np.int32)
     sorted_facets = np.argsort(facet_indices)
-    facet_function = dolfinx.mesh.meshtags(
-        domain, 1, facet_indices[sorted_facets], facet_markers[sorted_facets]
+    facet_function = mesh.meshtags(
+        msh, 1, facet_indices[sorted_facets], facet_markers[sorted_facets]
     )
-    ds = ufl.Measure("ds", domain=domain, subdomain_data=facet_function)
+    ds = ufl.Measure("ds", domain=msh, subdomain_data=facet_function)
 
-    return Geometry(domain, facet_function, ds)
+    return Domain(msh, facet_function, ds)
 
 
-def create_unitsquare_gmsh(hmin: float) -> Geometry:
+def create_unitsquare_gmsh(hmin: float) -> Domain:
     # --- Build model
     gmsh.initialize()
     gmsh.option.setNumber("General.Terminal", 0)
@@ -132,48 +129,12 @@ def create_unitsquare_gmsh(hmin: float) -> Geometry:
     gmsh.option.setNumber("Mesh.CharacteristicLengthMax", hmin)
     gmsh.model.mesh.generate(2)
 
-    domain_init, _, _ = gmshio.model_to_mesh(gmsh.model, MPI.COMM_WORLD, 0, gdim=2)
-    reversed_edges = check_eqlb_conditions.mesh_has_reversed_edges(domain_init)
+    msh = prepare_mesh_for_equilibration(
+        io.gmshio.model_to_mesh(gmsh.model, MPI.COMM_WORLD, 0, gdim=2)[0]
+    )
 
-    if not reversed_edges:
+    if not check_eqlb_conditions.mesh_has_reversed_edges(msh):
         raise ValueError("Mesh does not contain reversed edges")
-
-    # --- Test if boundary patches contain at least 2 cells
-    # List of refined cells
-    refined_cells = []
-
-    # Required connectivity's
-    domain_init.topology.create_connectivity(0, 2)
-    domain_init.topology.create_connectivity(1, 2)
-    pnt_to_cell = domain_init.topology.connectivity(0, 2)
-
-    # The boundary facets
-    bfcts = dmesh.exterior_facet_indices(domain_init.topology)
-
-    # Get boundary nodes
-    V = dfem.FunctionSpace(domain_init, ("Lagrange", 1))
-    bpnts = dfem.locate_dofs_topological(V, 1, bfcts)
-
-    # Check if point is linked with only on cell
-    for pnt in bpnts:
-        cells = pnt_to_cell.links(pnt)
-
-        if len(cells) == 1:
-            refined_cells.append(cells[0])
-
-    # Refine mesh
-    list_ref_cells = list(set(refined_cells))
-
-    if len(list_ref_cells) > 0:
-        domain = dmesh.refine(
-            domain_init,
-            np.setdiff1d(
-                dmesh.compute_incident_entities(domain_init, list_ref_cells, 2, 1),
-                bfcts,
-            ),
-        )
-    else:
-        domain = domain_init
 
     # --- Mark facets
     boundaries = [
@@ -185,39 +146,39 @@ def create_unitsquare_gmsh(hmin: float) -> Geometry:
 
     facet_indices, facet_markers = [], []
     for marker, locator in boundaries:
-        facets = dolfinx.mesh.locate_entities(domain, 1, locator)
+        facets = mesh.locate_entities(msh, 1, locator)
         facet_indices.append(facets)
         facet_markers.append(np.full(len(facets), marker))
 
     facet_indices = np.array(np.hstack(facet_indices), dtype=np.int32)
     facet_markers = np.array(np.hstack(facet_markers), dtype=np.int32)
     sorted_facets = np.argsort(facet_indices)
-    facet_function = dolfinx.mesh.meshtags(
-        domain, 1, facet_indices[sorted_facets], facet_markers[sorted_facets]
+    facet_function = mesh.meshtags(
+        msh, 1, facet_indices[sorted_facets], facet_markers[sorted_facets]
     )
-    ds = ufl.Measure("ds", domain=domain, subdomain_data=facet_function)
+    ds = ufl.Measure("ds", domain=msh, subdomain_data=facet_function)
 
-    return Geometry(domain, facet_function, ds)
+    return Domain(msh, facet_function, ds)
 
 
 # --- Point-evaluation of FE functions ---
 def points_boundary_unitsquare(
-    geometry: Geometry, boundary_id: typing.List[int], npoints_per_fct: int
+    domain: Domain, boundary_id: typing.List[int], npoints_per_fct: int
 ) -> np.ndarray:
     """Creates points on boundary
     Evaluation points are cerated per call-facet on boundary, while the mesh-nodes itself are excluded.
 
     Args:
-        geometry:        The Geometry of the domain
+        domain:          The domain
         boundary_id:     List of boundary ids on which the evaluation points are created
         npoints_per_fct: Number of evaluation points per facet
 
     Returns:
-        points:         List of evaluation points per boundary id
+        The list of evaluation points per boundary id
     """
 
     # The number of boundary facets
-    n_bfcts = int(geometry.facet_function.indices.size / 4)
+    n_bfcts = int(domain.facet_function.indices.size / 4)
 
     # Initialise output
     n_points = len(boundary_id) * n_bfcts * npoints_per_fct
@@ -256,32 +217,34 @@ def points_boundary_unitsquare(
 
 
 def initialise_evaluate_function(
-    domain: dmesh.Mesh, points: np.ndarray
+    msh: mesh.Mesh, points: np.ndarray
 ) -> typing.Tuple[np.ndarray, np.ndarray]:
-    """Prepare evaluation of dfem.Function
+    """Prepare evaluation of finite-element function
+
     Function evaluation requires list of points and the adjacent cells per
     processor.
 
     Args:
-        domain: The Mesh
+        msh:    The Mesh
         points: The points, at which the function has to be evaluated
 
     Returns:
         Evaluation points on each processor,
         Cell within which the points are located
     """
+
     # The search tree
-    bb_tree = dgeom.BoundingBoxTree(domain, domain.topology.dim)
+    bb_tree = geometry.bb_tree(msh, msh.topology.dim)
 
     # Initialise output
     cells = []
     points_on_proc = []
 
     # Find cells whose bounding-box collide with the the points
-    cell_candidates = dgeom.compute_collisions(bb_tree, points)
+    cell_candidates = geometry.compute_collisions_points(bb_tree, points)
 
     # Choose one of the cells that contains the point
-    colliding_cells = dgeom.compute_colliding_cells(domain, cell_candidates, points)
+    colliding_cells = geometry.compute_colliding_cells(msh, cell_candidates, points)
     for i, point in enumerate(points):
         if len(colliding_cells.links(i)) > 0:
             points_on_proc.append(point)

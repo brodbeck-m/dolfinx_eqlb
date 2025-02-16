@@ -10,9 +10,10 @@ namespace dolfinx_eqlb::base
 
 } // namespace dolfinx_eqlb::base
 
-// dolfinx_eqlb common interface
-// #include "BoundaryData.hpp"
+// dolfinx_eqlb base interface
+#include "BoundaryData.hpp"
 #include "FluxBC.hpp"
-// #include "Patch.hpp"
-// #include "QuadratureRule.hpp"
+#include "KernelData.hpp"
+#include "Patch.hpp"
+#include "QuadratureRule.hpp"
 #include "mdspan.hpp"

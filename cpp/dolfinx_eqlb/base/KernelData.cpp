@@ -9,15 +9,15 @@
 using namespace dolfinx;
 using namespace dolfinx_eqlb::base;
 
-template <typename T>
-KernelData<T>::KernelData(
-    std::shared_ptr<const mesh::Mesh> mesh,
-    std::vector<std::shared_ptr<const QuadratureRule>> quadrature_rule)
+template <std::floating_point U>
+KernelData<U>::KernelData(
+    std::shared_ptr<const mesh::Mesh<U>> mesh,
+    std::vector<std::shared_ptr<const QuadratureRule<U>>> quadrature_rule)
     : _quadrature_rule(quadrature_rule)
 {
-  const mesh::Topology& topology = mesh->topology();
-  const mesh::Geometry& geometry = mesh->geometry();
-  const fem::CoordinateElement& cmap = geometry.cmap();
+  std::shared_ptr<const mesh::Topology> topology = mesh->topology();
+  const mesh::Geometry<U>& geometry = mesh->geometry();
+  const fem::CoordinateElement<U>& cmap = geometry.cmap();
 
   // Check if mesh is affine
   _is_affine = cmap.is_affine();
@@ -29,7 +29,7 @@ KernelData<T>::KernelData(
 
   // Set dimensions
   _gdim = geometry.dim();
-  _tdim = topology.dim();
+  _tdim = topology->dim();
 
   if (_gdim == 2)
   {
@@ -44,34 +44,33 @@ KernelData<T>::KernelData(
   _num_coordinate_dofs = cmap.dim();
 
   std::array<std::size_t, 4> g_basis_shape = cmap.tabulate_shape(1, 1);
-  _g_basis_values = std::vector<double>(std::reduce(
+  _g_basis_values = std::vector<U>(std::reduce(
       g_basis_shape.begin(), g_basis_shape.end(), 1, std::multiplies{}));
-  _g_basis = mdspan_t<const double, 4>(_g_basis_values.data(), g_basis_shape);
+  _g_basis = mdspan_t<const U, 4>(_g_basis_values.data(), g_basis_shape);
 
-  std::vector<double> points(_gdim, 0);
+  std::vector<U> points(_gdim, 0);
   cmap.tabulate(1, points, {1, _gdim}, _g_basis_values);
 
   // Get facet normals of reference element
   basix::cell::type basix_cell
-      = mesh::cell_type_to_basix_type(topology.cell_type());
+      = mesh::cell_type_to_basix_type(topology->cell_type());
 
   std::tie(_fct_normals, _normals_shape)
-      = basix::cell::facet_outward_normals(basix_cell);
+      = basix::cell::facet_outward_normals<U>(basix_cell);
 
   _fct_normal_out = basix::cell::facet_orientations(basix_cell);
 }
 
 /* Basic transformations */
-template <typename T>
-double KernelData<T>::compute_jacobian(mdspan_t<double, 2> J,
-                                       mdspan_t<double, 2> K,
-                                       std::span<double> detJ_scratch,
-                                       mdspan_t<const double, 2> coords)
+template <std::floating_point U>
+U KernelData<U>::compute_jacobian(mdspan_t<U, 2> J, mdspan_t<U, 2> K,
+                                  std::span<U> detJ_scratch,
+                                  mdspan_t<const U, 2> coords)
 {
   // Basis functions evaluated at first gauss-point
-  base::smdspan_t<const double, 2> dphi = std::experimental::submdspan(
+  base::smdspan_t<const U, 2> dphi = MDSPAN_IMPL_STANDARD_NAMESPACE::submdspan(
       _g_basis, std::pair{1, (std::size_t)_tdim + 1}, 0,
-      std::experimental::full_extent, 0);
+      MDSPAN_IMPL_STANDARD_NAMESPACE::full_extent, 0);
 
   // Compute Jacobian
   for (std::size_t i = 0; i < J.extent(0); ++i)
@@ -83,21 +82,21 @@ double KernelData<T>::compute_jacobian(mdspan_t<double, 2> J,
     }
   }
 
-  fem::CoordinateElement::compute_jacobian(dphi, coords, J);
-  fem::CoordinateElement::compute_jacobian_inverse(J, K);
+  fem::CoordinateElement<U>::compute_jacobian(dphi, coords, J);
+  fem::CoordinateElement<U>::compute_jacobian_inverse(J, K);
 
-  return fem::CoordinateElement::compute_jacobian_determinant(J, detJ_scratch);
+  return fem::CoordinateElement<U>::compute_jacobian_determinant(J,
+                                                                 detJ_scratch);
 }
 
-template <typename T>
-double KernelData<T>::compute_jacobian(mdspan_t<double, 2> J,
-                                       std::span<double> detJ_scratch,
-                                       mdspan_t<const double, 2> coords)
+template <std::floating_point U>
+U KernelData<U>::compute_jacobian(mdspan_t<U, 2> J, std::span<U> detJ_scratch,
+                                  mdspan_t<const U, 2> coords)
 {
   // Basis functions evaluated at first gauss-point
-  base::smdspan_t<const double, 2> dphi = std::experimental::submdspan(
+  base::smdspan_t<const U, 2> dphi = MDSPAN_IMPL_STANDARD_NAMESPACE::submdspan(
       _g_basis, std::pair{1, (std::size_t)_tdim + 1}, 0,
-      std::experimental::full_extent, 0);
+      MDSPAN_IMPL_STANDARD_NAMESPACE::full_extent, 0);
 
   // Compute Jacobian
   for (std::size_t i = 0; i < J.extent(0); ++i)
@@ -108,21 +107,22 @@ double KernelData<T>::compute_jacobian(mdspan_t<double, 2> J,
     }
   }
 
-  fem::CoordinateElement::compute_jacobian(dphi, coords, J);
+  fem::CoordinateElement<U>::compute_jacobian(dphi, coords, J);
 
-  return fem::CoordinateElement::compute_jacobian_determinant(J, detJ_scratch);
+  return fem::CoordinateElement<U>::compute_jacobian_determinant(J,
+                                                                 detJ_scratch);
 }
 
-template <typename T>
-void KernelData<T>::physical_fct_normal(std::span<double> normal_phys,
-                                        mdspan_t<const double, 2> K,
+template <std::floating_point U>
+void KernelData<U>::physical_fct_normal(std::span<U> normal_phys,
+                                        mdspan_t<const U, 2> K,
                                         std::int8_t fct_id)
 {
   // Set physical normal to zero
   std::fill(normal_phys.begin(), normal_phys.end(), 0);
 
   // Extract normal on reference cell
-  std::span<const double> normal_ref = fct_normal(fct_id);
+  std::span<const U> normal_ref = fct_normal(fct_id);
 
   // n_phys = F^(-T) * n_ref
   for (int i = 0; i < _gdim; ++i)
@@ -134,7 +134,7 @@ void KernelData<T>::physical_fct_normal(std::span<double> normal_phys,
   }
 
   // Normalize vector
-  double norm = 0;
+  U norm = 0;
   std::for_each(normal_phys.begin(), normal_phys.end(),
                 [&norm](auto ni) { norm += std::pow(ni, 2); });
   norm = std::sqrt(norm);
@@ -143,12 +143,10 @@ void KernelData<T>::physical_fct_normal(std::span<double> normal_phys,
 }
 
 /* Tabulate shape function */
-template <typename T>
-std::array<std::size_t, 5>
-KernelData<T>::tabulate_basis(const basix::FiniteElement& basix_element,
-                              const std::vector<double>& points,
-                              std::vector<double>& storage,
-                              bool tabulate_gradient, bool stoarge_elmtcur)
+template <std::floating_point U>
+std::array<std::size_t, 5> KernelData<U>::tabulate_basis(
+    const basix::FiniteElement<U>& basix_element, const std::vector<U>& points,
+    std::vector<U>& storage, bool tabulate_gradient, bool stoarge_elmtcur)
 {
   // Number of tabulated points
   std::size_t num_points = points.size() / _gdim;
@@ -172,7 +170,7 @@ KernelData<T>::tabulate_basis(const basix::FiniteElement& basix_element,
   }
 
   // Tabulate basis
-  std::span<double> storage_ref(storage.data(), size_storage);
+  std::span<U> storage_ref(storage.data(), size_storage);
   basix_element.tabulate(id_grad, points, {num_points, _gdim}, storage_ref);
 
   // Create shape of final mdspan
@@ -187,21 +185,21 @@ KernelData<T>::tabulate_basis(const basix::FiniteElement& basix_element,
   return std::move(shape_final);
 }
 
-template <typename T>
-std::array<std::size_t, 4> KernelData<T>::interpolation_data_facet_rt(
-    const basix::FiniteElement& basix_element, const bool flux_is_custom,
+template <std::floating_point U>
+std::array<std::size_t, 4> KernelData<U>::interpolation_data_facet_rt(
+    const basix::FiniteElement<U>& basix_element, const bool flux_is_custom,
     const std::size_t gdim, const std::size_t nfcts_per_cell,
-    std::vector<double>& ipoints_fct, std::vector<double>& data_M_fct)
+    std::vector<U>& ipoints_fct, std::vector<U>& data_M_fct)
 {
   // Extract interpolation points
   auto [X, Xshape] = basix_element.points();
   const auto [Mdata, Mshape] = basix_element.interpolation_matrix();
-  mdspan_t<const double, 2> M(Mdata.data(), Mshape);
+  mdspan_t<const U, 2> M(Mdata.data(), Mshape);
 
   // Determine number of pointe per facet
   std::size_t nipoints_per_fct = 0;
 
-  double x_fctpoint = X[0];
+  U x_fctpoint = X[0];
 
   while (x_fctpoint > 0.0)
   {
@@ -225,7 +223,7 @@ std::array<std::size_t, 4> KernelData<T>::interpolation_data_facet_rt(
   // Cast Interpolation matrix into mdspan
   std::array<std::size_t, 4> M_fct_shape
       = {nfcts_per_cell, ndofs_fct, gdim, nipoints_per_fct};
-  mdspan_t<double, 4> M_fct(data_M_fct.data(), M_fct_shape);
+  mdspan_t<U, 4> M_fct(data_M_fct.data(), M_fct_shape);
 
   // Copy interpolation points (on facets)
   std::copy_n(X.begin(), nipoints_fct * gdim, ipoints_fct.begin());
@@ -268,6 +266,5 @@ std::array<std::size_t, 4> KernelData<T>::interpolation_data_facet_rt(
 }
 
 // ------------------------------------------------------------------------------
-template class KernelData<float>;
 template class KernelData<double>;
 // ------------------------------------------------------------------------------
