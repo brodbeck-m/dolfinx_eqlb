@@ -132,9 +132,4 @@ NB_MODULE(cpp, m)
   // The local solver
   declare_lsolver<double>(m);
   declare_bcs<double>(m);
-
-  // Some simple test functions
-  m.def("function_ev", []() { ev::function_ev(); }, "A function from ev");
-  m.def("test_eigen", []() { ev::test_eigen(); }, "Test usage of eigen in c++");
-  m.def("function_se", []() { se::function_se(); }, "A function from se");
 }

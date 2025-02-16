@@ -8,10 +8,10 @@
 /// [2] Bertrand, F. et al.: https://doi.org/10.1007/s00211-023-01366-8, 2023
 /// [3] Bertrand, F. et al.: https://doi.org/10.1002/num.22741, 2021
 
-namespace dolfinx_eqlb::ev
+namespace dolfinx_eqlb::se
 {
 }
 
 // dolfinx_eqlb se interface
-#include "Patch.hpp"
-#include "reconstruction.hpp"
+// #include "Patch.hpp"
+// #include "reconstruction.hpp"
