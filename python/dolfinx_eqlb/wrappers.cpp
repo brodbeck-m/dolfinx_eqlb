@@ -4,7 +4,7 @@
 //
 // SPDX-License-Identifier:    LGPL-3.0-or-later
 
-// #include <dolfinx/fem/DirichletBC.h>
+#include <dolfinx/fem/Constant.h>
 #include <dolfinx/fem/Form.h>
 #include <dolfinx/fem/Function.h>
 // #include <dolfinx_eqlb/base/BoundaryData.hpp>
@@ -110,7 +110,13 @@ void declare_bcs(nb::module_& m)
           },
           nb::arg("list_bcs"), nb::arg("boundary_flux"), nb::arg("V_flux_hdiv"),
           nb::arg("rtflux_is_custom"), nb::arg("quadrature_degree"),
-          nb::arg("fct_esntbound_prime"), nb::arg("reconstruct_stress"));
+          nb::arg("fct_esntbound_prime"), nb::arg("reconstruct_stress"))
+      .def(
+          "update",
+          [](base::BoundaryData<T, U>& self,
+             std::vector<std::shared_ptr<const fem::Constant<T>>>&
+                 time_functions) { self.update(time_functions); },
+          nb::arg("time_functions"));
 }
 
 NB_MODULE(cpp, m)

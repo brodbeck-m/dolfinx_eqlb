@@ -32,6 +32,7 @@
 #include <iterator>
 #include <memory>
 #include <span>
+#include <stdexcept>
 #include <tuple>
 #include <vector>
 
@@ -400,13 +401,13 @@ public:
 
   /// Update the boundary values
   ///
-  /// Update RT-DOFs on the boundary. The calculated values are then used for
-  /// evaluating the BCs for each individual patch problem.
+  /// Update flux values on the boundary. The calculated values are then used
+  /// for evaluating the BCs for each individual patch problem.
   ///
-  void update_boundary_values()
-  {
-    throw std::runtime_error("Not yet implemented!");
-  }
+  /// @param time_functions List of time-dependent functions
+  ///                       (on for each subspace)
+  void
+  update(std::vector<std::shared_ptr<const fem::Constant<T>>>& time_functions);
 
   /// Calculate the boundary DOFs for a patch problem
   ///

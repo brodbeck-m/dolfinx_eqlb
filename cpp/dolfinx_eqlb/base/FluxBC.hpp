@@ -23,6 +23,7 @@
 #include <memory>
 #include <numeric>
 #include <span>
+#include <stdexcept>
 #include <vector>
 
 using namespace dolfinx;
@@ -63,6 +64,18 @@ public:
         _projection_required((quadrature_degree < 0) ? false : true),
         _is_zero(false), _tbehaviour(tbehaviour)
   {
+    if (_tbehaviour == TimeType::timefunction)
+    {
+      // The spatial dimension
+      const int gdim = _V->mesh()->geometry().dim();
+
+      // The degree of the function space
+      const int deg = _V->element()->basix_element().degree();
+      const int ndofs_per_fct = (gdim == 2) ? deg : 0.5 * deg * (deg + 1);
+
+      // Initialise storage of initial boundary values
+      _initial_boundary_dofs.resize(_nfcts * ndofs_per_fct);
+    }
   }
 
   /// Storage of boundary conditions (no quadrature required)
@@ -76,6 +89,31 @@ public:
         _V(nullptr), _quadrature_degree(-1), _projection_required(false),
         _is_zero(true), _tbehaviour(TimeType::stationary)
   {
+  }
+
+  /* Setter methods */
+  /// Store the initial boundary DOFs
+  ///
+  /// These initial values are required, such that the time-function can later
+  /// be applied!
+  ///
+  /// @param[in] fct  The (BC local) facet id
+  /// @param[in] dofs The boundary DOFs of the flux field on fct
+  void set_initial_boundary_dofs(const int fct, std::span<const T> dofs)
+  {
+    if (_tbehaviour == TimeType::timefunction)
+    {
+      // Number of DOFs per facet
+      const int ndofs_per_fct = dofs.size();
+
+      // Store dofs
+      const std::int32_t offs = fct * ndofs_per_fct;
+
+      for (int i = 0; i < ndofs_per_fct; ++i)
+      {
+        _initial_boundary_dofs[offs + i] = dofs[i];
+      }
+    }
   }
 
   /* Getter functions */
@@ -111,6 +149,39 @@ public:
   std::span<const std::int32_t> facets() const
   {
     return std::span<const std::int32_t>(_facets.data(), _facets.size());
+  }
+
+  /// Get storage of the initial boundary DOFs
+  /// @param[in]  ndofs_per_fct         The number of DOFs per facet
+  /// @param[out] initial_boundary_dofs The initial boundary DOFs
+  mdspan_t<const T, 2> initial_boundary_dofs(const int ndofs_per_fct) const
+  {
+    if (_tbehaviour == TimeType::timefunction)
+    {
+      return mdspan_t<const T, 2>(_initial_boundary_dofs.data(), _nfcts,
+                                  static_cast<std::size_t>(ndofs_per_fct));
+    }
+    else
+    {
+      throw std::runtime_error(
+          "Initial boundary values are not available for this BC.");
+    }
+  }
+
+  /// Get storage of the initial boundary DOFs
+  /// @param[out] initial_boundary_dofs The initial boundary DOFs
+  std::span<T> initial_boundary_dofs()
+  {
+    if (_tbehaviour == TimeType::timefunction)
+    {
+      return std::span<T>(_initial_boundary_dofs.data(),
+                          _initial_boundary_dofs.size());
+    }
+    else
+    {
+      throw std::runtime_error(
+          "Initial boundary values are not available for this BC.");
+    }
   }
 
   /// Pack constants to evaluate boundary values
@@ -181,6 +252,7 @@ protected:
 
   // The boundary expression
   std::shared_ptr<const fem::Expression<T, U>> _expression;
+  std::vector<T> _initial_boundary_dofs;
 
   // The function space
   std::shared_ptr<const fem::FunctionSpace<U>> _V;

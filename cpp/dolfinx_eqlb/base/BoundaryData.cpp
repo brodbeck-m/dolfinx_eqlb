@@ -375,10 +375,13 @@ BoundaryData<T, U>::BoundaryData(
           = (bc->projection_required()) ? nqpoints_per_fct : nipoints_per_fct;
 
       // Check input
-      if (req_eval_per_fct != bc->num_eval_per_facet())
+      if (!(bc->is_zero()))
       {
-        throw std::runtime_error("BoundaryData: Number of evaluation points "
-                                 "(FluxBC) does not match!");
+        if (req_eval_per_fct != bc->num_eval_per_facet())
+        {
+          throw std::runtime_error("BoundaryData: Number of evaluation points "
+                                   "(FluxBC) does not match!");
+        }
       }
 
       // Loop over all boundary facets
@@ -427,6 +430,72 @@ BoundaryData<T, U>::BoundaryData(
     for (std::size_t i = 0; i < _pnt_on_esnt_boundary.size(); ++i)
     {
       _pnt_on_esnt_boundary[i] = (_pnt_on_esnt_boundary[i] == 4) ? true : false;
+    }
+  }
+}
+
+template <dolfinx::scalar T, std::floating_point U>
+void BoundaryData<T, U>::update(
+    std::vector<std::shared_ptr<const fem::Constant<T>>>& time_functions)
+{
+  // Update the transient BCs without time-function
+  evaluate_boundary_flux(false);
+
+  // Update the transient BCs with time-function
+  for (int i_rhs = 0; i_rhs < _num_rhs; ++i_rhs)
+  {
+    // Time-function values of the current RHS
+    std::span<const T> tfkts(time_functions[i_rhs]->value);
+
+    // Number of BCs and time-functions
+    const int nbcs = _bcs[i_rhs].size();
+    const int ntfkts = tfkts.size();
+
+    if (nbcs != ntfkts)
+    {
+      throw std::runtime_error("Provided time-functions do not match the BCs.");
+    }
+
+    // Boundary DOFs of the current RHS
+    std::span<T> x_bvals = _boundary_fluxes[i_rhs]->x()->mutable_array();
+
+    // Handle facets with essential BCs on dual problem
+    for (std::size_t j = 0; j < _bcs[i_rhs].size(); ++j)
+    {
+      // The boundary condition
+      std::shared_ptr<FluxBC<T, U>> bc = _bcs[i_rhs][j];
+
+      if (bc->transient_behaviour() == TimeType::timefunction)
+      {
+        // The boundary facets
+        std::span<const std::int32_t> bfcts = bc->facets();
+
+        // The initial bounday DOFs
+        mdspan_t<const T, 2> initial_bvals
+            = bc->initial_boundary_dofs(_ndofs_per_fct);
+
+        // Loop over all boundary factes
+        for (std::size_t e = 0; e < bc->num_facets(); ++e)
+        {
+          // The facet
+          std::int32_t bfct = bfcts[e];
+
+          // The boundary entity
+          std::int32_t c = _fct_to_cell->links(bfct)[0];
+          std::int32_t f = _local_fct_id[bfct];
+
+          // Copy values to global storage
+          auto cell_dofs = MDSPAN_IMPL_STANDARD_NAMESPACE::submdspan(
+              _V_flux_hdiv->dofmap()->map(), c,
+              MDSPAN_IMPL_STANDARD_NAMESPACE::full_extent);
+          std::size_t offs = f * _ndofs_per_fct;
+
+          for (std::size_t k = 0; k < _ndofs_per_fct; ++k)
+          {
+            x_bvals[cell_dofs[offs + k]] = tfkts[j] * initial_bvals(e, k);
+          }
+        }
+      }
     }
   }
 }
@@ -696,6 +765,9 @@ void BoundaryData<T, U>::evaluate_boundary_flux(
           U detJ = _kernel_data.compute_jacobian(J, K, _detJ_scratch, coord);
 
           // Interpolate BC into flux function
+          std::span<T> x_bvals_fct(x_bvals_cell.data() + f * _ndofs_per_fct,
+                                   _ndofs_per_fct);
+
           if (bc->projection_required())
           {
             // The quadrature weights
@@ -714,9 +786,6 @@ void BoundaryData<T, U>::evaluate_boundary_flux(
                                              A_e, L_e);
 
             // Solve the projection
-            std::span<T> x_bvals_fct(x_bvals_cell.data() + f * _ndofs_per_fct,
-                                     _ndofs_per_fct);
-
             if (_ndofs_per_fct > 1)
             {
               solver.compute(A_e);
@@ -734,8 +803,6 @@ void BoundaryData<T, U>::evaluate_boundary_flux(
           }
           else
           {
-            std::span<T> x_bvals_fct(x_bvals_cell.data() + f * _ndofs_per_fct,
-                                     _ndofs_per_fct);
             _kernel_data.interpolate_flux(values_local, x_bvals_fct, f, J, detJ,
                                           K);
           }
@@ -747,11 +814,16 @@ void BoundaryData<T, U>::evaluate_boundary_flux(
           auto cell_dofs = MDSPAN_IMPL_STANDARD_NAMESPACE::submdspan(
               _V_flux_hdiv->dofmap()->map(), c,
               MDSPAN_IMPL_STANDARD_NAMESPACE::full_extent);
+          std::size_t offs = f * _ndofs_per_fct;
 
-          for (std::size_t i = 0; i < _ndofs_per_cell; ++i)
+          for (std::size_t i = 0; i < _ndofs_per_fct; ++i)
           {
-            x_bvals[cell_dofs[i]] = x_bvals_cell[i];
+            x_bvals[cell_dofs[offs + i]] = x_bvals_fct[i];
           }
+
+          // Store the initial boundary DOFs (if required)
+          // TODO - This will not work in parallel (update after scatter!)
+          bc->set_initial_boundary_dofs(e, x_bvals_fct);
         }
       }
     }
