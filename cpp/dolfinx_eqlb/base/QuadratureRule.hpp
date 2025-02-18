@@ -33,26 +33,24 @@ class QuadratureRule
 
 public:
   /// Constructor
-  /// @param[in] ct The cell type
-  /// @param[in] degree Degree of quadrature rule
-  /// @param[in] Dimension of entity
-  /// @param[in] type Type of quadrature rule
-  QuadratureRule(mesh::CellType ct, int degree, int dim,
+  /// @param[in] ct        The cell type
+  /// @param[in] degree    Degree of quadrature rule
+  /// @param[in] dim       The dimension of the entity
+  /// @param[in] type      Type of quadrature rule
+  QuadratureRule(basix::cell::type ct, int degree, int dim,
                  basix::quadrature::type type
                  = basix::quadrature::type::Default)
       : _cell_type(ct), _degree(degree), _type(type), _dim(dim)
   {
-
-    basix::cell::type b_ct = dolfinx::mesh::cell_type_to_basix_type(ct);
-    _num_sub_entities = basix::cell::num_sub_entities(b_ct, dim);
-    _tdim = basix::cell::topological_dimension(b_ct);
+    _num_sub_entities = basix::cell::num_sub_entities(ct, dim);
+    _tdim = basix::cell::topological_dimension(ct);
     assert(dim <= 3);
     // If cell dimension no pushing forward
     if (_tdim == std::size_t(dim))
     {
       std::array<std::vector<U>, 2> quadrature
           = basix::quadrature::make_quadrature<U>(
-              type, b_ct, basix::polyset::type::standard, degree);
+              type, ct, basix::polyset::type::standard, degree);
       std::vector<U>& q_weights = quadrature.back();
       std::size_t num_points = q_weights.size();
       std::size_t pt_shape = quadrature.front().size() / num_points;
@@ -76,14 +74,14 @@ public:
     else
     {
       // Create reference topology and geometry
-      auto entity_topology = basix::cell::topology(b_ct)[dim];
+      auto entity_topology = basix::cell::topology(ct)[dim];
 
       // Create map for each facet type to the local index
       std::vector<std::size_t> num_points_per_entity(_num_sub_entities);
       for (std::int32_t i = 0; i < _num_sub_entities; i++)
       {
         // Create reference element to map facet quadrature to
-        basix::cell::type et = basix::cell::sub_entity_type(b_ct, dim, i);
+        basix::cell::type et = basix::cell::sub_entity_type(ct, dim, i);
         basix::FiniteElement entity_element = basix::create_element<U>(
             basix::element::family::P, et, 1,
             basix::element::lagrange_variant::gll_warped,
@@ -112,7 +110,7 @@ public:
             MDSPAN_IMPL_STANDARD_NAMESPACE::full_extent, 0);
 
         auto [sub_geomb, sub_geom_shape]
-            = basix::cell::sub_entity_geometry<U>(b_ct, dim, i);
+            = basix::cell::sub_entity_geometry<U>(ct, dim, i);
         mdspan_t<const U, 2> coords(sub_geomb.data(), sub_geom_shape);
 
         // Push forward quadrature point from reference entity to reference
@@ -133,6 +131,19 @@ public:
                        num_points_per_entity.end(),
                        std::next(_entity_offset.begin()));
     }
+  }
+
+  /// Constructor
+  /// @param[in] ct        The cell type
+  /// @param[in] degree    Degree of quadrature rule
+  /// @param[in] dim       The dimension of the entity
+  /// @param[in] type      Type of quadrature rule
+  QuadratureRule(mesh::CellType ct, int degree, int dim,
+                 basix::quadrature::type type
+                 = basix::quadrature::type::Default)
+      : QuadratureRule(dolfinx::mesh::cell_type_to_basix_type(ct), degree, dim,
+                       type)
+  {
   }
 
   /* Getter methods */
@@ -183,20 +194,6 @@ public:
   /// Return the topological dimension of the quadrature rule
   std::size_t tdim() const { return _tdim; };
 
-  /// Return the cell type for the ith quadrature rule
-  /// @param[in] Local entity number
-  mesh::CellType cell_type(std::int8_t i) const
-  {
-    basix::cell::type b_ct = dolfinx::mesh::cell_type_to_basix_type(_cell_type);
-    assert(i < _num_sub_entities);
-
-    basix::cell::type et = basix::cell::sub_entity_type(b_ct, _dim, (int)i);
-    return dolfinx::mesh::cell_type_from_basix_type(et);
-  }
-
-  /// Return type of the quadrature rule
-  basix::quadrature::type type() const { return _type; };
-
 private:
   /* Variable definition */
   // Spacial dimensions
@@ -205,7 +202,7 @@ private:
   int _num_sub_entities; // Number of sub entities
 
   // Cell type
-  mesh::CellType _cell_type;
+  basix::cell::type _cell_type;
 
   // Quadrature type
   basix::quadrature::type _type;
