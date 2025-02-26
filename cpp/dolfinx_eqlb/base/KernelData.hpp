@@ -39,9 +39,8 @@ template <std::floating_point U>
 class KernelData
 {
 public:
-  KernelData(
-      std::shared_ptr<const mesh::Mesh<U>> mesh,
-      std::vector<std::shared_ptr<const QuadratureRule<U>>> quadrature_rule);
+  KernelData(std::shared_ptr<const mesh::Mesh<U>> mesh,
+             std::vector<std::tuple<int, int>> qtypes);
 
   /// Compute isogeometric mapping for a given cell
   /// @param[in,out] J            The Jacobian
@@ -111,12 +110,27 @@ public:
   }
 
   /* Getter functions (Quadrature) */
+  /// @param[in] id_qspace The id of the quadrature space
+  // Return the number of quadrature points
+  std::size_t num_points(int id_qspace) const
+  {
+    return _quadrature_rule[id_qspace].num_points();
+  }
+
+  /// Return the number of quadrature points per entity
+  /// @param[in] id_qspace The id of the quadrature space
+  /// @param[in] i         The local entity index
+  std::size_t num_points(int id_qspace, std::int8_t i) const
+  {
+    return _quadrature_rule[id_qspace].num_points(i);
+  }
+
   /// Extract quadrature points on all sub-entity of cell
   /// @param[in] id_qspace The id of the quadrature space
   /// @param[out] points   The quadrature points (flattened storage)
   const std::vector<U>& quadrature_points_flattened(int id_qspace) const
   {
-    return _quadrature_rule[id_qspace]->points();
+    return _quadrature_rule[id_qspace].points();
   }
 
   /// Extract quadrature points on all sub-entity of cell
@@ -125,13 +139,11 @@ public:
   mdspan_t<const U, 2> quadrature_points(int id_qspace)
   {
     // Extract quadrature rule
-    std::shared_ptr<const QuadratureRule<U>> quadrature_rule
-        = _quadrature_rule[id_qspace];
+    QuadratureRule<U> qrule = _quadrature_rule[id_qspace];
 
     // Cast points to mdspan
-    return mdspan_t<const U, 2>(quadrature_rule->points().data(),
-                                quadrature_rule->num_points(),
-                                quadrature_rule->tdim());
+    return mdspan_t<const U, 2>(qrule.points().data(), qrule.num_points(),
+                                qrule.tdim());
   }
 
   /// Extract quadrature points on one sub-entity of cell
@@ -141,7 +153,7 @@ public:
   mdspan_t<const U, 2> quadrature_points(int id_qspace,
                                          std::int8_t id_subentity)
   {
-    return _quadrature_rule[id_qspace]->points(id_subentity);
+    return _quadrature_rule[id_qspace].points(id_subentity);
   }
 
   /// Extract quadrature weights on all sub-entity of cell
@@ -149,7 +161,7 @@ public:
   /// @param[out] weights  The quadrature weights
   std::span<const U> quadrature_weights(int id_qspace)
   {
-    return _quadrature_rule[id_qspace]->weights();
+    return _quadrature_rule[id_qspace].weights();
   }
 
   /// Extract quadrature weights on one sub-entity of cell
@@ -158,7 +170,7 @@ public:
   /// @param[out] weights     The quadrature weights
   std::span<const U> quadrature_weights(int id_qspace, std::int8_t id_subentity)
   {
-    return _quadrature_rule[id_qspace]->weights(id_subentity);
+    return _quadrature_rule[id_qspace].weights(id_subentity);
   }
 
 protected:
@@ -211,7 +223,7 @@ protected:
   std::vector<bool> _fct_normal_out;
 
   // Quadrature rule
-  std::vector<std::shared_ptr<const QuadratureRule<U>>> _quadrature_rule;
+  std::vector<QuadratureRule<U>> _quadrature_rule;
 
   // Tabulated shape-functions (geometry)
   std::vector<U> _g_basis_values;

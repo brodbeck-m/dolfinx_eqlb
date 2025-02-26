@@ -59,7 +59,7 @@ public:
   /// @param[in] basix_element_fluxpw The basix-element for the H(div) flux
   /// @param[in] basix_element_rhs    The basix-element for RHS and proj. flux
   KernelDataBC(std::shared_ptr<const mesh::Mesh<U>> mesh,
-               std::shared_ptr<const QuadratureRule<U>> quadrature_rule_fct,
+               std::tuple<int, int> quadrature_rule_fct,
                std::shared_ptr<const fem::FiniteElement<U>> element_flux_hdiv,
                const int nfluxdofs_per_fct, const int nfluxdofs_cell,
                const bool flux_is_custom);
@@ -76,7 +76,7 @@ public:
                               std::vector<U>& storage)
   {
     return this->tabulate_basis(basix_element,
-                                this->_quadrature_rule[0]->points(), storage,
+                                this->_quadrature_rule[0].points(), storage,
                                 false, false);
   }
 
@@ -620,7 +620,6 @@ protected:
 
   // --- Data for projection/ interpolation
   // Surface quadrature kernel
-  QuadratureRule<U> _quadrature_rule;
   KernelDataBC<T, U> _kernel_data;
 
   // Geometric mapping

@@ -15,7 +15,7 @@ using namespace dolfinx_eqlb::base;
 template <dolfinx::scalar T, std::floating_point U>
 KernelDataBC<T, U>::KernelDataBC(
     std::shared_ptr<const mesh::Mesh<U>> mesh,
-    std::shared_ptr<const QuadratureRule<U>> quadrature_rule_fct,
+    std::tuple<int, int> quadrature_rule_fct,
     std::shared_ptr<const fem::FiniteElement<U>> element_flux_hdiv,
     const int nfluxdofs_per_fct, const int nfluxdofs_cell,
     const bool flux_is_custom)
@@ -64,7 +64,7 @@ KernelDataBC<T, U>::KernelDataBC(
   /* H(div)-flux: Pull back into reference */
   // Initialise scratch
   _size_flux_scratch
-      = std::max(_nipoints_per_fct, this->_quadrature_rule[0]->num_points(0));
+      = std::max(_nipoints_per_fct, this->_quadrature_rule[0].num_points(0));
   _flux_scratch_data.resize(_size_flux_scratch * this->_gdim);
   _mflux_scratch_data.resize(_size_flux_scratch * this->_gdim);
 
@@ -103,7 +103,7 @@ void KernelDataBC<T, U>::map_shapefunctions_flux(std::int8_t lfct_id,
                                                  mdspan_t<const U, 5> phi_ref,
                                                  mdspan_t<const U, 2> J, U detJ)
 {
-  const int offs_pnt = lfct_id * this->_quadrature_rule[0]->num_points(0);
+  const int offs_pnt = lfct_id * this->_quadrature_rule[0].num_points(0);
   const int offs_dof = lfct_id * _ndofs_per_fct;
 
   // Loop over all evaluation points
@@ -294,12 +294,10 @@ BoundaryData<T, U>::BoundaryData(
                                   : 0.5 * _flux_degree * (_flux_degree + 1)),
       _fct_to_cell(
           V_flux_hdiv->mesh()->topology()->connectivity(_gdim - 1, _gdim)),
-      _quadrature_rule(QuadratureRule<U>(
-          V_flux_hdiv->mesh()->topology()->cell_type(), quadrature_degree,
-          V_flux_hdiv->mesh()->geometry().dim() - 1)),
       _kernel_data(KernelDataBC<T, U>(
           V_flux_hdiv->mesh(),
-          {std::make_shared<QuadratureRule<U>>(_quadrature_rule)},
+          std::make_tuple(quadrature_degree,
+                          V_flux_hdiv->mesh()->geometry().dim() - 1),
           V_flux_hdiv->element(), _ndofs_per_fct, _ndofs_per_cell,
           rtflux_is_custom))
 {
@@ -346,7 +344,7 @@ BoundaryData<T, U>::BoundaryData(
   // Counters interpolation- and quadrature points
   const int nipoints_per_fct
       = _kernel_data.num_interpolation_points_per_facet();
-  const int nqpoints_per_fct = _quadrature_rule.num_points(0);
+  const int nqpoints_per_fct = _kernel_data.num_points(0, 0);
 
   /* Initialise storage */
   // DOF ids and values on boundary facets
@@ -677,8 +675,8 @@ void BoundaryData<T, U>::evaluate_boundary_flux(
   const int nipoints = _kernel_data.num_interpolation_points();
   const int nipoints_per_fct
       = _kernel_data.num_interpolation_points_per_facet();
-  const int nqpoints = _quadrature_rule.num_points();
-  const int nqpoints_per_fct = _quadrature_rule.num_points(0);
+  const int nqpoints = _kernel_data.num_points(0);
+  const int nqpoints_per_fct = _kernel_data.num_points(0, 0);
 
   /* Initialisations */
   // Geometry mapping

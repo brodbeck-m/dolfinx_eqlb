@@ -10,11 +10,17 @@ using namespace dolfinx;
 using namespace dolfinx_eqlb::base;
 
 template <std::floating_point U>
-KernelData<U>::KernelData(
-    std::shared_ptr<const mesh::Mesh<U>> mesh,
-    std::vector<std::shared_ptr<const QuadratureRule<U>>> quadrature_rule)
-    : _quadrature_rule(quadrature_rule)
+KernelData<U>::KernelData(std::shared_ptr<const mesh::Mesh<U>> mesh,
+                          std::vector<std::tuple<int, int>> quadrature_rules)
 {
+  // Create quadrature rules
+  for (auto& qrule : quadrature_rules)
+  {
+    _quadrature_rule.push_back(QuadratureRule<U>(
+        mesh->topology()->cell_type(), std::get<0>(qrule), std::get<1>(qrule)));
+  }
+
+  // Extract mesh data
   std::shared_ptr<const mesh::Topology> topology = mesh->topology();
   const mesh::Geometry<U>& geometry = mesh->geometry();
   const fem::CoordinateElement<U>& cmap = geometry.cmap();
