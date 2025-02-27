@@ -13,27 +13,31 @@ using namespace dolfinx_eqlb::base;
 /* KernelDataBC */
 // ------------------------------------------------------------------------------
 template <dolfinx::scalar T, std::floating_point U>
-KernelDataBC<T, U>::KernelDataBC(
-    std::shared_ptr<const mesh::Mesh<U>> mesh,
-    std::tuple<int, int> quadrature_rule_fct,
-    std::shared_ptr<const fem::FiniteElement<U>> element_flux_hdiv,
-    const int nfluxdofs_per_fct, const int nfluxdofs_cell,
-    const bool flux_is_custom)
-    : KernelData<U>(mesh, {quadrature_rule_fct}),
-      _ndofs_per_fct(nfluxdofs_per_fct),
+KernelDataBC<T, U>::KernelDataBC(const basix::FiniteElement<U>& element_geom,
+                                 std::tuple<int, int> quadrature_rule_fct,
+                                 const basix::FiniteElement<U>& element_flux,
+                                 const bool flux_is_custom)
+    : KernelData<U>(element_geom, {quadrature_rule_fct}),
+      _ndofs_per_fct((this->_dim == 2) ? element_flux.degree()
+                                       : 0.5 * element_flux.degree()
+                                             * (element_flux.degree() + 1)),
       _ndofs_fct(this->_nfcts_per_cell * _ndofs_per_fct),
-      _ndofs_cell(nfluxdofs_cell),
+      _ndofs_cell(element_flux.dim()),
       _basix_element_hat(basix::element::create_lagrange<U>(
-          mesh::cell_type_to_basix_type(mesh->topology()->cell_type()), 1,
+          element_geom.cell_type(), 1,
           basix::element::lagrange_variant::equispaced, false))
 {
-  // Extract the baisx flux element
+  // Create a fem.FiniteElement
+  fem::FiniteElement<U> element_flux_hdiv
+      = fem::FiniteElement<U>(element_flux, 1, false);
+
+  // Extract the basix flux element
   const basix::FiniteElement<U>& basix_element_flux_hdiv
-      = element_flux_hdiv->basix_element();
+      = element_flux_hdiv.basix_element();
 
   /* Interpolation points on facets */
   std::array<std::size_t, 4> shape_intpl = this->interpolation_data_facet_rt(
-      basix_element_flux_hdiv, flux_is_custom, this->_gdim,
+      basix_element_flux_hdiv, flux_is_custom, this->_dim,
       this->_nfcts_per_cell, _ipoints, _data_M);
 
   _M = mdspan_t<const U, 4>(_data_M.data(), shape_intpl);
@@ -49,12 +53,12 @@ KernelDataBC<T, U>::KernelDataBC(
                                _basis_flux_values, false, false);
   _basis_flux = mdspan_t<const U, 5>(_basis_flux_values.data(), shape);
 
-  _mbasis_flux_values.resize(_ndofs_cell * this->_gdim);
-  _mbasis_scratch_values.resize(_ndofs_cell * this->_gdim);
+  _mbasis_flux_values.resize(_ndofs_cell * this->_dim);
+  _mbasis_scratch_values.resize(_ndofs_cell * this->_dim);
   _mbasis_flux
-      = mdspan_t<U, 2>(_mbasis_flux_values.data(), _ndofs_cell, this->_gdim);
+      = mdspan_t<U, 2>(_mbasis_flux_values.data(), _ndofs_cell, this->_dim);
   _mbasis_scratch
-      = mdspan_t<U, 2>(_mbasis_scratch_values.data(), _ndofs_cell, this->_gdim);
+      = mdspan_t<U, 2>(_mbasis_scratch_values.data(), _ndofs_cell, this->_dim);
 
   // Tabulate hat-function at interpolation points
   shape = this->tabulate_basis(_basix_element_hat, _ipoints, _basis_hat_values,
@@ -65,13 +69,13 @@ KernelDataBC<T, U>::KernelDataBC(
   // Initialise scratch
   _size_flux_scratch
       = std::max(_nipoints_per_fct, this->_quadrature_rule[0].num_points(0));
-  _flux_scratch_data.resize(_size_flux_scratch * this->_gdim);
-  _mflux_scratch_data.resize(_size_flux_scratch * this->_gdim);
+  _flux_scratch_data.resize(_size_flux_scratch * this->_dim);
+  _mflux_scratch_data.resize(_size_flux_scratch * this->_dim);
 
   _flux_scratch = mdspan_t<U, 2>(_flux_scratch_data.data(), _size_flux_scratch,
-                                 this->_gdim);
+                                 this->_dim);
   _mflux_scratch = mdspan_t<U, 2>(_mflux_scratch_data.data(),
-                                  _size_flux_scratch, this->_gdim);
+                                  _size_flux_scratch, this->_dim);
 
   /* Extract mapping functions */
   using J_t = mdspan_t<const U, 2>;
@@ -93,7 +97,7 @@ KernelDataBC<T, U>::KernelDataBC(
 
   // DOF-transformation function (shape functions)
   _apply_dof_transformation
-      = element_flux_hdiv->template dof_transformation_fn<U>(
+      = element_flux_hdiv.template dof_transformation_fn<U>(
           fem::doftransform::standard, false);
 }
 
@@ -187,7 +191,7 @@ void KernelDataBC<T, U>::interpolate_flux(
     // TODO - Check if copy on only functions on current facet is enough!
     for (std::size_t i_dof = 0; i_dof < _ndofs_fct; ++i_dof)
     {
-      for (std::size_t i_dim = 0; i_dim < this->_gdim; ++i_dim)
+      for (std::size_t i_dim = 0; i_dim < this->_dim; ++i_dim)
       {
         _mbasis_scratch(i_dof, i_dim)
             = _basis_flux(0, 0, offs_ipnt + i_pnt, i_dof, i_dim);
@@ -196,13 +200,13 @@ void KernelDataBC<T, U>::interpolate_flux(
 
     // Apply dof transformation
     _apply_dof_transformation(_mbasis_scratch_values, cell_info, cell_id,
-                              this->_gdim);
+                              this->_dim);
 
     // Apply push-foreward function
     _push_forward_flux(_mbasis_flux, _mbasis_scratch, J, detJ, K);
 
     // Evaluate flux
-    for (std::size_t i_dim = 0; i_dim < this->_gdim; ++i_dim)
+    for (std::size_t i_dim = 0; i_dim < this->_dim; ++i_dim)
     {
       // Evaluate flux at current point
       T acc = 0;
@@ -237,7 +241,7 @@ void KernelDataBC<T, U>::interpolate_flux(mdspan_t<const T, 2> flux_cur,
     T dof = 0;
     for (std::size_t j = 0; j < _nipoints_per_fct; ++j)
     {
-      for (std::size_t k = 0; k < this->_gdim; ++k)
+      for (std::size_t k = 0; k < this->_dim; ++k)
       {
         {
           dof += _M(lfct_id, i, k, j) * _mflux_scratch(j, k);
@@ -255,16 +259,16 @@ void KernelDataBC<T, U>::normaltrace_to_vector(
     mdspan_t<const U, 2> K)
 {
   // Calculate physical facet normal
-  std::span<U> normal_cur(_normal_scratch.data(), this->_gdim);
+  std::span<U> normal_cur(_normal_scratch.data(), this->_dim);
   this->physical_fct_normal(normal_cur, K, lfct_id);
 
   // Calculate flux within current cell
   for (std::size_t i = 0; i < normaltrace_cur.size(); ++i)
   {
-    int offs = this->_gdim * i;
+    int offs = this->_dim * i;
 
     // Set flux
-    for (std::size_t j = 0; j < this->_gdim; ++j)
+    for (std::size_t j = 0; j < this->_dim; ++j)
     {
       _flux_scratch(i, j) = normal_cur[j] * normaltrace_cur[i];
     }
@@ -294,12 +298,15 @@ BoundaryData<T, U>::BoundaryData(
                                   : 0.5 * _flux_degree * (_flux_degree + 1)),
       _fct_to_cell(
           V_flux_hdiv->mesh()->topology()->connectivity(_gdim - 1, _gdim)),
+      _element_geom(basix::element::create_lagrange<U>(
+          mesh::cell_type_to_basix_type(
+              V_flux_hdiv->mesh()->topology()->cell_type()),
+          1, basix::element::lagrange_variant::equispaced, false)),
       _kernel_data(KernelDataBC<T, U>(
-          V_flux_hdiv->mesh(),
+          _element_geom,
           std::make_tuple(quadrature_degree,
                           V_flux_hdiv->mesh()->geometry().dim() - 1),
-          V_flux_hdiv->element(), _ndofs_per_fct, _ndofs_per_cell,
-          rtflux_is_custom))
+          V_flux_hdiv->element()->basix_element(), rtflux_is_custom))
 {
   // Counters
   std::int32_t num_fcts

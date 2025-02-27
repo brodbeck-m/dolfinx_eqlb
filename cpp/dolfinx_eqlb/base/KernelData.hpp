@@ -39,7 +39,7 @@ template <std::floating_point U>
 class KernelData
 {
 public:
-  KernelData(std::shared_ptr<const mesh::Mesh<U>> mesh,
+  KernelData(const basix::FiniteElement<U>& element_geom,
              std::vector<std::tuple<int, int>> qtypes);
 
   /// Compute isogeometric mapping for a given cell
@@ -70,7 +70,7 @@ public:
   /* Getter functions (Cell geometry) */
   /// Returns number of nodes, forming a reference cell
   /// @param[out] n The number of nodes, forming the cell
-  int nnodes_cell() { return _num_coordinate_dofs; }
+  int nnodes_cell() { return _npnts_per_cell; }
 
   /// Returns number of facets, forming a reference cell
   /// @param[out] n The number of facets, forming the cell
@@ -81,7 +81,7 @@ public:
   /// @param[out] normal_ref The reference facet normal
   std::span<const U> fct_normal(std::int8_t fct_id) const
   {
-    return std::span<const U>(_fct_normals.data() + fct_id * _tdim, _tdim);
+    return std::span<const U>(_fct_normals.data() + fct_id * _dim, _dim);
   }
 
   /// Returns id if cell-normal points outward
@@ -211,11 +211,10 @@ protected:
 
   /* Variable definitions */
   // Dimensions
-  std::uint32_t _gdim, _tdim;
+  const int _dim;
 
   // Description mesh element
-  int _num_coordinate_dofs, _nfcts_per_cell;
-  bool _is_affine;
+  const int _npnts_per_cell, _nfcts_per_cell;
 
   // Facet normals (reference element)
   std::vector<U> _fct_normals;

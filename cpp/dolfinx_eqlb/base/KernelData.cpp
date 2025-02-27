@@ -10,61 +10,34 @@ using namespace dolfinx;
 using namespace dolfinx_eqlb::base;
 
 template <std::floating_point U>
-KernelData<U>::KernelData(std::shared_ptr<const mesh::Mesh<U>> mesh,
+KernelData<U>::KernelData(const basix::FiniteElement<U>& element_geom,
                           std::vector<std::tuple<int, int>> quadrature_rules)
+    : _dim(basix::cell::topological_dimension(element_geom.cell_type())),
+      _npnts_per_cell(
+          basix::cell::num_sub_entities(element_geom.cell_type(), 0)),
+      _nfcts_per_cell(
+          basix::cell::num_sub_entities(element_geom.cell_type(), _dim - 1))
 {
   // Create quadrature rules
   for (auto& qrule : quadrature_rules)
   {
     _quadrature_rule.push_back(QuadratureRule<U>(
-        mesh->topology()->cell_type(), std::get<0>(qrule), std::get<1>(qrule)));
+        element_geom.cell_type(), std::get<0>(qrule), std::get<1>(qrule)));
   }
 
-  // Extract mesh data
-  std::shared_ptr<const mesh::Topology> topology = mesh->topology();
-  const mesh::Geometry<U>& geometry = mesh->geometry();
-  const fem::CoordinateElement<U>& cmap = geometry.cmap();
+  // Normals on geometry element
+  std::tie(_fct_normals, _normals_shape)
+      = basix::cell::facet_outward_normals<U>(element_geom.cell_type());
+  _fct_normal_out = basix::cell::facet_orientations(element_geom.cell_type());
 
-  // Check if mesh is affine
-  _is_affine = cmap.is_affine();
-
-  if (!_is_affine)
-  {
-    throw std::runtime_error("KernelData limited to affine meshes!");
-  }
-
-  // Set dimensions
-  _gdim = geometry.dim();
-  _tdim = topology->dim();
-
-  if (_gdim == 2)
-  {
-    _nfcts_per_cell = 3;
-  }
-  else
-  {
-    _nfcts_per_cell = 4;
-  }
-
-  /* Geometry element */
-  _num_coordinate_dofs = cmap.dim();
-
-  std::array<std::size_t, 4> g_basis_shape = cmap.tabulate_shape(1, 1);
+  // Tabulate shape-functions of geometry element
+  std::array<std::size_t, 4> g_basis_shape = element_geom.tabulate_shape(1, 1);
   _g_basis_values = std::vector<U>(std::reduce(
       g_basis_shape.begin(), g_basis_shape.end(), 1, std::multiplies{}));
   _g_basis = mdspan_t<const U, 4>(_g_basis_values.data(), g_basis_shape);
 
-  std::vector<U> points(_gdim, 0);
-  cmap.tabulate(1, points, {1, _gdim}, _g_basis_values);
-
-  // Get facet normals of reference element
-  basix::cell::type basix_cell
-      = mesh::cell_type_to_basix_type(topology->cell_type());
-
-  std::tie(_fct_normals, _normals_shape)
-      = basix::cell::facet_outward_normals<U>(basix_cell);
-
-  _fct_normal_out = basix::cell::facet_orientations(basix_cell);
+  std::vector<U> points(_dim, 0);
+  element_geom.tabulate(1, points, {1, (std::size_t)_dim}, _g_basis_values);
 }
 
 /* Basic transformations */
@@ -75,7 +48,7 @@ U KernelData<U>::compute_jacobian(mdspan_t<U, 2> J, mdspan_t<U, 2> K,
 {
   // Basis functions evaluated at first gauss-point
   base::smdspan_t<const U, 2> dphi = MDSPAN_IMPL_STANDARD_NAMESPACE::submdspan(
-      _g_basis, std::pair{1, (std::size_t)_tdim + 1}, 0,
+      _g_basis, std::pair{1, (std::size_t)_dim + 1}, 0,
       MDSPAN_IMPL_STANDARD_NAMESPACE::full_extent, 0);
 
   // Compute Jacobian
@@ -101,7 +74,7 @@ U KernelData<U>::compute_jacobian(mdspan_t<U, 2> J, std::span<U> detJ_scratch,
 {
   // Basis functions evaluated at first gauss-point
   base::smdspan_t<const U, 2> dphi = MDSPAN_IMPL_STANDARD_NAMESPACE::submdspan(
-      _g_basis, std::pair{1, (std::size_t)_tdim + 1}, 0,
+      _g_basis, std::pair{1, (std::size_t)_dim + 1}, 0,
       MDSPAN_IMPL_STANDARD_NAMESPACE::full_extent, 0);
 
   // Compute Jacobian
@@ -131,9 +104,9 @@ void KernelData<U>::physical_fct_normal(std::span<U> normal_phys,
   std::span<const U> normal_ref = fct_normal(fct_id);
 
   // n_phys = F^(-T) * n_ref
-  for (int i = 0; i < _gdim; ++i)
+  for (int i = 0; i < _dim; ++i)
   {
-    for (int j = 0; j < _gdim; ++j)
+    for (int j = 0; j < _dim; ++j)
     {
       normal_phys[i] += K(j, i) * normal_ref[j];
     }
@@ -155,7 +128,7 @@ std::array<std::size_t, 5> KernelData<U>::tabulate_basis(
     std::vector<U>& storage, bool tabulate_gradient, bool stoarge_elmtcur)
 {
   // Number of tabulated points
-  std::size_t num_points = points.size() / _gdim;
+  std::size_t num_points = points.size() / _dim;
 
   // Get shape of tabulated data
   int id_grad = (tabulate_gradient) ? 1 : 0;
@@ -177,7 +150,8 @@ std::array<std::size_t, 5> KernelData<U>::tabulate_basis(
 
   // Tabulate basis
   std::span<U> storage_ref(storage.data(), size_storage);
-  basix_element.tabulate(id_grad, points, {num_points, _gdim}, storage_ref);
+  basix_element.tabulate(id_grad, points, {num_points, (std::size_t)_dim},
+                         storage_ref);
 
   // Create shape of final mdspan
   std::array<std::size_t, 5> shape_final

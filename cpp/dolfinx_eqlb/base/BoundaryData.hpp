@@ -58,10 +58,9 @@ public:
   /// @param[in] quadrature_rule_fct  The quadrature rule on the cell facets
   /// @param[in] basix_element_fluxpw The basix-element for the H(div) flux
   /// @param[in] basix_element_rhs    The basix-element for RHS and proj. flux
-  KernelDataBC(std::shared_ptr<const mesh::Mesh<U>> mesh,
+  KernelDataBC(const basix::FiniteElement<U>& element_geom,
                std::tuple<int, int> quadrature_rule_fct,
-               std::shared_ptr<const fem::FiniteElement<U>> element_flux_hdiv,
-               const int nfluxdofs_per_fct, const int nfluxdofs_cell,
+               const basix::FiniteElement<U>& element_flux,
                const bool flux_is_custom);
 
   /* Tabulate/map shape-function sof the flux-space */
@@ -118,7 +117,7 @@ public:
 
     return mdspan_t<const T, 2>(_flux_scratch_data.data(),
                                 flux_ntrace_cur.size(),
-                                (std::size_t)this->_gdim);
+                                (std::size_t)this->_dim);
   }
 
   /// Calculates flux DOFs based on the normal-trace
@@ -620,6 +619,7 @@ protected:
 
   // --- Data for projection/ interpolation
   // Surface quadrature kernel
+  basix::FiniteElement<U> _element_geom; // Only for debug-proposes
   KernelDataBC<T, U> _kernel_data;
 
   // Geometric mapping
