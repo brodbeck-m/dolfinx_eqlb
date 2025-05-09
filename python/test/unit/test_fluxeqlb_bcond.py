@@ -18,11 +18,10 @@ from dolfinx import default_scalar_type, default_real_type, fem, mesh
 import dolfinx.fem.petsc
 import ufl
 
-from dolfinx_eqlb.base import create_hierarchic_rt
+from dolfinx_eqlb import ProblemType, EqlbStrategy
+from dolfinx_eqlb.eqlb import Equilibrator, homogenous_fluxbc, fluxbc, boundarydata
+from dolfinx_eqlb.eqlb.bcs import TimeType
 from dolfinx_eqlb.lsolver import local_projection
-
-from dolfinx_eqlb.eqlb import homogenous_fluxbc, fluxbc, boundarydata
-from dolfinx_eqlb.cpp import ProblemType, EqStrategy, TimeType, Equilibrator
 
 from utils import (
     MeshType,
@@ -41,7 +40,10 @@ def setup_tests(
     rt_space: str,
     quadrature_degree: typing.Optional[int] = None,
 ) -> typing.Tuple[
-    Domain, typing.Any, typing.Tuple[fem.FunctionSpace, fem.FunctionSpace], fem.Function
+    Domain,
+    Equilibrator,
+    typing.Tuple[fem.FunctionSpace, fem.FunctionSpace],
+    fem.Function,
 ]:
     # Create mesh
     n_cells = 5
@@ -60,29 +62,38 @@ def setup_tests(
     domain.mesh.topology.create_connectivity(2, 1)
 
     # Initialise Equilibrator
-    elmt_geom = basix.ufl.element(
-        "Lagrange", "triangle", 1, shape=(2,), dtype=np.float64
-    )
-
-    elmt_hat = basix.ufl.element("Lagrange", "triangle", 1, dtype=np.float64)
-
     if rt_space == "custom":
-        elmt_flux = create_hierarchic_rt(basix.CellType.triangle, degree, True)
-        eq_type = EqStrategy.semi_explicit
+        strategy = EqlbStrategy.semi_explicit
     else:
-        elmt_flux = basix.ufl.element("RT", "triangle", degree, dtype=default_real_type)
-        eq_type = EqStrategy.constrained_minimisation
+        strategy = EqlbStrategy.constrained_minimisation
 
-    if quadrature_degree is None:
-        quadrature_degree = 2 * degree - 2
+    # elmt_geom = basix.ufl.element(
+    #     "Lagrange", "triangle", 1, shape=(2,), dtype=np.float64
+    # )
+
+    # elmt_hat = basix.ufl.element("Lagrange", "triangle", 1, dtype=np.float64)
+
+    # if rt_space == "custom":
+    #     elmt_flux = create_hierarchic_rt(basix.CellType.triangle, degree, True)
+    #     eq_type = EqStrategy.semi_explicit
+    # else:
+    #     elmt_flux = basix.ufl.element("RT", "triangle", degree, dtype=default_real_type)
+    #     eq_type = EqStrategy.constrained_minimisation
+
+    # if quadrature_degree is None:
+    #     quadrature_degree = 2 * degree - 2
+
+    # equilibrator = Equilibrator(
+    #     ProblemType.flux,
+    #     eq_type,
+    #     elmt_geom.basix_element._e,
+    #     elmt_hat.basix_element._e,
+    #     elmt_flux.basix_element._e,
+    #     quadrature_degree,
+    # )
 
     equilibrator = Equilibrator(
-        ProblemType.flux,
-        eq_type,
-        elmt_geom.basix_element._e,
-        elmt_hat.basix_element._e,
-        elmt_flux.basix_element._e,
-        quadrature_degree,
+        domain.mesh.ufl_domain(), ProblemType.flux, strategy, degree, quadrature_degree
     )
 
     # Initialise FunctionSpace
@@ -95,18 +106,23 @@ def setup_tests(
 
         V = fem.functionspace(
             domain.mesh,
-            basix.ufl.mixed_element([elmt_flux, elmt_dg]),
+            basix.ufl.mixed_element([equilibrator.element_flux(), elmt_dg]),
         )
-        V_flux = fem.functionspace(domain.mesh, elmt_flux)
+        V_flux = fem.functionspace(domain.mesh, equilibrator.element_flux())
 
         boundary_function = fem.Function(V)
     else:
         V = None
-        V_flux = fem.functionspace(domain.mesh, elmt_flux)
+        V_flux = fem.functionspace(domain.mesh, equilibrator.element_flux())
 
         boundary_function = fem.Function(V_flux)
 
-    return (domain, equilibrator.kernel_data_bcs, (V, V_flux), boundary_function)
+    return (
+        domain,
+        equilibrator,
+        (V, V_flux),
+        boundary_function,
+    )
 
 
 # --- Test cases ---
@@ -124,7 +140,7 @@ def test_boundary_data_homogenous(mesh_type: MeshType, degree: int, rt_space: st
     """
 
     # Test setup
-    domain, kernel_data, (V, V_flux), boundary_function = setup_tests(
+    domain, equilibrator, (V, V_flux), boundary_function = setup_tests(
         mesh_type, degree, rt_space
     )
 
@@ -140,24 +156,15 @@ def test_boundary_data_homogenous(mesh_type: MeshType, degree: int, rt_space: st
         list_bcs.append(homogenous_fluxbc(bfcts))
 
     # Initialise boundary data
-    if rt_space == "subspace":
-        boundary_data = boundarydata(
-            [list_bcs],
-            [boundary_function],
-            V.sub(0),
-            [[]],
-            kernel_data,
-            ProblemType.flux,
-        )
-    else:
-        boundary_data = boundarydata(
-            [list_bcs],
-            [boundary_function],
-            V_flux,
-            [[]],
-            kernel_data,
-            ProblemType.flux,
-        )
+    V_bc = V.sub(0) if (rt_space == "subspace") else V_flux
+    boundary_data = boundarydata(
+        [list_bcs],
+        [boundary_function],
+        V_bc,
+        [[]],
+        equilibrator.kernel_data_boundary_conditions(),
+        equilibrator.problem_type(),
+    )
 
     assert np.allclose(boundary_function.x.array, 0.0)
 
@@ -179,7 +186,7 @@ def test_boundary_data_polynomial(
     """
 
     # Test setup
-    domain, kernel_data, (V, V_flux), boundary_function = setup_tests(
+    domain, equilibrator, (V, V_flux), boundary_function = setup_tests(
         mesh_type, degree, rt_space
     )
 
@@ -237,24 +244,15 @@ def test_boundary_data_polynomial(
             list_bcs.append(fluxbc(ntrace_ufl, bfcts, V_flux, False))
 
         # Initialise boundary data
-        if rt_space == "subspace":
-            boundary_data = boundarydata(
-                [list_bcs],
-                [boundary_function],
-                V.sub(0),
-                [[]],
-                kernel_data,
-                ProblemType.flux,
-            )
-        else:
-            boundary_data = boundarydata(
-                [list_bcs],
-                [boundary_function],
-                V_flux,
-                [[]],
-                kernel_data,
-                ProblemType.flux,
-            )
+        V_bc = V.sub(0) if (rt_space == "subspace") else V_flux
+        boundary_data = boundarydata(
+            [list_bcs],
+            [boundary_function],
+            V_bc,
+            [[]],
+            equilibrator.kernel_data_boundary_conditions(),
+            equilibrator.problem_type(),
+        )
 
         # Interpolate BC into test-space
         rhs_ref = ufl.as_vector([-ntrace_ufl, ntrace_ufl])
@@ -290,7 +288,7 @@ def test_boundary_data_general(mesh_type: MeshType, degree: int):
     qdegree = 3 * degree
 
     # Test setup
-    domain, kernel_data, (V, V_flux), boundary_function = setup_tests(
+    domain, equilibrator, (V, V_flux), boundary_function = setup_tests(
         mesh_type, degree, "basix", qdegree
     )
 
@@ -321,8 +319,8 @@ def test_boundary_data_general(mesh_type: MeshType, degree: int):
         [boundary_function],
         V_flux,
         [[]],
-        kernel_data,
-        ProblemType.flux,
+        equilibrator.kernel_data_boundary_conditions(),
+        equilibrator.problem_type(),
     )
 
     # Evaluate BCs on control points
@@ -396,7 +394,7 @@ def test_update_boundary_data(
     qdegree = 2 * degree - 2 if (use_projection) else None
 
     # Test setup
-    domain, kernel_data, (V, V_flux), boundary_function = setup_tests(
+    domain, equilibrator, (V, V_flux), boundary_function = setup_tests(
         mesh_type, degree, rt_space, qdegree
     )
 
@@ -480,24 +478,15 @@ def test_update_boundary_data(
         )
 
         # Initialise boundary data
-        if rt_space == "subspace":
-            boundary_data = boundarydata(
-                [list_bcs],
-                [boundary_function],
-                V.sub(0),
-                [[]],
-                kernel_data,
-                ProblemType.flux,
-            )
-        else:
-            boundary_data = boundarydata(
-                [list_bcs],
-                [boundary_function],
-                V_flux,
-                [[]],
-                kernel_data,
-                ProblemType.flux,
-            )
+        V_bc = V.sub(0) if (rt_space == "subspace") else V_flux
+        boundary_data = boundarydata(
+            [list_bcs],
+            [boundary_function],
+            V_bc,
+            [[]],
+            equilibrator.kernel_data_boundary_conditions(),
+            equilibrator.problem_type(),
+        )
 
         # Update boundary data
         time.value = default_scalar_type(0.35)

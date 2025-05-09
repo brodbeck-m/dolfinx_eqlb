@@ -6,6 +6,7 @@
 
 """Boundary conditions for flux equilibration"""
 
+from enum import Enum
 import numpy as np
 from numpy.typing import NDArray
 import typing
@@ -13,16 +14,62 @@ import typing
 import cffi
 
 import basix
-import dolfinx
 from dolfinx import fem, mesh
-import ufl
 
-from dolfinx_eqlb.cpp import ProblemType, TimeType, FluxBC, BoundaryData
+import dolfinx_eqlb.cpp as _cpp
 
 ffi = cffi.FFI()
 
 
-def homogenous_fluxbc(facets: NDArray) -> FluxBC:
+# --- Time dependency of a boundary condition ---
+class TimeType(Enum):
+    stationary = 0
+    timefunction = 1
+    timedependent = 2
+
+
+def time_type_to_cpp(time_type: TimeType) -> _cpp.TimeType:
+    """Python enum TimeType to its c++ counterpart
+
+    Args:
+        time_type: The TimeType of the equilibration as python enum
+
+    Returns:
+        The TimeType as c++ enum
+    """
+
+    if time_type == TimeType.stationary:
+        return _cpp.TimeType.stationary
+    elif time_type == TimeType.timefunction:
+        return _cpp.TimeType.timefunction
+    elif time_type == TimeType.timedependent:
+        return _cpp.TimeType.timedependent
+    else:
+        raise ValueError("Invalid time type.")
+
+
+def cpp_to_time_type(time_type: _cpp.TimeType) -> TimeType:
+    """c++ enum TimeType to its python counterpart
+
+    Args:
+        time_type: The TimeType of the equilibration as c++ enum
+
+    Returns:
+        The TimeType as python enum
+    """
+
+    if time_type == _cpp.TimeType.stationary:
+        return TimeType.stationary
+    elif time_type == _cpp.TimeType.timefunction:
+        return TimeType.timefunction
+    elif time_type == _cpp.TimeType.timedependent:
+        return TimeType.timedependent
+    else:
+        raise ValueError("Invalid time type.")
+
+
+# --- Set one essential boundary condition ---
+def homogenous_fluxbc(facets: NDArray) -> _cpp.FluxBC:
     """Essential, homogenous boundary condition for one flux on a set of facets
 
     Args:
@@ -32,7 +79,7 @@ def homogenous_fluxbc(facets: NDArray) -> FluxBC:
         The essential flux BC on a group of facets
     """
 
-    return FluxBC(facets)
+    return _cpp.FluxBC(facets)
 
 
 def fluxbc(
@@ -42,7 +89,7 @@ def fluxbc(
     requires_projection: typing.Optional[bool] = False,
     quadrature_degree: typing.Optional[int] = None,
     transient_behavior: typing.Optional[TimeType] = TimeType.stationary,
-) -> FluxBC:
+) -> _cpp.FluxBC:
     """Essential boundary condition for one flux on a set of facets
 
     Args:
@@ -87,19 +134,24 @@ def fluxbc(
 
     expr = fem.Expression(value, pnts_eval, dtype=np.float64)
 
-    return FluxBC(
-        expr._cpp_object, facets, V._cpp_object, quadrature_degree, transient_behavior
+    return _cpp.FluxBC(
+        expr._cpp_object,
+        facets,
+        V._cpp_object,
+        quadrature_degree,
+        time_type_to_cpp(transient_behavior),
     )
 
 
+# --- Collected boundary data for an equilibration problem ---
 def boundarydata(
-    flux_conditions: typing.List[typing.List[FluxBC]],
+    flux_conditions: typing.List[typing.List[_cpp.FluxBC]],
     boundary_data: typing.List[fem.Function],
     V: fem.FunctionSpace,
     dirichlet_facets: typing.List[NDArray],
     kernel_data: typing.Any,
-    problem_type: ProblemType,
-) -> BoundaryData:
+    problem_type: _cpp.ProblemType,
+) -> _cpp.BoundaryData:
     """The collected essential boundary conditions for set of reconstructed fluxes
 
     Collects handles for essential boundary conditions alongside with
@@ -125,7 +177,7 @@ def boundarydata(
     # Extract cpp-objects from boundary data
     boundary_data_cpp = [f._cpp_object for f in boundary_data]
 
-    return BoundaryData(
+    return _cpp.BoundaryData(
         flux_conditions,
         boundary_data_cpp,
         V._cpp_object,
