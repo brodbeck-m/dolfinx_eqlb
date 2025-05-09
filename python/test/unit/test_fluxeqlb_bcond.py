@@ -185,9 +185,12 @@ def test_boundary_data_polynomial(
         use_projection: If True, RT DOFs are gained by projection from boundary data
     """
 
+    # The used quadrature degree
+    qdegree = 2 * degree - 3 if use_projection else None
+
     # Test setup
     domain, equilibrator, (V, V_flux), boundary_function = setup_tests(
-        mesh_type, degree, rt_space
+        mesh_type, degree, rt_space, qdegree
     )
 
     # The spatial dimension
@@ -241,7 +244,7 @@ def test_boundary_data_polynomial(
             bfcts = domain.facet_function.indices[domain.facet_function.values == id]
 
             # Create instance of FluxBC
-            list_bcs.append(fluxbc(ntrace_ufl, bfcts, V_flux, False))
+            list_bcs.append(fluxbc(ntrace_ufl, bfcts, V_flux, use_projection, qdegree))
 
         # Initialise boundary data
         V_bc = V.sub(0) if (rt_space == "subspace") else V_flux
@@ -516,4 +519,5 @@ def test_update_boundary_data(
 if __name__ == "__main__":
     import sys
 
-    pytest.main(sys.argv)
+    # pytest.main(sys.argv)
+    test_boundary_data_polynomial(MeshType.builtin, 4, "basix", True)
