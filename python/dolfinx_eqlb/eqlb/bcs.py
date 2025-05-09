@@ -17,7 +17,7 @@ import dolfinx
 from dolfinx import fem, mesh
 import ufl
 
-from dolfinx_eqlb.cpp import FluxBC, BoundaryData, TimeType
+from dolfinx_eqlb.cpp import ProblemType, TimeType, FluxBC, BoundaryData
 
 ffi = cffi.FFI()
 
@@ -96,9 +96,9 @@ def boundarydata(
     flux_conditions: typing.List[typing.List[FluxBC]],
     boundary_data: typing.List[fem.Function],
     V: fem.FunctionSpace,
-    custom_rt: bool,
     dirichlet_facets: typing.List[NDArray],
-    equilibrate_stress: bool,
+    kernel_data: typing.Any,
+    problem_type: ProblemType,
 ) -> BoundaryData:
     """The collected essential boundary conditions for set of reconstructed fluxes
 
@@ -110,7 +110,6 @@ def boundarydata(
         flux_conditions:  List of essential flux BCs each flux
         boundary_data:    List functions holding the boundary values
         V:                The function space of the reconstructed flux
-        custom_rt:        Identifier if custom RT element is used
         dirichlet_facets: Identifier if stresses are equilibrated
 
     Returns:
@@ -123,14 +122,6 @@ def boundarydata(
     if (n_rhs != len(boundary_data)) or (n_rhs != len(dirichlet_facets)):
         raise RuntimeError("Size of input data does not match!")
 
-    # Set (default) quadrature degree
-    degree_flux = V.element.basix_element.degree
-    qdegree = 2 * (degree_flux - 1)
-
-    for bcs in flux_conditions:
-        for bc in bcs:
-            qdegree = max(qdegree, bc.quadrature_degree)
-
     # Extract cpp-objects from boundary data
     boundary_data_cpp = [f._cpp_object for f in boundary_data]
 
@@ -138,8 +129,7 @@ def boundarydata(
         flux_conditions,
         boundary_data_cpp,
         V._cpp_object,
-        custom_rt,
-        qdegree,
         dirichlet_facets,
-        equilibrate_stress,
+        kernel_data,
+        problem_type,
     )

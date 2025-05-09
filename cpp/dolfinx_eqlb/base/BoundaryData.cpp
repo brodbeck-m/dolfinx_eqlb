@@ -9,310 +9,28 @@
 using namespace dolfinx;
 using namespace dolfinx_eqlb::base;
 
-// ------------------------------------------------------------------------------
-/* KernelDataBC */
-// ------------------------------------------------------------------------------
-template <dolfinx::scalar T, std::floating_point U>
-KernelDataBC<T, U>::KernelDataBC(const basix::FiniteElement<U>& element_geom,
-                                 std::tuple<int, int> quadrature_rule_fct,
-                                 const basix::FiniteElement<U>& element_flux,
-                                 const bool flux_is_custom)
-    : KernelData<U>(element_geom, {quadrature_rule_fct}),
-      _ndofs_per_fct((this->_dim == 2) ? element_flux.degree()
-                                       : 0.5 * element_flux.degree()
-                                             * (element_flux.degree() + 1)),
-      _ndofs_fct(this->_nfcts_per_cell * _ndofs_per_fct),
-      _ndofs_cell(element_flux.dim()),
-      _basix_element_hat(basix::element::create_lagrange<U>(
-          element_geom.cell_type(), 1,
-          basix::element::lagrange_variant::equispaced, false))
-{
-  // Create a fem.FiniteElement
-  fem::FiniteElement<U> element_flux_hdiv
-      = fem::FiniteElement<U>(element_flux, 1, false);
-
-  // Extract the basix flux element
-  const basix::FiniteElement<U>& basix_element_flux_hdiv
-      = element_flux_hdiv.basix_element();
-
-  /* Interpolation points on facets */
-  std::array<std::size_t, 4> shape_intpl = this->interpolation_data_facet_rt(
-      basix_element_flux_hdiv, flux_is_custom, this->_dim,
-      this->_nfcts_per_cell, _ipoints, _data_M);
-
-  _M = mdspan_t<const U, 4>(_data_M.data(), shape_intpl);
-
-  std::tie(_nipoints_per_fct, _nipoints)
-      = this->size_interpolation_data_facet_rt(shape_intpl);
-
-  /* Tabulate required shape-functions */
-  std::array<std::size_t, 5> shape;
-
-  // Tabulate H(div) flux at interpolation points
-  shape = this->tabulate_basis(basix_element_flux_hdiv, _ipoints,
-                               _basis_flux_values, false, false);
-  _basis_flux = mdspan_t<const U, 5>(_basis_flux_values.data(), shape);
-
-  _mbasis_flux_values.resize(_ndofs_cell * this->_dim);
-  _mbasis_scratch_values.resize(_ndofs_cell * this->_dim);
-  _mbasis_flux
-      = mdspan_t<U, 2>(_mbasis_flux_values.data(), _ndofs_cell, this->_dim);
-  _mbasis_scratch
-      = mdspan_t<U, 2>(_mbasis_scratch_values.data(), _ndofs_cell, this->_dim);
-
-  // Tabulate hat-function at interpolation points
-  shape = this->tabulate_basis(_basix_element_hat, _ipoints, _basis_hat_values,
-                               false, false);
-  _basis_hat = mdspan_t<const U, 5>(_basis_hat_values.data(), shape);
-
-  /* H(div)-flux: Pull back into reference */
-  // Initialise scratch
-  _size_flux_scratch
-      = std::max(_nipoints_per_fct, this->_quadrature_rule[0].num_points(0));
-  _flux_scratch_data.resize(_size_flux_scratch * this->_dim);
-  _mflux_scratch_data.resize(_size_flux_scratch * this->_dim);
-
-  _flux_scratch = mdspan_t<U, 2>(_flux_scratch_data.data(), _size_flux_scratch,
-                                 this->_dim);
-  _mflux_scratch = mdspan_t<U, 2>(_mflux_scratch_data.data(),
-                                  _size_flux_scratch, this->_dim);
-
-  /* Extract mapping functions */
-  using J_t = mdspan_t<const U, 2>;
-  using K_t = mdspan_t<const U, 2>;
-
-  // Push-forward for shape-functions
-  using u_t = mdspan_t<U, 2>;
-  using U_t = mdspan_t<const U, 2>;
-
-  _push_forward_flux
-      = basix_element_flux_hdiv.template map_fn<u_t, U_t, K_t, J_t>();
-
-  // Pull-back for values
-  using V_t = mdspan_t<T, 2>;
-  using v_t = mdspan_t<const T, 2>;
-
-  _pull_back_flux
-      = basix_element_flux_hdiv.template map_fn<V_t, v_t, K_t, J_t>();
-
-  // DOF-transformation function (shape functions)
-  _apply_dof_transformation
-      = element_flux_hdiv.template dof_transformation_fn<U>(
-          fem::doftransform::standard, false);
-}
-
-template <dolfinx::scalar T, std::floating_point U>
-void KernelDataBC<T, U>::map_shapefunctions_flux(std::int8_t lfct_id,
-                                                 mdspan_t<U, 3> phi_cur,
-                                                 mdspan_t<const U, 5> phi_ref,
-                                                 mdspan_t<const U, 2> J, U detJ)
-{
-  const int offs_pnt = lfct_id * this->_quadrature_rule[0].num_points(0);
-  const int offs_dof = lfct_id * _ndofs_per_fct;
-
-  // Loop over all evaluation points
-  for (std::size_t i = 0; i < phi_cur.extent(0); ++i)
-  {
-    // Index of the reference shape-functions
-    int i_ref = offs_pnt + i;
-
-    // Loop over all basis functions
-    for (std::size_t j = 0; j < phi_cur.extent(1); ++j)
-    {
-      // Index of the reference shape-functions
-      int j_ref = offs_dof + j;
-
-      // Inverse of the determinenant
-      U inv_detJ = 1.0 / detJ;
-
-      // Evaluate (1/detj) * J * phi^j(x_i)
-      U acc = 0;
-
-      if (phi_cur.extent(2) == 2)
-      {
-        acc = J(0, 0) * phi_ref(0, 0, i_ref, j_ref, 0)
-              + J(0, 1) * phi_ref(0, 0, i_ref, j_ref, 1);
-        phi_cur(i, j, 0) = inv_detJ * acc;
-
-        acc = J(1, 0) * phi_ref(0, 0, i_ref, j_ref, 0)
-              + J(1, 1) * phi_ref(0, 0, i_ref, j_ref, 1);
-        phi_cur(i, j, 1) = inv_detJ * acc;
-      }
-      else
-      {
-        acc = J(0, 0) * phi_ref(0, 0, i_ref, j_ref, 0)
-              + J(0, 1) * phi_ref(0, 0, i_ref, j_ref, 1)
-              + J(0, 2) * phi_ref(0, 0, i_ref, j_ref, 2);
-        phi_cur(i, j, 0) = inv_detJ * acc;
-
-        acc = J(1, 0) * phi_ref(0, 0, i_ref, j_ref, 0)
-              + J(1, 1) * phi_ref(0, 0, i_ref, j_ref, 1)
-              + J(1, 2) * phi_ref(0, 0, i_ref, j_ref, 2);
-        phi_cur(i, j, 1) = inv_detJ * acc;
-
-        acc = J(2, 0) * phi_ref(0, 0, i_ref, j_ref, 0)
-              + J(2, 1) * phi_ref(0, 0, i_ref, j_ref, 1)
-              + J(2, 2) * phi_ref(0, 0, i_ref, j_ref, 2);
-        phi_cur(i, j, 1) = inv_detJ * acc;
-      }
-    }
-  }
-}
-
-template <dolfinx::scalar T, std::floating_point U>
-void KernelDataBC<T, U>::interpolate_flux(std::span<const T> flux_ntrace_cur,
-                                          std::span<T> flux_dofs,
-                                          std::int8_t lfct_id,
-                                          mdspan_t<const U, 2> J, U detJ,
-                                          mdspan_t<const U, 2> K)
-{
-  // Calculate flux within current cell
-  normaltrace_to_vector(flux_ntrace_cur, lfct_id, K);
-
-  // Calculate DOFs based on values at interpolation points
-  interpolate_flux(_flux_scratch, flux_dofs, lfct_id, J, detJ, K);
-}
-
-template <dolfinx::scalar T, std::floating_point U>
-void KernelDataBC<T, U>::interpolate_flux(
-    std::span<const T> flux_dofs_bc, std::span<T> flux_dofs_patch,
-    std::int32_t cell_id, std::int8_t lfct_id, std::int8_t hat_id,
-    std::span<const std::uint32_t> cell_info, mdspan_t<const U, 2> J, U detJ,
-    mdspan_t<const U, 2> K)
-{
-  /* Map shape functions*/
-  // Copy shape-functions from reference element
-  const int offs_ipnt = lfct_id * _nipoints_per_fct;
-  const int offs_dof = lfct_id * _ndofs_per_fct;
-
-  for (std::size_t i_pnt = 0; i_pnt < _nipoints_per_fct; ++i_pnt)
-  {
-    // Copy shape-functions at current point
-    // TODO - Check if copy on only functions on current facet is enough!
-    for (std::size_t i_dof = 0; i_dof < _ndofs_fct; ++i_dof)
-    {
-      for (std::size_t i_dim = 0; i_dim < this->_dim; ++i_dim)
-      {
-        _mbasis_scratch(i_dof, i_dim)
-            = _basis_flux(0, 0, offs_ipnt + i_pnt, i_dof, i_dim);
-      }
-    }
-
-    // Apply dof transformation
-    _apply_dof_transformation(_mbasis_scratch_values, cell_info, cell_id,
-                              this->_dim);
-
-    // Apply push-foreward function
-    _push_forward_flux(_mbasis_flux, _mbasis_scratch, J, detJ, K);
-
-    // Evaluate flux
-    for (std::size_t i_dim = 0; i_dim < this->_dim; ++i_dim)
-    {
-      // Evaluate flux at current point
-      T acc = 0;
-      for (std::size_t i_dof = 0; i_dof < _ndofs_per_fct; ++i_dof)
-      {
-        acc += flux_dofs_bc[i_dof] * _mbasis_flux(offs_dof + i_dof, i_dim);
-      }
-
-      // Multiply flux with hat function
-      _flux_scratch(i_pnt, i_dim)
-          = acc * _basis_hat(0, 0, offs_ipnt + i_pnt, hat_id, 0);
-    }
-  }
-
-  // Calculate DOF of scaled flux
-  interpolate_flux(_flux_scratch, flux_dofs_patch, lfct_id, J, detJ, K);
-}
-
-template <dolfinx::scalar T, std::floating_point U>
-void KernelDataBC<T, U>::interpolate_flux(mdspan_t<const T, 2> flux_cur,
-                                          std::span<T> flux_dofs,
-                                          std::int8_t lfct_id,
-                                          mdspan_t<const U, 2> J, U detJ,
-                                          mdspan_t<const U, 2> K)
-{
-  // Map flux to reference cell
-  _pull_back_flux(_mflux_scratch, flux_cur, K, 1 / detJ, J);
-
-  // Apply interpolation operator
-  for (std::size_t i = 0; i < flux_dofs.size(); ++i)
-  {
-    T dof = 0;
-    for (std::size_t j = 0; j < _nipoints_per_fct; ++j)
-    {
-      for (std::size_t k = 0; k < this->_dim; ++k)
-      {
-        {
-          dof += _M(lfct_id, i, k, j) * _mflux_scratch(j, k);
-        }
-      }
-    }
-
-    flux_dofs[i] = dof;
-  }
-}
-
-template <dolfinx::scalar T, std::floating_point U>
-void KernelDataBC<T, U>::normaltrace_to_vector(
-    std::span<const T> normaltrace_cur, std::int8_t lfct_id,
-    mdspan_t<const U, 2> K)
-{
-  // Calculate physical facet normal
-  std::span<U> normal_cur(_normal_scratch.data(), this->_dim);
-  this->physical_fct_normal(normal_cur, K, lfct_id);
-
-  // Calculate flux within current cell
-  for (std::size_t i = 0; i < normaltrace_cur.size(); ++i)
-  {
-    int offs = this->_dim * i;
-
-    // Set flux
-    for (std::size_t j = 0; j < this->_dim; ++j)
-    {
-      _flux_scratch(i, j) = normal_cur[j] * normaltrace_cur[i];
-    }
-  }
-}
-// ------------------------------------------------------------------------------
-
-// ------------------------------------------------------------------------------
-/* BoundaryData */
-// ------------------------------------------------------------------------------
 template <dolfinx::scalar T, std::floating_point U>
 BoundaryData<T, U>::BoundaryData(
     std::vector<std::vector<std::shared_ptr<FluxBC<T, U>>>>& list_bcs,
-    std::vector<std::shared_ptr<fem::Function<T, U>>>& boundary_flux,
-    std::shared_ptr<const fem::FunctionSpace<U>> V_flux_hdiv,
-    bool rtflux_is_custom, int quadrature_degree,
+    std::vector<std::shared_ptr<fem::Function<T, U>>>& boundary_fluxes,
+    std::shared_ptr<const fem::FunctionSpace<U>> V,
     const std::vector<std::vector<std::int32_t>>& fct_esntbound_prime,
-    const bool reconstruct_stress)
-    : _bcs(list_bcs), _boundary_fluxes(boundary_flux),
-      _flux_degree(V_flux_hdiv->element()->basix_element().degree()),
-      _num_rhs(list_bcs.size()), _gdim(V_flux_hdiv->mesh()->geometry().dim()),
-      _V_flux_hdiv(V_flux_hdiv),
-      _flux_is_discontinous(
-          V_flux_hdiv->element()->basix_element().discontinuous()),
-      _ndofs_per_cell(V_flux_hdiv->element()->space_dimension()),
+    KernelDataBC<T, U>& kernel_data, const ProblemType problem_type)
+    : _bcs(list_bcs), _boundary_fluxes(boundary_fluxes), _V(V),
+      _flux_degree(_V->element()->basix_element().degree()),
+      _num_rhs(list_bcs.size()), _gdim(_V->mesh()->geometry().dim()),
+      _flux_is_discontinous(_V->element()->basix_element().discontinuous()),
+      _ndofs_per_cell(_V->element()->space_dimension()),
       _ndofs_per_fct((_gdim == 2) ? _flux_degree
                                   : 0.5 * _flux_degree * (_flux_degree + 1)),
-      _fct_to_cell(
-          V_flux_hdiv->mesh()->topology()->connectivity(_gdim - 1, _gdim)),
-      _element_geom(basix::element::create_lagrange<U>(
-          mesh::cell_type_to_basix_type(
-              V_flux_hdiv->mesh()->topology()->cell_type()),
-          1, basix::element::lagrange_variant::equispaced, false)),
-      _kernel_data(KernelDataBC<T, U>(
-          _element_geom,
-          std::make_tuple(quadrature_degree,
-                          V_flux_hdiv->mesh()->geometry().dim() - 1),
-          V_flux_hdiv->element()->basix_element(), rtflux_is_custom))
+      _fct_to_cell(_V->mesh()->topology()->connectivity(_gdim - 1, _gdim)),
+      _kernel_data(std::make_shared<KernelDataBC<T, U>>(kernel_data))
 {
   // Counters
   std::int32_t num_fcts
-      = V_flux_hdiv->mesh()->topology()->index_map(_gdim - 1)->size_local();
-  std::int32_t num_dofs = V_flux_hdiv->dofmap()->index_map->size_local()
-                          + V_flux_hdiv->dofmap()->index_map->num_ghosts();
+      = _V->mesh()->topology()->index_map(_gdim - 1)->size_local();
+  std::int32_t num_dofs = _V->dofmap()->index_map->size_local()
+                          + _V->dofmap()->index_map->num_ghosts();
   // Resize storage
   std::int32_t size_dofdata = _num_rhs * num_dofs;
   _boundary_values.resize(size_dofdata, 0.0);
@@ -321,14 +39,14 @@ BoundaryData<T, U>::BoundaryData(
 
   std::int32_t size_fctdata = _num_rhs * num_fcts;
   _local_fct_id.resize(num_fcts);
-  _facet_type.resize(size_fctdata, PatchFacetType::internal);
+  _facet_type.resize(size_fctdata, FacetType::internal);
   _offset_fctdata.resize(_num_rhs + 1);
 
-  if (reconstruct_stress)
+  if (problem_type != ProblemType::flux)
   {
     std::int32_t size_nodedata
-        = V_flux_hdiv->mesh()->topology()->index_map(0)->size_local()
-          + V_flux_hdiv->mesh()->topology()->index_map(0)->num_ghosts();
+        = _V->mesh()->topology()->index_map(0)->size_local()
+          + _V->mesh()->topology()->index_map(0)->num_ghosts();
     _pnt_on_esnt_boundary.resize(size_nodedata, false);
   }
 
@@ -340,7 +58,7 @@ BoundaryData<T, U>::BoundaryData(
 
   /* Extract required data */
   // The mesh
-  std::shared_ptr<const mesh::Mesh<U>> mesh = V_flux_hdiv->mesh();
+  std::shared_ptr<const mesh::Mesh<U>> mesh = _V->mesh();
 
   // Required conductivities
   std::shared_ptr<const graph::AdjacencyList<std::int32_t>> cell_to_fct
@@ -350,8 +68,8 @@ BoundaryData<T, U>::BoundaryData(
 
   // Counters interpolation- and quadrature points
   const int nipoints_per_fct
-      = _kernel_data.num_interpolation_points_per_facet();
-  const int nqpoints_per_fct = _kernel_data.num_points(0, 0);
+      = _kernel_data->num_interpolation_points_per_facet();
+  const int nqpoints_per_fct = _kernel_data->num_points(0, 0);
 
   /* Initialise storage */
   // DOF ids and values on boundary facets
@@ -369,7 +87,7 @@ BoundaryData<T, U>::BoundaryData(
     for (std::int32_t fct : fct_esntbound_prime[i_rhs])
     {
       // Set facet type
-      facet_type_i[fct] = PatchFacetType::essnt_primal;
+      facet_type_i[fct] = FacetType::essnt_primal;
     }
 
     // Handle facets with essential BCs on dual problem
@@ -405,7 +123,7 @@ BoundaryData<T, U>::BoundaryData(
         boundary_dofs(cell, fct_loc, boundary_dofs_fct);
 
         // Set values and markers
-        facet_type_i[fct] = PatchFacetType::essnt_dual;
+        facet_type_i[fct] = FacetType::essnt_dual;
         _local_fct_id[fct] = fct_loc;
 
         for (std::size_t i = 0; i < _ndofs_per_fct; ++i)
@@ -413,7 +131,7 @@ BoundaryData<T, U>::BoundaryData(
           boundary_markers_i[boundary_dofs_fct[i]] = true;
         }
 
-        if ((reconstruct_stress) && (i_rhs < _gdim))
+        if ((problem_type != ProblemType::flux) && (i_rhs < _gdim))
         {
           std::span<const std::int32_t> pnts_fct = fct_to_pnt->links(fct);
 
@@ -430,7 +148,7 @@ BoundaryData<T, U>::BoundaryData(
   evaluate_boundary_flux(true);
 
   // Finalise markers for pure essential stress BCs
-  if (reconstruct_stress && (_gdim == 2))
+  if ((problem_type != ProblemType::flux) && (_gdim == 2))
   {
     for (std::size_t i = 0; i < _pnt_on_esnt_boundary.size(); ++i)
     {
@@ -491,7 +209,7 @@ void BoundaryData<T, U>::update(
 
           // Copy values to global storage
           auto cell_dofs = MDSPAN_IMPL_STANDARD_NAMESPACE::submdspan(
-              _V_flux_hdiv->dofmap()->map(), c,
+              _V->dofmap()->map(), c,
               MDSPAN_IMPL_STANDARD_NAMESPACE::full_extent);
           std::size_t offs = f * _ndofs_per_fct;
 
@@ -512,7 +230,7 @@ void BoundaryData<T, U>::calculate_patch_bc(
 {
   /* Extract data */
   // The mesh
-  std::shared_ptr<const mesh::Mesh<U>> mesh = _V_flux_hdiv->mesh();
+  std::shared_ptr<const mesh::Mesh<U>> mesh = _V->mesh();
 
   // The geometry DOFmap
   mdspan_t<const std::int32_t, 2> dofmap_geom = mesh->geometry().dofmap();
@@ -546,7 +264,7 @@ void BoundaryData<T, U>::calculate_patch_bc(
     mdspan_t<U, 2> J(_data_J.data(), _gdim, _gdim);
     mdspan_t<U, 2> K(_data_K.data(), _gdim, _gdim);
 
-    U detJ = _kernel_data.compute_jacobian(J, K, _detJ_scratch, coordinates);
+    U detJ = _kernel_data->compute_jacobian(J, K, _detJ_scratch, coordinates);
 
     /* Calculate BCs on current facet */
     for (int i_rhs = 0; i_rhs < _num_rhs; ++i_rhs)
@@ -561,7 +279,7 @@ void BoundaryData<T, U>::calculate_patch_bc(
     const int rhs_i, const std::int32_t fct, const std::int8_t hat_id,
     mdspan_t<const U, 2> J, const U detJ, mdspan_t<const U, 2> K)
 {
-  if (facet_type(rhs_i)[fct] == PatchFacetType::essnt_dual)
+  if (facet_type(rhs_i)[fct] == FacetType::essnt_dual)
   {
     // The cell
     std::int32_t cell = _fct_to_cell->links(fct)[0];
@@ -599,14 +317,14 @@ void BoundaryData<T, U>::calculate_patch_bc(
     {
       // Get cell info
       std::span<const std::uint32_t> cell_info;
-      if (_V_flux_hdiv->element()->needs_dof_transformations())
+      if (_V->element()->needs_dof_transformations())
       {
-        cell_info = std::span(
-            _V_flux_hdiv->mesh()->topology()->get_cell_permutation_info());
+        cell_info
+            = std::span(_V->mesh()->topology()->get_cell_permutation_info());
       }
 
       // Calculate boundary DOFs
-      std::vector<T> bdofs_patch = _kernel_data.interpolate_flux(
+      std::vector<T> bdofs_patch = _kernel_data->interpolate_flux(
           flux_dofs_bfunc, cell, fct_loc, hat_id, cell_info, J, detJ, K);
 
       for (std::size_t i = 0; i < _ndofs_per_fct; i++)
@@ -638,13 +356,12 @@ void BoundaryData<T, U>::boundary_dofs(const std::int32_t cell,
     // Extract DOFs of current cell
     smdspan_t<const std::int32_t, 1> dofs_cell
         = MDSPAN_IMPL_STANDARD_NAMESPACE::submdspan(
-            _V_flux_hdiv->dofmap()->map(), cell,
+            _V->dofmap()->map(), cell,
             MDSPAN_IMPL_STANDARD_NAMESPACE::full_extent);
 
     // Local DOF-ids on facet
     const std::vector<int>& entity_dofs
-        = _V_flux_hdiv->dofmap()->element_dof_layout().entity_dofs(_gdim - 1,
-                                                                   fct_loc);
+        = _V->dofmap()->element_dof_layout().entity_dofs(_gdim - 1, fct_loc);
 
     // Calculate DOFs on boundary facet
     for (std::size_t i = 0; i < _ndofs_per_fct; ++i)
@@ -660,7 +377,7 @@ void BoundaryData<T, U>::evaluate_boundary_flux(
 {
   /* Extract required data */
   // The mesh
-  std::shared_ptr<const mesh::Mesh<U>> mesh = _V_flux_hdiv->mesh();
+  std::shared_ptr<const mesh::Mesh<U>> mesh = _V->mesh();
 
   // Geometry DOFmap and nodal coordinates
   mdspan_t<const std::int32_t, 2> x_dofmap = mesh->geometry().dofmap();
@@ -668,22 +385,22 @@ void BoundaryData<T, U>::evaluate_boundary_flux(
 
   // The transformation function of the flux space
   const auto apply_inverse_dof_transform
-      = _V_flux_hdiv->element()->template dof_transformation_fn<T>(
+      = _V->element()->template dof_transformation_fn<T>(
           fem::doftransform::inverse_transpose, false);
 
   std::span<const std::uint32_t> cell_info;
-  if (_V_flux_hdiv->element()->needs_dof_transformations())
+  if (_V->element()->needs_dof_transformations())
   {
     mesh->topology_mutable()->create_entity_permutations();
     cell_info = std::span(mesh->topology()->get_cell_permutation_info());
   }
 
   // The counters of interpolation- and quadrature points
-  const int nipoints = _kernel_data.num_interpolation_points();
+  const int nipoints = _kernel_data->num_interpolation_points();
   const int nipoints_per_fct
-      = _kernel_data.num_interpolation_points_per_facet();
-  const int nqpoints = _kernel_data.num_points(0);
-  const int nqpoints_per_fct = _kernel_data.num_points(0, 0);
+      = _kernel_data->num_interpolation_points_per_facet();
+  const int nqpoints = _kernel_data->num_points(0);
+  const int nqpoints_per_fct = _kernel_data->num_points(0, 0);
 
   /* Initialisations */
   // Geometry mapping
@@ -707,8 +424,8 @@ void BoundaryData<T, U>::evaluate_boundary_flux(
 
   std::vector<double> basis_projection_values, mbasis_projection_values;
 
-  std::array<std::size_t, 5> shape = _kernel_data.shapefunctions_flux_qpoints(
-      _V_flux_hdiv->element()->basix_element(), basis_projection_values);
+  std::array<std::size_t, 5> shape = _kernel_data->shapefunctions_flux_qpoints(
+      _V->element()->basix_element(), basis_projection_values);
   mdspan_t<const double, 5> basis_projection
       = mdspan_t<const U, 5>(basis_projection_values.data(), shape);
 
@@ -767,7 +484,7 @@ void BoundaryData<T, U>::evaluate_boundary_flux(
               coord_dofs.data(), &f, nullptr);
 
           // Evalute mapping tensors
-          U detJ = _kernel_data.compute_jacobian(J, K, _detJ_scratch, coord);
+          U detJ = _kernel_data->compute_jacobian(J, K, _detJ_scratch, coord);
 
           // Interpolate BC into flux function
           std::span<T> x_bvals_fct(x_bvals_cell.data() + f * _ndofs_per_fct,
@@ -776,14 +493,14 @@ void BoundaryData<T, U>::evaluate_boundary_flux(
           if (bc->projection_required())
           {
             // The quadrature weights
-            std::span<const U> weights = _kernel_data.quadrature_weights(0, f);
+            std::span<const U> weights = _kernel_data->quadrature_weights(0, f);
 
             // The boundary normal vector
-            _kernel_data.physical_fct_normal(boundary_normal, K, f);
+            _kernel_data->physical_fct_normal(boundary_normal, K, f);
 
             // Map shape functions to current cell
-            _kernel_data.map_shapefunctions_flux(f, mbasis_projection,
-                                                 basis_projection, J, detJ);
+            _kernel_data->map_shapefunctions_flux(f, mbasis_projection,
+                                                  basis_projection, J, detJ);
 
             // Assemble projection operator
             boundary_projection_kernel<T, U>(values_local, boundary_normal,
@@ -808,8 +525,8 @@ void BoundaryData<T, U>::evaluate_boundary_flux(
           }
           else
           {
-            _kernel_data.interpolate_flux(values_local, x_bvals_fct, f, J, detJ,
-                                          K);
+            _kernel_data->interpolate_flux(values_local, x_bvals_fct, f, J,
+                                           detJ, K);
           }
 
           // Apply DOF transformations
@@ -817,7 +534,7 @@ void BoundaryData<T, U>::evaluate_boundary_flux(
 
           // Copy values to global storage
           auto cell_dofs = MDSPAN_IMPL_STANDARD_NAMESPACE::submdspan(
-              _V_flux_hdiv->dofmap()->map(), c,
+              _V->dofmap()->map(), c,
               MDSPAN_IMPL_STANDARD_NAMESPACE::full_extent);
           std::size_t offs = f * _ndofs_per_fct;
 
@@ -836,8 +553,5 @@ void BoundaryData<T, U>::evaluate_boundary_flux(
 }
 
 // ------------------------------------------------------------------------------
-
-// ------------------------------------------------------------------------------
-template class KernelDataBC<double, double>;
 template class BoundaryData<double, double>;
 // ------------------------------------------------------------------------------
