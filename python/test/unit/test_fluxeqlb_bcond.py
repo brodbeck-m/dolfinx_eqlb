@@ -18,10 +18,7 @@ from dolfinx import default_scalar_type, default_real_type, fem, mesh
 import dolfinx.fem.petsc
 import ufl
 
-from dolfinx_eqlb import ProblemType, EqlbStrategy
-from dolfinx_eqlb.eqlb import Equilibrator, homogenous_fluxbc, fluxbc, boundarydata
-from dolfinx_eqlb.eqlb.bcs import TimeType
-from dolfinx_eqlb.lsolver import local_projection
+from dolfinx_eqlb import eqlb, lsolver
 
 from utils import (
     MeshType,
@@ -41,7 +38,7 @@ def setup_tests(
     quadrature_degree: typing.Optional[int] = None,
 ) -> typing.Tuple[
     Domain,
-    Equilibrator,
+    eqlb.Equilibrator,
     typing.Tuple[fem.FunctionSpace, fem.FunctionSpace],
     fem.Function,
 ]:
@@ -63,37 +60,16 @@ def setup_tests(
 
     # Initialise Equilibrator
     if rt_space == "custom":
-        strategy = EqlbStrategy.semi_explicit
+        strategy = eqlb.EqlbStrategy.semi_explicit
     else:
-        strategy = EqlbStrategy.constrained_minimisation
+        strategy = eqlb.EqlbStrategy.constrained_minimisation
 
-    # elmt_geom = basix.ufl.element(
-    #     "Lagrange", "triangle", 1, shape=(2,), dtype=np.float64
-    # )
-
-    # elmt_hat = basix.ufl.element("Lagrange", "triangle", 1, dtype=np.float64)
-
-    # if rt_space == "custom":
-    #     elmt_flux = create_hierarchic_rt(basix.CellType.triangle, degree, True)
-    #     eq_type = EqStrategy.semi_explicit
-    # else:
-    #     elmt_flux = basix.ufl.element("RT", "triangle", degree, dtype=default_real_type)
-    #     eq_type = EqStrategy.constrained_minimisation
-
-    # if quadrature_degree is None:
-    #     quadrature_degree = 2 * degree - 2
-
-    # equilibrator = Equilibrator(
-    #     ProblemType.flux,
-    #     eq_type,
-    #     elmt_geom.basix_element._e,
-    #     elmt_hat.basix_element._e,
-    #     elmt_flux.basix_element._e,
-    #     quadrature_degree,
-    # )
-
-    equilibrator = Equilibrator(
-        domain.mesh.ufl_domain(), ProblemType.flux, strategy, degree, quadrature_degree
+    equilibrator = eqlb.Equilibrator(
+        domain.mesh.ufl_domain(),
+        eqlb.ProblemType.flux,
+        strategy,
+        degree,
+        quadrature_degree,
     )
 
     # Initialise FunctionSpace
@@ -153,11 +129,11 @@ def test_boundary_data_homogenous(mesh_type: MeshType, degree: int, rt_space: st
         bfcts = domain.facet_function.indices[domain.facet_function.values == id]
 
         # Create instance of FluxBC
-        list_bcs.append(homogenous_fluxbc(bfcts))
+        list_bcs.append(eqlb.homogenous_fluxbc(bfcts))
 
     # Initialise boundary data
     V_bc = V.sub(0) if (rt_space == "subspace") else V_flux
-    boundary_data = boundarydata(
+    boundary_data = eqlb.boundarydata(
         [list_bcs],
         [boundary_function],
         V_bc,
@@ -244,11 +220,13 @@ def test_boundary_data_polynomial(
             bfcts = domain.facet_function.indices[domain.facet_function.values == id]
 
             # Create instance of FluxBC
-            list_bcs.append(fluxbc(ntrace_ufl, bfcts, V_flux, use_projection, qdegree))
+            list_bcs.append(
+                eqlb.fluxbc(ntrace_ufl, bfcts, V_flux, use_projection, qdegree)
+            )
 
         # Initialise boundary data
         V_bc = V.sub(0) if (rt_space == "subspace") else V_flux
-        boundary_data = boundarydata(
+        boundary_data = eqlb.boundarydata(
             [list_bcs],
             [boundary_function],
             V_bc,
@@ -259,7 +237,9 @@ def test_boundary_data_polynomial(
 
         # Interpolate BC into test-space
         rhs_ref = ufl.as_vector([-ntrace_ufl, ntrace_ufl])
-        refsol = local_projection(V_ref, [rhs_ref], quadrature_degree=2 * degree)[0]
+        refsol = lsolver.local_projection(
+            V_ref, [rhs_ref], quadrature_degree=2 * degree
+        )[0]
 
         # Evaluate functions at comparison points
         if rt_space == "subspace":
@@ -311,13 +291,13 @@ def test_boundary_data_general(mesh_type: MeshType, degree: int):
     list_bcs = []
 
     bfcts_1 = domain.facet_function.indices[domain.facet_function.values == 1]
-    list_bcs.append(fluxbc(ntrace_ufl_1, bfcts_1, V_flux, True, qdegree))
+    list_bcs.append(eqlb.fluxbc(ntrace_ufl_1, bfcts_1, V_flux, True, qdegree))
 
     bfcts_4 = domain.facet_function.indices[domain.facet_function.values == 4]
-    list_bcs.append(fluxbc(ntrace_ufl_4, bfcts_4, V_flux, True, qdegree))
+    list_bcs.append(eqlb.fluxbc(ntrace_ufl_4, bfcts_4, V_flux, True, qdegree))
 
     # Initialise boundary data
-    boundary_data = boundarydata(
+    boundary_data = eqlb.boundarydata(
         [list_bcs],
         [boundary_function],
         V_flux,
@@ -457,32 +437,32 @@ def test_update_boundary_data(
         # BC with TimeType.timedependent
         bfcts = domain.facet_function.indices[domain.facet_function.values == 1]
         list_bcs.append(
-            fluxbc(
+            eqlb.fluxbc(
                 tfunc_ufl * ntrace_ufl,
                 bfcts,
                 V_flux,
                 use_projection,
                 qdegree,
-                TimeType.timedependent,
+                eqlb.TimeType.timedependent,
             )
         )
 
         # BC with TimeType.timefunction
         bfcts = domain.facet_function.indices[domain.facet_function.values == 4]
         list_bcs.append(
-            fluxbc(
+            eqlb.fluxbc(
                 ntrace_ufl,
                 bfcts,
                 V_flux,
                 use_projection,
                 qdegree,
-                TimeType.timefunction,
+                eqlb.TimeType.timefunction,
             )
         )
 
         # Initialise boundary data
         V_bc = V.sub(0) if (rt_space == "subspace") else V_flux
-        boundary_data = boundarydata(
+        boundary_data = eqlb.boundarydata(
             [list_bcs],
             [boundary_function],
             V_bc,
@@ -501,7 +481,9 @@ def test_update_boundary_data(
 
         # Interpolate BC into test-space
         rhs_ref = ufl.as_vector([-tfunc_ufl * ntrace_ufl, tfunc_ufl * ntrace_ufl])
-        refsol = local_projection(V_ref, [rhs_ref], quadrature_degree=2 * degree)[0]
+        refsol = lsolver.local_projection(
+            V_ref, [rhs_ref], quadrature_degree=2 * degree
+        )[0]
 
         # Evaluate functions at comparison points
         if rt_space == "subspace":
