@@ -186,7 +186,7 @@ def test_boundary_data_polynomial(
     """
 
     # The used quadrature degree
-    qdegree = 2 * degree - 3 if use_projection else None
+    qdegree = 2 * degree - 2 if use_projection else None
 
     # Test setup
     domain, equilibrator, (V, V_flux), boundary_function = setup_tests(
@@ -519,5 +519,4 @@ def test_update_boundary_data(
 if __name__ == "__main__":
     import sys
 
-    # pytest.main(sys.argv)
-    test_boundary_data_polynomial(MeshType.builtin, 4, "basix", True)
+    pytest.main(sys.argv)
