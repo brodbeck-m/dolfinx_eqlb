@@ -129,18 +129,18 @@ void declare_equilibrator(nb::module_& m)
       .value("stress", base::ProblemType::stress)
       .value("stress_and_flux", base::ProblemType::stress_and_flux);
 
-  nb::enum_<base::EqStrategy>(m, "EqStrategy", nb::is_arithmetic(),
-                              "The used equilibration strategy.")
-      .value("semi_explicit", base::EqStrategy::semi_explicit)
+  nb::enum_<base::EqlbStrategy>(m, "EqlbStrategy", nb::is_arithmetic(),
+                                "The used equilibration strategy.")
+      .value("semi_explicit", base::EqlbStrategy::semi_explicit)
       .value("constrained_minimisation",
-             base::EqStrategy::constrained_minimisation);
+             base::EqlbStrategy::constrained_minimisation);
 
   nb::class_<base::Equilibrator<T, U>>(m, "Equilibrator",
                                        "Basic Equilibrator object")
       .def(
           "__init__",
           [](base::Equilibrator<T, U>* fp, const base::ProblemType problem_type,
-             const base::EqStrategy strategy,
+             const base::EqlbStrategy strategy,
              const basix::FiniteElement<U>& element_geom,
              const basix::FiniteElement<U>& element_hat,
              const basix::FiniteElement<U>& element_flux,
@@ -175,7 +175,7 @@ void declare_equilibrator(nb::module_& m)
              std::tuple<int, int> quadrature_rule,
              const basix::FiniteElement<U>& element_hat,
              const basix::FiniteElement<U>& element_flux,
-             const base::EqStrategy equilibration_strategy)
+             const base::EqlbStrategy equilibration_strategy)
           {
             new (fp) base::KernelDataBC<T, U>(element_geom, quadrature_rule,
                                               element_hat, element_flux,

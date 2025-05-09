@@ -97,7 +97,7 @@ class Equilibrator:
         """The type of the equilibration problem"""
         return self._cpp_object.problem_type
 
-    def strategy(self) -> _cpp.EqStrategy:
+    def strategy(self) -> _cpp.EqlbStrategy:
         """The equilibration strategy"""
         return self._cpp_object.strategy
 

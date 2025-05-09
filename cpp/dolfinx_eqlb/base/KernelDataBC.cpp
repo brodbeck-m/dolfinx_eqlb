@@ -14,7 +14,7 @@ KernelDataBC<T, U>::KernelDataBC(const basix::FiniteElement<U>& element_geom,
                                  std::tuple<int, int> quadrature_rule_fct,
                                  const basix::FiniteElement<U>& element_hat,
                                  const basix::FiniteElement<U>& element_flux,
-                                 const EqStrategy equilibration_strategy)
+                                 const EqlbStrategy equilibration_strategy)
     : KernelData<U>(element_geom, {quadrature_rule_fct}),
       _ndofs_per_fct((this->_dim == 2) ? element_flux.degree()
                                        : 0.5 * element_flux.degree()
@@ -28,8 +28,9 @@ KernelDataBC<T, U>::KernelDataBC(const basix::FiniteElement<U>& element_geom,
 
   /* Interpolation points on facets */
   const bool flux_is_custom
-      = (equilibration_strategy == EqStrategy::constrained_minimisation) ? false
-                                                                         : true;
+      = (equilibration_strategy == EqlbStrategy::constrained_minimisation)
+            ? false
+            : true;
   std::array<std::size_t, 4> shape_intpl = this->interpolation_data_facet_rt(
       element_flux, flux_is_custom, this->_dim, this->_nfcts_per_cell, _ipoints,
       _data_M);

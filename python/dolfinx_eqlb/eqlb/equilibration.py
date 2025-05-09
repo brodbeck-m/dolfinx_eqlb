@@ -66,7 +66,7 @@ class EqlbStrategy(Enum):
     constrained_minimisation = 1
 
 
-def strategy_to_cpp(strategy: EqlbStrategy) -> _cpp.EqStrategy:
+def strategy_to_cpp(strategy: EqlbStrategy) -> _cpp.EqlbStrategy:
     """Python enum Strategy to its c++ counterpart
 
     Args:
@@ -77,14 +77,14 @@ def strategy_to_cpp(strategy: EqlbStrategy) -> _cpp.EqStrategy:
     """
 
     if strategy == EqlbStrategy.semi_explicit:
-        return _cpp.EqStrategy.semi_explicit
+        return _cpp.EqlbStrategy.semi_explicit
     elif strategy == EqlbStrategy.constrained_minimisation:
-        return _cpp.EqStrategy.constrained_minimisation
+        return _cpp.EqlbStrategy.constrained_minimisation
     else:
         raise ValueError("Invalid equilibration strategy.")
 
 
-def cpp_to_strategy(strategy: _cpp.EqStrategy) -> EqlbStrategy:
+def cpp_to_strategy(strategy: _cpp.EqlbStrategy) -> EqlbStrategy:
     """c++ enum Strategy to its python counterpart
 
     Args:
@@ -94,9 +94,9 @@ def cpp_to_strategy(strategy: _cpp.EqStrategy) -> EqlbStrategy:
         The Strategy as python enum
     """
 
-    if strategy == _cpp.EqStrategy.semi_explicit:
+    if strategy == _cpp.EqlbStrategy.semi_explicit:
         return EqlbStrategy.semi_explicit
-    elif strategy == _cpp.EqStrategy.constrained_minimisation:
+    elif strategy == _cpp.EqlbStrategy.constrained_minimisation:
         return EqlbStrategy.constrained_minimisation
     else:
         raise ValueError("Invalid equilibration strategy.")

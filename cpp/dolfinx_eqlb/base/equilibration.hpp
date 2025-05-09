@@ -20,7 +20,7 @@ enum class ProblemType : int
 };
 
 /// @brief The considered equilibration strategy
-enum class EqStrategy : int
+enum class EqlbStrategy : int
 {
   semi_explicit = 0,
   constrained_minimisation = 1,

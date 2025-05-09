@@ -26,7 +26,7 @@ template <dolfinx::scalar T, std::floating_point U>
 class Equilibrator
 {
 public:
-  Equilibrator(const ProblemType problem_type, const EqStrategy strategy,
+  Equilibrator(const ProblemType problem_type, const EqlbStrategy strategy,
                const basix::FiniteElement<U>& element_geom,
                const basix::FiniteElement<U>& element_hat,
                const basix::FiniteElement<U>& element_flux,
@@ -49,7 +49,7 @@ public:
 
   /// Get the equilibration strategy
   /// @return The equilibration strategy
-  EqStrategy strategy() const { return _strategy; }
+  EqlbStrategy strategy() const { return _strategy; }
 
   /// Return the Baisx element of the hat-function
   /// @return The Basix element
@@ -73,7 +73,7 @@ protected:
   /* Variable definitions */
 
   const ProblemType _problem_type;
-  const EqStrategy _strategy;
+  const EqlbStrategy _strategy;
 
   // The spatial dimension
   const int _gdim;

@@ -45,7 +45,7 @@ public:
                std::tuple<int, int> quadrature_rule_fct,
                const basix::FiniteElement<U>& element_hat,
                const basix::FiniteElement<U>& element_flux,
-               const EqStrategy equilibration_strategy);
+               const EqlbStrategy equilibration_strategy);
 
   /* Tabulate/map shape-function sof the flux-space */
 
