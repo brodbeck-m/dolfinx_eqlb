@@ -1,5 +1,5 @@
 set(HEADERS_ev
-    # ${CMAKE_CURRENT_SOURCE_DIR}/Patch.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/Patch.hpp
     # ${CMAKE_CURRENT_SOURCE_DIR}/ProblemData.hpp
     # ${CMAKE_CURRENT_SOURCE_DIR}/StorageStiffness.hpp
     # ${CMAKE_CURRENT_SOURCE_DIR}/assembly.hpp
@@ -9,7 +9,7 @@ set(HEADERS_ev
     PARENT_SCOPE
 )
 
-# target_sources(
-#   dolfinx_eqlb
-#   PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Patch.cpp
-# )
+target_sources(
+  dolfinx_eqlb
+  PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Patch.cpp
+)
