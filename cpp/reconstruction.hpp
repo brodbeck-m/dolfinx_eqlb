@@ -313,9 +313,11 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data,
                 double cks = patch.estimate_squared_korn_constant() * (dim + 1);
 
                 // Store Korn's constant
-                for (std::int32_t cell : patch.cells())
+                const int ncells = patch.ncells();
+
+                for (int i = 1; i < ncells + 1; ++i)
                 {
-                  x_kornconst[cell] += cks;
+                  x_kornconst[patch.cell(i)] += cks;
                 }
               }
 
@@ -355,9 +357,11 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data,
           double cks = patch.estimate_squared_korn_constant() * (dim + 1);
 
           // Store Korn's constant
-          for (std::int32_t cell : patch.cells())
+          const int ncells = patch.ncells();
+
+          for (int i = 1; i < ncells + 1; ++i)
           {
-            x_kornconst[cell] += cks;
+            x_kornconst[patch.cell(i)] += cks;
           }
         }
 
@@ -398,9 +402,11 @@ void reconstruct_fluxes_patch(ProblemDataFluxCstm<T>& problem_data,
         double cks = patch.estimate_squared_korn_constant() * (dim + 1);
 
         // Store Korn's constant
-        for (std::int32_t cell : patch.cells())
+        const int ncells = patch.ncells();
+
+        for (int i = 1; i < ncells + 1; ++i)
         {
-          x_kornconst[cell] += cks;
+          x_kornconst[patch.cell(i)] += cks;
         }
       }
 
