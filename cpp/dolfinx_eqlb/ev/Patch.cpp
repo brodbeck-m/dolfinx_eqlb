@@ -27,9 +27,6 @@ Patch<U>::Patch(
   _fcts_sorted.resize(this->_ncells_max + 1);
 
   /* Counter DOFs */
-  // Number of DOFs on mixed-element
-  _ndof_elmt = _function_space->element()->space_dimension();
-
   // Number of DOFs on subelements
   _ndof_flux_fct = _entity_dofs_flux[this->_dim_fct][0].size();
   _ndof_flux_cell = _entity_dofs_flux[this->_dim][0].size();
@@ -77,8 +74,7 @@ void Patch<U>::create_subdofmap(int node_i)
       = _function_space->dofmap()->map();
   base::mdspan_t<const std::int32_t, 2> fdofmap
       = _function_space_fluxhdiv->dofmap()->map();
-  std::span<const std::int32_t> gdofs;
-  std::span<const std::int32_t> fdofs;
+  base::smdspan_t<const std::int32_t, 1> gdofs, fdofs;
 
   // Loop over all facets on patch
   std::int32_t offs_l = 0;
@@ -129,19 +125,17 @@ void Patch<U>::create_subdofmap(int node_i)
     }
 
     // Get global DOFs on current element
-    base::smdspan_t<const std::int32_t, 1> gdofs
-        = MDSPAN_IMPL_STANDARD_NAMESPACE::submdspan(
-            gdofmap, cell_i, MDSPAN_IMPL_STANDARD_NAMESPACE::full_extent);
-    base::smdspan_t<const std::int32_t, 1> fdofs
-        = MDSPAN_IMPL_STANDARD_NAMESPACE::submdspan(
-            fdofmap, cell_i, MDSPAN_IMPL_STANDARD_NAMESPACE::full_extent);
+    gdofs = MDSPAN_IMPL_STANDARD_NAMESPACE::submdspan(
+        gdofmap, cell_i, MDSPAN_IMPL_STANDARD_NAMESPACE::full_extent);
+    fdofs = MDSPAN_IMPL_STANDARD_NAMESPACE::submdspan(
+        fdofmap, cell_i, MDSPAN_IMPL_STANDARD_NAMESPACE::full_extent);
 
     // Get flux-DOFs on fct_i
     for (std::int8_t jj = 0; jj < _ndof_flux_fct; ++jj)
     {
       // Precalculations
       int ldof_cell_i = _entity_dofs_flux[this->_dim_fct][id_fct_loc_ci][jj];
-      int gdof_cell_i = gdofs[ldof_cell_i];
+      int gdof_cell_i = gdofs(ldof_cell_i);
 
       // Add cell-local DOFs
       _dofsnz_elmt[offs_p] = ldof_cell_i;
@@ -158,7 +152,7 @@ void Patch<U>::create_subdofmap(int node_i)
 
       // Calculate global DOFs of H(div) confomring flux
       _list_dofsnz_patch_fluxhdiv[offs_l] = dof_patch;
-      _list_dofsnz_global_fluxhdiv[offs_l] = fdofs[ldof_cell_i];
+      _list_dofsnz_global_fluxhdiv[offs_l] = fdofs(ldof_cell_i);
 
       // Increment id of patch-local DOFs
       dof_patch += 1;
@@ -173,7 +167,7 @@ void Patch<U>::create_subdofmap(int node_i)
     {
       // Precalculations
       int ldof_cell_i = ndof_fct + jj;
-      int gdof_cell_i = gdofs[ldof_cell_i];
+      int gdof_cell_i = gdofs(ldof_cell_i);
 
       // Add cell-local DOFs
       _dofsnz_elmt[offs_p] = ldof_cell_i;
@@ -186,7 +180,7 @@ void Patch<U>::create_subdofmap(int node_i)
 
       // Calculate global DOFs of H(div) conforming flux
       _list_dofsnz_patch_fluxhdiv[offs_l] = dof_patch;
-      _list_dofsnz_global_fluxhdiv[offs_l] = fdofs[ndof_fct + jj];
+      _list_dofsnz_global_fluxhdiv[offs_l] = fdofs(ndof_fct + jj);
 
       // Increment id of patch-local DOFs
       dof_patch += 1;
@@ -206,7 +200,7 @@ void Patch<U>::create_subdofmap(int node_i)
       _dofsnz_patch[offs_p] = dof_patch;
 
       // Calculate global DOFs
-      _dofsnz_global[offs_p] = gdofs[ldof_cell_i];
+      _dofsnz_global[offs_p] = gdofs(ldof_cell_i);
 
       // Increment id of patch-local DOFs
       dof_patch += 1;
@@ -231,7 +225,7 @@ void Patch<U>::create_subdofmap(int node_i)
     {
       // Precalculations
       const int ldof_cell_i = _entity_dofs_flux[this->_dim_fct][id_fct_loc][jj];
-      int gdof_cell_i = gdofs[ldof_cell_i];
+      int gdof_cell_i = gdofs(ldof_cell_i);
 
       // Add cell-local DOFs
       _dofsnz_elmt[offs_p] = _entity_dofs_flux[this->_dim_fct][id_fct_loc][jj];
@@ -244,7 +238,7 @@ void Patch<U>::create_subdofmap(int node_i)
 
       // Calculate global DOFs of H(div) confomring flux
       _list_dofsnz_patch_fluxhdiv[offs_l] = dof_patch;
-      _list_dofsnz_global_fluxhdiv[offs_l] = fdofs[ldof_cell_i];
+      _list_dofsnz_global_fluxhdiv[offs_l] = fdofs(ldof_cell_i);
 
       // Increment id of patch-local DOFs
       dof_patch += 1;
@@ -255,6 +249,36 @@ void Patch<U>::create_subdofmap(int node_i)
       this->_fcts[this->_nfcts - 1] = fct_i;
     }
   }
+
+  std::cout << "Patch around node " << node_i << std::endl;
+  std::cout << "Cells: ";
+  for (std::size_t ii = 0; ii < this->_ncells; ++ii)
+  {
+    std::cout << this->_cells[ii] << "  ";
+  }
+  std::cout << "\n";
+
+  std::cout << "Facets: ";
+  for (std::size_t ii = 0; ii < this->_nfcts; ++ii)
+  {
+    std::cout << "  " << this->_fcts[ii];
+  }
+  std::cout << "\n";
+
+  std::cout << "Flux DOFs (per patch): ";
+  for (std::size_t ii = 0; ii < _ndof_fluxhdiv; ++ii)
+  {
+    std::cout << "  " << _list_dofsnz_patch_fluxhdiv[ii];
+  }
+  std::cout << "\n";
+
+  std::cout << "Flux DOFs (global): ";
+  for (std::size_t ii = 0; ii < _ndof_fluxhdiv; ++ii)
+  {
+    std::cout << "  " << _list_dofsnz_global_fluxhdiv[ii];
+  }
+  std::cout << "\n";
+  std::cout << "\n";
 }
 
 template <std::floating_point U>
@@ -545,14 +569,15 @@ std::int32_t Patch<U>::next_facet(std::int32_t cell_i,
   }
   else
   {
-    if (fct_es[1] > _fcts_sorted.back())
+    if (fct_es[1] > _fcts_sorted[this->_nfcts - 1])
     {
       fct_next = fct_es[0];
     }
     else
     {
       // Full search
-      if (std::count(_fcts_sorted.begin(), _fcts_sorted.end(), fct_es[0]))
+      if (std::count(_fcts_sorted.begin(), _fcts_sorted.begin() + this->_nfcts,
+                     fct_es[0]))
       {
         fct_next = fct_es[0];
       }

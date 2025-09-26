@@ -6,7 +6,7 @@
 
 """General set-up for equilibration test-cases
 
-Equilibration test-cases requires the definition of right-hand-sides (RHS) and boundary conditions (BC). 
+Equilibration test-cases requires the definition of right-hand-sides (RHS) and boundary conditions (BC).
 These are set either based on random values or a manufactured solution.
 
 """
@@ -74,7 +74,7 @@ def exact_normaltrace(
 
 # --- Set right-hand side
 def set_arbitrary_rhs(
-    domain: mesh.Mesh,
+    msh: mesh.Mesh,
     degree_rhs: int,
     degree_projection: typing.Optional[int] = None,
     vector_valued: typing.Optional[bool] = False,
@@ -82,7 +82,7 @@ def set_arbitrary_rhs(
     """Set polynomial right-hand-side (RHS)
 
     Args:
-        domain:            The mesh
+        msh:               The mesh
         degree_rhs:        Degree of the RHS
         degree_projection: Degree of the function-space within which the RHS is represented
         vector_valued:     True if the RHS is vector-valued
@@ -96,47 +96,36 @@ def set_arbitrary_rhs(
     if degree_projection is None:
         degree_projection = degree_rhs
 
+    # The dimension of the rhs
+    dim = (msh.geometry.dim,) if vector_valued else None
+
     # Set function space
     if degree_projection < degree_rhs:
         raise ValueError("Degree of projection to small!")
     else:
-        if vector_valued:
-            V_rhs = fem.VectorFunctionSpace(domain, ("DG", degree_projection))
-        else:
-            V_rhs = fem.FunctionSpace(domain, ("DG", degree_projection))
+        V_rhs = fem.functionspace(msh, ("DG", degree_projection, dim))
+        size_rhs = V_rhs.dofmap.index_map_bs * V_rhs.dofmap.index_map.size_local
 
     function_rhs = fem.Function(V_rhs)
 
     # Set random data
     if degree_projection > degree_rhs:
-        if vector_valued:
-            V_data = fem.VectorFunctionSpace(domain, ("DG", degree_rhs))
-        else:
-            V_data = fem.FunctionSpace(domain, ("DG", degree_rhs))
+        V_data = fem.functionspace(msh, ("DG", degree_rhs, dim))
+        size_data = V_data.dofmap.index_map_bs * V_data.dofmap.index_map.size_local
 
         function_data = fem.Function(V_data)
-        function_data.x.array[:] = 2 * (
-            np.random.rand(
-                V_data.dofmap.index_map_bs * V_data.dofmap.index_map.size_local
-            )
-            + 0.1
-        )
+        function_data.x.array[:] = 2 * (np.random.rand(size_data) + 0.1)
 
         function_rhs.interpolate(function_data)
     else:
-        function_rhs.x.array[:] = 2 * (
-            np.random.rand(
-                V_rhs.dofmap.index_map_bs * V_rhs.dofmap.index_map.size_local
-            )
-            + 0.1
-        )
+        function_rhs.x.array[:] = 2 * (np.random.rand(size_rhs) + 0.1)
 
     return function_rhs, function_rhs
 
 
 def set_manufactured_rhs(
     flux_ext: typing.Any,
-    domain: mesh.Mesh,
+    msh: mesh.Mesh,
     degree_rhs: int,
     vector_valued: typing.Optional[bool] = False,
 ) -> typing.Tuple[typing.Any, fem.Function]:
@@ -146,7 +135,7 @@ def set_manufactured_rhs(
 
     Args:
         flux_ext:   ufl-expression of the exact flux
-        domain:     The mesh
+        msh:        The mesh
         degree_rhs: Degree of the right-hand side
 
     Returns:
@@ -154,11 +143,11 @@ def set_manufactured_rhs(
         The projected RHS for the equilibration process
     """
 
+    # The dimension of the rhs
+    dim = (msh.geometry.dim,) if vector_valued else None
+
     # Set function space
-    if vector_valued:
-        V_rhs = fem.VectorFunctionSpace(domain, ("DG", degree_rhs))
-    else:
-        V_rhs = fem.FunctionSpace(domain, ("DG", degree_rhs))
+    V_rhs = fem.functionspace(msh, ("DG", degree_rhs, dim))
 
     # UFL function of u_ext
     rhs_ufl = ufl.div(flux_ext)
@@ -220,7 +209,7 @@ def set_arbitrary_bcs(
         func_neumann = []
     elif bc_type == BCType.neumann_hom:
         # The mesh
-        domain = V_prime.mesh
+        msh = V_prime.mesh
 
         # Set boundary ids
         if neumann_ids is None:
@@ -235,7 +224,7 @@ def set_arbitrary_bcs(
 
         # Set homogenous neumann boundary conditions
         if V_prime.num_sub_spaces == 0:
-            hom_nbc = fem.Constant(domain, PETSc.ScalarType(0.0))
+            hom_nbc = fem.Constant(msh, PETSc.ScalarType(0.0))
         else:
             if V_prime.num_sub_spaces == 2:
                 hom_nbc = ufl.as_vector([0, 0])
@@ -245,7 +234,7 @@ def set_arbitrary_bcs(
         func_neumann = [hom_nbc for i in range(0, len(boundary_id_neumann))]
     elif bc_type == BCType.neumann_inhom:
         # The mesh
-        domain = V_prime.mesh
+        msh = V_prime.mesh
 
         # Set boundary ids
         if neumann_ids is None:
@@ -259,15 +248,11 @@ def set_arbitrary_bcs(
         u_D = [fem.Function(V_prime) for i in range(0, len(boundary_id_dirichlet))]
 
         # Set inhomogenous neumann boundary conditions
-        if V_prime.num_sub_spaces == 0:
-            V_bc = fem.FunctionSpace(domain, ("DG", degree_bc))
-        else:
-            V_bc = fem.VectorFunctionSpace(domain, ("DG", degree_bc))
+        V_bc = fem.functionspace(msh, ("DG", degree_bc, (V_prime.dofmap.bs,)))
+        size_bc = V_bc.dofmap.index_map.size_local * V_bc.dofmap.bs
 
         f_bc = fem.Function(V_bc)
-        f_bc.x.array[:] = 2 * (
-            np.random.rand(V_bc.dofmap.index_map.size_local * V_bc.dofmap.bs) + 0.1
-        )
+        f_bc.x.array[:] = 2 * (np.random.rand(size_bc) + 0.1)
 
         func_neumann = [f_bc for i in range(0, len(boundary_id_neumann))]
     else:

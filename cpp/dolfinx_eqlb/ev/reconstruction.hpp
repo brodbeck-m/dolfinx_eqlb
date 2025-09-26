@@ -17,6 +17,7 @@
 #include <dolfinx/fem/CoordinateElement.h>
 #include <dolfinx/fem/DirichletBC.h>
 #include <dolfinx/fem/DofMap.h>
+#include <dolfinx/fem/FiniteElement.h>
 #include <dolfinx/fem/Form.h>
 #include <dolfinx/fem/Function.h>
 #include <dolfinx/fem/FunctionSpace.h>
@@ -60,23 +61,23 @@ namespace dolfinx_eqlb::ev
 /// @param problem_data   Linear forms and problem dependent input data
 /// @param fct_type       Lookup-table for facet-types
 /// @param flux_dg        Function that holds the projected fluxes
-template <typename T>
-void reconstruction(const fem::Form<T>& a, const fem::Form<T>& l_pen,
-                    ProblemData<T>& problem_data)
+template <dolfinx::scalar T, std::floating_point U>
+void reconstruction(const fem::Form<T, U>& a, const fem::Form<T, U>& l_pen,
+                    ProblemData<T, U>& problem_data)
 {
   /* Geometry */
-  const mesh::Geometry& geometry = a.mesh()->geometry();
+  const mesh::Geometry<U>& geometry = a.mesh()->geometry();
   const int dim = geometry.dim();
 
   // Number of nodes on processor
-  int n_nodes = a.mesh()->topology().index_map(0)->size_local();
+  int n_nodes = a.mesh()->topology()->index_map(0)->size_local();
 
   // Number of elements on processor
-  int n_cells = a.mesh()->topology().index_map(dim)->size_local();
+  int n_cells = a.mesh()->topology()->index_map(dim)->size_local();
 
   /* Function space */
   // Get function space
-  const std::shared_ptr<const fem::FunctionSpace>& function_space
+  const std::shared_ptr<const fem::FunctionSpace<U>> function_space
       = a.function_spaces().at(0);
 
   // Get DOFmap
@@ -84,42 +85,41 @@ void reconstruction(const fem::Form<T>& a, const fem::Form<T>& l_pen,
   assert(dofmap0);
 
   /* DOF transformation */
-  std::shared_ptr<const fem::FiniteElement> element0
+  std::shared_ptr<const fem::FiniteElement<U>> element0
       = function_space->element();
-  const std::function<void(const std::span<T>&,
-                           const std::span<const std::uint32_t>&, std::int32_t,
-                           int)>& dof_transform
-      = element0->get_dof_transformation_function<T>();
-  const std::function<void(const std::span<T>&,
-                           const std::span<const std::uint32_t>&, std::int32_t,
-                           int)>& dof_transform_to_transpose
-      = element0->get_dof_transformation_to_transpose_function<T>();
+
+  fem::DofTransformKernel<T> auto P0
+      = element0->template dof_transformation_fn<T>(
+          fem::doftransform::standard);
+  fem::DofTransformKernel<T> auto P0T
+      = element0->template dof_transformation_fn<T>(
+          fem::doftransform::transpose);
 
   const bool needs_transformation_data
       = element0->needs_dof_transformations() or a.needs_facet_permutations();
   std::span<const std::uint32_t> cell_info;
   if (needs_transformation_data)
   {
-    std::shared_ptr<const mesh::Mesh> mesh = a.mesh();
+    std::shared_ptr<const mesh::Mesh<U>> mesh = a.mesh();
     assert(mesh);
-    mesh->topology_mutable().create_entity_permutations();
-    cell_info = std::span(mesh->topology().get_cell_permutation_info());
+    mesh->topology_mutable()->create_entity_permutations();
+    cell_info = std::span(mesh->topology()->get_cell_permutation_info());
   }
 
   /* Initialize Patch */
   // BasiX elements of flux subspaces
   std::vector<int> sub0(1, 0);
-  const basix::FiniteElement& basix_element_flux
-      = function_space->sub(sub0)->element()->basix_element();
+  const basix::FiniteElement<U>& basix_element_flux
+      = function_space->sub(sub0).element()->basix_element();
 
-  Patch patch = Patch(
+  Patch<U> patch = Patch<U>(
       n_nodes, a.mesh(), problem_data.facet_type(), a.function_spaces().at(0),
       problem_data.flux(0).function_space(), basix_element_flux);
 
   /* Prepare Assembly */
   // Set kernels
-  const auto& kernel_a = a.kernel(fem::IntegralType::cell, -1);
-  const auto& kernel_lpen = l_pen.kernel(fem::IntegralType::cell, -1);
+  auto kernel_a = a.kernel(fem::IntegralType::cell, -1);
+  auto kernel_lpen = l_pen.kernel(fem::IntegralType::cell, -1);
   problem_data.initialize_kernels(fem::IntegralType::cell, -1);
 
   // Initialize storage of tangents on each cell
@@ -134,9 +134,9 @@ void reconstruction(const fem::Form<T>& a, const fem::Form<T>& l_pen,
     patch.create_subdofmap(i_node);
 
     // Solve patch problem
-    equilibrate_flux_constrmin(geometry, patch, dofmap0->list(), dof_transform,
-                               dof_transform_to_transpose, cell_info, kernel_a,
-                               kernel_lpen, problem_data, storage_stiffness);
+    equilibrate_flux_constrmin<T, U>(geometry, patch, P0, P0T, cell_info,
+                                     kernel_a, kernel_lpen, problem_data,
+                                     storage_stiffness);
   }
 }
 
@@ -147,17 +147,18 @@ void reconstruction(const fem::Form<T>& a, const fem::Form<T>& l_pen,
 ///
 /// [1] Ern, A. and Vohralík, M.: https://doi.org/10.1137/130950100, 2015
 ///
-/// @param a                   The bilinears form to assemble
-/// @param l                   The linar form to assemble
+/// @param a                   The bilinear form to assemble
+/// @param l                   The linear form to assemble
 /// @param fct_esntbound_prime Facets of essential BCs of primal problem
 /// @param fct_esntbound_flux  Facets of essential BCs on flux field
 /// @param bcs_flux            Essential boundary conditions for the flux
 /// @param flux                Function that holds the reconstructed flux
-template <typename T>
-void reconstruction(const fem::Form<T>& a, const fem::Form<T>& l_pen,
-                    const std::vector<std::shared_ptr<const fem::Form<T>>>& l,
-                    std::vector<std::shared_ptr<fem::Function<T>>>& flux_hdiv,
-                    std::shared_ptr<base::BoundaryData<T>> boundary_data)
+template <dolfinx::scalar T, std::floating_point U>
+void reconstruction(
+    const fem::Form<T, U>& a, const fem::Form<T, U>& l_pen,
+    const std::vector<std::shared_ptr<const fem::Form<T, U>>>& l,
+    std::vector<std::shared_ptr<fem::Function<T, U>>>& flux_hdiv,
+    std::shared_ptr<base::BoundaryData<T, U>> boundary_data)
 {
   // Check input
   int n_rhs = l.size();
@@ -170,10 +171,11 @@ void reconstruction(const fem::Form<T>& a, const fem::Form<T>& l_pen,
   }
 
   /* Initialize problem data */
-  ProblemData<T> problem_data = ProblemData<T>(flux_hdiv, l, boundary_data);
+  ProblemData<T, U> problem_data
+      = ProblemData<T, U>(flux_hdiv, l, boundary_data);
 
   /* Call equilibration */
-  reconstruction<T>(a, l_pen, problem_data);
+  reconstruction<T, U>(a, l_pen, problem_data);
 }
 
 } // namespace dolfinx_eqlb::ev

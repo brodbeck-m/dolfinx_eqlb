@@ -41,31 +41,23 @@ namespace dolfinx_eqlb::ev
 ///
 /// [1] Ern, A. and Vohralík, M.: https://doi.org/10.1137/130950100, 2015
 ///
-/// @param geometry                   msh->geometry of the problem
-/// @param patch                      The patch
-/// @param dofmap_global              dofmap.list() of global FEspace
-/// @param dof_transform              DOF-transformation function
-/// @param dof_transform_to_transpose DOF-transformation function
-/// @param cell_info                  Information for DOF transformation
-/// @param kernel_a                   Kernel bilinear form
-/// @param kernel_lpen                Kernel for penalization terms
-/// @param probelm_data               Linear forms and problem dependent
-///                                   input data
-/// @param storage_stiffness          Storage element tangents
-/// @param x_flux                     DOFs projected flux function
+/// @param geometry          msh->geometry of the problem
+/// @param patch             The patch
+/// @param P0                DOF-transformation function
+/// @param P0T               DOF-transformation function
+/// @param cell_info         Information for DOF transformation
+/// @param kernel_a          Kernel bilinear form
+/// @param kernel_lpen       Kernel for penalization terms
+/// @param probelm_data      Linear forms and problem dependent input data
+/// @param storage_stiffness Storage element tangents
+/// @param x_flux            DOFs projected flux function
 
-template <typename T>
+template <dolfinx::scalar T, std::floating_point U>
 void equilibrate_flux_constrmin(
-    const mesh::Geometry& geometry, Patch& patch,
-    const graph::AdjacencyList<std::int32_t>& dofmap_global,
-    const std::function<void(const std::span<T>&,
-                             const std::span<const std::uint32_t>&,
-                             std::int32_t, int)>& dof_transform,
-    const std::function<void(const std::span<T>&,
-                             const std::span<const std::uint32_t>&,
-                             std::int32_t, int)>& dof_transform_to_transpose,
+    const mesh::Geometry<U>& geometry, Patch<U>& patch,
+    fem::DofTransformKernel<T> auto P0, fem::DofTransformKernel<T> auto P0T,
     std::span<const std::uint32_t> cell_info, fem::FEkernel<T> auto kernel_a,
-    fem::FEkernel<T> auto kernel_lpen, ProblemData<T>& problem_data,
+    fem::FEkernel<T> auto kernel_lpen, ProblemData<T, U>& problem_data,
     StorageStiffness<T>& storage_stiffness)
 {
   /* Extract required data */
@@ -95,13 +87,12 @@ void equilibrate_flux_constrmin(
 
   /* Initialize hat-function and cell-geometries */
   // Get geometry data
-  const graph::AdjacencyList<std::int32_t>& x_dofmap = geometry.dofmap();
-  std::span<const fem::impl::scalar_value_type_t<T>> x = geometry.x();
+  base::mdspan_t<const std::int32_t, 2> x_dofmap = geometry.dofmap();
+  std::span<const U> x = geometry.x();
 
   // Initialize geometry storage/ hat-function
   const int cstride_geom = 3 * geometry.cmap().dim();
-  std::vector<fem::impl::scalar_value_type_t<T>> coordinate_dofs(
-      ncells * cstride_geom, 0);
+  std::vector<U> coordinate_dofs(ncells * cstride_geom, 0);
 
   for (std::size_t index = 0; index < ncells; ++index)
   {
@@ -112,10 +103,11 @@ void equilibrate_flux_constrmin(
     problem_data.set_hat_function(c, inode_local[index], 1.0);
 
     // Copy cell geometry
-    std::span<fem::impl::scalar_value_type_t<T>> coordinate_dofs_e(
+    std::span<U> coordinate_dofs_e(
         coordinate_dofs.data() + index * cstride_geom, cstride_geom);
 
-    auto x_dofs = x_dofmap.links(c);
+    auto x_dofs = MDSPAN_IMPL_STANDARD_NAMESPACE::submdspan(
+        x_dofmap, c, MDSPAN_IMPL_STANDARD_NAMESPACE::full_extent);
     for (std::size_t j = 0; j < x_dofs.size(); ++j)
     {
       std::copy_n(std::next(x.begin(), 3 * x_dofs[j]), 3,
@@ -139,29 +131,29 @@ void equilibrate_flux_constrmin(
   }
 
   /* Solve equilibration */
-  for (std::size_t i_lhs = 0; i_lhs < problem_data.nlhs(); ++i_lhs)
+  for (std::size_t i_rhs = 0; i_rhs < problem_data.nrhs(); ++i_rhs)
   {
     /* Extract data for current LHS */
     // Integration kernel
-    const auto& kernel_l = problem_data.kernel(i_lhs);
+    const auto& kernel_l = problem_data.kernel(i_rhs);
 
     // Constants and coefficients
-    std::span<const T> constants_l = problem_data.constants(i_lhs);
-    std::span<T> coefficients_l = problem_data.coefficients(i_lhs);
+    std::span<const T> constants_l = problem_data.constants(i_rhs);
+    std::span<T> coefficients_l = problem_data.coefficients(i_rhs);
 
     // Infos about coefficients
-    int cstride_l = problem_data.cstride(i_lhs);
+    int cstride_l = problem_data.cstride(i_rhs);
 
     // Boundary data
     std::span<const std::int8_t> bmarkers
-        = problem_data.boundary_markers(i_lhs);
-    std::span<const T> bvalues = problem_data.boundary_values(i_lhs);
+        = problem_data.boundary_markers(i_rhs);
+    std::span<const T> bvalues = problem_data.boundary_values(i_rhs);
 
     /* Solve equilibration on current patch */
     // Check if assembly of entire system is required
     bool assemble_entire_system = false;
 
-    if (i_lhs == 0)
+    if (i_rhs == 0)
     {
       assemble_entire_system = true;
     }
@@ -169,9 +161,9 @@ void equilibrate_flux_constrmin(
     {
       if (patch.is_on_boundary())
       {
-        base::PatchType patch_i = patch.type(i_lhs);
+        base::PatchType patch_i = patch.type(i_rhs);
 
-        if (patch_i != patch.type(i_lhs - 1)
+        if (patch_i != patch.type(i_rhs - 1)
             || patch_i == base::PatchType::bound_mixed)
         {
           assemble_entire_system = true;
@@ -187,11 +179,11 @@ void equilibrate_flux_constrmin(
       L_patch.setZero();
 
       // Assemble tangents
-      assemble_tangents<T, true>(
-          A_patch, L_patch, cells, coordinate_dofs, cstride_geom, patch,
-          dof_transform, dof_transform_to_transpose, cell_info, kernel_a,
-          kernel_lpen, kernel_l, constants_l, coefficients_l, cstride_l,
-          bmarkers, bvalues, storage_stiffness, i_lhs);
+      assemble_tangents<T, U, true>(
+          A_patch, L_patch, cells, coordinate_dofs, cstride_geom, patch, P0,
+          P0T, cell_info, kernel_a, kernel_lpen, kernel_l, constants_l,
+          coefficients_l, cstride_l, bmarkers, bvalues, storage_stiffness,
+          i_rhs);
 
       // LU-factorization of system matrix
       solver.compute(A_patch);
@@ -202,11 +194,11 @@ void equilibrate_flux_constrmin(
       L_patch.setZero();
 
       // Assemble tangents
-      assemble_tangents<T, false>(
-          A_patch, L_patch, cells, coordinate_dofs, cstride_geom, patch,
-          dof_transform, dof_transform_to_transpose, cell_info, kernel_a,
-          kernel_lpen, kernel_l, constants_l, coefficients_l, cstride_l,
-          bmarkers, bvalues, storage_stiffness, i_lhs);
+      assemble_tangents<T, U, false>(
+          A_patch, L_patch, cells, coordinate_dofs, cstride_geom, patch, P0,
+          P0T, cell_info, kernel_a, kernel_lpen, kernel_l, constants_l,
+          coefficients_l, cstride_l, bmarkers, bvalues, storage_stiffness,
+          i_rhs);
     }
 
     // Solve equation system
@@ -214,7 +206,7 @@ void equilibrate_flux_constrmin(
 
     /* Add patch contribution to H(div) flux */
     // Extract solution vector
-    std::span<T> x_flux_hdiv = problem_data.flux(i_lhs).x()->mutable_array();
+    std::span<T> x_flux_hdiv = problem_data.flux(i_rhs).x()->mutable_array();
 
     // Extract DOFs
     std::span<const int32_t> dofs_flux_patch = patch.dofs_fluxhdiv_patch();

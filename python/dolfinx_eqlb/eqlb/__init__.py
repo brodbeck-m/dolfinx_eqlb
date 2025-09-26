@@ -7,14 +7,12 @@
 # from .FluxEqlbEV import FluxEqlbEV
 # from .FluxEqlbSE import FluxEqlbSE
 
-from .equilibration import ProblemType, EqlbStrategy
-from .Equilibrator import Equilibrator
+from .basics import ProblemType, EqlbStrategy
 from .bcs import TimeType, homogenous_fluxbc, fluxbc, boundarydata
 
 __all__ = [
     "ProblemType",
     "Strategy",
-    "Equilibrator",
     # "FluxEqlbEV",
     # "FluxEqlbSE",
     "TimeType",

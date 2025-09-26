@@ -6,21 +6,16 @@
 
 #pragma once
 
-#include <dolfinx/common/IndexMap.h>
 #include <dolfinx/fem/Constant.h>
-#include <dolfinx/fem/DofMap.h>
 #include <dolfinx/fem/Form.h>
 #include <dolfinx/fem/Function.h>
 #include <dolfinx/fem/FunctionSpace.h>
 #include <dolfinx/fem/utils.h>
 
 #include <algorithm>
-#include <cmath>
-#include <iostream>
 #include <memory>
 #include <numeric>
 #include <span>
-#include <utility>
 #include <vector>
 
 using namespace dolfinx;
@@ -120,7 +115,7 @@ public:
 
     // Extract coefficients
     _data_coeffs.resize(size_coef);
-    set_data_coeffsficients(integral_type, id);
+    set_data_coefficients(integral_type, id);
   }
 
   /* Setter functions */
@@ -211,7 +206,7 @@ protected:
   }
 
   /* Handle coefficients */
-  void set_data_coeffsficients(fem::IntegralType integral_type, int id)
+  void set_data_coefficients(fem::IntegralType integral_type, int id)
   {
     for (std::size_t i = 0; i < _nrhs; ++i)
     {

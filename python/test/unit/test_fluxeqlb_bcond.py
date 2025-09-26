@@ -38,7 +38,7 @@ def setup_tests(
     quadrature_degree: typing.Optional[int] = None,
 ) -> typing.Tuple[
     Domain,
-    eqlb.Equilibrator,
+    typing.Type[eqlb.basics.EquilibratorMetaClass],
     typing.Tuple[fem.FunctionSpace, fem.FunctionSpace],
     fem.Function,
 ]:
@@ -60,17 +60,16 @@ def setup_tests(
 
     # Initialise Equilibrator
     if rt_space == "custom":
-        strategy = eqlb.EqlbStrategy.semi_explicit
+        raise ValueError("Custom RT space currently not supported.")
     else:
-        strategy = eqlb.EqlbStrategy.constrained_minimisation
+        from dolfinx_eqlb.eqlb.constrained_minimisation import Equilibrator
 
-    equilibrator = eqlb.Equilibrator(
-        domain.mesh.ufl_domain(),
-        eqlb.ProblemType.flux,
-        strategy,
-        degree,
-        quadrature_degree,
-    )
+        equilibrator = Equilibrator(
+            domain.mesh.ufl_domain(),
+            eqlb.ProblemType.flux,
+            degree,
+            quadrature_degree,
+        )
 
     # Initialise FunctionSpace
     # TODO - Avoid recreation of flux space (Equilibartor should hold mesh-independent definition)

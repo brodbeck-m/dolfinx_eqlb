@@ -184,7 +184,7 @@ def check_divergence_condition(
     sigma_eq: typing.Union[fem.Function, typing.Any],
     sigma_proj: typing.Union[fem.Function, typing.Any],
     rhs_proj: fem.Function,
-    mesh: typing.Optional[mesh.Mesh] = None,
+    msh: typing.Optional[mesh.Mesh] = None,
     degree: typing.Optional[int] = None,
     flux_is_dg: typing.Optional[bool] = None,
     print_debug_information: typing.Optional[bool] = False,
@@ -206,7 +206,7 @@ def check_divergence_condition(
         sigma_eq:                The equilibrated flux
         sigma_proj:              The projected flux
         rhs_proj:                The projected right-hand side
-        mesh:                    The mesh
+        msh:                     The mesh
                                  (required when fluxes are ufl arguments)
         degree:                  The flux degree
                                  (required when fluxes are ufl arguments)
@@ -220,7 +220,7 @@ def check_divergence_condition(
     # --- Extract solution data
     if type(sigma_eq) is fem.Function:
         # the mesh
-        mesh = sigma_eq.function_space.mesh
+        msh = sigma_eq.function_space.mesh
 
         # degree of the flux space
         degree = sigma_eq.function_space.element.basix_element.degree
@@ -229,7 +229,7 @@ def check_divergence_condition(
         flux_is_dg = sigma_eq.function_space.element.basix_element.discontinuous
     else:
         # Check input
-        if mesh is None:
+        if msh is None:
             raise ValueError("Mesh must be provided")
 
         if degree is None:
@@ -239,16 +239,16 @@ def check_divergence_condition(
             raise ValueError("Flux type must be provided")
 
     # the geometry DOFmap
-    gdmap = mesh.geometry.dofmap
+    gdmap = msh.geometry.dofmap
 
     # number of cells in mesh
-    n_cells = mesh.topology.index_map(2).size_local
+    n_cells = msh.topology.index_map(2).size_local
 
     # --- Calculate divergence of the equilibrated flux
-    if rhs_proj.function_space.dofmap.index_map_bs == 1:
-        V_div = fem.FunctionSpace(mesh, ("DG", degree - 1))
-    else:
-        V_div = fem.VectorFunctionSpace(mesh, ("DG", degree - 1))
+    dim_rhs = rhs_proj.function_space.value_size
+    dim_div = None if (dim_rhs == 1) else (dim_rhs,)
+
+    V_div = fem.functionspace(msh, ("DG", degree - 1, dim_div))
 
     if flux_is_dg:
         div_sigeq = local_projection(V_div, [ufl.div(sigma_eq + sigma_proj)])[0]
@@ -267,7 +267,7 @@ def check_divergence_condition(
         x = np.sort(np.random.rand(2, n_points), axis=0)
         points = (
             np.column_stack([x[0], x[1] - x[0], 1.0 - x[1]])
-            @ mesh.geometry.x[gdmap.links(c), :2]
+            @ msh.geometry.x[gdmap[c], :2]
         )
         points_3d[:, :2] = points
 

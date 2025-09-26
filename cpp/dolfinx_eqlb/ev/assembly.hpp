@@ -49,7 +49,7 @@ namespace dolfinx_eqlb::ev
 /// @param type_patch   The patch type
 /// @param ndof_elmt_nz The number of non-zero DOFs on element
 /// @param ndof_elmt    The number of DOFs on element
-template <typename T>
+template <dolfinx::scalar T>
 void apply_lifting(std::span<T> Ae, std::vector<T>& Le,
                    std::span<const std::int8_t> bmarkers,
                    std::span<const T> bvalues,
@@ -96,16 +96,16 @@ void apply_lifting(std::span<T> Ae, std::vector<T>& Le,
 /// required.
 ///
 /// @tparam T              The scalar type
-/// @tparam asmbl_systmtrx Flag if entire tangent or only load vector is
-///                        assembled
+/// @tparam U              The geometry type
+/// @tparam asmbl_systmtrx True if entire system is assembled
 /// @param A_patch                    The patch stiffness matrix
 /// @param L_patch                    The patch load vector
 /// @param cells                      The cells of the patch
 /// @param coordinate_dofs            The coordinate DOFs of each cell
 /// @param cstride_geom               The stride of the coordinate DOFs
 /// @param patch                      The patch
-/// @param dof_transform              The DOF transformation function
-/// @param dof_transform_to_transpose The DOF transformation function
+/// @param P0                         The DOF transformation function
+/// @param P0T The DOF transformation function
 /// @param cell_info                  The cell transformation information
 /// @param kernel_a                   The kernel for the bilinear form
 /// @param kernel_lpen                The kernel for the penalization terms
@@ -116,26 +116,20 @@ void apply_lifting(std::span<T> Ae, std::vector<T>& Le,
 /// @param bmarkers                   The boundary markers
 /// @param bvalues                    The boundary values
 /// @param storage_stiffness          The storage for the stiffness matrices
-/// @param index_lhs                  The index of teh currently assembled LHS
-template <typename T, bool asmbl_systmtrx = true>
+/// @param index_rhs                  The index of teh currently assembled RHS
+template <dolfinx::scalar T, std::floating_point U, bool asmbl_systmtrx = true>
 void assemble_tangents(
     Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>& A_patch,
     Eigen::Matrix<T, Eigen::Dynamic, 1>& L_patch,
-    std::span<const std::int32_t> cells,
-    std::vector<fem::impl::scalar_value_type_t<T>>& coordinate_dofs,
-    const int cstride_geom, Patch& patch,
-    const std::function<void(const std::span<T>&,
-                             const std::span<const std::uint32_t>&,
-                             std::int32_t, int)>& dof_transform,
-    const std::function<void(const std::span<T>&,
-                             const std::span<const std::uint32_t>&,
-                             std::int32_t, int)>& dof_transform_to_transpose,
+    std::span<const std::int32_t> cells, std::vector<U>& coordinate_dofs,
+    const int cstride_geom, Patch<U>& patch, fem::DofTransformKernel<T> auto P0,
+    fem::DofTransformKernel<T> auto P0T,
     std::span<const std::uint32_t> cell_info, fem::FEkernel<T> auto kernel_a,
     fem::FEkernel<T> auto kernel_lpen, fem::FEkernel<T> auto kernel_l,
     std::span<const T> constants_l, std::span<T> coefficients_l,
     const int cstride_l, std::span<const std::int8_t> bmarkers,
     std::span<const T> bvalues, StorageStiffness<T>& storage_stiffness,
-    int index_lhs)
+    int index_rhs)
 {
   // Counters
   const int ndim0 = patch.ndofs_elmt();
@@ -155,7 +149,7 @@ void assemble_tangents(
     std::int32_t c = cells[index];
 
     // Get coordinates of current element
-    std::span<fem::impl::scalar_value_type_t<T>> coordinate_dofs_e(
+    std::span<U> coordinate_dofs_e(
         coordinate_dofs.data() + index * cstride_geom, cstride_geom);
 
     /* Evaluate stiffness matrix */
@@ -166,7 +160,7 @@ void assemble_tangents(
       Ae = storage_stiffness.stiffness_elmt(c);
       Pe = storage_stiffness.penalty_elmt(c);
 
-      // Evaluate bilinar form
+      // Evaluate bilinear form
       if (storage_stiffness.evaluation_status(c) == 0)
       {
         // Initialize bilinear form
@@ -182,8 +176,8 @@ void assemble_tangents(
                     nullptr, nullptr);
 
         // DOF transformation
-        dof_transform(Ae, cell_info, c, ndim0);
-        dof_transform_to_transpose(Ae, cell_info, c, ndim0);
+        P0(Ae, cell_info, c, ndim0);
+        P0T(Ae, cell_info, c, ndim0);
 
         // Set identifire for evaluated data
         storage_stiffness.mark_cell_evaluated(c);
@@ -195,18 +189,18 @@ void assemble_tangents(
     kernel_l(Le.data(), coefficients_l.data() + c * cstride_l,
              constants_l.data(), coordinate_dofs_e.data(), nullptr, nullptr);
 
-    dof_transform(_Le, cell_info, c, 1);
+    P0(_Le, cell_info, c, 1);
 
     /* Assemble into patch system */
     // Get patch type
-    const base::PatchType type_patch = patch.type(index_lhs);
+    const base::PatchType type_patch = patch.type(index_rhs);
 
     // Element-local and patch-local DOFmap
     std::span<const int32_t> dofs_elmt = patch.dofs_elmt(index);
     std::span<const int32_t> dofs_patch = patch.dofs_patch(index);
     std::span<const int32_t> dofs_global = patch.dofs_global(index);
 
-    if (patch.requires_flux_bcs(index_lhs))
+    if (patch.requires_flux_bcs(index_rhs))
     {
       // Extract stiffness matrix
       if constexpr (!asmbl_systmtrx)

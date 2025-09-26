@@ -226,6 +226,9 @@ protected:
       fct_loc += 1;
     }
 
+    // std::cout << "Local facet id: " << static_cast<int>(fct_loc) <<
+    // std::endl;
+
     // Check for face not on cell
     assert(fct_loc < _fct_per_cell);
 

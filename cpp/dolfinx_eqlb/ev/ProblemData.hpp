@@ -6,6 +6,9 @@
 
 #pragma once
 
+#include <dolfinx/fem/Form.h>
+#include <dolfinx/fem/Function.h>
+#include <dolfinx/fem/utils.h>
 #include <dolfinx_eqlb/base/BoundaryData.hpp>
 #include <dolfinx_eqlb/base/ProblemData.hpp>
 #include <dolfinx_eqlb/base/mdspan.hpp>
@@ -16,8 +19,8 @@ namespace base = dolfinx_eqlb::base;
 
 namespace dolfinx_eqlb::ev
 {
-template <typename T>
-class ProblemData : public base::ProblemData<T>
+template <dolfinx::scalar T, std::floating_point U>
+class ProblemData : public base::ProblemData<T, U>
 {
 public:
   /// Initialize storage of data for equilibration of (multiple) fluxes
@@ -29,10 +32,10 @@ public:
   /// @param fluxes   List of list of flux functions for each sub-problem
   /// @param bcs_flux List of list of BCs for each equilibrated flux
   /// @param l        List of all RHS (ufl)
-  ProblemData(std::vector<std::shared_ptr<fem::Function<T>>>& fluxes,
-              const std::vector<std::shared_ptr<const fem::Form<T>>>& l,
-              std::shared_ptr<base::BoundaryData<T>> boundary_data)
-      : base::ProblemData<T>(fluxes, {}, l), _boundary_data(boundary_data),
+  ProblemData(std::vector<std::shared_ptr<fem::Function<T, U>>>& fluxes,
+              const std::vector<std::shared_ptr<const fem::Form<T, U>>>& l,
+              std::shared_ptr<base::BoundaryData<T, U>> boundary_data)
+      : base::ProblemData<T, U>(fluxes, l), _boundary_data(boundary_data),
         _begin_hat(fluxes.size(), 0), _begin_fluxdg(fluxes.size(), 0)
   {
   }
@@ -46,10 +49,10 @@ public:
   /// @param id            Id of integration-subdomain
   void initialize_kernels(fem::IntegralType integral_type, int id)
   {
-    if (this->_nlhs == 1)
+    if (this->_nrhs == 1)
     {
       /* Get LHS */
-      const fem::Form<T>& l_i = *(this->_l[0]);
+      const fem::Form<T, U>& l_i = *(this->_ls[0]);
 
       /* Initialize coefficients */
       // Initialize data
@@ -58,19 +61,19 @@ public:
 
       // Extract and store data
       auto& [coeffs_i, cstride_i] = coefficients_i.at({integral_type, id});
-      this->_data_coef.resize(coeffs_i.size());
-      this->_data_coef = std::move(coeffs_i);
-      this->_cstride[0] = cstride_i;
+      this->_data_coeffs.resize(coeffs_i.size());
+      this->_data_coeffs = std::move(coeffs_i);
+      this->_cstrides[0] = cstride_i;
 
       // Get structure of coefficients
       set_structure_coefficients(0, l_i.coefficients(),
                                  l_i.coefficient_offsets());
 
       // Set offsets
-      this->_offset_coef[1] = this->_data_coef.size();
+      this->_offset_coeffs[1] = this->_data_coeffs.size();
 
       /* Set kernel */
-      this->_kernel[0] = l_i.kernel(integral_type, id);
+      this->_kernels[0] = l_i.kernel(integral_type, id);
     }
     else
     {
@@ -78,13 +81,13 @@ public:
       std::int32_t size_coef = 0;
 
       // Loop over all LHS
-      for (std::size_t i = 0; i < this->_nlhs; ++i)
+      for (std::size_t i = 0; i < this->_nrhs; ++i)
       {
         /* Get LHS */
-        const fem::Form<T>& l_i = *(this->_l[i]);
+        const fem::Form<T, U>& l_i = *(this->_ls[i]);
 
         /* Initialize datastructure coefficients */
-        const std::vector<std::shared_ptr<const fem::Function<T>>>&
+        const std::vector<std::shared_ptr<const fem::Function<T, U>>>&
             coefficients_i
             = l_i.coefficients();
         const std::vector<int> offsets_i = l_i.coefficient_offsets();
@@ -95,36 +98,22 @@ public:
         if (!coefficients_i.empty())
         {
           cstride = offsets_i.back();
-          switch (integral_type)
-          {
-          case fem::IntegralType::cell:
-            num_entities = l_i.cell_domains(id).size();
-            break;
-          case fem::IntegralType::exterior_facet:
-            num_entities = l_i.exterior_facet_domains(id).size() / 2;
-            break;
-          case fem::IntegralType::interior_facet:
-            num_entities = l_i.interior_facet_domains(id).size() / 2;
-            break;
-          default:
-            throw std::runtime_error("Could not allocate coefficient data. "
-                                     "Integral type not supported.");
-          }
+          num_entities = l_i.domain(integral_type, id).size();
         }
 
         // Set offset
         size_coef = size_coef + cstride * num_entities;
-        this->_offset_coef[i + 1] = size_coef;
+        this->_offset_coeffs[i + 1] = size_coef;
 
         // Get structure of coefficients
         set_structure_coefficients(i, l_i.coefficients(), offsets_i);
 
         /* Exctract Kernel */
-        this->_kernel[i] = this->_l[i]->kernel(integral_type, id);
+        this->_kernels[i] = this->_ls[i]->kernel(integral_type, id);
       }
 
       // Set data coefficients
-      this->_data_coef.resize(size_coef);
+      this->_data_coeffs.resize(size_coef);
       this->set_data_coefficients(integral_type, id);
     }
   }
@@ -135,26 +124,26 @@ public:
   /// @param value  Value of hat-function
   void set_hat_function(const int32_t cell_i, const std::int8_t node_i, T value)
   {
-    if (this->_nlhs > 0)
+    if (this->_nrhs > 0)
     {
-      for (std::size_t index = 0; index < this->_nlhs; ++index)
+      for (std::size_t index = 0; index < this->_nrhs; ++index)
       {
         // Determine local offset
         std::int32_t offset_local
-            = this->_cstride[index] * cell_i + _begin_hat[index] + node_i;
+            = this->_cstrides[index] * cell_i + _begin_hat[index] + node_i;
 
         // Modify coefficients
-        this->_data_coef[this->_offset_coef[index] + offset_local] = value;
+        this->_data_coeffs[this->_offset_coeffs[index] + offset_local] = value;
       }
     }
     else
     {
       // Determine local offset
       std::int32_t offset_local
-          = this->_cstride[0] * cell_i + _begin_hat[0] + node_i;
+          = this->_cstrides[0] * cell_i + _begin_hat[0] + node_i;
 
       // Modify coefficients
-      this->_data_coef[this->_offset_coef[0] + offset_local] = value;
+      this->_data_coeffs[this->_offset_coeffs[0] + offset_local] = value;
     }
   }
 
@@ -168,31 +157,26 @@ public:
   {
     // Determine local offset
     std::int32_t offset_local
-        = this->_cstride[index] * cell_i + _begin_hat[index] + node_i;
+        = this->_cstrides[index] * cell_i + _begin_hat[index] + node_i;
 
     // Modify coefficients
-    this->_data_coef[this->_offset_coef[index] + offset_local] = value;
+    this->_data_coeffs[this->_offset_coeffs[index] + offset_local] = value;
   }
 
   /* Getter functions: Flux functions */
   /// Extract flux function
   /// @param index Id of subproblem
   /// @return The flux (fe function)
-  fem::Function<T>& flux(int index) const { return *(this->_solfunc[index]); }
+  fem::Function<T, U>& flux(int index) const
+  {
+    return *(this->_solutions[index]);
+  }
 
   /* Getter functions: Hat function */
   /// Extract begin data hat-function (coefficients) of l_i
   /// @param index Id of linearform
   /// @return Begin of hat-function data of linearform l_i
   int begin_hat(int index) { return _begin_hat[index]; }
-
-  /// Extract begin data flux-function (DG) (coefficients) of l_i
-  /// @param index Id of linearform
-  /// @return Begin of flux-function (DG) data of linearform l_i
-  int begin_fluxdg(int index)
-  {
-    throw std::runtime_error('Coefficients of flux currently unavailable');
-  }
 
   /* Interface BoundaryData */
   /// Calculate BCs for patch-problem
@@ -242,7 +226,7 @@ public:
   }
 
 protected:
-  /* Hanlde coefficients */
+  /* Handle coefficients */
   void set_structure_coefficients(int index, auto& list_coeffs,
                                   const std::vector<int>& offsets)
   {
@@ -270,7 +254,7 @@ protected:
 
   /* Variables */
   // The boundary data (equilibration specific)
-  std::shared_ptr<base::BoundaryData<T>> _boundary_data;
+  std::shared_ptr<base::BoundaryData<T, U>> _boundary_data;
 
   // Infos on constants and coefficients
   std::vector<int> _begin_hat, _begin_fluxdg;

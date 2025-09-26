@@ -43,15 +43,6 @@ public:
                   [n = 0, ndofs_cons]() mutable { return ndofs_cons * (n++); });
   }
 
-  /// Copy constructor
-  StorageStiffness(const StorageStiffness& list) = default;
-
-  /// Move constructor
-  StorageStiffness(StorageStiffness&& list) = default;
-
-  /// Destructor
-  ~StorageStiffness() = default;
-
   /* Setter functions */
   /// Mark cell as evaluated
   /// @param cell_i Patch-local cell-id

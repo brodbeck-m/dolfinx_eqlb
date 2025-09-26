@@ -4,22 +4,21 @@
 #
 # SPDX-License-Identifier:    LGPL-3.0-or-later
 
-"""Poisson problem
-
-Collection of routines for a pre-defined manufactured solution, the solution of the 
-primal problem as well as the equilibration of the flux.
-"""
+"""Poisson problem"""
 
 import numpy as np
 import typing
 
 from dolfinx import fem
+import dolfinx.fem.petsc
 import ufl
 
-from dolfinx_eqlb.lsolver import local_projection
-from dolfinx_eqlb.eqlb import fluxbc, FluxEqlbEV, FluxEqlbSE
+from dolfinx_eqlb import eqlb, lsolver
 
-from utils import Geometry
+# from dolfinx_eqlb.lsolver import local_projection
+# from dolfinx_eqlb.eqlb import fluxbc, FluxEqlbEV, FluxEqlbSE
+
+from utils import Domain
 
 
 # --- The exact solution
@@ -54,7 +53,7 @@ def exact_flux(x: typing.Any):
 # --- Solution routines
 def solve_primal_problem(
     V_prime: fem.FunctionSpace,
-    geometry: Geometry,
+    domain: Domain,
     bc_id_neumann: typing.List[int],
     bc_id_dirichlet: typing.List[int],
     ufl_rhs: typing.Any,
@@ -66,7 +65,7 @@ def solve_primal_problem(
 
     Args:
         V_prime:           The function space of the primal problem
-        geometry:          The geometry
+        domain:            The domain
         bc_id_neumann:     List of boundary ids for Neumann BCs
         bc_id_dirichlet:   List of boundary ids for Dirichlet BCs
         ufl_rhs:           The RHS of the primal problem
@@ -86,6 +85,12 @@ def solve_primal_problem(
     if len(list(set(bc_id_dirichlet) & set(bc_id_neumann))) > 0:
         raise ValueError("Overlapping boundary data!")
 
+    # Required connectivity
+    domain.mesh.topology.create_connectivity(1, 2)
+
+    # The spatial dimension
+    gdim = domain.mesh.geometry.dim
+
     # Set variational form
     u = ufl.TrialFunction(V_prime)
     v = ufl.TestFunction(V_prime)
@@ -97,13 +102,13 @@ def solve_primal_problem(
     bcs_esnt = []
 
     for i, id in enumerate(bc_id_dirichlet):
-        fcts = geometry.facet_function.indices[geometry.facet_function.values == id]
+        fcts = domain.facet_function.indices[domain.facet_function.values == id]
         dofs = fem.locate_dofs_topological(V_prime, 1, fcts)
         bcs_esnt.append(fem.dirichletbc(u_dirichlet[i], dofs))
 
     # Set neumann boundary conditions
     for i, id in enumerate(bc_id_neumann):
-        l_prime -= ufl.inner(ufl_neumann[i], v) * geometry.ds(id)
+        l_prime -= ufl.inner(ufl_neumann[i], v) * domain.ds(id)
 
     # Solve problem
     solveoptions = {
@@ -122,16 +127,15 @@ def solve_primal_problem(
     if degree_projection is None:
         degree_projection = V_prime.element.basix_element.degree - 1
 
-    V_flux = fem.VectorFunctionSpace(geometry.mesh, ("DG", degree_projection))
-    sig_proj = local_projection(V_flux, [-ufl.grad(u_prime)])[0]
+    V_flux = fem.functionspace(domain.mesh, ("DG", degree_projection, (gdim,)))
+    sig_proj = lsolver.local_projection(V_flux, [-ufl.grad(u_prime)])[0]
 
     return u_prime, sig_proj
 
 
 def equilibrate_fluxes(
-    Equilibrator: typing.Union[FluxEqlbEV, FluxEqlbSE],
-    degree_flux: int,
-    geometry: Geometry,
+    equilibrator: typing.Type[eqlb.basics.EquilibratorMetaClass],
+    domain: Domain,
     sig_proj: typing.List[fem.Function],
     rhs_proj: typing.List[fem.Function],
     bc_id_neumann: typing.List[typing.List[int]],
@@ -143,8 +147,7 @@ def equilibrate_fluxes(
 
     Args:
         Equilibrator        The equilibrator class
-        degree_flux:        Degree of flux space
-        geometry:           The geometry
+        domain:             The domain
         sig_proj:           The projected fluxes
         rhs_proj:           The projected RHS
         bc_id_neumann:      The boundary ids for Neumann BCs
@@ -158,10 +161,17 @@ def equilibrate_fluxes(
     """
 
     # Extract facet markers
-    fct_values = geometry.facet_function.values
+    fct_values = domain.facet_function.values
 
     # Set equilibrator
-    equilibrator = Equilibrator(degree_flux, geometry.mesh, rhs_proj, sig_proj)
+    if equilibrator._strategy == eqlb.EqlbStrategy.constrained_minimisation:
+        from dolfinx_eqlb.eqlb.constrained_minimisation import equilibrationproblem
+    elif equilibrator._strategy == eqlb.EqlbStrategy.semi_explicit:
+        raise ValueError("Semi-explicit equilibration not supported.")
+    else:
+        raise ValueError("Invalid equilibration strategy.")
+
+    problem = equilibrationproblem(equilibrator, domain.mesh, rhs_proj, sig_proj)
 
     # Mark dirichlet facets of primal problem
     fct_bcesnt_primal = []
@@ -171,7 +181,7 @@ def equilibrate_fluxes(
             fct_numpy = np.array([], dtype=np.int32)
 
             for id_esnt in list_bc_id:
-                list_fcts = geometry.facet_function.indices[fct_values == id_esnt]
+                list_fcts = domain.facet_function.indices[fct_values == id_esnt]
                 fct_numpy = np.concatenate((fct_numpy, list_fcts))
 
             fct_bcesnt_primal.append(fct_numpy)
@@ -184,12 +194,12 @@ def equilibrate_fluxes(
             list_flux_bc = []
 
             for j, id_flux in enumerate(bc_id_neumann[i]):
-                list_fcts = geometry.facet_function.indices[fct_values == id_flux]
+                list_fcts = domain.facet_function.indices[fct_values == id_flux]
                 list_flux_bc.append(
-                    fluxbc(
+                    eqlb.fluxbc(
                         flux_neumann[i][j],
                         list_fcts,
-                        equilibrator.V_flux,
+                        problem._V,
                         neumann_projection[i][j],
                     )
                 )
@@ -199,9 +209,9 @@ def equilibrate_fluxes(
             bc_esnt_flux.append([])
 
     # Set equilibrator
-    equilibrator.set_boundary_conditions(fct_bcesnt_primal, bc_esnt_flux)
+    problem.create_boundary_data(fct_bcesnt_primal, bc_esnt_flux)
 
     # Solve equilibration
-    equilibrator.equilibrate_fluxes()
+    problem.solve()
 
-    return equilibrator.list_flux, equilibrator.list_bfunctions
+    return problem._fluxes, problem._boundary_values

@@ -10,7 +10,6 @@
 #include <dolfinx/fem/Function.h>
 #include <dolfinx_eqlb/base/deqlb_base.hpp>
 #include <dolfinx_eqlb/base/local_solver.hpp>
-// #include <dolfinx_eqlb/ev/reconstruction.hpp>
 // #include <dolfinx_eqlb/se/reconstruction.hpp>
 #include <ufcx.h>
 
@@ -184,6 +183,17 @@ void declare_equilibrator(nb::module_& m)
           nb::arg("element_geom"), nb::arg("quadrature_rule"),
           nb::arg("element_hat"), nb::arg("element_flux"),
           nb::arg("equilibration_strategy"));
+
+  m.def(
+      "reconstruct_fluxes_minimisation",
+      [](const fem::Form<T, U>& a, const fem::Form<T, U>& l_pen,
+         const std::vector<std::shared_ptr<const fem::Form<T, U>>>& l,
+         std::vector<std::shared_ptr<fem::Function<T, U>>>& flux_hdiv,
+         std::shared_ptr<base::BoundaryData<T, U>> boundary_data)
+      { ev::reconstruction<T, U>(a, l_pen, l, flux_hdiv, boundary_data); },
+      nb::arg("a"), nb::arg("l_pen"), nb::arg("l"), nb::arg("flux_hdiv"),
+      nb::arg("boundary_data"),
+      "Flux equilibration by localised, constrained minimisation.");
 }
 
 NB_MODULE(cpp, m)

@@ -204,7 +204,7 @@ protected:
   ///
   /// @param node_i Processor local id of patch-central node
   /// @return       First facet on patch,
-  /// @return       Length of loop over factes
+  /// @return       Length of loop over facets
   std::pair<std::int32_t, std::int32_t> create_patch(int node_i);
 
   /// Determine connection on patch

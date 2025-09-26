@@ -51,6 +51,7 @@ void local_solver(std::vector<std::shared_ptr<fem::Function<T, U>>>& solutions,
 
   /* Initialise data */
   // Cell geometry
+  // TODO - Shouldent this be of type U?
   std::span<const dolfinx::scalar_value_type_t<T>> x = a.mesh()->geometry().x();
   mdspan_t<const std::int32_t, 2> x_dofmap = a.mesh()->geometry().dofmap();
 

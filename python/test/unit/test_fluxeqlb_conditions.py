@@ -6,12 +6,15 @@
 
 """Test conditions of equilibrated fluxes"""
 
+from mpi4py import MPI
 import pytest
 import typing
 
-from dolfinx import fem, mesh
+import basix
+from dolfinx import default_real_type, fem, io, mesh
+import ufl
 
-from dolfinx_eqlb.eqlb import FluxEqlbEV, FluxEqlbSE
+from dolfinx_eqlb import eqlb
 import dolfinx_eqlb.eqlb.check_eqlb_conditions as eqlb_checker
 
 from utils import MeshType, create_unitsquare_builtin, create_unitsquare_gmsh
@@ -22,10 +25,9 @@ from testcase_poisson import solve_primal_problem, equilibrate_fluxes
 
 # --- The test routine ---
 def equilibrate_flux(
+    equilibrator: typing.Type[eqlb.basics.EquilibratorMetaClass],
     mesh_type: MeshType,
-    degree: int,
     bc_type: BCType,
-    equilibrator: typing.Union[FluxEqlbEV, FluxEqlbSE],
 ):
     """Solve equilibration based on a primal problem and check
 
@@ -36,21 +38,27 @@ def equilibrate_flux(
     for the Poisson equations.
 
     Args:
-        mesh_type:    The mesh type
-        degree:       The degree of the equilibrated fluxes
-        bc_typ:       The type of BCs
         equilibrator: The equilibrator
+        mesh_type:    The mesh type
+        bc_typ:       The type of BCs
     """
+
+    # Basic data
+    degree = equilibrator.degree()
 
     # Create mesh
     if mesh_type == MeshType.builtin:
-        geometry = create_unitsquare_builtin(
+        domain = create_unitsquare_builtin(
             2, mesh.CellType.triangle, mesh.DiagonalType.crossed
         )
     elif mesh_type == MeshType.gmsh:
-        geometry = create_unitsquare_gmsh(0.5)
+        domain = create_unitsquare_gmsh(0.5)
     else:
         raise ValueError("Unknown mesh type")
+
+    outfile = io.XDMFFile(MPI.COMM_WORLD, "mesh-rework.xdmf", "w")
+    outfile.write_mesh(domain.mesh)
+    outfile.close()
 
     # Initialise loop over degree of boundary flux
     if bc_type != BCType.neumann_inhom:
@@ -63,14 +71,14 @@ def equilibrate_flux(
         for degree_prime in range(max(1, degree - 1), degree + 1):
             for degree_rhs in range(0, degree):
                 # Set function space
-                V_prime = fem.FunctionSpace(geometry.mesh, ("P", degree_prime))
+                V_prime = fem.functionspace(domain.mesh, ("P", degree_prime))
 
                 # Determine degree of projected quantities (primal flux, RHS)
                 degree_proj = max(degree_prime - 1, degree_rhs)
 
                 # Set RHS
                 rhs, rhs_projected = set_arbitrary_rhs(
-                    geometry.mesh,
+                    domain.mesh,
                     degree_rhs,
                     degree_projection=degree_proj,
                     vector_valued=False,
@@ -88,7 +96,7 @@ def equilibrate_flux(
                 # Solve primal problem
                 u_prime, sigma_projected = solve_primal_problem(
                     V_prime,
-                    geometry,
+                    domain,
                     boundary_id_neumann,
                     boundary_id_dirichlet,
                     rhs,
@@ -100,8 +108,7 @@ def equilibrate_flux(
                 # Solve equilibration
                 sigma_eq, boundary_dofvalues = equilibrate_fluxes(
                     equilibrator,
-                    degree,
-                    geometry,
+                    domain,
                     [sigma_projected],
                     [rhs_projected],
                     [boundary_id_neumann],
@@ -116,7 +123,7 @@ def equilibrate_flux(
                         sigma_eq[0],
                         sigma_projected,
                         boundary_dofvalues[0],
-                        geometry.facet_function,
+                        domain.facet_function,
                         boundary_id_neumann,
                     )
 
@@ -125,14 +132,17 @@ def equilibrate_flux(
 
                 # --- Check divergence condition ---
                 div_condition = eqlb_checker.check_divergence_condition(
-                    sigma_eq[0], sigma_projected, rhs_projected
+                    sigma_eq[0],
+                    sigma_projected,
+                    rhs_projected,
+                    print_debug_information=True,
                 )
 
                 if not div_condition:
                     raise ValueError("Divergence condition not fulfilled")
 
                 # --- Check jump condition (only required for semi-explicit equilibrator)
-                if equilibrator == FluxEqlbSE:
+                if equilibrator._strategy == eqlb.EqlbStrategy.semi_explicit:
                     jump_condition = eqlb_checker.check_jump_condition(
                         sigma_eq[0], sigma_projected
                     )
@@ -156,25 +166,37 @@ def test_ern_and_vohralik(mesh_type, degree, bc_type):
         bc_type:   The type of BCs
     """
 
-    equilibrate_flux(mesh_type, degree, bc_type, FluxEqlbEV)
+    # Abstract mesh definition
+    c_el = basix.ufl.element(
+        "Lagrange", "triangle", 1, shape=(2,), dtype=default_real_type
+    )
+
+    # The equilibrator
+    from dolfinx_eqlb.eqlb.constrained_minimisation import Equilibrator
+
+    equilibrator = Equilibrator(ufl.Mesh(c_el), eqlb.ProblemType.flux, degree)
+
+    # Check solution
+    equilibrate_flux(equilibrator, mesh_type, bc_type)
 
 
-@pytest.mark.parametrize("mesh_type", [MeshType.builtin, MeshType.gmsh])
-@pytest.mark.parametrize("degree", [1, 2, 3])
-@pytest.mark.parametrize("bc_type", [BCType.neumann_inhom])
-def test_semi_explicit(mesh_type, degree, bc_type):
-    """Check equilibration based on the semi-explicit strategy
+# @pytest.mark.parametrize("mesh_type", [MeshType.builtin, MeshType.gmsh])
+# @pytest.mark.parametrize("degree", [1, 2, 3])
+# @pytest.mark.parametrize("bc_type", [BCType.neumann_inhom])
+# def test_semi_explicit(mesh_type, degree, bc_type):
+#     """Check equilibration based on the semi-explicit strategy
 
-    Args:
-        mesh_type: The mesh type
-        degree:    The degree of the equilibrated fluxes
-        bc_type:   The type of BCs
-    """
+#     Args:
+#         mesh_type: The mesh type
+#         degree:    The degree of the equilibrated fluxes
+#         bc_type:   The type of BCs
+#     """
 
-    equilibrate_flux(mesh_type, degree, bc_type, FluxEqlbSE)
+#     equilibrate_flux(mesh_type, degree, bc_type, FluxEqlbSE)
 
 
 if __name__ == "__main__":
     import sys
 
-    pytest.main(sys.argv)
+    # pytest.main(sys.argv)
+    test_ern_and_vohralik(MeshType.builtin, 1, BCType.dirichlet)
