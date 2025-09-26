@@ -207,9 +207,11 @@ void reconstruction(ProblemData<T>& problem_data, const bool symconstr_required,
                 double cks = patch.estimate_squared_korn_constant() * (dim + 1);
 
                 // Store Korn's constant
-                for (std::int32_t cell : patch.cells())
+                int ncells = patch.ncells();
+
+                for (int i = 1; i < ncells + 1; ++i)
                 {
-                  x_kornconst[cell] += cks;
+                  x_kornconst[patch.cells()[i]] += cks;
                 }
               }
 
@@ -249,9 +251,11 @@ void reconstruction(ProblemData<T>& problem_data, const bool symconstr_required,
           double cks = patch.estimate_squared_korn_constant() * (dim + 1);
 
           // Store Korn's constant
-          for (std::int32_t cell : patch.cells())
+          int ncells = patch.ncells();
+
+          for (int i = 1; i < ncells + 1; ++i)
           {
-            x_kornconst[cell] += cks;
+            x_kornconst[patch.cells()[i]] += cks;
           }
         }
 
@@ -291,9 +295,11 @@ void reconstruction(ProblemData<T>& problem_data, const bool symconstr_required,
         double cks = patch.estimate_squared_korn_constant() * (dim + 1);
 
         // Store Korn's constant
-        for (std::int32_t cell : patch.cells())
+        int ncells = patch.ncells();
+
+        for (int i = 1; i < ncells + 1; ++i)
         {
-          x_kornconst[cell] += cks;
+          x_kornconst[patch.cells()[i]] += cks;
         }
       }
 

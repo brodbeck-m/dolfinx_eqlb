@@ -194,6 +194,8 @@ double OrientedPatch::estimate_squared_korn_constant() const
   {
     // Coordinates stencil-central node
     std::array<double, 6> data_cnodes;
+    std::fill(data_cnodes.begin(), data_cnodes.end(), 0);
+
     base::mdspan_t<double, 2> cnodes(data_cnodes.data(), 3, 2);
 
     // Minimal angles for different stencils
