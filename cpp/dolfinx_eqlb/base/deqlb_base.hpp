@@ -11,10 +11,10 @@ namespace dolfinx_eqlb::base
 } // namespace dolfinx_eqlb::base
 
 // dolfinx_eqlb base interface
-#include "BoundaryData.hpp"
-#include "EquilibrationProblem.hpp"
+// #include "BoundaryData.hpp"
+// #include "EquilibrationProblem.hpp"
 #include "Equilibrator.hpp"
-#include "FluxBC.hpp"
-#include "KernelDataBC.hpp"
+// #include "FluxBC.hpp"
+// #include "KernelDataBC.hpp"
 #include "equilibration.hpp"
 #include "mdspan.hpp"

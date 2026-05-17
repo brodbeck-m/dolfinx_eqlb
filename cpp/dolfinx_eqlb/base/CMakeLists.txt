@@ -1,12 +1,12 @@
 set(HEADERS_base
-    ${CMAKE_CURRENT_SOURCE_DIR}/BoundaryData.hpp
+    # ${CMAKE_CURRENT_SOURCE_DIR}/BoundaryData.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/Equilibrator.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/EquilibrationProblem.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/FluxBC.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/KernelData.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/KernelDataBC.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/ProblemData.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/QuadratureRule.hpp
+    # ${CMAKE_CURRENT_SOURCE_DIR}/EquilibrationProblem.hpp
+    # ${CMAKE_CURRENT_SOURCE_DIR}/FluxBC.hpp
+    # ${CMAKE_CURRENT_SOURCE_DIR}/KernelData.hpp
+    # ${CMAKE_CURRENT_SOURCE_DIR}/KernelDataBC.hpp
+    # ${CMAKE_CURRENT_SOURCE_DIR}/ProblemData.hpp
+    # ${CMAKE_CURRENT_SOURCE_DIR}/QuadratureRule.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/deqlb_base.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/equilibration.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/local_solver.hpp
@@ -16,7 +16,8 @@ set(HEADERS_base
 
 target_sources(
   dolfinx_eqlb
-  PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/BoundaryData.cpp
-  PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/KernelData.cpp
-  PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/KernelDataBC.cpp
+#   PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/BoundaryData.cpp
+  PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Equilibrator.cpp
+#   PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/KernelData.cpp
+#   PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/KernelDataBC.cpp
 )

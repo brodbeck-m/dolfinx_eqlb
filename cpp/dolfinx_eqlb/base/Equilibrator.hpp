@@ -69,6 +69,9 @@ public:
   /// @return The KernelDataBC
   const KernelDataBC<T, U>& kernel_data_bcs() const { return _kernel_data_bcs; }
 
+  /// A debug function
+  void print_info() const;
+
 protected:
   /* Variable definitions */
 
