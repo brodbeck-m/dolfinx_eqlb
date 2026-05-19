@@ -11,6 +11,7 @@
 
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
+#include <dolfinx/common/types.h>
 #include <dolfinx/fem/DofMap.h>
 #include <dolfinx/fem/Form.h>
 #include <dolfinx/fem/Function.h>
@@ -51,10 +52,11 @@ void local_solver(std::vector<std::shared_ptr<fem::Function<T, U>>>& solutions,
 
   /* Initialise data */
   // Cell geometry
-  std::span<const dolfinx::scalar_value_type_t<T>> x = a.mesh()->geometry().x();
+  std::span<const dolfinx::scalar_value_t<T>> x = a.mesh()->geometry().x();
   mdspan_t<const std::int32_t, 2> x_dofmap = a.mesh()->geometry().dofmap();
 
-  std::vector<scalar_value_type_t<T>> coordinate_dofs(3 * x_dofmap.extent(1));
+  std::vector<dolfinx::scalar_value_t<T>> coordinate_dofs(3
+                                                          * x_dofmap.extent(1));
 
   // Constants and coefficients (bilinear form)
   const std::vector<T> constants_a = fem::pack_constants(a);
@@ -91,105 +93,111 @@ void local_solver(std::vector<std::shared_ptr<fem::Function<T, U>>>& solutions,
   Eigen::LLT<Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>> solver;
 
   /* Solve element-wise equation systems */
-  // Loop over all cell domains
-  for (int i : a.integral_ids(fem::IntegralType::cell))
+  // Loop over all cell types and cell domains
+  const int num_cell_types
+      = static_cast<int>(a.mesh()->topology()->cell_types().size());
+  for (int kernel_idx = 0; kernel_idx < num_cell_types; ++kernel_idx)
   {
-    // Extract cells
-    const std::span<const std::int32_t> cells
-        = a.domain(fem::IntegralType::cell, i);
-
-    // Prepare assembly bilinear form
-    auto kernel_a = a.kernel(fem::IntegralType::cell, i);
-
-    auto& [coeffs_a, cstride_a]
-        = coefficients_a.at({fem::IntegralType::cell, i});
-
-    // Initialize RHS for current integrator
-    problem_data.initialize_kernel(fem::IntegralType::cell, i);
-
-    // Loop over all cells
-    if (!cells.empty())
+    for (int i = 0; i < a.num_integrals(fem::IntegralType::cell, kernel_idx);
+         ++i)
     {
-      for (std::size_t index = 0; index < cells.size(); ++index)
+      // Extract cells
+      const std::span<const std::int32_t> cells
+          = a.domain(fem::IntegralType::cell, i, kernel_idx);
+
+      // Prepare assembly bilinear form
+      auto kernel_a = a.kernel(fem::IntegralType::cell, i, kernel_idx);
+
+      auto& [coeffs_a, cstride_a]
+          = coefficients_a.at({fem::IntegralType::cell, i});
+
+      // Initialize RHS for current integrator
+      problem_data.initialize_kernel(fem::IntegralType::cell, i, kernel_idx);
+
+      // Loop over all cells
+      if (!cells.empty())
       {
-        // Id of current cell
-        std::int32_t c = cells[index];
-
-        // Get cell coordinates
-        auto x_dofs = MDSPAN_IMPL_STANDARD_NAMESPACE::submdspan(
-            x_dofmap, c, MDSPAN_IMPL_STANDARD_NAMESPACE::full_extent);
-
-        for (std::size_t i = 0; i < x_dofs.size(); ++i)
+        for (std::size_t index = 0; index < cells.size(); ++index)
         {
-          std::copy_n(std::next(x.begin(), 3 * x_dofs[i]), 3,
-                      std::next(coordinate_dofs.begin(), 3 * i));
-        }
+          // Id of current cell
+          std::int32_t c = cells[index];
 
-        // Loop over all RHS
-        for (std::size_t i_rhs = 0; i_rhs < problem_data.nrhs(); ++i_rhs)
-        {
-          /* Extract data for current RHS */
-          // Integration kernel
-          const auto& kernel_l = problem_data.kernel(i_rhs);
+          // Get cell coordinates
+          auto x_dofs = MDSPAN_IMPL_STANDARD_NAMESPACE::submdspan(
+              x_dofmap, c, MDSPAN_IMPL_STANDARD_NAMESPACE::full_extent);
 
-          // Constants and coefficients
-          std::span<const T> constants_l = problem_data.constants(i_rhs);
-          std::span<T> coefficients_l = problem_data.coefficients(i_rhs);
-
-          // Infos about coefficients
-          int cstride_l = problem_data.cstride(i_rhs);
-
-          /* Solve cell-wise problem */
-          if (i_rhs == 0)
+          for (std::size_t i = 0; i < x_dofs.size(); ++i)
           {
-            // Evaluate bilinear form
-            A_e.setZero();
-            kernel_a(A_e.data(), coeffs_a.data() + index * cstride_a,
-                     constants_a.data(), coordinate_dofs.data(), nullptr,
-                     nullptr);
-
-            // Prepare solver
-            solver.compute(A_e);
+            std::copy_n(std::next(x.begin(), 3 * x_dofs[i]), 3,
+                        std::next(coordinate_dofs.begin(), 3 * i));
           }
 
-          // Evaluate linear form
-          L_e.setZero();
-          kernel_l(L_e.data(), coefficients_l.data() + index * cstride_l,
-                   constants_l.data(), coordinate_dofs.data(), nullptr,
-                   nullptr);
-
-          // Solve equation system
-          u_e = solver.solve(L_e);
-
-          // Global dofs of currect element
-          smdspan_t<const std::int32_t, 1> sol_dof
-              = MDSPAN_IMPL_STANDARD_NAMESPACE::submdspan(
-                  dofs, c, MDSPAN_IMPL_STANDARD_NAMESPACE::full_extent);
-
-          // Map solution into global function space
-          std::span<T> sol_i
-              = problem_data.solution_function(i_rhs).x()->mutable_array();
-          if (bs == 1)
+          // Loop over all RHS
+          for (std::size_t i_rhs = 0; i_rhs < problem_data.nrhs(); ++i_rhs)
           {
-            for (std::size_t k = 0; k < num_dofs; ++k)
+            /* Extract data for current RHS */
+            // Integration kernel
+            const auto& kernel_l = problem_data.kernel(i_rhs);
+
+            // Constants and coefficients
+            std::span<const T> constants_l = problem_data.constants(i_rhs);
+            std::span<T> coefficients_l = problem_data.coefficients(i_rhs);
+
+            // Infos about coefficients
+            int cstride_l = problem_data.cstride(i_rhs);
+
+            /* Solve cell-wise problem */
+            if (i_rhs == 0)
             {
-              sol_i[sol_dof(k)] = u_e[k];
+              // Evaluate bilinear form
+              A_e.setZero();
+              kernel_a(A_e.data(), coeffs_a.data() + index * cstride_a,
+                       constants_a.data(), coordinate_dofs.data(), nullptr,
+                       nullptr, nullptr);
+
+              // Prepare solver
+              solver.compute(A_e);
             }
-          }
-          else
-          {
-            for (std::size_t k = 0; k < num_dofs; ++k)
+
+            // Evaluate linear form
+            L_e.setZero();
+            kernel_l(L_e.data(), coefficients_l.data() + index * cstride_l,
+                     constants_l.data(), coordinate_dofs.data(), nullptr,
+                     nullptr, nullptr);
+
+            // Solve equation system
+            u_e = solver.solve(L_e);
+
+            // Global dofs of currect element
+            smdspan_t<const std::int32_t, 1> sol_dof
+                = MDSPAN_IMPL_STANDARD_NAMESPACE::submdspan(
+                    dofs, c, MDSPAN_IMPL_STANDARD_NAMESPACE::full_extent);
+
+            // Map solution into global function space
+            std::span<T> sol_i
+                = problem_data.solution_function(i_rhs).x()->mutable_array();
+            if (bs == 1)
             {
-              for (std::size_t m = 0; m < bs; ++m)
+              for (std::size_t k = 0; k < num_dofs; ++k)
               {
-                sol_i[bs * sol_dof(k) + m] = u_e[bs * k + m];
+                sol_i[sol_dof(k)] = u_e[k];
+              }
+            }
+            else
+            {
+              for (std::size_t k = 0; k < num_dofs; ++k)
+              {
+                for (std::size_t m = 0; m < bs; ++m)
+                {
+                  sol_i[bs * sol_dof(k) + m] = u_e[bs * k + m];
+                }
               }
             }
           }
         }
       }
     }
-  }
+  } // kernel_idx
 }
 
 } // namespace dolfinx_eqlb::base

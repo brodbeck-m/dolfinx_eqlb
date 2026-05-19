@@ -5,6 +5,7 @@
 // SPDX-License-Identifier:    LGPL-3.0-or-later
 
 #include <basix/finite-element.h>
+#include <dolfinx/common/types.h>
 #include <dolfinx/fem/Constant.h>
 #include <dolfinx/fem/Form.h>
 #include <dolfinx/fem/Function.h>
@@ -17,7 +18,7 @@
 #include <dolfinx_eqlb/ev/deqlb_ev.hpp>
 #include <dolfinx_eqlb/se/deqlb_se.hpp>
 
-#include <caster_petsc.h>
+// #include "dolfinx_wrappers/caster_petsc.h"
 #include <nanobind/nanobind.h>
 #include <nanobind/ndarray.h>
 // #include <nanobind/stl/array.h>
@@ -43,12 +44,12 @@ namespace nb = nanobind;
 
 using namespace nb::literals;
 using namespace dolfinx_eqlb;
-using scalar_t = PetscScalar;
+// using scalar_t = PetscScalar;
 
 template <dolfinx::scalar T>
 void declare_lsolver(nb::module_& m)
 {
-  using U = typename dolfinx::scalar_value_type_t<T>;
+  using U = typename dolfinx::scalar_value_t<T>;
 
   m.def(
       "local_solver",
@@ -59,69 +60,72 @@ void declare_lsolver(nb::module_& m)
       nb::arg("solutions"), nb::arg("a"), nb::arg("ls"), "Local solver");
 }
 
-template <dolfinx::scalar T>
-void declare_bcs(nb::module_& m)
-{
-  using U = typename dolfinx::scalar_value_type_t<T>;
+// template <dolfinx::scalar T>
+// void declare_bcs(nb::module_& m)
+// {
+//   using U = typename dolfinx::scalar_value_t<T>;
 
-  nb::enum_<base::TimeType>(m, "TimeType", nb::is_arithmetic(),
-                            "Time-dependency of a boundary condition.")
-      .value("stationary", base::TimeType::stationary)
-      .value("timefunction", base::TimeType::timefunction)
-      .value("timedependent", base::TimeType::timedependent);
+//   nb::enum_<base::TimeType>(m, "TimeType", nb::is_arithmetic(),
+//                             "Time-dependency of a boundary condition.")
+//       .value("stationary", base::TimeType::stationary)
+//       .value("timefunction", base::TimeType::timefunction)
+//       .value("timedependent", base::TimeType::timedependent);
 
-  nb::class_<base::FluxBC<T, U>>(m, "FluxBC", "FluxBC object")
-      .def(
-          "__init__",
-          [](base::FluxBC<T, U>* fp,
-             std::shared_ptr<const fem::Expression<T, U>> value,
-             const std::vector<std::int32_t>& facets,
-             std::shared_ptr<const fem::FunctionSpace<U>> V,
-             const int quadrature_degree, const base::TimeType tbehaviour)
-          {
-            new (fp) base::FluxBC<T, U>(value, facets, V, quadrature_degree,
-                                        tbehaviour);
-          },
-          nb::arg("boundary_expression"), nb::arg("boundary_facets"),
-          nb::arg("FunctionSpace"), nb::arg("quadrature_degree"),
-          nb::arg("transient_behaviour"))
-      .def(
-          "__init__",
-          [](base::FluxBC<T, U>* fp, const std::vector<std::int32_t>& facets)
-          { new (fp) base::FluxBC<T, U>(facets); }, nb::arg("boundary_facets"))
-      .def_prop_ro("quadrature_degree", &base::FluxBC<T, U>::quadrature_degree);
+//   nb::class_<base::FluxBC<T, U>>(m, "FluxBC", "FluxBC object")
+//       .def(
+//           "__init__",
+//           [](base::FluxBC<T, U>* fp,
+//              std::shared_ptr<const fem::Expression<T, U>> value,
+//              const std::vector<std::int32_t>& facets,
+//              std::shared_ptr<const fem::FunctionSpace<U>> V,
+//              const int quadrature_degree, const base::TimeType tbehaviour)
+//           {
+//             new (fp) base::FluxBC<T, U>(value, facets, V, quadrature_degree,
+//                                         tbehaviour);
+//           },
+//           nb::arg("boundary_expression"), nb::arg("boundary_facets"),
+//           nb::arg("FunctionSpace"), nb::arg("quadrature_degree"),
+//           nb::arg("transient_behaviour"))
+//       .def(
+//           "__init__",
+//           [](base::FluxBC<T, U>* fp, const std::vector<std::int32_t>& facets)
+//           { new (fp) base::FluxBC<T, U>(facets); },
+//           nb::arg("boundary_facets"))
+//       .def_prop_ro("quadrature_degree", &base::FluxBC<T,
+//       U>::quadrature_degree);
 
-  nb::class_<base::BoundaryData<T, U>>(m, "BoundaryData", "BoundaryData object")
-      .def(
-          "__init__",
-          [](base::BoundaryData<T, U>* fp,
-             std::vector<std::vector<std::shared_ptr<base::FluxBC<T, U>>>>&
-                 list_bcs,
-             std::vector<std::shared_ptr<fem::Function<T, U>>>& boundary_fluxes,
-             std::shared_ptr<const fem::FunctionSpace<U>> V,
-             const std::vector<std::vector<std::int32_t>>& fct_esntbound_prime,
-             base::KernelDataBC<T, U>& kernel_data,
-             const base::ProblemType problem_type)
-          {
-            new (fp) base::BoundaryData<T, U>(list_bcs, boundary_fluxes, V,
-                                              fct_esntbound_prime, kernel_data,
-                                              problem_type);
-          },
-          nb::arg("list_bcs"), nb::arg("boundary_fluxes"), nb::arg("V"),
-          nb::arg("fct_esntbound_prime"), nb::arg("kernel_data"),
-          nb::arg("problem_type"))
-      .def(
-          "update",
-          [](base::BoundaryData<T, U>& self,
-             std::vector<std::shared_ptr<const fem::Constant<T>>>&
-                 time_functions) { self.update(time_functions); },
-          nb::arg("time_functions"));
-}
+//   nb::class_<base::BoundaryData<T, U>>(m, "BoundaryData", "BoundaryData
+//   object")
+//       .def(
+//           "__init__",
+//           [](base::BoundaryData<T, U>* fp,
+//              std::vector<std::vector<std::shared_ptr<base::FluxBC<T, U>>>>&
+//                  list_bcs,
+//              std::vector<std::shared_ptr<fem::Function<T, U>>>&
+//              boundary_fluxes, std::shared_ptr<const fem::FunctionSpace<U>> V,
+//              const std::vector<std::vector<std::int32_t>>&
+//              fct_esntbound_prime, base::KernelDataBC<T, U>& kernel_data,
+//              const base::ProblemType problem_type)
+//           {
+//             new (fp) base::BoundaryData<T, U>(list_bcs, boundary_fluxes, V,
+//                                               fct_esntbound_prime,
+//                                               kernel_data, problem_type);
+//           },
+//           nb::arg("list_bcs"), nb::arg("boundary_fluxes"), nb::arg("V"),
+//           nb::arg("fct_esntbound_prime"), nb::arg("kernel_data"),
+//           nb::arg("problem_type"))
+//       .def(
+//           "update",
+//           [](base::BoundaryData<T, U>& self,
+//              std::vector<std::shared_ptr<const fem::Constant<T>>>&
+//                  time_functions) { self.update(time_functions); },
+//           nb::arg("time_functions"));
+// }
 
 template <dolfinx::scalar T>
 void declare_equilibrator(nb::module_& m)
 {
-  using U = typename dolfinx::scalar_value_type_t<T>;
+  using U = typename dolfinx::scalar_value_t<T>;
 
   nb::enum_<base::ProblemType>(m, "ProblemType", nb::is_arithmetic(),
                                "Type of the equilibration problem.")
@@ -162,28 +166,30 @@ void declare_equilibrator(nb::module_& m)
                    nb::rv_policy::reference_internal)
       .def_prop_ro("basix_element_flux",
                    &base::Equilibrator<T, U>::basix_element_hat,
-                   nb::rv_policy::reference_internal)
-      .def_prop_ro("kernel_data_bcs",
-                   &base::Equilibrator<T, U>::kernel_data_bcs,
                    nb::rv_policy::reference_internal);
-  nb::class_<base::KernelDataBC<T, U>>(m, "KernelDataBC",
-                                       "Kernel data for boundary conditions")
-      .def(
-          "__init__",
-          [](base::KernelDataBC<T, U>* fp,
-             const basix::FiniteElement<U>& element_geom,
-             std::tuple<int, int> quadrature_rule,
-             const basix::FiniteElement<U>& element_hat,
-             const basix::FiniteElement<U>& element_flux,
-             const base::EqlbStrategy equilibration_strategy)
-          {
-            new (fp) base::KernelDataBC<T, U>(element_geom, quadrature_rule,
-                                              element_hat, element_flux,
-                                              equilibration_strategy);
-          },
-          nb::arg("element_geom"), nb::arg("quadrature_rule"),
-          nb::arg("element_hat"), nb::arg("element_flux"),
-          nb::arg("equilibration_strategy"));
+  //   .def_prop_ro("kernel_data_bcs",
+  //                &base::Equilibrator<T, U>::kernel_data_bcs,
+  //                nb::rv_policy::reference_internal);
+  //   nb::class_<base::KernelDataBC<T, U>>(m, "KernelDataBC",
+  //                                        "Kernel data for boundary
+  //                                        conditions")
+  //       .def(
+  //           "__init__",
+  //           [](base::KernelDataBC<T, U>* fp,
+  //              const basix::FiniteElement<U>& element_geom,
+  //              std::tuple<int, int> quadrature_rule,
+  //              const basix::FiniteElement<U>& element_hat,
+  //              const basix::FiniteElement<U>& element_flux,
+  //              const base::EqlbStrategy equilibration_strategy)
+  //           {
+  //             new (fp) base::KernelDataBC<T, U>(element_geom,
+  //             quadrature_rule,
+  //                                               element_hat, element_flux,
+  //                                               equilibration_strategy);
+  //           },
+  //           nb::arg("element_geom"), nb::arg("quadrature_rule"),
+  //           nb::arg("element_hat"), nb::arg("element_flux"),
+  //           nb::arg("equilibration_strategy"));
 }
 
 NB_MODULE(cpp, m)
@@ -199,5 +205,5 @@ NB_MODULE(cpp, m)
   // The local solver
   declare_lsolver<double>(m);
   declare_equilibrator<double>(m);
-  declare_bcs<double>(m);
+  //   declare_bcs<double>(m);
 }

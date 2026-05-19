@@ -6,13 +6,15 @@
 
 #pragma once
 
-#include "BoundaryData.hpp"
-#include "KernelDataBC.hpp"
+// #include "BoundaryData.hpp"
+// #include "KernelDataBC.hpp"
 #include "equilibration.hpp"
 
 #include <basix/cell.h>
 #include <basix/finite-element.h>
+#include <dolfinx/common/types.h>
 
+#include <iostream>
 #include <memory>
 #include <span>
 #include <vector>
@@ -21,7 +23,6 @@ using namespace dolfinx;
 
 namespace dolfinx_eqlb::base
 {
-
 template <dolfinx::scalar T, std::floating_point U>
 class Equilibrator
 {
@@ -35,10 +36,10 @@ public:
         _gdim(basix::cell::topological_dimension(element_geom.cell_type())),
         _element_geom(std::make_shared<basix::FiniteElement<U>>(element_geom)),
         _element_hat(std::make_unique<basix::FiniteElement<U>>(element_hat)),
-        _element_flux(std::make_unique<basix::FiniteElement<U>>(element_flux)),
-        _kernel_data_bcs(KernelDataBC<T, U>(
-            element_geom, std::make_tuple(quadrature_degree_bcs, _gdim - 1),
-            element_hat, element_flux, strategy))
+        _element_flux(std::make_unique<basix::FiniteElement<U>>(element_flux))
+  // _kernel_data_bcs(KernelDataBC<T, U>(
+  //     element_geom, std::make_tuple(quadrature_degree_bcs, _gdim - 1),
+  //     element_hat, element_flux, strategy))
   {
   }
 
@@ -65,9 +66,10 @@ public:
     return *_element_flux;
   }
 
-  /// Return KernelData for the evaluation of BCs
-  /// @return The KernelDataBC
-  const KernelDataBC<T, U>& kernel_data_bcs() const { return _kernel_data_bcs; }
+  // /// Return KernelData for the evaluation of BCs
+  // /// @return The KernelDataBC
+  // const KernelDataBC<T, U>& kernel_data_bcs() const { return
+  // _kernel_data_bcs; }
 
   /// A debug function
   void print_info() const;
@@ -91,7 +93,7 @@ protected:
   std::unique_ptr<basix::FiniteElement<U>> _element_flux;
 
   // KernelData for the evaluation of BCs
-  KernelDataBC<T, U> _kernel_data_bcs;
+  // KernelDataBC<T, U> _kernel_data_bcs;
 };
 
 } // namespace dolfinx_eqlb::base

@@ -7,6 +7,7 @@
 #pragma once
 
 #include <dolfinx/common/IndexMap.h>
+#include <dolfinx/common/types.h>
 #include <dolfinx/fem/Constant.h>
 #include <dolfinx/fem/DofMap.h>
 #include <dolfinx/fem/Form.h>
@@ -80,7 +81,8 @@ public:
   ///
   /// @param integral_type Integral type
   /// @param id            Id of integration-subdomain
-  void initialize_kernel(fem::IntegralType integral_type, int id)
+  void initialize_kernel(fem::IntegralType integral_type, int id,
+                         int kernel_idx = 0)
   {
     // Determine size of all coefficients
     std::int32_t size_coef = 0;
@@ -90,7 +92,7 @@ public:
     {
       /* Get Kernel */
       const fem::Form<T, U>& l_i = *(_ls[i]);
-      _kernels[i] = _ls[i]->kernel(integral_type, id);
+      _kernels[i] = _ls[i]->kernel(integral_type, id, kernel_idx);
 
       /* Initialize data-structure coefficients */
       const std::vector<std::shared_ptr<const fem::Function<T, U>>>& coeffs_i
@@ -105,7 +107,7 @@ public:
       {
         cstride = offsets_i.back();
 
-        num_entities = l_i.domain(integral_type, id).size();
+        num_entities = l_i.domain(integral_type, id, kernel_idx).size();
         if (integral_type == fem::IntegralType::exterior_facet
             or integral_type == fem::IntegralType::interior_facet)
         {
@@ -120,7 +122,7 @@ public:
 
     // Extract coefficients
     _data_coeffs.resize(size_coef);
-    set_data_coeffsficients(integral_type, id);
+    set_data_coeffsficients(integral_type, id, kernel_idx);
   }
 
   /* Setter functions */
@@ -138,7 +140,7 @@ public:
   /// @param index Id of the sub-problem
   /// @return The integration kernel
   const std::function<void(T*, const T*, const T*, const U*, const int*,
-                           const std::uint8_t*)>&
+                           const std::uint8_t*, void*)>&
   kernel(int index) const
   {
     return _kernels[index];
@@ -211,7 +213,8 @@ protected:
   }
 
   /* Handle coefficients */
-  void set_data_coeffsficients(fem::IntegralType integral_type, int id)
+  void set_data_coeffsficients(fem::IntegralType integral_type, int id,
+                               int kernel_idx = 0)
   {
     for (std::size_t i = 0; i < _nrhs; ++i)
     {
@@ -219,8 +222,7 @@ protected:
       const fem::Form<T, U>& l_i = *(_ls[i]);
 
       const std::vector<std::shared_ptr<const fem::Function<T, U>>>&
-          coefficients_i
-          = l_i.coefficients();
+          coefficients_i = l_i.coefficients();
       const std::vector<int> offsets_i = l_i.coefficient_offsets();
 
       // Storage for current coefficients
@@ -246,7 +248,7 @@ protected:
 
   // Integration kernels
   std::vector<std::function<void(T*, const T*, const T*, const U*, const int*,
-                                 const std::uint8_t*)>>
+                                 const std::uint8_t*, void*)>>
       _kernels;
 
   // Solution functions

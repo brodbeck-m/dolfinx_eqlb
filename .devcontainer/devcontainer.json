@@ -1,5 +1,5 @@
 {
-	"name": "dolfinx_eqlb",
+	"name": "dolfinx:v0.10.0-r1",
 	"build": {
 		"dockerfile": "Dockerfile",
 		"cacheFrom": "brewblox/firmware-devcontainer:bullseye",
@@ -21,10 +21,9 @@
 			"editor.codeActionsOnSave": [
 				"source.organizeImports"
 			]
-		
 		},
 		"[cpp]": {
-		"editor.formatOnSave": true,
+			"editor.formatOnSave": true,
 		}
 	},
 	"customizations": {
@@ -43,6 +42,6 @@
 				"streetsidesoftware.code-spell-checker-british-english",
 				"github.copilot"
 			]
-	}
+		}
 	}
 }

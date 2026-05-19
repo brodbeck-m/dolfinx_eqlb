@@ -170,7 +170,11 @@ def compare_projections(
         l = ufl.inner(f, v) * dvol
 
         problem = fem.petsc.LinearProblem(
-            a, l, bcs=[], petsc_options={"ksp_type": "preonly", "pc_type": "lu"}
+            a,
+            l,
+            bcs=[],
+            petsc_options={"ksp_type": "preonly", "pc_type": "lu"},
+            petsc_options_prefix="TestLsolver",
         )
         f_h_ref = problem.solve()
 
@@ -205,3 +209,4 @@ if __name__ == "__main__":
     import sys
 
     pytest.main(sys.argv)
+    # test_target_spaces(mesh.CellType.triangle, "Lagrange", 2, RhsType.mixed, True)
