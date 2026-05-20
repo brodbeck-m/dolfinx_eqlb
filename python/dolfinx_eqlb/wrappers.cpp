@@ -11,7 +11,7 @@
 #include <dolfinx/fem/Function.h>
 #include <dolfinx_eqlb/base/deqlb_base.hpp>
 #include <dolfinx_eqlb/base/local_solver.hpp>
-// #include <dolfinx_eqlb/ev/reconstruction.hpp>
+#include <dolfinx_eqlb/ev/equilibration.hpp>
 // #include <dolfinx_eqlb/se/reconstruction.hpp>
 #include <ufcx.h>
 
@@ -133,63 +133,14 @@ void declare_equilibrator(nb::module_& m)
       .value("stress", base::ProblemType::stress)
       .value("stress_and_flux", base::ProblemType::stress_and_flux);
 
-  nb::enum_<base::EqlbStrategy>(m, "EqlbStrategy", nb::is_arithmetic(),
-                                "The used equilibration strategy.")
-      .value("semi_explicit", base::EqlbStrategy::semi_explicit)
-      .value("constrained_minimisation",
-             base::EqlbStrategy::constrained_minimisation);
-
-  nb::class_<base::Equilibrator<T, U>>(m, "Equilibrator",
-                                       "Basic Equilibrator object")
-      .def(
-          "__init__",
-          [](base::Equilibrator<T, U>* fp, const base::ProblemType problem_type,
-             const base::EqlbStrategy strategy,
-             const basix::FiniteElement<U>& element_geom,
-             const basix::FiniteElement<U>& element_hat,
-             const basix::FiniteElement<U>& element_flux,
-             const int quadrature_degree_bcs)
-          {
-            new (fp) base::Equilibrator<T, U>(
-                problem_type, strategy, element_geom, element_hat, element_flux,
-                quadrature_degree_bcs);
-          },
-          nb::arg("problem_type"), nb::arg("strategy"), nb::arg("element_geom"),
-          nb::arg("element_hat"), nb::arg("element_flux"),
-          nb::arg("quadrature_degree_bcs"))
-      .def_prop_ro("problem_type", &base::Equilibrator<T, U>::problem_type,
-                   nb::rv_policy::reference_internal)
-      .def_prop_ro("strategy", &base::Equilibrator<T, U>::strategy,
-                   nb::rv_policy::reference_internal)
-      .def_prop_ro("basix_element_hat",
-                   &base::Equilibrator<T, U>::basix_element_hat,
-                   nb::rv_policy::reference_internal)
-      .def_prop_ro("basix_element_flux",
-                   &base::Equilibrator<T, U>::basix_element_hat,
-                   nb::rv_policy::reference_internal);
-  //   .def_prop_ro("kernel_data_bcs",
-  //                &base::Equilibrator<T, U>::kernel_data_bcs,
-  //                nb::rv_policy::reference_internal);
-  //   nb::class_<base::KernelDataBC<T, U>>(m, "KernelDataBC",
-  //                                        "Kernel data for boundary
-  //                                        conditions")
-  //       .def(
-  //           "__init__",
-  //           [](base::KernelDataBC<T, U>* fp,
-  //              const basix::FiniteElement<U>& element_geom,
-  //              std::tuple<int, int> quadrature_rule,
-  //              const basix::FiniteElement<U>& element_hat,
-  //              const basix::FiniteElement<U>& element_flux,
-  //              const base::EqlbStrategy equilibration_strategy)
-  //           {
-  //             new (fp) base::KernelDataBC<T, U>(element_geom,
-  //             quadrature_rule,
-  //                                               element_hat, element_flux,
-  //                                               equilibration_strategy);
-  //           },
-  //           nb::arg("element_geom"), nb::arg("quadrature_rule"),
-  //           nb::arg("element_hat"), nb::arg("element_flux"),
-  //           nb::arg("equilibration_strategy"));
+  m.def(
+      "equilibration_ev",
+      [](std::vector<std::shared_ptr<dolfinx::fem::Function<T, U>>>& fluxes,
+         const std::vector<std::shared_ptr<const dolfinx::fem::Form<T, U>>>& as,
+         const std::vector<std::shared_ptr<const dolfinx::fem::Form<T, U>>>& ls)
+      { ev::equilibrate<T, U>(fluxes, as, ls); },
+      nb::arg("fluxes"), nb::arg("as"), nb::arg("ls"),
+      "Solve the equilibration problem.");
 }
 
 NB_MODULE(cpp, m)
