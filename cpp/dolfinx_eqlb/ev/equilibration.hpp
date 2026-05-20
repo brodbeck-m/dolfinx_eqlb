@@ -6,6 +6,7 @@
 
 #pragma once
 
+#include "subdofmap.hpp"
 #include <dolfinx_eqlb/base/ProblemData.hpp>
 #include <dolfinx_eqlb/base/equilibration.hpp>
 #include <dolfinx_eqlb/base/mdspan.hpp>
@@ -20,6 +21,7 @@
 #include <dolfinx/fem/assembler.h>
 #include <dolfinx/fem/utils.h>
 #include <dolfinx/graph/AdjacencyList.h>
+#include <dolfinx/mesh/Mesh.h>
 
 #include <algorithm>
 #include <functional>
@@ -66,10 +68,26 @@ void equilibrate(std::vector<std::shared_ptr<fem::Function<T, U>>>& fluxes,
   const int n_rhs = fluxes.size();
 
   // The mesh
-  std::span<const dolfinx::scalar_value_t<T>> x = as[0]->mesh()->geometry().x();
-  base::mdspan_t<const std::int32_t, 2> x_dofmap
-      = as[0]->mesh()->geometry().dofmap();
+  std::shared_ptr<const mesh::Mesh<U>> msh = as[0]->mesh();
 
+  const int gdim = msh->geometry().dim();
+  const int fdim = gdim - 1;
+
+  std::shared_ptr<const graph::AdjacencyList<std::int32_t>> node_to_cell
+      = msh->topology()->connectivity(0, gdim);
+  std::shared_ptr<const graph::AdjacencyList<std::int32_t>> node_to_fct
+      = msh->topology()->connectivity(0, fdim);
+  std::shared_ptr<const graph::AdjacencyList<std::int32_t>> fct_to_node
+      = msh->topology()->connectivity(fdim, 0);
+  std::shared_ptr<const graph::AdjacencyList<std::int32_t>> fct_to_cell
+      = msh->topology()->connectivity(fdim, gdim);
+  std::shared_ptr<const graph::AdjacencyList<std::int32_t>> cell_to_fct
+      = msh->topology()->connectivity(gdim, fdim);
+  std::shared_ptr<const graph::AdjacencyList<std::int32_t>> cell_to_node
+      = msh->topology()->connectivity(gdim, 0);
+
+  std::span<const dolfinx::scalar_value_t<T>> x = msh->geometry().x();
+  base::mdspan_t<const std::int32_t, 2> x_dofmap = msh->geometry().dofmap();
   std::vector<dolfinx::scalar_value_t<T>> coordinate_dofs(3
                                                           * x_dofmap.extent(1));
 
@@ -96,9 +114,9 @@ void equilibrate(std::vector<std::shared_ptr<fem::Function<T, U>>>& fluxes,
   // Data for the linear forms
   base::ProblemData<T, U> problem_data = base::ProblemData<T, U>(fluxes, ls);
 
-  std::cout << "n_rhs: " << n_rhs << std::endl;
-
   // The equation system
+  int max_cells_per_patch = max_patch_size(
+      msh->topology()->index_map(0)->size_local(), node_to_cell);
 
   // The solver
 
@@ -118,6 +136,9 @@ void equilibrate(std::vector<std::shared_ptr<fem::Function<T, U>>>& fluxes,
   //         = a.domain(fem::IntegralType::cell, i, cell_type_idx);
   //   }
   // }
+
+  std::cout << "n_rhs: " << n_rhs << std::endl;
+  std::cout << "max_cells_per_patch: " << max_cells_per_patch << std::endl;
 }
 
 } // namespace dolfinx_eqlb::ev

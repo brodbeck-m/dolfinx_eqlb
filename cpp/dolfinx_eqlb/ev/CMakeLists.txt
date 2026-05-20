@@ -7,6 +7,7 @@ set(HEADERS_ev
     ${CMAKE_CURRENT_SOURCE_DIR}/deqlb_ev.hpp
     # ${CMAKE_CURRENT_SOURCE_DIR}/reconstruction.hpp
     # ${CMAKE_CURRENT_SOURCE_DIR}/solve_patch.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/subdofmap.hpp
     PARENT_SCOPE
 )
 
