@@ -96,23 +96,23 @@ void local_solver(std::vector<std::shared_ptr<fem::Function<T, U>>>& solutions,
   // Loop over all cell types and cell domains
   const int num_cell_types
       = static_cast<int>(a.mesh()->topology()->cell_types().size());
-  for (int kernel_idx = 0; kernel_idx < num_cell_types; ++kernel_idx)
+  for (int cell_type_idx = 0; cell_type_idx < num_cell_types; ++cell_type_idx)
   {
-    for (int i = 0; i < a.num_integrals(fem::IntegralType::cell, kernel_idx);
+    for (int i = 0; i < a.num_integrals(fem::IntegralType::cell, cell_type_idx);
          ++i)
     {
       // Extract cells
       const std::span<const std::int32_t> cells
-          = a.domain(fem::IntegralType::cell, i, kernel_idx);
+          = a.domain(fem::IntegralType::cell, i, cell_type_idx);
 
       // Prepare assembly bilinear form
-      auto kernel_a = a.kernel(fem::IntegralType::cell, i, kernel_idx);
+      auto kernel_a = a.kernel(fem::IntegralType::cell, i, cell_type_idx);
 
       auto& [coeffs_a, cstride_a]
           = coefficients_a.at({fem::IntegralType::cell, i});
 
       // Initialize RHS for current integrator
-      problem_data.initialize_kernel(fem::IntegralType::cell, i, kernel_idx);
+      problem_data.initialize_kernel(fem::IntegralType::cell, i, cell_type_idx);
 
       // Loop over all cells
       if (!cells.empty())
@@ -197,7 +197,7 @@ void local_solver(std::vector<std::shared_ptr<fem::Function<T, U>>>& solutions,
         }
       }
     }
-  } // kernel_idx
+  }
 }
 
 } // namespace dolfinx_eqlb::base
