@@ -91,16 +91,46 @@ void equilibrate(std::vector<std::shared_ptr<fem::Function<T, U>>>& fluxes,
   std::vector<dolfinx::scalar_value_t<T>> coordinate_dofs(3
                                                           * x_dofmap.extent(1));
 
-  // The DofMaps
+  //  Initialise the patch
+  const std::int32_t max_size_patch = max_patch_size(
+      msh->topology()->index_map(0)->size_local(), node_to_cell);
+
+  const std::int32_t max_cells_per_patch
+      = node_to_cell->links(max_size_patch).size();
+  const std::int32_t max_fcts_per_patch
+      = node_to_fct->links(max_size_patch).size();
+
+  // The (global) DofMap of the flux space
   std::shared_ptr<const fem::FunctionSpace<U>> fspace_v
       = as[0]->function_spaces().at(0);
   std::shared_ptr<const fem::DofMap> dofmap_v = fspace_v->dofmap();
 
+  const int fluxdofs_per_cell = fspace_v->element()->space_dimension();
+  const std::vector<int> fluxdofs_per_entity = ndofs_per_entity(fspace_v);
+
+  // The (global) DofMap of the constrained space
   const int id_q = (fspace_v == as[1]->function_spaces().at(0)) ? 1 : 0;
   std::shared_ptr<const fem::FunctionSpace<U>> fspace_q
       = as[1]->function_spaces().at(id_q);
   std::shared_ptr<const fem::DofMap> dofmap_q = fspace_q->dofmap();
 
+  // The linear solvers
+  ndofs_flux_max = max_fcts_per_patch * fluxdofs_per_entity[fdim]
+                   + max_cells_per_patch * fluxdofs_per_entity[gdim];
+  ndofs_cnstrs_max
+      = max_cells_per_patch * fspace_q->element()->space_dimension() + 1;
+
+  Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic> A, B;
+  Eigen::Matrix<T, Eigen::Dynamic, 1> Lu, Lc, u, c;
+
+  A.resize(ndofs_flux_max, ndofs_flux_max);
+  B.resize(ndofs_flux_max, ndofs_cnstrs_max);
+  Lu.resize(ndofs_flux_max);
+  Lc.resize(ndofs_cnstrs_max);
+  u.resize(ndofs_flux_max);
+  c.resize(ndofs_cnstrs_max);
+
+  /* Solve patch-wise equation systems */
   // Data for mass matrix
   const std::vector<T> constants_a = fem::pack_constants(*as[0]);
 
@@ -114,13 +144,6 @@ void equilibrate(std::vector<std::shared_ptr<fem::Function<T, U>>>& fluxes,
   // Data for the linear forms
   base::ProblemData<T, U> problem_data = base::ProblemData<T, U>(fluxes, ls);
 
-  // The equation system
-  int max_cells_per_patch = max_patch_size(
-      msh->topology()->index_map(0)->size_local(), node_to_cell);
-
-  // The solver
-
-  /* Solve patch-wise equation systems */
   // Loop over all cell types and cell domains
   // const int num_cell_types
   //     = static_cast<int>(a.mesh()->topology()->cell_types().size());
@@ -139,6 +162,14 @@ void equilibrate(std::vector<std::shared_ptr<fem::Function<T, U>>>& fluxes,
 
   std::cout << "n_rhs: " << n_rhs << std::endl;
   std::cout << "max_cells_per_patch: " << max_cells_per_patch << std::endl;
+  std::cout << "max_facets_per_patch: " << max_fcts_per_patch << std::endl;
+
+  std::cout << "DOFs per entity: ";
+  for (auto v : fluxdofs_per_entity)
+  {
+    std::cout << v << " ";
+  }
+  std::cout << std::endl;
 }
 
 } // namespace dolfinx_eqlb::ev
