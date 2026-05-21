@@ -108,18 +108,25 @@ void equilibrate(std::vector<std::shared_ptr<fem::Function<T, U>>>& fluxes,
   const int fluxdofs_per_cell = fspace_v->element()->space_dimension();
   const std::vector<int> fluxdofs_per_entity = ndofs_per_entity(fspace_v);
 
+  // The (local) DofMap of the flux space
+  const std::int32_t ndofs_flux_max
+      = max_fcts_per_patch * fluxdofs_per_entity[fdim]
+        + max_cells_per_patch * fluxdofs_per_entity[gdim];
+  std::vector<std::int32_t> subdofmap_flux();
+
   // The (global) DofMap of the constrained space
   const int id_q = (fspace_v == as[1]->function_spaces().at(0)) ? 1 : 0;
   std::shared_ptr<const fem::FunctionSpace<U>> fspace_q
       = as[1]->function_spaces().at(id_q);
   std::shared_ptr<const fem::DofMap> dofmap_q = fspace_q->dofmap();
 
-  // The linear solvers
-  ndofs_flux_max = max_fcts_per_patch * fluxdofs_per_entity[fdim]
-                   + max_cells_per_patch * fluxdofs_per_entity[gdim];
-  ndofs_cnstrs_max
+  const int constrdofs_per_cell = fspace_q->element()->space_dimension();
+
+  // The (local) DofMap of the constrained space
+  const std::int32_t ndofs_cnstrs_max
       = max_cells_per_patch * fspace_q->element()->space_dimension() + 1;
 
+  // The linear solvers
   Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic> A, B;
   Eigen::Matrix<T, Eigen::Dynamic, 1> Lu, Lc, u, c;
 
