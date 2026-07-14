@@ -74,4 +74,33 @@ ndofs_per_entity(std::shared_ptr<const fem::FunctionSpace<U>> fspace)
   return std::move(dofs_per_entity);
 }
 
+/// Get a compacting remapping of the local DOF map
+///
+/// @param[in] dofs_map DOF map of the function space
+// @return A compacting remapping of the local DOF map
+
+std::vector<int> compact_dof_map(const std::vector<int>& dofs_map)
+{
+  // Get the number of DOFs
+  std::int32_t ndofs = *std::max_element(dofs_map.begin(), dofs_map.end()) + 1;
+
+  // Create a vector to store the remapping
+  std::vector<int> remap(ndofs);
+  std::iota(std::begin(remap), std::end(remap), 0);
+
+  // Insertion sort the remap vector according to the dofs_map
+  int index = 1;
+  while (index < remap.size())
+  {
+    int index2 = index;
+    while (index2 > 0 && dofs_map[index2 - 1] > dofs_map[index2])
+    {
+      std::swap(remap[index2 - 1], remap[index2]);
+      std::swap(dofs_map[index2 - 1], dofs_map[index2]);
+      --index2;
+    }
+  }
+
+  return remap;
+
 } // namespace dolfinx_eqlb::ev
