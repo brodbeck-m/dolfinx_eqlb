@@ -102,5 +102,22 @@ std::vector<int> compact_dof_map(const std::vector<int>& dofs_map)
   }
 
   return remap;
+}
 
+void mesh_equilibration(
+    std::int32_t nodes_on_proc,
+    std::shared_ptr<const graph::AdjacencyList<std::int32_t>> node_to_cell,
+    std::vector<double>& theta_h_R, const std::vector<double>& theta_h,
+    const std::vector<double>& f_h)
+{
+  // Loop over all patches
+  for (std::int32_t i = 0; i < nodes_on_proc; ++i)
+  {
+    // Get cells on patch and generate compacting
+    auto patch_cells = node_to_cell->links(i);
+    auto compacting = compact_dof_map(patch_cells);
+
+    // TODO: Solve local equilibration problem on patch i
+    // TODO: Assemble local U into theta_h_R
+  }
 } // namespace dolfinx_eqlb::ev
