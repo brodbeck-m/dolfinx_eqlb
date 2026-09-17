@@ -16,8 +16,8 @@ namespace base = dolfinx_eqlb::base;
 
 namespace dolfinx_eqlb::ev
 {
-template <typename T>
-class ProblemData : public base::ProblemData<T>
+template <typename T, typename U>
+class ProblemData : public base::ProblemData<T, U>
 {
 public:
   /// Initialize storage of data for equilibration of (multiple) fluxes
@@ -31,8 +31,8 @@ public:
   /// @param l        List of all RHS (ufl)
   ProblemData(std::vector<std::shared_ptr<fem::Function<T>>>& fluxes,
               const std::vector<std::shared_ptr<const fem::Form<T>>>& l,
-              std::shared_ptr<base::BoundaryData<T>> boundary_data)
-      : base::ProblemData<T>(fluxes, {}, l), _boundary_data(boundary_data),
+              std::shared_ptr<base::BoundaryData<T, U>> boundary_data)
+      : base::ProblemData<T, U>(fluxes, {}, l), _boundary_data(boundary_data),
         _begin_hat(fluxes.size(), 0), _begin_fluxdg(fluxes.size(), 0)
   {
   }
@@ -85,8 +85,7 @@ public:
 
         /* Initialize datastructure coefficients */
         const std::vector<std::shared_ptr<const fem::Function<T>>>&
-            coefficients_i
-            = l_i.coefficients();
+            coefficients_i = l_i.coefficients();
         const std::vector<int> offsets_i = l_i.coefficient_offsets();
 
         // Determine number of coefficients
@@ -270,7 +269,7 @@ protected:
 
   /* Variables */
   // The boundary data (equilibration specific)
-  std::shared_ptr<base::BoundaryData<T>> _boundary_data;
+  std::shared_ptr<base::BoundaryData<T, U>> _boundary_data;
 
   // Infos on constants and coefficients
   std::vector<int> _begin_hat, _begin_fluxdg;

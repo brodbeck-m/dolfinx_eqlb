@@ -8,11 +8,29 @@
 
 #include <dolfinx/graph/AdjacencyList.h>
 
+#include "ProblemData.hpp"
+// #include "mdspan.hpp"
+
+#include <Eigen/Dense>
+#include <Eigen/Sparse>
+#include <dolfinx/common/types.h>
+#include <dolfinx/fem/DofMap.h>
+#include <dolfinx/fem/Form.h>
+#include <dolfinx/fem/Function.h>
+#include <dolfinx/fem/assembler.h>
+#include <dolfinx/fem/utils.h>
+#include <dolfinx/graph/AdjacencyList.h>
+
 #include <dolfinx_eqlb/base/ProblemData.hpp>
 #include <dolfinx_eqlb/base/equilibration.hpp>
 #include <dolfinx_eqlb/base/mdspan.hpp>
 
+#include <algorithm>
+#include <functional>
+#include <iostream>
+#include <iterator>
 #include <memory>
+#include <span>
 #include <utility>
 #include <vector>
 
@@ -81,43 +99,27 @@ ndofs_per_entity(std::shared_ptr<const fem::FunctionSpace<U>> fspace)
 
 std::vector<int> compact_dof_map(const std::vector<int>& dofs_map)
 {
+  if (dofs_map.empty())
+    return {};
+
   // Get the number of DOFs
   std::int32_t ndofs = *std::max_element(dofs_map.begin(), dofs_map.end()) + 1;
 
   // Create a vector to store the remapping
   std::vector<int> remap(ndofs);
-  std::iota(std::begin(remap), std::end(remap), 0);
+  std::iota(remap.begin(), remap.end(), 0);
 
-  // Insertion sort the remap vector according to the dofs_map
-  int index = 1;
-  while (index < remap.size())
+  // Insertion sort the remap vector using values from dofs_map as criteria
+  for (size_t index = 1; index < remap.size(); ++index)
   {
-    int index2 = index;
-    while (index2 > 0 && dofs_map[index2 - 1] > dofs_map[index2])
+    size_t index2 = index;
+    while (index2 > 0 && dofs_map[remap[index2 - 1]] > dofs_map[remap[index2]])
     {
       std::swap(remap[index2 - 1], remap[index2]);
-      std::swap(dofs_map[index2 - 1], dofs_map[index2]);
       --index2;
     }
   }
 
   return remap;
 }
-
-void mesh_equilibration(
-    std::int32_t nodes_on_proc,
-    std::shared_ptr<const graph::AdjacencyList<std::int32_t>> node_to_cell,
-    std::vector<double>& theta_h_R, const std::vector<double>& theta_h,
-    const std::vector<double>& f_h)
-{
-  // Loop over all patches
-  for (std::int32_t i = 0; i < nodes_on_proc; ++i)
-  {
-    // Get cells on patch and generate compacting
-    auto patch_cells = node_to_cell->links(i);
-    auto compacting = compact_dof_map(patch_cells);
-
-    // TODO: Solve local equilibration problem on patch i
-    // TODO: Assemble local U into theta_h_R
-  }
 } // namespace dolfinx_eqlb::ev
