@@ -86,8 +86,7 @@ void equilibrate(std::vector<std::shared_ptr<fem::Function<T, U>>>& fluxes,
 
   std::span<const dolfinx::scalar_value_t<T>> x = msh->geometry().x();
   base::mdspan_t<const std::int32_t, 2> x_dofmap = msh->geometry().dofmap();
-  std::vector<dolfinx::scalar_value_t<T>> coordinate_dofs(
-      x_dofmap.extent(0) * x_dofmap.extent(1)); // TODO Why different from local solver?
+  std::vector<dolfinx::scalar_value_t<T>> coordinate_dofs(3 * x_dofmap.extent(1)); // 3 for 3D coordinates of fenics
 
   //  Initialise the patch
   const std::int32_t max_size_patch_id = max_patch_size(msh->topology()->index_map(0)->size_local(), node_to_cell);
@@ -156,6 +155,8 @@ void equilibrate(std::vector<std::shared_ptr<fem::Function<T, U>>>& fluxes,
   // Loop over all vertices -> patches
   for (std::int32_t v = 0; v < nvert; ++v)
   {
+    // TODO set hat function
+
     // Get the cells associated with the current vertex
     std::span<const std::int32_t> patch_cells = node_to_cell->links(v);
     if (patch_cells.empty())
@@ -170,9 +171,12 @@ void equilibrate(std::vector<std::shared_ptr<fem::Function<T, U>>>& fluxes,
     std::vector<int> raw_patch_flux_dofs;
     std::vector<int> raw_patch_constr_dofs;
 
+    // https://docs.fenicsproject.org/dolfinx/main/cpp/doxygen/df/d27/classdolfinx_1_1fem_1_1FiniteElement.html#ab65e0ed248053420d4fe672743526e29
+    // https://docs.fenicsproject.org/basix/v0.10.0.post0/cpp/classbasix_1_1FiniteElement.html#a12145f082817587bd17ede85cb251706
     for (const std::int32_t cell : patch_cells)
     {
-      auto cell_flux = dofmap_v->cell_dofs(cell);
+      auto cell_flux = dofmap_v->cell_dofs(cell); // TODO exclude outer facets -> Access basics element "entity_dofs()"
+                                                  // [gdim-1 -> facetcount -> dofs] -> yields index
       raw_patch_flux_dofs.insert(raw_patch_flux_dofs.end(), cell_flux.begin(), cell_flux.end());
 
       auto cell_constr = dofmap_q->cell_dofs(cell);
@@ -180,6 +184,7 @@ void equilibrate(std::vector<std::shared_ptr<fem::Function<T, U>>>& fluxes,
     }
 
     // remap the patch dofs to a compacted local numbering
+    // TODO global lookup split values after
     std::vector<int> flux_remap = compact_dof_map(raw_patch_flux_dofs); // TODO raw_patch_flux_dofs has duplicate values
     std::vector<int> constr_remap = compact_dof_map(raw_patch_constr_dofs);
 
@@ -344,6 +349,7 @@ void equilibrate(std::vector<std::shared_ptr<fem::Function<T, U>>>& fluxes,
         }
       }
     }
+    // TODO unset hat function
   }
 
   std::cout << "n_rhs: " << n_rhs << std::endl;

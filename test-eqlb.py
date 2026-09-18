@@ -47,6 +47,15 @@ lagr_mltp = fem.form(q * ufl.dx)
 
 ls = [fem.form(5 * q * ufl.dx)]
 
+# l = (
+#     -(self.hat_function * ufl.inner(-list_proj_flux[ii], v))
+#     + self.hat_function * list_rhs[ii] * q
+#     - ufl.inner(ufl.grad(self.hat_function), -list_proj_flux[ii]) * q
+# ) * ufl.dx
+
+# self.form_a = fem.form((ufl.inner(sig, v) - r * ufl.div(v) + ufl.div(sig) * q) * ufl.dx)
+# self.form_lpen = fem.form(q_pen * ufl.dx)
+
 # The equilibrated flux
 fluxes = [fem.Function(V)]
 
