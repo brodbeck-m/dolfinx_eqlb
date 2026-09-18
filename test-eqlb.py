@@ -7,6 +7,10 @@ import dolfinx_eqlb.cpp as _cpp
 
 from dolfinx_eqlb.lsolver import local_projection
 
+import faulthandler
+
+faulthandler.enable()
+
 # --- Parameters ---
 cell_type = mesh.CellType.triangle
 degree = 2

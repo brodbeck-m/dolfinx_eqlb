@@ -86,22 +86,25 @@ void equilibrate(std::vector<std::shared_ptr<fem::Function<T, U>>>& fluxes,
 
   std::span<const dolfinx::scalar_value_t<T>> x = msh->geometry().x();
   base::mdspan_t<const std::int32_t, 2> x_dofmap = msh->geometry().dofmap();
-  std::vector<dolfinx::scalar_value_t<T>> coordinate_dofs(3 * x_dofmap.extent(1));
+  std::vector<dolfinx::scalar_value_t<T>> coordinate_dofs(
+      x_dofmap.extent(0) * x_dofmap.extent(1)); // TODO Why different from local solver?
 
   //  Initialise the patch
-  const std::int32_t max_size_patch = max_patch_size(msh->topology()->index_map(0)->size_local(), node_to_cell);
+  const std::int32_t max_size_patch_id = max_patch_size(msh->topology()->index_map(0)->size_local(), node_to_cell);
 
-  const std::int32_t max_cells_per_patch = node_to_cell->links(max_size_patch).size();
-  const std::int32_t max_fcts_per_patch = node_to_fct->links(max_size_patch).size();
+  const std::int32_t max_cells_per_patch = node_to_cell->links(max_size_patch_id).size();
+  const std::int32_t max_fcts_per_patch = node_to_fct->links(max_size_patch_id).size();
   // The (global) DofMap of the flux space
   std::shared_ptr<const fem::FunctionSpace<U>> fspace_v = as[0]->function_spaces().at(0);
+
+  // Different DOFMAP call and return value from above!!!
   std::shared_ptr<const fem::DofMap> dofmap_v = fspace_v->dofmap();
   const int fluxdofs_per_cell = fspace_v->element()->space_dimension();
   const std::vector<int> fluxdofs_per_entity = ndofs_per_entity(fspace_v);
 
   // The (local) DofMap of the flux space
   const std::int32_t ndofs_flux_max
-      = max_fcts_per_patch * fluxdofs_per_entity[fdim] + max_cells_per_patch * fluxdofs_per_entity[gdim];
+      = (max_fcts_per_patch * fluxdofs_per_entity[fdim]) + (max_cells_per_patch * fluxdofs_per_entity[gdim]);
   std::vector<std::int32_t> subdofmap_flux;
 
   // The (global) DofMap of the constrained space
@@ -177,7 +180,7 @@ void equilibrate(std::vector<std::shared_ptr<fem::Function<T, U>>>& fluxes,
     }
 
     // remap the patch dofs to a compacted local numbering
-    std::vector<int> flux_remap = compact_dof_map(raw_patch_flux_dofs);
+    std::vector<int> flux_remap = compact_dof_map(raw_patch_flux_dofs); // TODO raw_patch_flux_dofs has duplicate values
     std::vector<int> constr_remap = compact_dof_map(raw_patch_constr_dofs);
 
     // Get local patch dofs

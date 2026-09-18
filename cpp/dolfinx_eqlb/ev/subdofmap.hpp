@@ -39,16 +39,14 @@ using namespace dolfinx;
 namespace dolfinx_eqlb::ev
 {
 
-/// Get the maximum number of cells per patch
+/// Get the id of the patch with the maximum number of cells
 ///
 /// @param[in] nodes_on_proc The number of nodes on the processor
 /// @param[in] node_to_cell  The connectivity between nodes and cells
 /// @return The (local) node id in the center of the patch with the maximum
 /// number of cells
-/// @return The maximum number of facets per patch
-std::int32_t max_patch_size(
-    std::int32_t nodes_on_proc,
-    std::shared_ptr<const graph::AdjacencyList<std::int32_t>> node_to_cell)
+std::int32_t max_patch_size(std::int32_t nodes_on_proc,
+                            std::shared_ptr<const graph::AdjacencyList<std::int32_t>> node_to_cell)
 {
   std::int32_t patch_id = 0, ncells_max = 0;
 
@@ -73,15 +71,13 @@ std::int32_t max_patch_size(
 /// @param[in] fspace The function space
 /// @return The number of DOFs per entity
 template <std::floating_point U>
-std::vector<int>
-ndofs_per_entity(std::shared_ptr<const fem::FunctionSpace<U>> fspace)
+std::vector<int> ndofs_per_entity(std::shared_ptr<const fem::FunctionSpace<U>> fspace)
 {
   // Data storage
   std::vector<int> dofs_per_entity(fspace->mesh()->geometry().dim() + 1, 0);
 
   //   DOF ids per entity
-  const std::vector<std::vector<std::vector<int>>>& entity_dofs
-      = fspace->element()->entity_dofs();
+  const std::vector<std::vector<std::vector<int>>>& entity_dofs = fspace->element()->entity_dofs();
 
   // Get number of DOFs per entity
   for (std::size_t i = 0; i < entity_dofs.size(); ++i)
@@ -93,6 +89,8 @@ ndofs_per_entity(std::shared_ptr<const fem::FunctionSpace<U>> fspace)
 }
 
 /// Get a compacting remapping of the local DOF map
+/// The returned remap[0] will hold the index corresponding to the smallest value in dofs_map, remap[1] the next
+/// smallest, and so on.
 ///
 /// @param[in] dofs_map DOF map of the function space
 // @return A compacting remapping of the local DOF map
