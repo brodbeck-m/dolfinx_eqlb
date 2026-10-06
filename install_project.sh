@@ -8,7 +8,7 @@
 # # Link c++ and python
 # pip3 install python/ -v --upgrade
 
---- Version using dolfinx v0.9.0 ---
+# --- Version using dolfinx v0.9.0 ---
 #-DCMAKE_VERBOSE_MAKEFILE:BOOL=ON Build c++ backend
 # cmake -G Ninja -DCMAKE_INSTALL_PREFIX=/usr/local/dolfinx-real -DCMAKE_BUILD_TYPE=Release -B build-dir cpp/
 cmake -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo  -B build-dir cpp/

@@ -38,6 +38,15 @@ msh.topology.create_connectivity(gdim, fdim)
 V, Q = fem.functionspace(msh, ("RT", degree)), fem.functionspace(msh, ("DG", degree))
 V_hat = fem.functionspace(msh, ("P", 1))
 
+# TODO check
+project_sig = fem.Function(fem.functionspace(msh, ("DG", degree - 1), dim=2))
+project_f = fem.Function(fem.functionspace(msh, ("DG", degree - 1)))
+
+# numpy array
+# TODO fill with non zero values
+project_sig.x.array
+project_f.x.array
+
 u, p = ufl.TrialFunction(V), ufl.TrialFunction(Q)
 v, q = ufl.TestFunction(V), ufl.TestFunction(Q)
 
@@ -45,16 +54,16 @@ mass_matrix = fem.form(ufl.inner(u, v) * ufl.dx)
 constr_matrix = fem.form(ufl.inner(p, ufl.div(v)) * ufl.dx)
 lagr_mltp = fem.form(q * ufl.dx)
 
-ls = [fem.form(5 * q * ufl.dx)]
+# TODO new LC
+ls = [
+    (-(self.hat_function * ufl.inner(-project_sig, v))) * ufl.dx,
+    (
+        self.hat_function * project_f * q
+        - ufl.inner(ufl.grad(self.hat_function), -project_sig) * q
+    )
+    * ufl.dx,
+]
 
-# l = (
-#     -(self.hat_function * ufl.inner(-list_proj_flux[ii], v))
-#     + self.hat_function * list_rhs[ii] * q
-#     - ufl.inner(ufl.grad(self.hat_function), -list_proj_flux[ii]) * q
-# ) * ufl.dx
-
-# self.form_a = fem.form((ufl.inner(sig, v) - r * ufl.div(v) + ufl.div(sig) * q) * ufl.dx)
-# self.form_lpen = fem.form(q_pen * ufl.dx)
 
 # The equilibrated flux
 fluxes = [fem.Function(V)]

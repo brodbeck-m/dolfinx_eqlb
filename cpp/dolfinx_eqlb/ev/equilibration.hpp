@@ -44,7 +44,7 @@ namespace dolfinx_eqlb::ev
 template <dolfinx::scalar T, std::floating_point U>
 void equilibrate(std::vector<std::shared_ptr<fem::Function<T, U>>>& fluxes,
                  const std::vector<std::shared_ptr<const fem::Form<T, U>>>& as,
-                 const std::vector<std::shared_ptr<const fem::Form<T, U>>>& ls)
+                 const std::vector<std::vector<std::shared_ptr<const fem::Form<T, U>>>>& ls)
 {
   if (as.size() != 3)
   {
@@ -132,14 +132,19 @@ void equilibrate(std::vector<std::shared_ptr<fem::Function<T, U>>>& fluxes,
   auto interm_coefficients_a = fem::allocate_coefficient_storage(*as[0]);
   fem::pack_coefficients(*as[0], interm_coefficients_a);
 
+  // TODO copy above for each l (lu & lc)
+  // TODO do not store data duplicates
+
   std::map<std::pair<fem::IntegralType, int>, std::pair<std::span<const T>, int>> coefficients_a
       = fem::make_coefficients_span(interm_coefficients_a);
 
   // Data for the linear forms
   base::ProblemData<T, U> problem_data = base::ProblemData<T, U>(fluxes, ls);
+  problem_data.initialize_kernels() // TODO check old code
 
-  // Reusable solver
-  Eigen::PartialPivLU<Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>> solver;
+      // Reusable solver
+      Eigen::PartialPivLU<Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>>
+          solver;
 
   // Initialize geometry storage/ hat-function
   // const int cstride_geom = 3 * geometry.cmap().dim();
@@ -155,7 +160,6 @@ void equilibrate(std::vector<std::shared_ptr<fem::Function<T, U>>>& fluxes,
   // Loop over all vertices -> patches
   for (std::int32_t v = 0; v < nvert; ++v)
   {
-    // TODO set hat function
 
     // Get the cells associated with the current vertex
     std::span<const std::int32_t> patch_cells = node_to_cell->links(v);
@@ -164,6 +168,19 @@ void equilibrate(std::vector<std::shared_ptr<fem::Function<T, U>>>& fluxes,
       std::cout << "Warning: Vertex " << v << " has no associated cells." << std::endl;
       continue;
     }
+
+    // set hat function
+    std::span<const std::int32_t> nodeIndices = cell_to_node->links(patch_cells[0]);
+    int localPatch0NodeId = -1;
+    for (int i = 0; i < nodeIndices.size(); i++)
+    {
+      if (nodeIndices[i] == v)
+      {
+        localPatch0NodeId = i;
+        cell_to break;
+      }
+    }
+    problem_data.set_hat_function(patch_cells[0], localPatch0NodeId, 1);
 
     const int ncells = patch_cells.size();
 
@@ -349,7 +366,8 @@ void equilibrate(std::vector<std::shared_ptr<fem::Function<T, U>>>& fluxes,
         }
       }
     }
-    // TODO unset hat function
+    // unset hat function
+    problem_data.set_hat_function(patch_cells[0], localPatch0NodeId, 0);
   }
 
   std::cout << "n_rhs: " << n_rhs << std::endl;

@@ -1,5 +1,7 @@
 include(GNUInstallDirs)
 
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 #------------------------------------------------------------------------------
 # Declare the library
 add_library(dolfinx_eqlb "")
