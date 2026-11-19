@@ -34,6 +34,7 @@ msh.topology.create_connectivity(fdim, gdim)
 msh.topology.create_connectivity(gdim, 0)
 msh.topology.create_connectivity(gdim, fdim)
 
+# TODO Make problem mixed
 # The equilibration problem
 V, Q = fem.functionspace(msh, ("RT", degree)), fem.functionspace(msh, ("DG", degree))
 V_hat = fem.functionspace(msh, ("P", 1))

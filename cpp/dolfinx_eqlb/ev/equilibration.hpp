@@ -323,7 +323,7 @@ void equilibrate(std::vector<std::shared_ptr<fem::Function<T, U>>>& fluxes,
       }
 
       const std::size_t n_total = n_flux + n_constr;
-
+      // TODO solve two "split" problems after assembly of the mixed problem
       // Formulate the KKT system
       Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic> KKT
           = Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>::Zero(n_total, n_total);
