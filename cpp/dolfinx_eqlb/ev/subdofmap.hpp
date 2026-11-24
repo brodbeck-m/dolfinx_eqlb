@@ -100,24 +100,16 @@ std::vector<int> compact_dof_map(const std::vector<int>& dofs_map)
   if (dofs_map.empty())
     return {};
 
-  // Get the number of DOFs
-  std::int32_t ndofs = *std::max_element(dofs_map.begin(), dofs_map.end()) + 1;
+  std::vector<int> unique_dofs = dofs_map;
+  std::sort(unique_dofs.begin(), unique_dofs.end());
+  unique_dofs.erase(std::unique(unique_dofs.begin(), unique_dofs.end()), unique_dofs.end());
 
-  // Create a vector to store the remapping
-  std::vector<int> remap(ndofs);
-  std::iota(remap.begin(), remap.end(), 0);
-
-  // Insertion sort the remap vector using values from dofs_map as criteria
-  for (size_t index = 1; index < remap.size(); ++index)
+  std::vector<int> remap(dofs_map.size());
+  for (std::size_t i = 0; i < dofs_map.size(); ++i)
   {
-    size_t index2 = index;
-    while (index2 > 0 && dofs_map[remap[index2 - 1]] > dofs_map[remap[index2]])
-    {
-      std::swap(remap[index2 - 1], remap[index2]);
-      --index2;
-    }
+    auto it = std::lower_bound(unique_dofs.begin(), unique_dofs.end(), dofs_map[i]);
+    remap[i] = static_cast<int>(std::distance(unique_dofs.begin(), it));
   }
-
   return remap;
 }
 } // namespace dolfinx_eqlb::ev

@@ -2,6 +2,7 @@ from mpi4py import MPI
 
 from dolfinx import cpp, fem, io, mesh
 import ufl
+from basix.ufl import element, mixed_element
 
 import dolfinx_eqlb.cpp as _cpp
 
@@ -34,40 +35,43 @@ msh.topology.create_connectivity(fdim, gdim)
 msh.topology.create_connectivity(gdim, 0)
 msh.topology.create_connectivity(gdim, fdim)
 
-# TODO Make problem mixed
 # The equilibration problem
-V, Q = fem.functionspace(msh, ("RT", degree)), fem.functionspace(msh, ("DG", degree))
-V_hat = fem.functionspace(msh, ("P", 1))
+el_rt = element("RT", msh.basix_cell(), degree)
+el_dg = element("DG", msh.basix_cell(), degree - 1)
 
-# TODO check
-project_sig = fem.Function(fem.functionspace(msh, ("DG", degree - 1), dim=2))
+W = fem.functionspace(msh, mixed_element([el_rt, el_dg]))
+
+u, p = ufl.TrialFunctions(W)
+v, q = ufl.TestFunctions(W)
+
+V_hat = fem.functionspace(msh, ("P", 1))
+hat_function = fem.Function(V_hat, name="hat")
+
+project_sig = fem.Function(fem.functionspace(msh, ("DG", degree - 1, (2,))))
 project_f = fem.Function(fem.functionspace(msh, ("DG", degree - 1)))
 
 # numpy array
-# TODO fill with non zero values
-project_sig.x.array
-project_f.x.array
+project_sig.x.array[:] = 1.0
+project_f.x.array[:] = 2.5
 
-u, p = ufl.TrialFunction(V), ufl.TrialFunction(Q)
-v, q = ufl.TestFunction(V), ufl.TestFunction(Q)
 
 mass_matrix = fem.form(ufl.inner(u, v) * ufl.dx)
 constr_matrix = fem.form(ufl.inner(p, ufl.div(v)) * ufl.dx)
 lagr_mltp = fem.form(q * ufl.dx)
 
-# TODO new LC
 ls = [
-    (-(self.hat_function * ufl.inner(-project_sig, v))) * ufl.dx,
-    (
-        self.hat_function * project_f * q
-        - ufl.inner(ufl.grad(self.hat_function), -project_sig) * q
-    )
-    * ufl.dx,
+    fem.form((hat_function * ufl.inner(project_sig, v)) * ufl.dx),
+    fem.form(
+        (
+            hat_function * project_f * q
+            + ufl.inner(ufl.grad(hat_function), project_sig) * q
+        )
+        * ufl.dx
+    ),
 ]
 
-
 # The equilibrated flux
-fluxes = [fem.Function(V)]
+fluxes = [fem.Function(W)]
 
 print(fluxes[0].x.array)
 
@@ -79,3 +83,7 @@ _cpp.equilibration_ev(
 )
 
 print(fluxes[0].x.array)
+
+sigma_h, _ = fluxes[0].split()
+err_div = fem.assemble_scalar(fem.form((ufl.div(sigma_h) - project_f) ** 2 * ufl.dx))
+print("L2 divergence error:", err_div**0.5)

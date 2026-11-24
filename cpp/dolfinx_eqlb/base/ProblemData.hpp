@@ -41,35 +41,22 @@ public:
   /// @param ls        The linear forms
   ProblemData(std::vector<std::shared_ptr<fem::Function<T, U>>>& solutions,
               const std::vector<std::shared_ptr<const fem::Form<T, U>>>& ls)
-      : _nrhs(solutions.size()), _solutions(solutions), _ls(ls),
-        _kernels(ls.size()), _offset_cnsts(ls.size() + 1, 0),
-        _offset_coeffs(ls.size() + 1, 0), _cstrides(ls.size(), 0)
+      : _nrhs(solutions.size()), _solutions(solutions), _ls(ls), _kernels(ls.size()), _offset_cnsts(ls.size() + 1, 0),
+        _offset_coeffs(ls.size() + 1, 0), _cstrides(ls.size(), 0), _begin_hat(ls.size(), -1)
   {
-    // Extract function space on which BCs are set
-    const std::shared_ptr<const fem::FunctionSpace<U>> function_space
-        = ls[0]->function_spaces().at(0);
+    /* Initialize constants for all forms in ls */
+    std::int32_t size_cnst = 0;
 
-    /* Initialize constants */
-    std::int32_t size_cnst = 0, size_bc = 0;
-
-    for (std::size_t i = 0; i < _nrhs; ++i)
+    for (std::size_t i = 0; i < _ls.size(); ++i)
     {
-      // Get current linear form
-      const fem::Form<T, U>& l_i = *(ls[i]);
+      const fem::Form<T, U>& l_i = *(_ls[i]);
+      std::int32_t size_cnst_i = std::accumulate(l_i.constants().cbegin(), l_i.constants().cend(), 0,
+                                                 [](std::int32_t sum, auto& c) { return sum + c->value.size(); });
 
-      // Get sizes (constants, boundary conditions)
-      std::int32_t size_cnst_i = std::accumulate(
-          l_i.constants().cbegin(), l_i.constants().cend(), 0,
-          [](std::int32_t sum, auto& c) { return sum + c->value.size(); });
-
-      // Increment overall size
       size_cnst += size_cnst_i;
-
-      // Set offset
       _offset_cnsts[i + 1] = size_cnst;
     }
 
-    // Resize storage and set values
     _data_cnsts.resize(size_cnst, 0.0);
     set_data_constants();
   }
@@ -81,51 +68,62 @@ public:
   ///
   /// @param integral_type Integral type
   /// @param id            Id of integration-subdomain
-  void initialize_kernel(fem::IntegralType integral_type, int id,
-                         int kernel_idx = 0)
+  void initialize_kernel(fem::IntegralType integral_type, int id, int kernel_idx = 0)
   {
-    // Determine size of all coefficients
     std::int32_t size_coef = 0;
 
-    // Loop over all RHS
-    for (std::size_t i = 0; i < _nrhs; ++i)
+    // Loop over all forms in _ls (e.g. 2 * _nrhs for mixed systems)
+    for (std::size_t i = 0; i < _ls.size(); ++i)
     {
-      /* Get Kernel */
       const fem::Form<T, U>& l_i = *(_ls[i]);
       _kernels[i] = _ls[i]->kernel(integral_type, id, kernel_idx);
 
-      /* Initialize data-structure coefficients */
-      const std::vector<std::shared_ptr<const fem::Function<T, U>>>& coeffs_i
-          = l_i.coefficients();
+      const std::vector<std::shared_ptr<const fem::Function<T, U>>>& coeffs_i = l_i.coefficients();
       const std::vector<int> offsets_i = l_i.coefficient_offsets();
 
-      // Determine number of coefficients
+      // Locate "hat" coefficient offset if present
+      for (std::size_t c = 0; c < coeffs_i.size(); ++c)
+      {
+        if (coeffs_i[c]->name == "hat")
+        {
+          _begin_hat[i] = offsets_i[c];
+          break;
+        }
+      }
+
       std::size_t num_entities = 0;
       int cstride = 0;
-
       if (!coeffs_i.empty())
       {
         cstride = offsets_i.back();
-
         num_entities = l_i.domain(integral_type, id, kernel_idx).size();
-        if (integral_type == fem::IntegralType::exterior_facet
-            or integral_type == fem::IntegralType::interior_facet)
+        if (integral_type == fem::IntegralType::exterior_facet or integral_type == fem::IntegralType::interior_facet)
         {
           num_entities /= 2;
         }
       }
 
-      // Set offset
       size_coef += cstride * num_entities;
       _offset_coeffs[i + 1] = size_coef;
     }
 
-    // Extract coefficients
     _data_coeffs.resize(size_coef);
     set_data_coeffsficients(integral_type, id, kernel_idx);
   }
 
   /* Setter functions */
+  /// Set P1 hat function value at cell-local vertex node_i across all forms
+  void set_hat_function(const std::int32_t cell_i, const std::int8_t node_i, T value)
+  {
+    for (std::size_t index = 0; index < _ls.size(); ++index)
+    {
+      if (_begin_hat[index] >= 0)
+      {
+        const std::int32_t offset_local = _cstrides[index] * cell_i + _begin_hat[index] + node_i;
+        _data_coeffs[_offset_coeffs[index] + offset_local] = value;
+      }
+    }
+  }
 
   /* Getter functions */
   /// @return Number of linearforms
@@ -139,8 +137,7 @@ public:
   /// Extract integration kernel of l_i
   /// @param index Id of the sub-problem
   /// @return The integration kernel
-  const std::function<void(T*, const T*, const T*, const U*, const int*,
-                           const std::uint8_t*, void*)>&
+  const std::function<void(T*, const T*, const T*, const U*, const int*, const std::uint8_t*, void*)>&
   kernel(int index) const
   {
     return _kernels[index];
@@ -149,10 +146,7 @@ public:
   /// Extract a solution function
   /// @param index Id of the sub-problem
   /// @return The solution function
-  fem::Function<T, U>& solution_function(int index) const
-  {
-    return *(_solutions[index]);
-  }
+  fem::Function<T, U>& solution_function(int index) const { return *(_solutions[index]); }
 
   /// Extract constants of l_i (constant version)
   /// @param index Id of the sub-problem
@@ -168,8 +162,7 @@ public:
   /// @return Coefficients of linearform l_i
   std::span<T> coefficients(int index)
   {
-    return std::span<T>(_data_coeffs.data() + _offset_coeffs[index],
-                        _offset_coeffs[index + 1] - _offset_coeffs[index]);
+    return std::span<T>(_data_coeffs.data() + _offset_coeffs[index], _offset_coeffs[index + 1] - _offset_coeffs[index]);
   }
 
   /// Extract coefficients of l_i (constant version)
@@ -178,8 +171,7 @@ public:
   std::span<const T> coefficients(int index) const
   {
     return std::span<const T>(_data_coeffs.data() + _offset_coeffs[index],
-                              _offset_coeffs[index + 1]
-                                  - _offset_coeffs[index]);
+                              _offset_coeffs[index + 1] - _offset_coeffs[index]);
   }
 
   /// Extract cstride (coefficients) of l_i
@@ -191,7 +183,7 @@ protected:
   /* Handle constants */
   void set_data_constants()
   {
-    for (std::size_t i = 0; i < _nrhs; ++i)
+    for (std::size_t i = 0; i < _ls.size(); ++i)
     {
       // The linear form l_i
       const fem::Form<T, U>& l_i = *(_ls[i]);
@@ -203,8 +195,7 @@ protected:
       {
         const std::vector<T>& value = cnst->value;
         std::span<T> cnst_values
-            = std::span<T>(_data_cnsts.data() + _offset_cnsts[i],
-                           _offset_cnsts[i + 1] - _offset_cnsts[i]);
+            = std::span<T>(_data_cnsts.data() + _offset_cnsts[i], _offset_cnsts[i + 1] - _offset_cnsts[i]);
 
         std::ranges::copy(value, std::next(cnst_values.begin(), offset));
         offset += value.size();
@@ -213,16 +204,14 @@ protected:
   }
 
   /* Handle coefficients */
-  void set_data_coeffsficients(fem::IntegralType integral_type, int id,
-                               int kernel_idx = 0)
+  void set_data_coeffsficients(fem::IntegralType integral_type, int id, int kernel_idx = 0)
   {
-    for (std::size_t i = 0; i < _nrhs; ++i)
+    for (std::size_t i = 0; i < _ls.size(); ++i)
     {
       // Get current linear form
       const fem::Form<T, U>& l_i = *(_ls[i]);
 
-      const std::vector<std::shared_ptr<const fem::Function<T, U>>>&
-          coefficients_i = l_i.coefficients();
+      const std::vector<std::shared_ptr<const fem::Function<T, U>>>& coefficients_i = l_i.coefficients();
       const std::vector<int> offsets_i = l_i.coefficient_offsets();
 
       // Storage for current coefficients
@@ -247,16 +236,14 @@ protected:
   std::vector<std::shared_ptr<const fem::Form<T>>> _ls;
 
   // Integration kernels
-  std::vector<std::function<void(T*, const T*, const T*, const U*, const int*,
-                                 const std::uint8_t*, void*)>>
-      _kernels;
+  std::vector<std::function<void(T*, const T*, const T*, const U*, const int*, const std::uint8_t*, void*)>> _kernels;
 
   // Solution functions
   std::vector<std::shared_ptr<fem::Function<T>>>& _solutions;
 
   /* Storage coefficients and constants */
   // Informations
-  std::vector<int> _cstrides;
+  std::vector<int> _cstrides, _begin_hat;
 
   // Data
   std::vector<T> _data_coeffs, _data_cnsts;
